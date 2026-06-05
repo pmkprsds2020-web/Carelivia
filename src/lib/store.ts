@@ -79,7 +79,7 @@ interface TelemedicineStore {
 
 export const useStore = create<TelemedicineStore>((set) => ({
   // Navigation
-  activePanel: 'home',
+  activePanel: 'admin-pricing',
   setActivePanel: (panel) => set({ activePanel: panel }),
   
   // User

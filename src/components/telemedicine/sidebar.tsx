@@ -1,7 +1,7 @@
 'use client';
 
 import { useStore } from '@/lib/store';
-import type { ActivePanel } from '@/lib/types';
+import type { ActivePanel, UserRole } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import {
   Home,
@@ -16,10 +16,12 @@ import {
   CreditCard,
   BarChart3,
   User,
-  ChevronLeft,
-  ChevronRight,
   Package,
   Truck,
+  DollarSign,
+  LogOut,
+  Users,
+  Activity,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -31,29 +33,73 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   badge?: number;
-  roles?: string[];
+  roles: UserRole[]; // which roles can see this item
   section?: string;
 }
 
-export function Sidebar({ collapsed }: SidebarProps) {
-  const { activePanel, setActivePanel, setSidebarOpen, unreadCount, cart } = useStore();
+// Define all possible nav items with role restrictions
+const allNavItems: NavItem[] = [
+  // ─── PATIENT NAV ITEMS ────────────────────────────────
+  { id: 'home', label: 'Dashboard', icon: <Home className="w-5 h-5" />, roles: ['patient'] },
+  { id: 'chat', label: 'Chat Dokter', icon: <MessageCircle className="w-5 h-5" />, roles: ['patient'], section: 'Layanan' },
+  { id: 'video', label: 'Video Call', icon: <Video className="w-5 h-5" />, roles: ['patient'] },
+  { id: 'pharmacy', label: 'Apotek Online', icon: <Pill className="w-5 h-5" />, roles: ['patient'] },
+  { id: 'homecare', label: 'Home Care', icon: <Heart className="w-5 h-5" />, roles: ['patient'] },
+  { id: 'medical-records', label: 'Rekam Medis', icon: <FileText className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
+  { id: 'payments', label: 'Pembayaran', icon: <CreditCard className="w-5 h-5" />, roles: ['patient'], section: 'Lainnya' },
+  { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['patient'] },
+  { id: 'profile', label: 'Profil', icon: <User className="w-5 h-5" />, roles: ['patient'] },
 
-  const navItems: NavItem[] = [
-    { id: 'home', label: 'Dashboard', icon: <Home className="w-5 h-5" /> },
-    { id: 'chat', label: 'Chat Dokter', icon: <MessageCircle className="w-5 h-5" />, section: 'Layanan' },
-    { id: 'video', label: 'Video Call', icon: <Video className="w-5 h-5" /> },
-    { id: 'pharmacy', label: 'Apotek Online', icon: <Pill className="w-5 h-5" />, badge: cart.length },
-    { id: 'homecare', label: 'Home Care', icon: <Heart className="w-5 h-5" /> },
-    { id: 'medical-records', label: 'Rekam Medis', icon: <FileText className="w-5 h-5" />, section: 'Kesehatan' },
-    { id: 'doctor-panel', label: 'Panel Dokter', icon: <Stethoscope className="w-5 h-5" />, section: 'Panel' },
-    { id: 'pharmacist-panel', label: 'Panel Apotek', icon: <Package className="w-5 h-5" /> },
-    { id: 'homecare-staff-panel', label: 'Panel Petugas', icon: <Truck className="w-5 h-5" /> },
-    { id: 'admin', label: 'Admin', icon: <Shield className="w-5 h-5" /> },
-    { id: 'payments', label: 'Pembayaran', icon: <CreditCard className="w-5 h-5" />, section: 'Lainnya' },
-    { id: 'reports', label: 'Laporan', icon: <BarChart3 className="w-5 h-5" /> },
-    { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, badge: unreadCount },
-    { id: 'profile', label: 'Profil', icon: <User className="w-5 h-5" /> },
-  ];
+  // ─── DOCTOR NAV ITEMS ─────────────────────────────────
+  { id: 'doctor-panel', label: 'Dashboard', icon: <Stethoscope className="w-5 h-5" />, roles: ['doctor'] },
+  { id: 'chat', label: 'Chat Pasien', icon: <MessageCircle className="w-5 h-5" />, roles: ['doctor'], section: 'Layanan' },
+  { id: 'video', label: 'Video Call', icon: <Video className="w-5 h-5" />, roles: ['doctor'] },
+  { id: 'medical-records', label: 'Rekam Medis', icon: <FileText className="w-5 h-5" />, roles: ['doctor'], section: 'Kesehatan' },
+  { id: 'payments', label: 'Pendapatan', icon: <CreditCard className="w-5 h-5" />, roles: ['doctor'], section: 'Lainnya' },
+  { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['doctor'] },
+  { id: 'profile', label: 'Profil', icon: <User className="w-5 h-5" />, roles: ['doctor'] },
+
+  // ─── ADMIN NAV ITEMS ──────────────────────────────────
+  { id: 'admin', label: 'Dashboard', icon: <Shield className="w-5 h-5" />, roles: ['admin'] },
+  { id: 'admin-pricing', label: 'Kelola Harga', icon: <DollarSign className="w-5 h-5" />, roles: ['admin'], section: 'Manajemen' },
+  { id: 'doctor-panel', label: 'Kelola Dokter', icon: <Stethoscope className="w-5 h-5" />, roles: ['admin'] },
+  { id: 'homecare', label: 'Home Care', icon: <Heart className="w-5 h-5" />, roles: ['admin'] },
+  { id: 'pharmacist-panel', label: 'Kelola Apotek', icon: <Package className="w-5 h-5" />, roles: ['admin'] },
+  { id: 'homecare-staff-panel', label: 'Kelola Petugas', icon: <Truck className="w-5 h-5" />, roles: ['admin'] },
+  { id: 'users', label: 'Kelola Pengguna', icon: <Users className="w-5 h-5" />, roles: ['admin'] },
+  { id: 'reports', label: 'Laporan', icon: <BarChart3 className="w-5 h-5" />, roles: ['admin'], section: 'Lainnya' },
+  { id: 'payments', label: 'Pembayaran', icon: <CreditCard className="w-5 h-5" />, roles: ['admin'] },
+  { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['admin'] },
+  { id: 'profile', label: 'Profil', icon: <User className="w-5 h-5" />, roles: ['admin'] },
+
+  // ─── PHARMACIST NAV ITEMS ─────────────────────────────
+  { id: 'pharmacist-panel', label: 'Dashboard', icon: <Package className="w-5 h-5" />, roles: ['pharmacist'] },
+  { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['pharmacist'] },
+  { id: 'profile', label: 'Profil', icon: <User className="w-5 h-5" />, roles: ['pharmacist'] },
+
+  // ─── HOMECARE STAFF NAV ITEMS ─────────────────────────
+  { id: 'homecare-staff-panel', label: 'Dashboard', icon: <Activity className="w-5 h-5" />, roles: ['homecare_staff'] },
+  { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['homecare_staff'] },
+  { id: 'profile', label: 'Profil', icon: <User className="w-5 h-5" />, roles: ['homecare_staff'] },
+];
+
+// Role display configuration
+const roleConfig: Record<UserRole, { label: string; color: string; bgColor: string }> = {
+  patient: { label: 'Pasien', color: 'text-rose-600', bgColor: 'bg-rose-50' },
+  doctor: { label: 'Dokter', color: 'text-teal-600', bgColor: 'bg-teal-50' },
+  admin: { label: 'Admin', color: 'text-amber-600', bgColor: 'bg-amber-50' },
+  pharmacist: { label: 'Apoteker', color: 'text-violet-600', bgColor: 'bg-violet-50' },
+  homecare_staff: { label: 'Petugas HC', color: 'text-sky-600', bgColor: 'bg-sky-50' },
+};
+
+export function Sidebar({ collapsed }: SidebarProps) {
+  const { activePanel, setActivePanel, setSidebarOpen, unreadCount, cart, currentUser, setCurrentUser, setActivePanel: setPanel } = useStore();
+
+  const userRole = currentUser?.role || 'patient';
+  const roleInfo = roleConfig[userRole];
+
+  // Filter nav items based on user role
+  const navItems = allNavItems.filter((item) => item.roles.includes(userRole));
 
   const handleNavClick = (id: ActivePanel) => {
     setActivePanel(id);
@@ -61,6 +107,11 @@ export function Sidebar({ collapsed }: SidebarProps) {
     if (window.innerWidth < 1024) {
       setSidebarOpen(false);
     }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setPanel('home');
   };
 
   let currentSection = '';
@@ -87,6 +138,27 @@ export function Sidebar({ collapsed }: SidebarProps) {
         )}
       </div>
 
+      {/* User Role Badge */}
+      {!collapsed && currentUser && (
+        <div className="px-3 pt-3">
+          <div className={cn('rounded-lg px-3 py-2 flex items-center gap-2', roleInfo.bgColor)}>
+            <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0', 
+              userRole === 'patient' ? 'bg-rose-500' :
+              userRole === 'doctor' ? 'bg-teal-500' :
+              userRole === 'admin' ? 'bg-amber-500' :
+              userRole === 'pharmacist' ? 'bg-violet-500' :
+              'bg-sky-500'
+            )}>
+              {currentUser.name.charAt(0)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-foreground truncate">{currentUser.name}</p>
+              <p className={cn('text-[10px] font-medium', roleInfo.color)}>{roleInfo.label}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto custom-scrollbar py-2 px-2">
         {navItems.map((item) => {
@@ -108,9 +180,13 @@ export function Sidebar({ collapsed }: SidebarProps) {
           }
 
           const isActive = activePanel === item.id;
+          
+          // For cart badge on pharmacy item
+          const badgeCount = item.id === 'pharmacy' ? cart.length : 
+                            item.id === 'notifications' ? unreadCount : 0;
 
           return (
-            <div key={item.id}>
+            <div key={`${item.id}-${item.roles.join(',')}`}>
               {sectionHeader}
               <button
                 onClick={() => handleNavClick(item.id)}
@@ -129,19 +205,19 @@ export function Sidebar({ collapsed }: SidebarProps) {
                 {!collapsed && (
                   <>
                     <span className="flex-1 text-left whitespace-nowrap">{item.label}</span>
-                    {item.badge && item.badge > 0 && (
+                    {badgeCount > 0 && (
                       <span className={cn(
                         'min-w-[20px] h-5 rounded-full flex items-center justify-center text-[10px] font-bold px-1.5',
                         isActive ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary/10 text-primary'
                       )}>
-                        {item.badge > 99 ? '99+' : item.badge}
+                        {badgeCount > 99 ? '99+' : badgeCount}
                       </span>
                     )}
                   </>
                 )}
-                {collapsed && item.badge && item.badge > 0 && (
+                {collapsed && badgeCount > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center text-[9px] font-bold px-1">
-                    {item.badge > 9 ? '9+' : item.badge}
+                    {badgeCount > 9 ? '9+' : badgeCount}
                   </span>
                 )}
               </button>
@@ -150,7 +226,31 @@ export function Sidebar({ collapsed }: SidebarProps) {
         })}
       </nav>
 
-      {/* Footer */}
+      {/* Footer with Logout */}
+      <div className="border-t border-border">
+        {!collapsed && (
+          <div className="p-3">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200"
+            >
+              <LogOut className="w-5 h-5 shrink-0" />
+              <span>Keluar</span>
+            </button>
+          </div>
+        )}
+        {collapsed && (
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center px-2 py-2.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200"
+            title="Keluar"
+          >
+            <LogOut className="w-5 h-5" />
+          </button>
+        )}
+      </div>
+
+      {/* Help Card (only when expanded) */}
       {!collapsed && (
         <div className="p-3 border-t border-border">
           <div className="bg-medika-light rounded-lg p-3">

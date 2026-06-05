@@ -11,12 +11,14 @@ import { HomeCarePanel } from '@/components/telemedicine/homecare-panel';
 import { MedicalRecordsPanel } from '@/components/telemedicine/medical-records';
 import { DoctorPanel } from '@/components/telemedicine/doctor-panel';
 import { AdminDashboard } from '@/components/telemedicine/admin-dashboard';
+import { AdminPricingPanel } from '@/components/telemedicine/admin-pricing-panel';
 import { NotificationsPanel } from '@/components/telemedicine/notifications-panel';
 import { PaymentsPanel } from '@/components/telemedicine/payments-panel';
 import { ReportsPanel } from '@/components/telemedicine/reports-panel';
 import { ProfilePanel } from '@/components/telemedicine/profile-panel';
 import { PharmacistPanel } from '@/components/telemedicine/pharmacist-panel';
 import { HomeCareStaffPanel } from '@/components/telemedicine/homecare-staff-panel';
+import { LoginPage } from '@/components/telemedicine/login-page';
 import { Button } from '@/components/ui/button';
 import { Menu, X } from 'lucide-react';
 
@@ -36,27 +38,6 @@ export default function TelemedicineApp() {
     setSidebarOpen,
     currentUser,
   } = useStore();
-
-  // Set demo user immediately so page renders
-  useEffect(() => {
-    setCurrentUser({
-      id: 'demo-patient',
-      email: 'rina@mail.com',
-      name: 'Rina Wulandari',
-      role: 'patient',
-      phone: '081234567890',
-      avatar: '',
-      nik: '3201234567890001',
-      bpjsNumber: '0001234567890',
-      address: 'Jl. Merdeka No. 45, Bandung',
-      dateOfBirth: '1995-03-15',
-      gender: 'Perempuan',
-      isVerified: true,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
-  }, [setCurrentUser]);
 
   // Load data from API in the background (non-blocking)
   const loadDataInBackground = useCallback(async () => {
@@ -96,6 +77,11 @@ export default function TelemedicineApp() {
     loadDataInBackground();
   }, [loadDataInBackground]);
 
+  // Show login page if no user is logged in
+  if (!currentUser) {
+    return <LoginPage />;
+  }
+
   const renderPanel = () => {
     switch (activePanel) {
       case 'home': return <HomeDashboard />;
@@ -108,6 +94,7 @@ export default function TelemedicineApp() {
       case 'pharmacist-panel': return <PharmacistPanel />;
       case 'homecare-staff-panel': return <HomeCareStaffPanel />;
       case 'admin': return <AdminDashboard />;
+      case 'admin-pricing': return <AdminPricingPanel />;
       case 'notifications': return <NotificationsPanel />;
       case 'payments': return <PaymentsPanel />;
       case 'reports': return <ReportsPanel />;
@@ -157,6 +144,7 @@ export default function TelemedicineApp() {
               {activePanel === 'pharmacist-panel' && 'Panel Apotek'}
               {activePanel === 'homecare-staff-panel' && 'Panel Petugas'}
               {activePanel === 'admin' && 'Admin Dashboard'}
+              {activePanel === 'admin-pricing' && 'Kelola Harga & Tarif'}
               {activePanel === 'notifications' && 'Notifikasi'}
               {activePanel === 'payments' && 'Pembayaran'}
               {activePanel === 'reports' && 'Laporan & Analitik'}

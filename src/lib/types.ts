@@ -281,6 +281,7 @@ export type ActivePanel =
   | 'pharmacist-panel'
   | 'homecare-staff-panel'
   | 'admin' 
+  | 'admin-pricing'
   | 'notifications'
   | 'payments'
   | 'reports'
