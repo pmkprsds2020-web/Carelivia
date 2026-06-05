@@ -1,0 +1,350 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  phone         String?
+  name          String
+  password      String?
+  role          String   @default("patient") // patient, doctor, pharmacist, homecare_staff, admin
+  avatar        String?
+  nik           String?  // Nomor Induk Kependudukan
+  bpjsNumber    String?  // Nomor BPJS
+  address       String?
+  dateOfBirth   String?
+  gender        String?
+  isVerified    Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  patientProfile    PatientProfile?
+  doctorProfile     DoctorProfile?
+  pharmacistProfile PharmacistProfile?
+  homeCareStaff     HomeCareStaff?
+  consultations     Consultation[]  @relation("PatientConsultations")
+  orders            Order[]
+  payments          Payment[]
+  notifications     Notification[]
+  sentMessages      Message[]       @relation("SentMessages")
+  medicalRecords    MedicalRecord[] @relation("PatientRecords")
+  homeCareBookings  HomeCareBooking[]
+  prescriptions     Prescription[]  @relation("PatientPrescriptions")
+}
+
+model PatientProfile {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  bloodType        String?
+  allergies        String?  // comma-separated
+  medicalHistory   String?  // comma-separated
+  emergencyContact String?
+  emergencyPhone   String?
+  height           Float?
+  weight           Float?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DoctorProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  specialization  String   // umum, anak, penyakit_dalam, kebidanan, gigi, dll
+  licenseNumber   String?
+  hospital        String?
+  experience      Int?     // years
+  rating          Float    @default(0)
+  reviewCount     Int      @default(0)
+  consultationFee Float    @default(75000)
+  isOnline        Boolean  @default(false)
+  isAvailable     Boolean  @default(true)
+  bio             String?
+  education       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedules     Schedule[]
+  consultations Consultation[] @relation("DoctorConsultations")
+  prescriptions Prescription[]
+  earnings      DoctorEarning[]
+}
+
+model PharmacistProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  licenseNumber String?
+  pharmacyName  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model HomeCareStaff {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  certification String?
+  latitude      Float?
+  longitude     Float?
+  isAvailable   Boolean  @default(true)
+  currentStatus String   @default("available") // available, on_duty, off_duty
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings HomeCareBooking[]
+}
+
+model Schedule {
+  id        String   @id @default(cuid())
+  doctorId  String
+  dayOfWeek Int      // 0=Sunday, 1=Monday, etc.
+  startTime String   // "08:00"
+  endTime   String   // "16:00"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctor DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+}
+
+model Consultation {
+  id        String   @id @default(cuid())
+  patientId String
+  doctorId  String
+  type      String   @default("chat") // chat, video, audio
+  status    String   @default("waiting") // waiting, active, completed, cancelled
+  startTime DateTime?
+  endTime   DateTime?
+  notes     String?
+  rating    Int?
+  review    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient       User           @relation("PatientConsultations", fields: [patientId], references: [id])
+  doctor        DoctorProfile  @relation("DoctorConsultations", fields: [doctorId], references: [id])
+  messages      Message[]
+  prescription  Prescription?
+  medicalRecord MedicalRecord?
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  consultationId String
+  senderId       String
+  content        String
+  type           String   @default("text") // text, image, file, voice, lab_result
+  fileUrl        String?
+  status         String   @default("sent") // sent, delivered, read
+  createdAt      DateTime @default(now())
+
+  consultation Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("SentMessages", fields: [senderId], references: [id])
+}
+
+model Prescription {
+  id             String   @id @default(cuid())
+  consultationId String   @unique
+  doctorId       String
+  patientId      String
+  status         String   @default("active") // active, fulfilled, expired
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  consultation Consultation  @relation(fields: [consultationId], references: [id])
+  doctor       DoctorProfile @relation(fields: [doctorId], references: [id])
+  patient      User          @relation("PatientPrescriptions", fields: [patientId], references: [id])
+  items        PrescriptionItem[]
+}
+
+model PrescriptionItem {
+  id             String   @id @default(cuid())
+  prescriptionId String
+  medicineName   String
+  dosage         String
+  quantity       Int
+  frequency      String
+  duration       String
+  instructions   String?
+  createdAt      DateTime @default(now())
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+}
+
+model Medicine {
+  id           String   @id @default(cuid())
+  name         String
+  genericName  String?
+  category     String   // resep, bebas, vitamin, alat_kesehatan
+  description  String?
+  price        Float
+  stock        Int      @default(0)
+  unit         String?  // tablet, botol, tube, etc.
+  manufacturer String?
+  image        String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orderItems OrderItem[]
+}
+
+model Order {
+  id              String   @id @default(cuid())
+  userId          String
+  status          String   @default("pending") // pending, confirmed, processing, shipped, delivered, cancelled
+  totalAmount     Float
+  shippingFee     Float    @default(0)
+  shippingAddress  String?
+  trackingNumber  String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user  User        @relation(fields: [userId], references: [id])
+  items OrderItem[]
+}
+
+model OrderItem {
+  id         String   @id @default(cuid())
+  orderId    String
+  medicineId String
+  quantity   Int
+  price      Float
+  createdAt  DateTime @default(now())
+
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  medicine Medicine @relation(fields: [medicineId], references: [id])
+}
+
+model HomeCareService {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  category    String   // perawatan_luka, infus, injeksi, pemeriksaan_lansia, kunjungan_dokter, kunjungan_bidan, lab_sample, fisioterapi
+  price       Float
+  duration    Int?     // in minutes
+  image       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bookings HomeCareBooking[]
+}
+
+model HomeCareBooking {
+  id          String   @id @default(cuid())
+  patientId   String
+  staffId     String?
+  serviceId   String
+  status      String   @default("pending") // pending, confirmed, in_progress, on_the_way, completed, cancelled
+  scheduledAt DateTime
+  completedAt DateTime?
+  address     String
+  latitude    Float?
+  longitude   Float?
+  notes       String?
+  staffLat    Float?
+  staffLng    Float?
+  eta         String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  patient User            @relation(fields: [patientId], references: [id])
+  staff   HomeCareStaff?  @relation(fields: [staffId], references: [id])
+  service HomeCareService @relation(fields: [serviceId], references: [id])
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  userId        String
+  amount        Float
+  method        String   // qris, bank_transfer, va, gopay, ovo, dana, shopeepay
+  status        String   @default("pending") // pending, success, failed, refunded
+  type          String   // consultation, pharmacy, homecare
+  referenceId   String?  // ID of the related entity
+  invoiceNumber String?
+  paymentProof  String?
+  paidAt        DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model MedicalRecord {
+  id               String   @id @default(cuid())
+  patientId        String
+  consultationId   String?  @unique
+  diagnosis        String?
+  symptoms         String?
+  treatment        String?
+  labResults       String?
+  radiologyResults String?
+  notes            String?
+  recordDate       DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  patient      User          @relation("PatientRecords", fields: [patientId], references: [id])
+  consultation Consultation? @relation(fields: [consultationId], references: [id])
+}
+
+model DoctorEarning {
+  id             String   @id @default(cuid())
+  doctorId       String
+  consultationId String?
+  amount         Float
+  status         String   @default("pending") // pending, paid
+  createdAt      DateTime @default(now())
+
+  doctor DoctorProfile @relation(fields: [doctorId], references: [id])
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  message     String
+  type        String   // consultation, chat, homecare, pharmacy, payment, reminder
+  isRead      Boolean  @default(false)
+  referenceId String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Article {
+  id         String   @id @default(cuid())
+  title      String
+  content    String
+  category   String?
+  image      String?
+  author     String?
+  isPublished Boolean @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
