@@ -118,6 +118,7 @@ export interface PrescriptionItem {
   frequency: string;
   duration: string;
   instructions?: string;
+  price?: number;
 }
 
 export interface Medicine {
@@ -213,16 +214,20 @@ export interface Payment {
   updatedAt: string;
 }
 
+export type MedicalRecordStatus = 'draft' | 'selesai' | 'ditinjau';
+
 export interface MedicalRecord {
   id: string;
   patientId: string;
   consultationId?: string;
+  rmNumber?: string;
   diagnosis?: string;
   symptoms?: string;
   treatment?: string;
   labResults?: string;
   radiologyResults?: string;
   notes?: string;
+  status?: MedicalRecordStatus;
   recordDate: string;
   createdAt: string;
   updatedAt: string;

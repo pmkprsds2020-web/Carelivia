@@ -149,7 +149,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
               userRole === 'pharmacist' ? 'bg-violet-500' :
               'bg-sky-500'
             )}>
-              {currentUser.name.charAt(0)}
+              {currentUser.name.replace(/^(dr\.|drg\.)\s*/i, '').charAt(0)}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-foreground truncate">{currentUser.name}</p>

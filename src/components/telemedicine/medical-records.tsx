@@ -2,12 +2,33 @@
 
 import { useState, useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import type { MedicalRecord } from '@/lib/types';
+import type {
+  MedicalRecord,
+  MedicalRecordStatus,
+  Prescription,
+  PrescriptionItem,
+  Consultation,
+} from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import {
   FileText,
   FlaskConical,
@@ -22,10 +43,1501 @@ import {
   AlertTriangle,
   Calendar,
   User,
+  ClipboardList,
+  Clock,
+  CheckCircle2,
+  Eye,
+  Search,
+  Filter,
+  Stethoscope,
+  Syringe,
+  Timer,
+  Plus,
+  Edit3,
+  ChevronRight,
+  Hash,
+  StickyNote,
+  BadgeCheck,
+  AlertCircle,
+  ArrowRight,
+  Receipt,
+  CircleDot,
+  Users,
+  ListOrdered,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// Demo data for medical records
+// ---------------------------------------------------------------------------
+// Constants & Helpers
+// ---------------------------------------------------------------------------
+
+const PATIENT_NAME_MAP: Record<string, string> = {
+  'pat-rina': 'Rina Wulandari',
+  'pat-doni': 'Doni Pratama',
+  'pat-maya': 'Maya Sari',
+  'pat-siti': 'Siti Aminah',
+  'pat-joko': 'Joko Widodo',
+};
+
+const SPECIALIZATION_MAP: Record<string, string> = {
+  umum: 'Dokter Umum',
+  anak: 'Dokter Anak',
+  penyakit_dalam: 'Penyakit Dalam',
+  kebidanan: 'Dokter Kebidanan',
+  gigi: 'Dokter Gigi',
+};
+
+function extractPatientKey(name: string): string {
+  if (!name) return '';
+  const first = name.trim().split(' ')[0].toLowerCase();
+  for (const [key, val] of Object.entries(PATIENT_NAME_MAP)) {
+    if (val.toLowerCase().startsWith(first)) return key;
+  }
+  return '';
+}
+
+function generateRmNumber(mr: MedicalRecord, index: number): string {
+  const dateStr = mr.recordDate || mr.createdAt;
+  const d = new Date(dateStr);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const seq = String(index + 1).padStart(4, '0');
+  return `RM-${y}${m}${day}-${seq}`;
+}
+
+function getStatusBadgeClasses(status?: MedicalRecordStatus): string {
+  switch (status) {
+    case 'draft':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border-0';
+    case 'selesai':
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border-0';
+    case 'ditinjau':
+      return 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400 border-0';
+    default:
+      return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-0';
+  }
+}
+
+function getStatusDotClasses(status?: MedicalRecordStatus): string {
+  switch (status) {
+    case 'draft':
+      return 'bg-amber-500';
+    case 'selesai':
+      return 'bg-emerald-500';
+    case 'ditinjau':
+      return 'bg-sky-500';
+    default:
+      return 'bg-gray-400';
+  }
+}
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function formatTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function statusLabel(status?: MedicalRecordStatus): string {
+  switch (status) {
+    case 'draft':
+      return 'Draft';
+    case 'selesai':
+      return 'Selesai';
+    case 'ditinjau':
+      return 'Ditinjau';
+    default:
+      return 'Unknown';
+  }
+}
+
+function consultationTypeLabel(type?: string): string {
+  switch (type) {
+    case 'chat':
+      return 'Konsultasi Chat';
+    case 'video':
+      return 'Konsultasi Video';
+    case 'audio':
+      return 'Konsultasi Audio';
+    default:
+      return 'Konsultasi';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Demo / Seed data for Doctor View (when store is empty)
+// ---------------------------------------------------------------------------
+
+const DOCTOR_DEMO_MEDICAL_RECORDS: MedicalRecord[] = [
+  {
+    id: 'mr-demo-1',
+    patientId: 'pat-rina',
+    consultationId: 'cons-demo-1',
+    rmNumber: 'RM-20260304-0001',
+    diagnosis: 'Gastritis Akut',
+    symptoms: 'Nyeri ulu hati, mual, muntah, nafsu makan menurun',
+    treatment: 'Antasida 3x sehari, Omeprazole 20mg 1x sehari, diet ringan',
+    notes: 'Pasien mengeluh nyeri ulu hati sejak 3 hari. Direkomendasikan endoskopi jika kambuh.',
+    status: 'selesai',
+    recordDate: '2026-03-04T09:00:00.000Z',
+    createdAt: '2026-03-04T09:00:00.000Z',
+    updatedAt: '2026-03-04T09:30:00.000Z',
+  },
+  {
+    id: 'mr-demo-2',
+    patientId: 'pat-doni',
+    consultationId: 'cons-demo-2',
+    rmNumber: 'RM-20260303-0002',
+    diagnosis: 'Hipertensi Grade I',
+    symptoms: 'Sakit kepala, pusing, berdebar-debar',
+    treatment: 'Amlodipine 5mg 1x sehari, modifikasi gaya hidup, kurangi garam',
+    notes: 'Tekanan darah 150/95 mmHg. Perlu monitoring 2 minggu.',
+    status: 'ditinjau',
+    recordDate: '2026-03-03T14:00:00.000Z',
+    createdAt: '2026-03-03T14:00:00.000Z',
+    updatedAt: '2026-03-03T14:45:00.000Z',
+  },
+  {
+    id: 'mr-demo-3',
+    patientId: 'pat-maya',
+    consultationId: 'cons-demo-3',
+    rmNumber: 'RM-20260302-0003',
+    diagnosis: 'ISPA (Infeksi Saluran Pernapasan Atas)',
+    symptoms: 'Demam, batuk pilek, sakit tenggorokan, hidung tersumbat',
+    treatment: 'Paracetamol 500mg 3x sehari, Amoxicillin 500mg 3x sehari, istirahat cukup',
+    notes: 'Demam sudah turun setelah 2 hari. Batuk masih ada, kontrol 1 minggu.',
+    status: 'selesai',
+    recordDate: '2026-03-02T10:30:00.000Z',
+    createdAt: '2026-03-02T10:30:00.000Z',
+    updatedAt: '2026-03-02T11:15:00.000Z',
+  },
+  {
+    id: 'mr-demo-4',
+    patientId: 'pat-siti',
+    consultationId: 'cons-demo-4',
+    rmNumber: 'RM-20260301-0004',
+    diagnosis: 'Kehamilan Trimester 2 - Normal',
+    symptoms: 'Kontrol kehamilan rutin, tidak ada keluhan khusus',
+    treatment: 'Suplemen asam folat, vitamin B6, kontrol rutin tiap bulan',
+    notes: 'USG menunjukkan perkembangan janin normal. Berat janin sesuai usia kehamilan.',
+    status: 'selesai',
+    recordDate: '2026-03-01T08:00:00.000Z',
+    createdAt: '2026-03-01T08:00:00.000Z',
+    updatedAt: '2026-03-01T08:30:00.000Z',
+  },
+  {
+    id: 'mr-demo-5',
+    patientId: 'pat-joko',
+    consultationId: 'cons-demo-5',
+    rmNumber: 'RM-20260228-0005',
+    diagnosis: 'Diabetes Mellitus Tipe 2',
+    symptoms: 'Sering haus, sering buang air kecil, penurunan berat badan',
+    treatment: 'Metformin 500mg 2x sehari, diet rendah gula, olahraga teratur',
+    notes: 'Gula darah puasa 180 mg/dL. Perlu monitoring rutin dan evaluasi HbA1c.',
+    status: 'draft',
+    recordDate: '2026-02-28T11:00:00.000Z',
+    createdAt: '2026-02-28T11:00:00.000Z',
+    updatedAt: '2026-02-28T11:30:00.000Z',
+  },
+  {
+    id: 'mr-demo-6',
+    patientId: 'pat-rina',
+    consultationId: 'cons-demo-6',
+    diagnosis: 'Migrain',
+    symptoms: 'Sakit kepala sebelah, mual, sensitif terhadap cahaya',
+    treatment: 'Ibuprofen 400mg saat serangan, istirahat di ruangan gelap',
+    notes: 'Serangan migrain 2-3x sebulan. Dipertimbangkan pencegahan jika frekuensi meningkat.',
+    status: 'draft',
+    recordDate: '2026-02-25T16:00:00.000Z',
+    createdAt: '2026-02-25T16:00:00.000Z',
+    updatedAt: '2026-02-25T16:20:00.000Z',
+  },
+  {
+    id: 'mr-demo-7',
+    patientId: 'pat-doni',
+    consultationId: 'cons-demo-7',
+    diagnosis: 'Dermatitis Kontak',
+    symptoms: 'Ruam merah, gatal, kulit kering pada tangan',
+    treatment: 'Krim hydrocortisone 1%, loratadine 10mg 1x sehari, hindari iritan',
+    notes: 'Kemungkinan akibat paparan bahan kimia di tempat kerja.',
+    status: 'ditinjau',
+    recordDate: '2026-02-20T13:00:00.000Z',
+    createdAt: '2026-02-20T13:00:00.000Z',
+    updatedAt: '2026-02-20T13:40:00.000Z',
+  },
+];
+
+const DOCTOR_DEMO_CONSULTATIONS: Consultation[] = [
+  {
+    id: 'cons-demo-1',
+    patientId: 'pat-rina',
+    doctorId: 'doc-sarah',
+    type: 'video',
+    status: 'completed',
+    createdAt: '2026-03-04T09:00:00.000Z',
+    updatedAt: '2026-03-04T09:30:00.000Z',
+    patient: {
+      id: 'pat-rina',
+      name: 'Rina Wulandari',
+      email: 'rina@email.com',
+      role: 'patient',
+      isVerified: true,
+      isActive: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+  },
+  {
+    id: 'cons-demo-2',
+    patientId: 'pat-doni',
+    doctorId: 'doc-sarah',
+    type: 'chat',
+    status: 'completed',
+    createdAt: '2026-03-03T14:00:00.000Z',
+    updatedAt: '2026-03-03T14:45:00.000Z',
+    patient: {
+      id: 'pat-doni',
+      name: 'Doni Pratama',
+      email: 'doni@email.com',
+      role: 'patient',
+      isVerified: true,
+      isActive: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+  },
+  {
+    id: 'cons-demo-3',
+    patientId: 'pat-maya',
+    doctorId: 'doc-sarah',
+    type: 'video',
+    status: 'completed',
+    createdAt: '2026-03-02T10:30:00.000Z',
+    updatedAt: '2026-03-02T11:15:00.000Z',
+    patient: {
+      id: 'pat-maya',
+      name: 'Maya Sari',
+      email: 'maya@email.com',
+      role: 'patient',
+      isVerified: true,
+      isActive: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+  },
+  {
+    id: 'cons-demo-4',
+    patientId: 'pat-siti',
+    doctorId: 'doc-sarah',
+    type: 'audio',
+    status: 'completed',
+    createdAt: '2026-03-01T08:00:00.000Z',
+    updatedAt: '2026-03-01T08:30:00.000Z',
+    patient: {
+      id: 'pat-siti',
+      name: 'Siti Aminah',
+      email: 'siti@email.com',
+      role: 'patient',
+      isVerified: true,
+      isActive: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+  },
+  {
+    id: 'cons-demo-5',
+    patientId: 'pat-joko',
+    doctorId: 'doc-sarah',
+    type: 'chat',
+    status: 'completed',
+    createdAt: '2026-02-28T11:00:00.000Z',
+    updatedAt: '2026-02-28T11:30:00.000Z',
+    patient: {
+      id: 'pat-joko',
+      name: 'Joko Widodo',
+      email: 'joko@email.com',
+      role: 'patient',
+      isVerified: true,
+      isActive: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+  },
+  {
+    id: 'cons-demo-6',
+    patientId: 'pat-rina',
+    doctorId: 'doc-sarah',
+    type: 'chat',
+    status: 'completed',
+    createdAt: '2026-02-25T16:00:00.000Z',
+    updatedAt: '2026-02-25T16:20:00.000Z',
+    patient: {
+      id: 'pat-rina',
+      name: 'Rina Wulandari',
+      email: 'rina@email.com',
+      role: 'patient',
+      isVerified: true,
+      isActive: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+  },
+  {
+    id: 'cons-demo-7',
+    patientId: 'pat-doni',
+    doctorId: 'doc-sarah',
+    type: 'video',
+    status: 'completed',
+    createdAt: '2026-02-20T13:00:00.000Z',
+    updatedAt: '2026-02-20T13:40:00.000Z',
+    patient: {
+      id: 'pat-doni',
+      name: 'Doni Pratama',
+      email: 'doni@email.com',
+      role: 'patient',
+      isVerified: true,
+      isActive: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+  },
+];
+
+const DOCTOR_DEMO_PRESCRIPTIONS: Prescription[] = [
+  {
+    id: 'rx-demo-1',
+    consultationId: 'cons-demo-1',
+    doctorId: 'doc-sarah',
+    patientId: 'pat-rina',
+    status: 'active',
+    notes: 'Diminum setelah makan',
+    createdAt: '2026-03-04T09:30:00.000Z',
+    updatedAt: '2026-03-04T09:30:00.000Z',
+    items: [
+      {
+        id: 'rxi-1-1',
+        prescriptionId: 'rx-demo-1',
+        medicineName: 'Antasida Sirup',
+        dosage: '3x sehari setelah makan',
+        quantity: 1,
+        frequency: '3x sehari',
+        duration: '7 hari',
+        instructions: 'Diminum setelah makan',
+        price: 22000,
+      },
+      {
+        id: 'rxi-1-2',
+        prescriptionId: 'rx-demo-1',
+        medicineName: 'Omeprazole 20mg',
+        dosage: '1x sehari sebelum sarapan',
+        quantity: 14,
+        frequency: '1x sehari',
+        duration: '14 hari',
+        instructions: 'Diminum sebelum sarapan',
+        price: 35000,
+      },
+    ],
+  },
+  {
+    id: 'rx-demo-2',
+    consultationId: 'cons-demo-2',
+    doctorId: 'doc-sarah',
+    patientId: 'pat-doni',
+    status: 'active',
+    notes: 'Monitor tekanan darah secara rutin',
+    createdAt: '2026-03-03T14:45:00.000Z',
+    updatedAt: '2026-03-03T14:45:00.000Z',
+    items: [
+      {
+        id: 'rxi-2-1',
+        prescriptionId: 'rx-demo-2',
+        medicineName: 'Amlodipine 5mg',
+        dosage: '1x sehari',
+        quantity: 30,
+        frequency: '1x sehari',
+        duration: '30 hari',
+        price: 45000,
+      },
+    ],
+  },
+  {
+    id: 'rx-demo-3',
+    consultationId: 'cons-demo-3',
+    doctorId: 'doc-sarah',
+    patientId: 'pat-maya',
+    status: 'completed',
+    notes: 'Habiskan antibiotik',
+    createdAt: '2026-03-02T11:15:00.000Z',
+    updatedAt: '2026-03-02T11:15:00.000Z',
+    items: [
+      {
+        id: 'rxi-3-1',
+        prescriptionId: 'rx-demo-3',
+        medicineName: 'Paracetamol 500mg',
+        dosage: '3x sehari jika demam',
+        quantity: 10,
+        frequency: '3x sehari',
+        duration: '3 hari',
+        price: 15000,
+      },
+      {
+        id: 'rxi-3-2',
+        prescriptionId: 'rx-demo-3',
+        medicineName: 'Amoxicillin 500mg',
+        dosage: '3x sehari setelah makan',
+        quantity: 30,
+        frequency: '3x sehari',
+        duration: '10 hari',
+        instructions: 'Habiskan meski gejala membaik',
+        price: 25000,
+      },
+    ],
+  },
+  {
+    id: 'rx-demo-4',
+    consultationId: 'cons-demo-4',
+    doctorId: 'doc-sarah',
+    patientId: 'pat-siti',
+    status: 'completed',
+    notes: 'Suplemen kehamilan',
+    createdAt: '2026-03-01T08:30:00.000Z',
+    updatedAt: '2026-03-01T08:30:00.000Z',
+    items: [
+      {
+        id: 'rxi-4-1',
+        prescriptionId: 'rx-demo-4',
+        medicineName: 'Asam Folat 400mcg',
+        dosage: '1x sehari',
+        quantity: 30,
+        frequency: '1x sehari',
+        duration: '30 hari',
+        price: 18000,
+      },
+      {
+        id: 'rxi-4-2',
+        prescriptionId: 'rx-demo-4',
+        medicineName: 'Vitamin B6',
+        dosage: '1x sehari',
+        quantity: 30,
+        frequency: '1x sehari',
+        duration: '30 hari',
+        price: 25000,
+      },
+    ],
+  },
+  {
+    id: 'rx-demo-5',
+    consultationId: 'cons-demo-5',
+    doctorId: 'doc-sarah',
+    patientId: 'pat-joko',
+    status: 'active',
+    notes: 'Diet rendah gula wajib',
+    createdAt: '2026-02-28T11:30:00.000Z',
+    updatedAt: '2026-02-28T11:30:00.000Z',
+    items: [
+      {
+        id: 'rxi-5-1',
+        prescriptionId: 'rx-demo-5',
+        medicineName: 'Metformin 500mg',
+        dosage: '2x sehari setelah makan',
+        quantity: 60,
+        frequency: '2x sehari',
+        duration: '30 hari',
+        instructions: 'Diminum setelah makan untuk mengurangi efek samping GI',
+        price: 22000,
+      },
+    ],
+  },
+  {
+    id: 'rx-demo-6',
+    consultationId: 'cons-demo-6',
+    doctorId: 'doc-sarah',
+    patientId: 'pat-rina',
+    status: 'active',
+    notes: 'Untuk serangan migrain akut',
+    createdAt: '2026-02-25T16:20:00.000Z',
+    updatedAt: '2026-02-25T16:20:00.000Z',
+    items: [
+      {
+        id: 'rxi-6-1',
+        prescriptionId: 'rx-demo-6',
+        medicineName: 'Ibuprofen 400mg',
+        dosage: 'Saat serangan migrain',
+        quantity: 20,
+        frequency: 'Saat dibutuhkan',
+        duration: 'Saat serangan',
+        price: 18000,
+      },
+    ],
+  },
+  {
+    id: 'rx-demo-7',
+    consultationId: 'cons-demo-7',
+    doctorId: 'doc-sarah',
+    patientId: 'pat-doni',
+    status: 'completed',
+    notes: 'Hindari kontak dengan iritan',
+    createdAt: '2026-02-20T13:40:00.000Z',
+    updatedAt: '2026-02-20T13:40:00.000Z',
+    items: [
+      {
+        id: 'rxi-7-1',
+        prescriptionId: 'rx-demo-7',
+        medicineName: 'Loratadine 10mg',
+        dosage: '1x sehari',
+        quantity: 10,
+        frequency: '1x sehari',
+        duration: '10 hari',
+        price: 28000,
+      },
+      {
+        id: 'rxi-7-2',
+        prescriptionId: 'rx-demo-7',
+        medicineName: 'Krim Hydrocortisone 1%',
+        dosage: 'Oleskan tipis 2x sehari',
+        quantity: 1,
+        frequency: '2x sehari',
+        duration: '7 hari',
+        instructions: 'Jangan oleskan lebih dari 7 hari berturut-turut',
+        price: 35000,
+      },
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Merged data interface for doctor view
+// ---------------------------------------------------------------------------
+
+interface MergedMedicalRecord extends MedicalRecord {
+  patientName: string;
+  consultationType?: string;
+  linkedPrescription?: Prescription;
+}
+
+function buildMergedRecords(
+  storeRecords: MedicalRecord[],
+  storeConsultations: Consultation[],
+  storePrescriptions: Prescription[],
+): MergedMedicalRecord[] {
+  // Step 1: Merge store records with demo records using Map dedup
+  const recordMap = new Map<string, MedicalRecord>();
+  for (const mr of DOCTOR_DEMO_MEDICAL_RECORDS) {
+    recordMap.set(mr.id, mr);
+  }
+  for (const mr of storeRecords) {
+    recordMap.set(mr.id, mr);
+  }
+
+  // Step 2: Merge consultations using Map dedup
+  const consultationMap = new Map<string, Consultation>();
+  for (const c of DOCTOR_DEMO_CONSULTATIONS) {
+    consultationMap.set(c.id, c);
+  }
+  for (const c of storeConsultations) {
+    consultationMap.set(c.id, c);
+  }
+
+  // Step 3: Merge prescriptions using Map dedup
+  const prescriptionMap = new Map<string, Prescription>();
+  for (const p of DOCTOR_DEMO_PRESCRIPTIONS) {
+    prescriptionMap.set(p.id, p);
+  }
+  for (const p of storePrescriptions) {
+    prescriptionMap.set(p.id, p);
+  }
+
+  // Step 4: Build consultationId → consultation lookup
+  const consById = new Map<string, Consultation>(consultationMap);
+
+  // Step 5: Build consultationId → prescription lookup
+  const rxByConsultation = new Map<string, Prescription>();
+  for (const [, rx] of prescriptionMap) {
+    if (rx.consultationId) {
+      rxByConsultation.set(rx.consultationId, rx);
+    }
+  }
+
+  // Step 6: Build patientId → patient name lookup from consultations
+  const patientNameById = new Map<string, string>();
+  for (const [, cons] of consById) {
+    if (cons.patient?.name) {
+      patientNameById.set(cons.patientId, cons.patient.name);
+    }
+  }
+  // Also fill from PATIENT_NAME_MAP
+  for (const [pid, pname] of Object.entries(PATIENT_NAME_MAP)) {
+    if (!patientNameById.has(pid)) {
+      patientNameById.set(pid, pname);
+    }
+  }
+
+  // Step 7: Build merged records with triple-matching strategy
+  const merged: MergedMedicalRecord[] = [];
+  let rmIndex = 0;
+  const sortedRecords = Array.from(recordMap.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+
+  for (const mr of sortedRecords) {
+    rmIndex++;
+
+    // Resolve patient name via triple-matching:
+    // 1. consultationId → consultation → patient.name
+    // 2. patientId → patientNameById (from consultations or PATIENT_NAME_MAP)
+    // 3. patient name key from PATIENT_NAME_MAP
+    let patientName = '';
+
+    // Strategy 1: consultationId → consultation → patient.name
+    if (mr.consultationId) {
+      const cons = consById.get(mr.consultationId);
+      if (cons?.patient?.name) {
+        patientName = cons.patient.name;
+      }
+    }
+
+    // Strategy 2: patientId → patientNameById
+    if (!patientName && mr.patientId) {
+      const name = patientNameById.get(mr.patientId);
+      if (name) {
+        patientName = name;
+      }
+    }
+
+    // Strategy 3: Try patient name key matching
+    if (!patientName && mr.patientId) {
+      const mappedName = PATIENT_NAME_MAP[mr.patientId];
+      if (mappedName) {
+        patientName = mappedName;
+      }
+    }
+
+    // Resolve consultation type
+    let consultationType: string | undefined;
+    if (mr.consultationId) {
+      const cons = consById.get(mr.consultationId);
+      if (cons) {
+        consultationType = cons.type;
+      }
+    }
+
+    // Resolve linked prescription
+    let linkedPrescription: Prescription | undefined;
+    if (mr.consultationId) {
+      linkedPrescription = rxByConsultation.get(mr.consultationId);
+    }
+
+    // Generate RM number if missing
+    const rmNumber = mr.rmNumber || generateRmNumber(mr, rmIndex - 1);
+
+    merged.push({
+      ...mr,
+      rmNumber,
+      patientName: patientName || mr.patientId,
+      consultationType,
+      linkedPrescription,
+    });
+  }
+
+  return merged;
+}
+
+// ---------------------------------------------------------------------------
+// DoctorMedicalRecordsView
+// ---------------------------------------------------------------------------
+
+function DoctorMedicalRecordsView() {
+  const {
+    medicalRecords,
+    consultations,
+    prescriptions,
+    updateMedicalRecord,
+    updateConsultation,
+    currentUser,
+  } = useStore();
+
+  const [activeTab, setActiveTab] = useState('records-list');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [selectedTimelinePatientId, setSelectedTimelinePatientId] = useState<string | null>(null);
+  const [selectedTimelineRecordId, setSelectedTimelineRecordId] = useState<string | null>(null);
+
+  // Build merged data
+  const mergedRecords = useMemo(
+    () => buildMergedRecords(medicalRecords, consultations, prescriptions),
+    [medicalRecords, consultations, prescriptions],
+  );
+
+  // Build prescription list with patient names
+  const prescriptionList = useMemo(() => {
+    const rxMap = new Map<string, Prescription>();
+    for (const rx of DOCTOR_DEMO_PRESCRIPTIONS) {
+      rxMap.set(rx.id, rx);
+    }
+    for (const rx of prescriptions) {
+      rxMap.set(rx.id, rx);
+    }
+
+    const patientNameById = new Map<string, string>();
+    for (const [, cons] of consultations.entries()) {
+      if (cons.patient?.name) {
+        patientNameById.set(cons.patientId, cons.patient.name);
+      }
+    }
+    for (const [pid, pname] of Object.entries(PATIENT_NAME_MAP)) {
+      if (!patientNameById.has(pid)) {
+        patientNameById.set(pid, pname);
+      }
+    }
+
+    return Array.from(rxMap.values())
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map((rx) => ({
+        ...rx,
+        patientName: patientNameById.get(rx.patientId) || PATIENT_NAME_MAP[rx.patientId] || rx.patientId,
+      }));
+  }, [prescriptions, consultations]);
+
+  // Stats
+  const stats = useMemo(() => {
+    const total = mergedRecords.length;
+    const draft = mergedRecords.filter((r) => r.status === 'draft').length;
+    const selesai = mergedRecords.filter((r) => r.status === 'selesai').length;
+    const ditinjau = mergedRecords.filter((r) => r.status === 'ditinjau').length;
+    return { total, draft, selesai, ditinjau };
+  }, [mergedRecords]);
+
+  // Filtered records for Daftar Rekam Medis
+  const filteredRecords = useMemo(() => {
+    let records = mergedRecords;
+    if (statusFilter !== 'all') {
+      records = records.filter((r) => r.status === statusFilter);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      records = records.filter(
+        (r) =>
+          r.patientName.toLowerCase().includes(q) ||
+          (r.rmNumber && r.rmNumber.toLowerCase().includes(q)) ||
+          (r.diagnosis && r.diagnosis.toLowerCase().includes(q)),
+      );
+    }
+    return records;
+  }, [mergedRecords, statusFilter, searchQuery]);
+
+  // Timeline data: group by patient
+  const timelinePatients = useMemo(() => {
+    const patientMap = new Map<string, { patientId: string; patientName: string; records: MergedMedicalRecord[] }>();
+    for (const mr of mergedRecords) {
+      if (!patientMap.has(mr.patientId)) {
+        patientMap.set(mr.patientId, {
+          patientId: mr.patientId,
+          patientName: mr.patientName,
+          records: [],
+        });
+      }
+      patientMap.get(mr.patientId)!.records.push(mr);
+    }
+    return Array.from(patientMap.values()).sort((a, b) => b.records.length - a.records.length);
+  }, [mergedRecords]);
+
+  const selectedTimelinePatient = useMemo(
+    () => timelinePatients.find((p) => p.patientId === selectedTimelinePatientId),
+    [timelinePatients, selectedTimelinePatientId],
+  );
+
+  // Selected record for detail dialog
+  const selectedRecord = useMemo(
+    () => mergedRecords.find((r) => r.id === (selectedRecordId || selectedTimelineRecordId)),
+    [mergedRecords, selectedRecordId, selectedTimelineRecordId],
+  );
+
+  // Handle status change
+  const handleStatusChange = (recordId: string, newStatus: MedicalRecordStatus) => {
+    updateMedicalRecord(recordId, { status: newStatus });
+  };
+
+  // Doctor specialization display
+  const doctorSpecialization = useMemo(() => {
+    const spec = currentUser?.doctorProfile?.specialization;
+    return spec ? SPECIALIZATION_MAP[spec] || spec : 'Dokter';
+  }, [currentUser]);
+
+  return (
+    <div className="p-4 md:p-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-foreground">Rekam Medis</h2>
+          <p className="text-sm text-muted-foreground">
+            {doctorSpecialization} — {currentUser?.name || 'Dokter'}
+          </p>
+        </div>
+        <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border-0 w-fit">
+          <ShieldCheck className="w-3.5 h-3.5 mr-1" />
+          Terintegrasi SATUSEHAT
+        </Badge>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="border-0">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+              <ClipboardList className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-foreground">{stats.total}</p>
+              <p className="text-xs text-muted-foreground">Total Rekam Medis</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-0">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/50 flex items-center justify-center shrink-0">
+              <Edit3 className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-foreground">{stats.draft}</p>
+              <p className="text-xs text-muted-foreground">Draft</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-0">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-foreground">{stats.selesai}</p>
+              <p className="text-xs text-muted-foreground">Selesai</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-0">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-sky-100 dark:bg-sky-950/50 flex items-center justify-center shrink-0">
+              <Eye className="w-5 h-5 text-sky-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-foreground">{stats.ditinjau}</p>
+              <p className="text-xs text-muted-foreground">Ditinjau</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-3 mb-4">
+          <TabsTrigger value="records-list" className="flex items-center gap-1.5">
+            <ClipboardList className="w-4 h-4" />
+            <span className="hidden sm:inline">Daftar Rekam Medis</span>
+            <span className="sm:hidden">Daftar RM</span>
+          </TabsTrigger>
+          <TabsTrigger value="patient-timeline" className="flex items-center gap-1.5">
+            <Clock className="w-4 h-4" />
+            <span className="hidden sm:inline">Timeline Pasien</span>
+            <span className="sm:hidden">Timeline</span>
+          </TabsTrigger>
+          <TabsTrigger value="prescriptions" className="flex items-center gap-1.5">
+            <Pill className="w-4 h-4" />
+            <span className="hidden sm:inline">Resep Obat</span>
+            <span className="sm:hidden">Resep</span>
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ================================================================= */}
+        {/* Tab 1: Daftar Rekam Medis                                         */}
+        {/* ================================================================= */}
+        <TabsContent value="records-list" className="space-y-4 mt-0">
+          {/* Search & Filter */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Cari nama, nomor RM, diagnosis..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <Filter className="w-4 h-4 mr-2 text-muted-foreground" />
+                <SelectValue placeholder="Filter Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Status</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="selesai">Selesai</SelectItem>
+                <SelectItem value="ditinjau">Ditinjau</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Records Cards */}
+          {filteredRecords.length === 0 ? (
+            <Card className="border-0">
+              <CardContent className="p-8 text-center">
+                <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">
+                  Tidak ada rekam medis yang ditemukan
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3 max-h-[calc(100vh-420px)] overflow-y-auto pr-1 custom-scrollbar">
+              {filteredRecords.map((record) => (
+                <Card
+                  key={record.id}
+                  className="border-0 hover:shadow-md transition-shadow cursor-pointer"
+                  onClick={() => setSelectedRecordId(record.id)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                          <User className="w-5 h-5 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-sm text-foreground truncate">
+                              {record.patientName}
+                            </p>
+                            <Badge
+                              variant="secondary"
+                              className={cn('text-[10px] shrink-0', getStatusBadgeClasses(record.status))}
+                            >
+                              {statusLabel(record.status)}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            <Hash className="w-3 h-3 inline mr-0.5" />
+                            {record.rmNumber}
+                          </p>
+                          {record.diagnosis && (
+                            <p className="text-sm font-medium text-foreground mt-1 truncate">
+                              {record.diagnosis}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                            <p className="text-xs text-muted-foreground">
+                              <Calendar className="w-3 h-3 inline mr-0.5" />
+                              {formatDate(record.recordDate)}
+                            </p>
+                            {record.consultationType && (
+                              <p className="text-xs text-muted-foreground">
+                                <Stethoscope className="w-3 h-3 inline mr-0.5" />
+                                {consultationTypeLabel(record.consultationType)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0 mt-1" />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ================================================================= */}
+        {/* Tab 2: Timeline Pasien                                            */}
+        {/* ================================================================= */}
+        <TabsContent value="patient-timeline" className="mt-0">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Patient List */}
+            <div className="md:col-span-1 space-y-2">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                Daftar Pasien
+              </h3>
+              <div className="max-h-[calc(100vh-360px)] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                {timelinePatients.map((patient) => (
+                  <Card
+                    key={patient.patientId}
+                    className={cn(
+                      'border-0 cursor-pointer transition-all',
+                      selectedTimelinePatientId === patient.patientId
+                        ? 'ring-2 ring-primary shadow-md'
+                        : 'hover:shadow-sm',
+                    )}
+                    onClick={() => {
+                      setSelectedTimelinePatientId(patient.patientId);
+                      setSelectedTimelineRecordId(null);
+                    }}
+                  >
+                    <CardContent className="p-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <User className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm text-foreground truncate">
+                            {patient.patientName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {patient.records.length} rekam medis
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+
+            {/* Timeline */}
+            <div className="md:col-span-2">
+              {!selectedTimelinePatient ? (
+                <Card className="border-0">
+                  <CardContent className="p-8 text-center">
+                    <Users className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-sm text-muted-foreground">
+                      Pilih pasien untuk melihat timeline konsultasi
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <User className="w-5 h-5 text-primary" />
+                    <h3 className="font-semibold text-foreground">
+                      {selectedTimelinePatient.patientName}
+                    </h3>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {selectedTimelinePatient.records.length} kunjungan
+                    </Badge>
+                  </div>
+
+                  <div className="relative space-y-0 max-h-[calc(100vh-380px)] overflow-y-auto pr-1 custom-scrollbar">
+                    {selectedTimelinePatient.records.map((record, idx) => (
+                      <div key={record.id} className="flex gap-3">
+                        {/* Timeline line */}
+                        <div className="flex flex-col items-center">
+                          <div
+                            className={cn(
+                              'w-3 h-3 rounded-full shrink-0 mt-1.5',
+                              getStatusDotClasses(record.status),
+                            )}
+                          />
+                          {idx < selectedTimelinePatient.records.length - 1 && (
+                            <div className="w-0.5 flex-1 bg-border" />
+                          )}
+                        </div>
+
+                        {/* Timeline card */}
+                        <Card
+                          className="border-0 mb-3 flex-1 hover:shadow-sm transition-shadow cursor-pointer"
+                          onClick={() => setSelectedTimelineRecordId(record.id)}
+                        >
+                          <CardContent className="p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="text-sm font-semibold text-foreground">
+                                    {record.diagnosis || 'Tanpa diagnosis'}
+                                  </p>
+                                  <Badge
+                                    variant="secondary"
+                                    className={cn('text-[10px]', getStatusBadgeClasses(record.status))}
+                                  >
+                                    {statusLabel(record.status)}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  <Calendar className="w-3 h-3 inline mr-0.5" />
+                                  {formatDate(record.recordDate)} — {formatTime(record.recordDate)}
+                                </p>
+                                {record.consultationType && (
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    <Stethoscope className="w-3 h-3 inline mr-0.5" />
+                                    {consultationTypeLabel(record.consultationType)}
+                                  </p>
+                                )}
+                                {record.treatment && (
+                                  <p className="text-xs text-foreground mt-1 line-clamp-2">
+                                    {record.treatment}
+                                  </p>
+                                )}
+                              </div>
+                              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ================================================================= */}
+        {/* Tab 3: Resep Obat                                                 */}
+        {/* ================================================================= */}
+        <TabsContent value="prescriptions" className="space-y-4 mt-0">
+          {prescriptionList.length === 0 ? (
+            <Card className="border-0">
+              <CardContent className="p-8 text-center">
+                <Pill className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">
+                  Belum ada resep obat yang diterbitkan
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4 max-h-[calc(100vh-380px)] overflow-y-auto pr-1 custom-scrollbar">
+              {prescriptionList.map((rx) => {
+                const itemsTotal = (rx.items || []).reduce(
+                  (sum, item) => sum + (item.price || 0) * item.quantity,
+                  0,
+                );
+                return (
+                  <Card key={rx.id} className="border-0">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-950/50 flex items-center justify-center shrink-0">
+                            <Pill className="w-5 h-5 text-violet-600" />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-sm text-foreground">
+                              Resep untuk {rx.patientName}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              <Calendar className="w-3 h-3 inline mr-0.5" />
+                              {formatDate(rx.createdAt)}
+                            </p>
+                            {rx.notes && (
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                <StickyNote className="w-3 h-3 inline mr-0.5" />
+                                {rx.notes}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            'text-[10px] shrink-0',
+                            rx.status === 'active'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
+                              : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+                          )}
+                        >
+                          {rx.status === 'active' ? 'Aktif' : 'Selesai'}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <Separator className="mb-3" />
+                      <div className="space-y-2">
+                        {(rx.items || []).map((item) => (
+                          <div
+                            key={item.id}
+                            className="flex items-center justify-between text-sm bg-muted/50 rounded-lg p-2.5"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium text-foreground">{item.medicineName}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {item.dosage} — {item.frequency} — {item.duration}
+                              </p>
+                              {item.instructions && (
+                                <p className="text-xs text-muted-foreground italic">
+                                  {item.instructions}
+                                </p>
+                              )}
+                            </div>
+                            <div className="text-right shrink-0 ml-3">
+                              <p className="font-medium text-foreground">
+                                {item.quantity}x
+                              </p>
+                              {item.price ? (
+                                <p className="text-xs text-muted-foreground">
+                                  {formatCurrency(item.price)}/unit
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <Separator className="my-3" />
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Receipt className="w-3.5 h-3.5" />
+                          <span>Total</span>
+                        </div>
+                        <p className="font-bold text-foreground text-sm">
+                          {formatCurrency(itemsTotal)}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* ================================================================= */}
+      {/* Detail Dialog                                                     */}
+      {/* ================================================================= */}
+      <Dialog
+        open={!!selectedRecord}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedRecordId(null);
+            setSelectedTimelineRecordId(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          {selectedRecord && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 flex-wrap">
+                  <FileText className="w-5 h-5 text-primary" />
+                  <span>Detail Rekam Medis</span>
+                  <Badge
+                    variant="secondary"
+                    className={cn('text-[10px]', getStatusBadgeClasses(selectedRecord.status))}
+                  >
+                    {statusLabel(selectedRecord.status)}
+                  </Badge>
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                {/* Patient Info */}
+                <div className="flex items-center gap-3 bg-muted/50 rounded-lg p-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <User className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm text-foreground">
+                      {selectedRecord.patientName}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      <Hash className="w-3 h-3 inline mr-0.5" />
+                      {selectedRecord.rmNumber}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Date & Type */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Tanggal</p>
+                      <p className="text-sm font-medium">
+                        {formatDate(selectedRecord.recordDate)} {formatTime(selectedRecord.recordDate)}
+                      </p>
+                    </div>
+                  </div>
+                  {selectedRecord.consultationType && (
+                    <div className="flex items-center gap-2">
+                      <Stethoscope className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Jenis Konsultasi</p>
+                        <p className="text-sm font-medium">
+                          {consultationTypeLabel(selectedRecord.consultationType)}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* Diagnosis */}
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <BadgeCheck className="w-4 h-4 text-primary" />
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Diagnosis
+                    </p>
+                  </div>
+                  <p className="text-sm text-foreground font-medium">
+                    {selectedRecord.diagnosis || 'Belum ada diagnosis'}
+                  </p>
+                </div>
+
+                {/* Symptoms */}
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <AlertCircle className="w-4 h-4 text-amber-500" />
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Gejala
+                    </p>
+                  </div>
+                  <p className="text-sm text-foreground">
+                    {selectedRecord.symptoms || 'Tidak dicatat'}
+                  </p>
+                </div>
+
+                {/* Treatment */}
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <Syringe className="w-4 h-4 text-emerald-500" />
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Pengobatan
+                    </p>
+                  </div>
+                  <p className="text-sm text-foreground">
+                    {selectedRecord.treatment || 'Tidak dicatat'}
+                  </p>
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <StickyNote className="w-4 h-4 text-sky-500" />
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Catatan
+                    </p>
+                  </div>
+                  <p className="text-sm text-foreground">
+                    {selectedRecord.notes || 'Tidak ada catatan'}
+                  </p>
+                </div>
+
+                {/* Linked Prescription */}
+                {selectedRecord.linkedPrescription && (
+                  <>
+                    <Separator />
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Pill className="w-4 h-4 text-violet-500" />
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                          Resep Terkait
+                        </p>
+                      </div>
+                      <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                        {(selectedRecord.linkedPrescription.items || []).map((item) => (
+                          <div
+                            key={item.id}
+                            className="flex items-center justify-between text-sm"
+                          >
+                            <div>
+                              <p className="font-medium text-foreground">{item.medicineName}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {item.dosage} — {item.frequency}
+                              </p>
+                            </div>
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              x{item.quantity}
+                            </span>
+                          </div>
+                        ))}
+                        {selectedRecord.linkedPrescription.notes && (
+                          <p className="text-xs text-muted-foreground italic pt-1 border-t border-border">
+                            {selectedRecord.linkedPrescription.notes}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <Separator />
+
+                {/* Status Change */}
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                    Ubah Status
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant={selectedRecord.status === 'draft' ? 'default' : 'outline'}
+                      className={cn(
+                        selectedRecord.status === 'draft'
+                          ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                          : '',
+                      )}
+                      onClick={() => handleStatusChange(selectedRecord.id, 'draft')}
+                    >
+                      <Edit3 className="w-3.5 h-3.5 mr-1" />
+                      Draft
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={selectedRecord.status === 'ditinjau' ? 'default' : 'outline'}
+                      className={cn(
+                        selectedRecord.status === 'ditinjau'
+                          ? 'bg-sky-500 hover:bg-sky-600 text-white'
+                          : '',
+                      )}
+                      onClick={() => handleStatusChange(selectedRecord.id, 'ditinjau')}
+                    >
+                      <Eye className="w-3.5 h-3.5 mr-1" />
+                      Ditinjau
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={selectedRecord.status === 'selesai' ? 'default' : 'outline'}
+                      className={cn(
+                        selectedRecord.status === 'selesai'
+                          ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                          : '',
+                      )}
+                      onClick={() => handleStatusChange(selectedRecord.id, 'selesai')}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                      Selesai
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter className="mt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedRecordId(null);
+                    setSelectedTimelineRecordId(null);
+                  }}
+                >
+                  Tutup
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Patient View — Demo data
+// ---------------------------------------------------------------------------
+
 const demoConsultations = [
   {
     id: 'c1',
@@ -153,25 +1665,25 @@ const demoPrescriptions = [
   },
 ];
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-}
+// ---------------------------------------------------------------------------
+// PatientMedicalRecordsView
+// ---------------------------------------------------------------------------
 
-export function MedicalRecordsPanel() {
+function PatientMedicalRecordsView() {
   const { currentUser } = useStore();
   const [expandedRecord, setExpandedRecord] = useState<string | null>(null);
 
-  const patientInfo = useMemo(() => ({
-    bloodType: currentUser?.patientProfile?.bloodType || 'O+',
-    allergies: currentUser?.patientProfile?.allergies || 'Penisilin, Alergi debu',
-    medicalHistory: currentUser?.patientProfile?.medicalHistory || 'Diabetes Mellitus Tipe 2, Gastritis kronis',
-    height: currentUser?.patientProfile?.height || 165,
-    weight: currentUser?.patientProfile?.weight || 62,
-  }), [currentUser]);
+  const patientInfo = useMemo(
+    () => ({
+      bloodType: currentUser?.patientProfile?.bloodType || 'O+',
+      allergies: currentUser?.patientProfile?.allergies || 'Penisilin, Alergi debu',
+      medicalHistory:
+        currentUser?.patientProfile?.medicalHistory || 'Diabetes Mellitus Tipe 2, Gastritis kronis',
+      height: currentUser?.patientProfile?.height || 165,
+      weight: currentUser?.patientProfile?.weight || 62,
+    }),
+    [currentUser],
+  );
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -246,7 +1758,9 @@ export function MedicalRecordsPanel() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Tinggi / Berat</p>
-                    <p className="text-sm font-semibold">{patientInfo.height} cm / {patientInfo.weight} kg</p>
+                    <p className="text-sm font-semibold">
+                      {patientInfo.height} cm / {patientInfo.weight} kg
+                    </p>
                   </div>
                 </div>
               </div>
@@ -282,7 +1796,9 @@ export function MedicalRecordsPanel() {
                   <CardContent className="p-4">
                     <div
                       className="flex items-start justify-between cursor-pointer"
-                      onClick={() => setExpandedRecord(expandedRecord === record.id ? null : record.id)}
+                      onClick={() =>
+                        setExpandedRecord(expandedRecord === record.id ? null : record.id)
+                      }
                     >
                       <div className="flex items-start gap-3">
                         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
@@ -290,14 +1806,16 @@ export function MedicalRecordsPanel() {
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-semibold text-sm text-foreground">{record.diagnosis}</p>
+                            <p className="font-semibold text-sm text-foreground">
+                              {record.diagnosis}
+                            </p>
                             <Badge
                               variant="secondary"
                               className={cn(
                                 'text-[10px]',
                                 record.status === 'active'
                                   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
-                                  : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                                  : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
                               )}
                             >
                               {record.status === 'active' ? 'Aktif' : 'Selesai'}
@@ -322,11 +1840,15 @@ export function MedicalRecordsPanel() {
                     {expandedRecord === record.id && (
                       <div className="mt-4 pt-3 border-t border-border space-y-3">
                         <div>
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Pengobatan</p>
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            Pengobatan
+                          </p>
                           <p className="text-sm text-foreground mt-1">{record.treatment}</p>
                         </div>
                         <div>
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Catatan Dokter</p>
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            Catatan Dokter
+                          </p>
                           <p className="text-sm text-foreground mt-1">{record.notes}</p>
                         </div>
                       </div>
@@ -348,13 +1870,13 @@ export function MedicalRecordsPanel() {
                             'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
                             lab.status === 'normal'
                               ? 'bg-emerald-100 dark:bg-emerald-950/50'
-                              : 'bg-amber-100 dark:bg-amber-950/50'
+                              : 'bg-amber-100 dark:bg-amber-950/50',
                           )}
                         >
                           <FlaskConical
                             className={cn(
                               'w-5 h-5',
-                              lab.status === 'normal' ? 'text-emerald-600' : 'text-amber-600'
+                              lab.status === 'normal' ? 'text-emerald-600' : 'text-amber-600',
                             )}
                           />
                         </div>
@@ -372,7 +1894,7 @@ export function MedicalRecordsPanel() {
                           'text-[10px] shrink-0',
                           lab.status === 'normal'
                             ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
-                            : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400'
+                            : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400',
                         )}
                       >
                         {lab.status === 'normal' ? 'Normal' : 'Tinggi'}
@@ -419,7 +1941,7 @@ export function MedicalRecordsPanel() {
                           'text-[10px] shrink-0',
                           rx.status === 'active'
                             ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
-                            : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                            : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
                         )}
                       >
                         {rx.status === 'active' ? 'Aktif' : 'Selesai'}
@@ -427,7 +1949,10 @@ export function MedicalRecordsPanel() {
                     </div>
                     <div className="mt-3 space-y-2">
                       {rx.items.map((item, i) => (
-                        <div key={i} className="flex items-center justify-between text-sm bg-muted/50 rounded-lg p-2.5">
+                        <div
+                          key={i}
+                          className="flex items-center justify-between text-sm bg-muted/50 rounded-lg p-2.5"
+                        >
                           <div>
                             <p className="font-medium text-foreground">{item.name}</p>
                             <p className="text-xs text-muted-foreground">{item.dosage}</p>
@@ -445,4 +1970,14 @@ export function MedicalRecordsPanel() {
       </div>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// MedicalRecordsPanel — Role-based export
+// ---------------------------------------------------------------------------
+
+export function MedicalRecordsPanel() {
+  const { currentUser } = useStore();
+  if (currentUser?.role === 'doctor') return <DoctorMedicalRecordsView />;
+  return <PatientMedicalRecordsView />;
 }

@@ -1,22 +1,33 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
 import { useStore } from '@/lib/store';
-import type { User, Consultation, Message, DoctorProfile } from '@/lib/types';
+import type { User, Consultation, Message, DoctorProfile, Prescription, PrescriptionItem, MedicalRecord, MedicalRecordStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Send,
-  Paperclip,
-  Mic,
-  Video,
-  Phone,
-  Info,
   ArrowLeft,
   Search,
   Star,
@@ -24,21 +35,19 @@ import {
   CheckCheck,
   Loader2,
   MessageCircle,
+  CreditCard,
+  ShoppingCart,
+  FileText,
+  ClipboardList,
+  Plus,
+  Trash2,
+  Stethoscope,
 } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface DoctorWithProfile extends User {
   doctorProfile?: DoctorProfile;
-}
-
-interface ChatMessage extends Message {
-  sender?: {
-    id: string;
-    name: string;
-    avatar?: string;
-    role: string;
-  };
 }
 
 type FilterTab = 'semua' | 'umum' | 'anak' | 'penyakit_dalam' | 'kebidanan' | 'gigi';
@@ -60,6 +69,85 @@ const SPECIALIZATION_LABELS: Record<string, string> = {
   gigi: 'Dokter Gigi',
 };
 
+// ── Demo Prescription Medicines ────────────────────────────────────────────
+
+interface DemoMedicine {
+  id: string;
+  name: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  price: number;
+}
+
+const DEMO_MEDICINES: DemoMedicine[] = [
+  { id: 'pm-1', name: 'Paracetamol 500mg', dosage: '500mg', frequency: '3x sehari', duration: '5 hari', price: 15000 },
+  { id: 'pm-2', name: 'Amoxicillin 500mg', dosage: '500mg', frequency: '3x sehari', duration: '7 hari', price: 25000 },
+  { id: 'pm-3', name: 'Omeprazole 20mg', dosage: '20mg', frequency: '1x sehari', duration: '14 hari', price: 35000 },
+  { id: 'pm-4', name: 'Ibuprofen 400mg', dosage: '400mg', frequency: '2x sehari', duration: '5 hari', price: 18000 },
+  { id: 'pm-5', name: 'CTM 4mg', dosage: '4mg', frequency: '3x sehari', duration: '5 hari', price: 8000 },
+  { id: 'pm-6', name: 'Loratadine 10mg', dosage: '10mg', frequency: '1x sehari', duration: '7 hari', price: 28000 },
+  { id: 'pm-7', name: 'Metformin 500mg', dosage: '500mg', frequency: '2x sehari', duration: '30 hari', price: 22000 },
+  { id: 'pm-8', name: 'Vitamin C 1000mg', dosage: '1000mg', frequency: '1x sehari', duration: '30 hari', price: 45000 },
+  { id: 'pm-9', name: 'Antasida Sirup', dosage: '10ml', frequency: '3x sehari', duration: '7 hari', price: 22000 },
+  { id: 'pm-10', name: 'Vitamin D3 1000IU', dosage: '1000IU', frequency: '1x sehari', duration: '30 hari', price: 65000 },
+];
+
+// ── Auto-Prescription Templates ────────────────────────────────────────────
+
+const AUTO_PRESCRIPTION_TEMPLATES: Record<string, string[][]> = {
+  umum: [['pm-1', 'pm-2'], ['pm-1', 'pm-5'], ['pm-4', 'pm-6']],
+  anak: [['pm-1'], ['pm-1', 'pm-8']],
+  penyakit_dalam: [['pm-7', 'pm-3'], ['pm-2', 'pm-3']],
+  kebidanan: [['pm-8', 'pm-10'], ['pm-1', 'pm-8']],
+  gigi: [['pm-4', 'pm-2'], ['pm-1', 'pm-5']],
+};
+
+// ── Doctor Auto-Reply Messages ─────────────────────────────────────────────
+
+const DOCTOR_AUTO_REPLIES: Record<string, string[]> = {
+  umum: [
+    'Baik, saya akan membantu Anda. Bisakah Anda jelaskan keluhan Anda lebih detail?',
+    'Saya mengerti keluhan Anda. Mari kita lakukan pemeriksaan lebih lanjut.',
+    'Untuk sementara, Anda bisa minum obat pereda nyeri dan banyak istirahat.',
+    'Apakah ada riwayat penyakit sebelumnya yang perlu saya ketahui?',
+    'Saya akan meresepkan obat untuk meredakan gejala Anda. Pastikan untuk minum sesuai anjuran.',
+    'Jika gejala tidak membaik dalam 3 hari, silakan konsultasi kembali.',
+  ],
+  anak: [
+    'Baik, berapa usia anak Anda? Apakah ada demam?',
+    'Untuk anak-anak, dosis obat harus disesuaikan dengan berat badan.',
+    'Pastikan anak mendapat cukup cairan dan istirahat.',
+    'Apakah anak sudah diberikan imunisasi lengkap?',
+    'Saya akan meresepkan obat yang aman untuk anak. Ikuti dosis sesuai petunjuk.',
+    'Jika anak masih rewel atau demam tinggi, bawa ke IGD segera.',
+  ],
+  penyakit_dalam: [
+    'Saya perlu mengetahui tekanan darah dan gula darah Anda.',
+    'Apakah Anda sedang mengonsumsi obat lain saat ini?',
+    'Kita perlu memantau kondisi Anda secara berkala.',
+    'Saya akan menyesuaikan pengobatan Anda. Harap rutin kontrol.',
+    'Penting untuk menjaga pola makan dan olahraga teratur.',
+    'Saya akan meresepkan obat untuk mengontrol kondisi Anda.',
+  ],
+  kebidanan: [
+    'Selamat! Bagaimana kondisi kehamilan Anda saat ini?',
+    'Pastikan Anda rutin memeriksa kehamilan dan mengonsumsi vitamin prenatal.',
+    'Apakah ada keluhan tertentu selama kehamilan?',
+    'Saya akan meresepkan vitamin dan suplemen yang dibutuhkan.',
+    'Jangan lupa jadwal USG berikutnya ya, Bu.',
+    'Pastikan asupan nutrisi cukup untuk ibu dan bayi.',
+  ],
+  gigi: [
+    'Sejak kapan gigi Anda terasa sakit?',
+    'Apakah ada pembengkakan pada gusi?',
+    'Sementara, Anda bisa berkumur dengan air garam hangat.',
+    'Saya akan meresepkan obat penghilang rasa sakit dan antibiotik.',
+    'Pastikan untuk menyikat gigi 2x sehari dan gunakan benang gigi.',
+    'Kita perlu melakukan perawatan lebih lanjut. Silakan buat janji kontrol.',
+  ],
+};
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function formatTime(dateStr: string): string {
@@ -77,7 +165,6 @@ function formatDate(dateStr: string): string {
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
-
     if (d.toDateString() === today.toDateString()) return 'Hari Ini';
     if (d.toDateString() === yesterday.toDateString()) return 'Kemarin';
     return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -94,13 +181,25 @@ function formatFee(fee: number): string {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(fee);
 }
 
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function generateRmNumber(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const seq = String(Math.floor(Math.random() * 9999) + 1).padStart(4, '0');
+  return `RM-${y}${m}${d}-${seq}`;
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────
 
 export function ChatPanel() {
   const {
     currentUser,
     doctors,
-    setDoctors,
     consultations,
     setConsultations,
     activeConsultation,
@@ -109,10 +208,19 @@ export function ChatPanel() {
     setMessages,
     addMessage,
     onlineDoctors,
-    setOnlineDoctors,
-    selectedChatDoctor,
-    setSelectedChatDoctor,
+    prescriptions,
+    addPrescription,
+    updatePrescriptionStatus,
+    medicalRecords,
+    addMedicalRecord,
+    updateMedicalRecord,
+    updateConsultation,
+    addToCart,
+    setActivePanel,
+    setPayments,
   } = useStore();
+
+  const { toast } = useToast();
 
   // Local state
   const [activeFilter, setActiveFilter] = useState<FilterTab>('semua');
@@ -120,16 +228,39 @@ export function ChatPanel() {
   const [messageInput, setMessageInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
-  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-  const [showChatArea, setShowChatArea] = useState(false); // mobile toggle
+  const [showChatArea, setShowChatArea] = useState(false);
   const [creatingConsultation, setCreatingConsultation] = useState<string | null>(null);
 
+  // Doctor dialog state
+  const [showPrescriptionDialog, setShowPrescriptionDialog] = useState(false);
+  const [showMedicalRecordDialog, setShowMedicalRecordDialog] = useState(false);
+
+  // Prescription form state
+  const [rxItems, setRxItems] = useState<Array<{
+    medicineId: string;
+    dosage: string;
+    frequency: string;
+    duration: string;
+    quantity: number;
+  }>>([]);
+
+  // Medical record form state
+  const [mrDiagnosis, setMrDiagnosis] = useState('');
+  const [mrSymptoms, setMrSymptoms] = useState('');
+  const [mrTreatment, setMrTreatment] = useState('');
+  const [mrNotes, setMrNotes] = useState('');
+
+  // Patient message count for auto-prescription
+  const patientMessageCountRef = useRef(0);
+  const autoPrescriptionSentRef = useRef(false);
+
   // Refs
-  const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
+
+  const isDoctor = currentUser?.role === 'doctor';
+  const isPatient = currentUser?.role === 'patient';
 
   // ── Derived data ───────────────────────────────────────────────────────
 
@@ -150,7 +281,6 @@ export function ChatPanel() {
     return onlineDoctors.includes(userId);
   };
 
-  // Get consultation for a specific doctor
   const getConsultationForDoctor = (doctorId: string): Consultation | undefined => {
     return consultations.find(
       (c) =>
@@ -160,308 +290,518 @@ export function ChatPanel() {
     );
   };
 
-  // ── Fetch doctors ──────────────────────────────────────────────────────
-
-  const fetchDoctors = useCallback(async () => {
-    setIsLoadingDoctors(true);
-    try {
-      const res = await fetch('/api/doctors');
-      const data = await res.json();
-      if (data.doctors) {
-        setDoctors(data.doctors);
-      }
-    } catch (err) {
-      console.error('Failed to fetch doctors:', err);
-    } finally {
-      setIsLoadingDoctors(false);
-    }
-  }, [setDoctors]);
-
-  // ── Fetch consultations ────────────────────────────────────────────────
-
-  const fetchConsultations = useCallback(async () => {
-    if (!currentUser) return;
-    try {
-      const res = await fetch(`/api/consultations?patientId=${currentUser.id}`);
-      const data = await res.json();
-      if (data.consultations) {
-        setConsultations(data.consultations);
-      }
-    } catch (err) {
-      console.error('Failed to fetch consultations:', err);
-    }
-  }, [currentUser, setConsultations]);
-
-  // ── Fetch messages for a consultation ──────────────────────────────────
-
-  const fetchMessages = useCallback(
-    async (consultationId: string) => {
-      setIsLoadingMessages(true);
-      try {
-        const res = await fetch(`/api/consultations/${consultationId}/messages`);
-        const data = await res.json();
-        if (data.messages) {
-          setMessages(data.messages);
-        }
-      } catch (err) {
-        console.error('Failed to fetch messages:', err);
-      } finally {
-        setIsLoadingMessages(false);
-      }
-    },
-    [setMessages]
+  // Doctor's consultations (for doctor view)
+  const doctorConsultations = consultations.filter(
+    (c) => c.doctorId === currentUser?.id && (c.status === 'active' || c.status === 'waiting' || c.status === 'completed')
   );
 
-  // ── Initialize ─────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    fetchDoctors();
-    fetchConsultations();
-  }, [fetchDoctors, fetchConsultations]);
-
-  // ── Socket.IO Connection ───────────────────────────────────────────────
-
-  useEffect(() => {
-    const socket = io('/?XTransformPort=3003', {
-      transports: ['websocket', 'polling'],
-      forceNew: true,
-      reconnection: true,
-    });
-
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      console.log('[ChatPanel] Socket connected:', socket.id);
-
-      // If we have an active consultation, rejoin
-      if (activeConsultation && currentUser) {
-        socket.emit('join-consultation', {
-          consultationId: activeConsultation.id,
-          userId: currentUser.id,
-          role: currentUser.role,
-        });
-      }
-    });
-
-    socket.on('new-message', (msg: ChatMessage) => {
-      if (msg.consultationId === activeConsultation?.id) {
-        addMessage({
-          id: msg.id,
-          consultationId: msg.consultationId,
-          senderId: msg.senderId,
-          content: msg.content,
-          type: msg.type as Message['type'],
-          status: msg.status as Message['status'],
-          createdAt: msg.createdAt || new Date().toISOString(),
-          fileUrl: msg.fileUrl,
-        });
-      }
-    });
-
-    socket.on('user-typing', (data: { consultationId: string; userId: string }) => {
-      if (data.consultationId === activeConsultation?.id && data.userId !== currentUser?.id) {
-        setIsTyping(true);
-      }
-    });
-
-    socket.on('user-stop-typing', (data: { consultationId: string; userId: string }) => {
-      if (data.consultationId === activeConsultation?.id) {
-        setIsTyping(false);
-      }
-    });
-
-    socket.on('messages-read', (data: { consultationId: string; userId: string }) => {
-      // Mark messages as read in the UI
-    });
-
-    socket.on('doctor-status-change', (data: { doctorId: string; status: string }) => {
-      if (data.status === 'online') {
-        setOnlineDoctors([...onlineDoctors, data.doctorId]);
-      } else {
-        setOnlineDoctors(onlineDoctors.filter((id) => id !== data.doctorId));
-      }
-    });
-
-    socket.on('disconnect', () => {
-      console.log('[ChatPanel] Socket disconnected');
-    });
-
-    return () => {
-      socket.disconnect();
-      socketRef.current = null;
-    };
-  }, [activeConsultation?.id, currentUser?.id, addMessage, onlineDoctors, setOnlineDoctors]);
-
-  // ── Auto-scroll to bottom ──────────────────────────────────────────────
+  // ── Auto-scroll ──────────────────────────────────────────────────────
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  // ── Start a chat with a doctor ─────────────────────────────────────────
+  // ── Reset auto-prescription tracking when consultation changes ──────
 
-  const handleStartChat = async (doctor: DoctorWithProfile) => {
+  useEffect(() => {
+    patientMessageCountRef.current = 0;
+    autoPrescriptionSentRef.current = false;
+  }, [activeConsultation?.id]);
+
+  // ── Start a chat with a doctor (Patient) ──────────────────────────────
+
+  const handleStartChat = (doctor: DoctorWithProfile) => {
     if (!currentUser) return;
 
-    // Check if there's an existing active consultation
-    const existing = getConsultationForDoctor(doctor.doctorProfile?.id || doctor.id);
+    const existing = getConsultationForDoctor(doctor.id);
     if (existing) {
-      await openConsultation(existing);
+      openConsultation(existing);
       return;
     }
 
-    // Create a new consultation
-    const doctorProfileId = doctor.doctorProfile?.id;
-    if (!doctorProfileId) return;
-
     setCreatingConsultation(doctor.id);
-    try {
-      const res = await fetch('/api/consultations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patientId: currentUser.id,
-          doctorId: doctorProfileId,
-          type: 'chat',
-        }),
-      });
 
-      const data = await res.json();
-      if (data.consultation) {
-        // Add welcome message locally
-        const welcomeMessage: Message = {
-          id: 'welcome-' + Date.now(),
-          consultationId: data.consultation.id,
-          senderId: 'system',
-          content: 'Selamat datang di MedikaLink! Dokter akan segera merespons pesan Anda.',
-          type: 'text',
-          status: 'read',
-          createdAt: new Date().toISOString(),
-        };
+    const consultationId = generateId();
+    const welcomeMessage: Message = {
+      id: generateId(),
+      consultationId,
+      senderId: 'system',
+      content: 'Selamat datang di MedikaLink! Dokter akan segera merespons pesan Anda.',
+      type: 'text',
+      status: 'read',
+      createdAt: new Date().toISOString(),
+    };
 
-        const newConsultation: Consultation = {
-          ...data.consultation,
-          messages: [welcomeMessage],
-        };
+    const newConsultation: Consultation = {
+      id: consultationId,
+      patientId: currentUser.id,
+      doctorId: doctor.id,
+      type: 'chat',
+      status: 'active',
+      startTime: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      patient: currentUser,
+      doctor: doctor,
+      messages: [welcomeMessage],
+    };
 
-        setConsultations([newConsultation, ...consultations]);
-        setActiveConsultation(newConsultation);
-        setMessages([welcomeMessage]);
-        setSelectedChatDoctor(doctor);
+    setConsultations([newConsultation, ...consultations]);
+    setActiveConsultation(newConsultation);
+    setMessages([welcomeMessage]);
 
-        // Join Socket.IO room
-        socketRef.current?.emit('join-consultation', {
-          consultationId: data.consultation.id,
-          userId: currentUser.id,
-          role: currentUser.role,
-        });
+    patientMessageCountRef.current = 0;
+    autoPrescriptionSentRef.current = false;
 
-        // Show chat area on mobile
-        setShowChatArea(true);
-      }
-    } catch (err) {
-      console.error('Failed to create consultation:', err);
-    } finally {
-      setCreatingConsultation(null);
-    }
+    setShowChatArea(true);
+    setCreatingConsultation(null);
   };
 
   // ── Open an existing consultation ──────────────────────────────────────
 
-  const openConsultation = async (consultation: Consultation) => {
+  const openConsultation = (consultation: Consultation) => {
     setActiveConsultation(consultation);
-    setSelectedChatDoctor(null);
 
-    // Find doctor info from store
-    const doctorUser = doctors.find(
-      (d) => d.doctorProfile?.id === consultation.doctorId
-    );
-    if (doctorUser) {
-      setSelectedChatDoctor(doctorUser);
-    }
+    // Load existing messages
+    const existingMessages = consultation.messages || [];
+    setMessages(existingMessages);
 
-    // Join Socket.IO room
-    if (currentUser) {
-      socketRef.current?.emit('join-consultation', {
-        consultationId: consultation.id,
-        userId: currentUser.id,
-        role: currentUser.role,
-      });
-    }
+    patientMessageCountRef.current = existingMessages.filter(
+      (m) => m.senderId === consultation.patientId
+    ).length;
+    autoPrescriptionSentRef.current = false;
 
-    // Fetch messages
-    await fetchMessages(consultation.id);
-
-    // Mark messages as read
-    if (currentUser) {
-      socketRef.current?.emit('message-read', {
-        consultationId: consultation.id,
-        userId: currentUser.id,
-      });
-    }
-
-    // Show chat area on mobile
     setShowChatArea(true);
   };
 
   // ── Send a message ─────────────────────────────────────────────────────
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = () => {
     if (!messageInput.trim() || !activeConsultation || !currentUser) return;
 
     const content = messageInput.trim();
     setMessageInput('');
     setIsSending(true);
 
-    // Stop typing
-    socketRef.current?.emit('stop-typing', {
+    const newMessage: Message = {
+      id: generateId(),
       consultationId: activeConsultation.id,
-      userId: currentUser.id,
+      senderId: currentUser.id,
+      content,
+      type: 'text',
+      status: 'sent',
+      createdAt: new Date().toISOString(),
+    };
+
+    addMessage(newMessage);
+
+    // Update consultation with new message
+    const updatedMessages = [...messages, newMessage];
+    const updatedConsultation = {
+      ...activeConsultation,
+      messages: updatedMessages,
+      updatedAt: new Date().toISOString(),
+    };
+    updateConsultation(activeConsultation.id, updatedConsultation);
+
+    // Clear typing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    setIsSending(false);
+    messageInputRef.current?.focus();
+
+    // If patient is sending, simulate doctor auto-reply
+    if (isPatient) {
+      patientMessageCountRef.current += 1;
+
+      // Show typing indicator
+      setTimeout(() => setIsTyping(true), 500);
+
+      const doctorUser = doctors.find((d) => d.id === activeConsultation.doctorId);
+      const specialization = doctorUser?.doctorProfile?.specialization || 'umum';
+      const replies = DOCTOR_AUTO_REPLIES[specialization] || DOCTOR_AUTO_REPLIES.umum;
+      const randomReply = replies[Math.floor(Math.random() * replies.length)];
+
+      setTimeout(() => {
+        setIsTyping(false);
+        const doctorReply: Message = {
+          id: generateId(),
+          consultationId: activeConsultation.id,
+          senderId: activeConsultation.doctorId,
+          content: randomReply,
+          type: 'text',
+          status: 'delivered',
+          createdAt: new Date().toISOString(),
+        };
+        addMessage(doctorReply);
+        updateConsultation(activeConsultation.id, {
+          messages: [...updatedMessages, doctorReply],
+          updatedAt: new Date().toISOString(),
+        });
+      }, 1500 + Math.random() * 2000);
+
+      // Auto-send e-prescription after 3+ patient messages
+      if (patientMessageCountRef.current >= 3 && !autoPrescriptionSentRef.current) {
+        autoPrescriptionSentRef.current = true;
+        setTimeout(() => {
+          handleAutoPrescription(activeConsultation, specialization);
+        }, 4000 + Math.random() * 2000);
+      }
+    }
+  };
+
+  // ── Auto-Prescription (Patient View Simulation) ────────────────────────
+
+  const handleAutoPrescription = (consultation: Consultation, specialization: string) => {
+    const templates = AUTO_PRESCRIPTION_TEMPLATES[specialization] || AUTO_PRESCRIPTION_TEMPLATES.umum;
+    const selectedTemplate = templates[Math.floor(Math.random() * templates.length)];
+
+    const items: PrescriptionItem[] = selectedTemplate.map((medId) => {
+      const med = DEMO_MEDICINES.find((m) => m.id === medId)!;
+      return {
+        id: generateId(),
+        prescriptionId: '',
+        medicineName: med.name,
+        dosage: med.dosage,
+        quantity: 1,
+        frequency: med.frequency,
+        duration: med.duration,
+        price: med.price,
+      };
     });
 
-    try {
-      socketRef.current?.emit('send-message', {
-        consultationId: activeConsultation.id,
-        senderId: currentUser.id,
-        content,
-        type: 'text',
-      });
-    } catch (err) {
-      console.error('Failed to send message:', err);
-    } finally {
-      setIsSending(false);
-      messageInputRef.current?.focus();
+    const prescriptionId = generateId();
+    const prescription: Prescription = {
+      id: prescriptionId,
+      consultationId: consultation.id,
+      doctorId: consultation.doctorId,
+      patientId: consultation.patientId,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      items: items.map((item) => ({ ...item, prescriptionId })),
+    };
+
+    addPrescription(prescription);
+
+    // Send prescription message in chat
+    const rxMessage: Message = {
+      id: generateId(),
+      consultationId: consultation.id,
+      senderId: consultation.doctorId,
+      content: `__PRESCRIPTION__${prescriptionId}__`,
+      type: 'text',
+      status: 'delivered',
+      createdAt: new Date().toISOString(),
+    };
+    addMessage(rxMessage);
+    updateConsultation(consultation.id, {
+      messages: [...(consultation.messages || []), rxMessage],
+      prescription: prescription,
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Auto-create medical record if not exists
+    const existingMR = medicalRecords.find((mr) => mr.consultationId === consultation.id);
+    if (!existingMR) {
+      const rmNumber = generateRmNumber();
+      const mr: MedicalRecord = {
+        id: generateId(),
+        patientId: consultation.patientId,
+        consultationId: consultation.id,
+        rmNumber,
+        diagnosis: '',
+        symptoms: '',
+        treatment: '',
+        notes: '',
+        status: 'draft' as MedicalRecordStatus,
+        recordDate: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      addMedicalRecord(mr);
+      updateConsultation(consultation.id, { medicalRecord: mr });
     }
+
+    toast({
+      title: 'E-Resep Dikirim',
+      description: 'Dokter telah mengirim e-resep untuk Anda.',
+    });
+  };
+
+  // ── Prescription Dialog (Doctor View) ──────────────────────────────────
+
+  const handleOpenPrescriptionDialog = () => {
+    setRxItems([]);
+    setShowPrescriptionDialog(true);
+  };
+
+  const handleAddRxItem = () => {
+    setRxItems([
+      ...rxItems,
+      { medicineId: '', dosage: '', frequency: '', duration: '', quantity: 1 },
+    ]);
+  };
+
+  const handleRemoveRxItem = (index: number) => {
+    setRxItems(rxItems.filter((_, i) => i !== index));
+  };
+
+  const handleRxItemChange = (index: number, field: string, value: string | number) => {
+    const updated = [...rxItems];
+    updated[index] = { ...updated[index], [field]: value };
+    // Auto-fill from demo medicine when selected
+    if (field === 'medicineId') {
+      const med = DEMO_MEDICINES.find((m) => m.id === value);
+      if (med) {
+        updated[index] = {
+          ...updated[index],
+          medicineId: med.id,
+          dosage: med.dosage,
+          frequency: med.frequency,
+          duration: med.duration,
+        };
+      }
+    }
+    setRxItems(updated);
+  };
+
+  const handleSendPrescription = () => {
+    if (!activeConsultation || !currentUser || rxItems.length === 0) return;
+
+    const validItems = rxItems.filter((item) => item.medicineId);
+    if (validItems.length === 0) {
+      toast({ title: 'Error', description: 'Tambahkan minimal 1 obat yang valid.' });
+      return;
+    }
+
+    const prescriptionId = generateId();
+    const items: PrescriptionItem[] = validItems.map((item) => {
+      const med = DEMO_MEDICINES.find((m) => m.id === item.medicineId)!;
+      return {
+        id: generateId(),
+        prescriptionId,
+        medicineName: med.name,
+        dosage: item.dosage || med.dosage,
+        quantity: item.quantity,
+        frequency: item.frequency || med.frequency,
+        duration: item.duration || med.duration,
+        price: med.price,
+      };
+    });
+
+    const prescription: Prescription = {
+      id: prescriptionId,
+      consultationId: activeConsultation.id,
+      doctorId: currentUser.id,
+      patientId: activeConsultation.patientId,
+      status: 'pending',
+      notes: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      items,
+    };
+
+    addPrescription(prescription);
+
+    // Send prescription message
+    const rxMessage: Message = {
+      id: generateId(),
+      consultationId: activeConsultation.id,
+      senderId: currentUser.id,
+      content: `__PRESCRIPTION__${prescriptionId}__`,
+      type: 'text',
+      status: 'delivered',
+      createdAt: new Date().toISOString(),
+    };
+    addMessage(rxMessage);
+    updateConsultation(activeConsultation.id, {
+      messages: [...(activeConsultation.messages || []), rxMessage],
+      prescription: prescription,
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Auto-create medical record if not exists
+    const existingMR = medicalRecords.find((mr) => mr.consultationId === activeConsultation.id);
+    if (!existingMR) {
+      const rmNumber = generateRmNumber();
+      const mr: MedicalRecord = {
+        id: generateId(),
+        patientId: activeConsultation.patientId,
+        consultationId: activeConsultation.id,
+        rmNumber,
+        diagnosis: '',
+        symptoms: '',
+        treatment: '',
+        notes: '',
+        status: 'draft' as MedicalRecordStatus,
+        recordDate: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      addMedicalRecord(mr);
+      updateConsultation(activeConsultation.id, { medicalRecord: mr });
+    }
+
+    // System message
+    const sysMessage: Message = {
+      id: generateId(),
+      consultationId: activeConsultation.id,
+      senderId: 'system',
+      content: 'E-Resep telah dikirim ke pasien.',
+      type: 'text',
+      status: 'read',
+      createdAt: new Date().toISOString(),
+    };
+    addMessage(sysMessage);
+
+    setShowPrescriptionDialog(false);
+    setRxItems([]);
+    toast({ title: 'Berhasil', description: 'E-Resep berhasil dikirim.' });
+  };
+
+  // ── Medical Record Dialog (Doctor View) ────────────────────────────────
+
+  const handleOpenMedicalRecordDialog = () => {
+    if (activeConsultation) {
+      const existingMR = medicalRecords.find((mr) => mr.consultationId === activeConsultation.id);
+      if (existingMR) {
+        setMrDiagnosis(existingMR.diagnosis || '');
+        setMrSymptoms(existingMR.symptoms || '');
+        setMrTreatment(existingMR.treatment || '');
+        setMrNotes(existingMR.notes || '');
+      } else {
+        setMrDiagnosis('');
+        setMrSymptoms('');
+        setMrTreatment('');
+        setMrNotes('');
+      }
+    }
+    setShowMedicalRecordDialog(true);
+  };
+
+  const handleSaveMedicalRecord = () => {
+    if (!activeConsultation || !currentUser) return;
+
+    const existingMR = medicalRecords.find((mr) => mr.consultationId === activeConsultation.id);
+    const allFieldsFilled = mrDiagnosis.trim() && mrSymptoms.trim() && mrTreatment.trim();
+    const status: MedicalRecordStatus = allFieldsFilled ? 'selesai' : 'draft';
+
+    if (existingMR) {
+      updateMedicalRecord(existingMR.id, {
+        diagnosis: mrDiagnosis,
+        symptoms: mrSymptoms,
+        treatment: mrTreatment,
+        notes: mrNotes,
+        status,
+        updatedAt: new Date().toISOString(),
+      });
+      updateConsultation(activeConsultation.id, {
+        medicalRecord: {
+          ...existingMR,
+          diagnosis: mrDiagnosis,
+          symptoms: mrSymptoms,
+          treatment: mrTreatment,
+          notes: mrNotes,
+          status,
+        },
+      });
+    } else {
+      const rmNumber = generateRmNumber();
+      const mr: MedicalRecord = {
+        id: generateId(),
+        patientId: activeConsultation.patientId,
+        consultationId: activeConsultation.id,
+        rmNumber,
+        diagnosis: mrDiagnosis,
+        symptoms: mrSymptoms,
+        treatment: mrTreatment,
+        notes: mrNotes,
+        status,
+        recordDate: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      addMedicalRecord(mr);
+      updateConsultation(activeConsultation.id, { medicalRecord: mr });
+    }
+
+    // System message
+    const sysMessage: Message = {
+      id: generateId(),
+      consultationId: activeConsultation.id,
+      senderId: 'system',
+      content: `Rekam Medis ${status === 'selesai' ? 'disimpan' : 'disimpan sebagai draft'}.`,
+      type: 'text',
+      status: 'read',
+      createdAt: new Date().toISOString(),
+    };
+    addMessage(sysMessage);
+
+    setShowMedicalRecordDialog(false);
+    toast({
+      title: 'Berhasil',
+      description: `Rekam Medis ${status === 'selesai' ? 'disimpan' : 'disimpan sebagai draft'}.`,
+    });
+  };
+
+  // ── Payment Flow ───────────────────────────────────────────────────────
+
+  const handlePayPrescription = (prescription: Prescription) => {
+    if (!currentUser) return;
+
+    const totalAmount = (prescription.items || []).reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
+    const paymentId = generateId();
+    const payment = {
+      id: paymentId,
+      userId: currentUser.id,
+      amount: totalAmount,
+      method: 'qris' as const,
+      status: 'success' as const,
+      type: 'prescription',
+      referenceId: prescription.id,
+      invoiceNumber: `INV-${Date.now()}`,
+      paidAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setPayments([payment, ...(useStore.getState().payments || [])]);
+    updatePrescriptionStatus(prescription.id, 'paid');
+
+    toast({ title: 'Pembayaran Berhasil', description: `Pembayaran ${formatFee(totalAmount)} berhasil.` });
+    setActivePanel('payments');
+  };
+
+  const handleCheckoutPrescription = (prescription: Prescription) => {
+    if (!currentUser) return;
+
+    (prescription.items || []).forEach((item) => {
+      const med = useStore.getState().medicines.find(
+        (m) => m.name.toLowerCase().includes(item.medicineName.toLowerCase().split(' ')[0])
+      );
+      if (med) {
+        addToCart({ medicine: med, quantity: item.quantity });
+      }
+    });
+
+    toast({ title: 'Ditambahkan ke Keranjang', description: 'Obat ditambahkan ke keranjang apotek.' });
+    setActivePanel('pharmacy');
   };
 
   // ── Handle typing ──────────────────────────────────────────────────────
 
   const handleTyping = (value: string) => {
     setMessageInput(value);
-
-    if (!activeConsultation || !currentUser) return;
-
-    // Emit typing event
-    socketRef.current?.emit('typing', {
-      consultationId: activeConsultation.id,
-      userId: currentUser.id,
-    });
-
-    // Clear previous timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
-
-    // Set new timeout to stop typing
     typingTimeoutRef.current = setTimeout(() => {
-      socketRef.current?.emit('stop-typing', {
-        consultationId: activeConsultation!.id,
-        userId: currentUser!.id,
-      });
+      // stopped typing
     }, 2000);
   };
-
-  // ── Handle key press ───────────────────────────────────────────────────
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -470,45 +810,127 @@ export function ChatPanel() {
     }
   };
 
-  // ── Go back to list (mobile) ───────────────────────────────────────────
-
   const handleBackToList = () => {
     setShowChatArea(false);
-    // Leave current consultation room
-    if (activeConsultation && currentUser) {
-      socketRef.current?.emit('leave-consultation', {
-        consultationId: activeConsultation.id,
-        userId: currentUser.id,
-      });
-    }
+    setActiveConsultation(null);
   };
 
-  // ── Get the doctor for the active consultation ─────────────────────────
+  // ── Get doctor for active consultation ────────────────────────────────
 
   const activeDoctor = activeConsultation
-    ? doctors.find((d) => d.doctorProfile?.id === activeConsultation.doctorId)
-    : selectedChatDoctor;
+    ? doctors.find((d) => d.id === activeConsultation.doctorId)
+    : undefined;
+
+  // ── Render E-Prescription Card ─────────────────────────────────────────
+
+  const renderPrescriptionCard = (prescriptionId: string) => {
+    const prescription = prescriptions.find((p) => p.id === prescriptionId);
+    if (!prescription) return null;
+
+    const items = prescription.items || [];
+    const totalAmount = items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
+    const isPaid = prescription.status === 'paid';
+
+    return (
+      <div className="border-2 border-primary rounded-xl overflow-hidden bg-card max-w-sm my-2">
+        {/* Header */}
+        <div className="bg-primary/10 px-4 py-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="w-4 h-4 text-primary" />
+            <span className="font-semibold text-sm text-primary">E-Resep Dokter</span>
+          </div>
+          <Badge variant={isPaid ? 'default' : 'secondary'} className={cn('text-[10px]', isPaid && 'bg-emerald-600')}>
+            {isPaid ? 'Sudah Dibayar' : 'Menunggu Pembayaran'}
+          </Badge>
+        </div>
+
+        {/* Medicine Table */}
+        <div className="px-4 py-3">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-1.5 text-muted-foreground font-medium">Obat</th>
+                  <th className="text-center py-1.5 text-muted-foreground font-medium">Dosis</th>
+                  <th className="text-center py-1.5 text-muted-foreground font-medium">Frek.</th>
+                  <th className="text-center py-1.5 text-muted-foreground font-medium">Durasi</th>
+                  <th className="text-center py-1.5 text-muted-foreground font-medium">Qty</th>
+                  <th className="text-right py-1.5 text-muted-foreground font-medium">Harga</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id} className="border-b border-border/50 last:border-0">
+                    <td className="py-1.5 font-medium text-foreground">{item.medicineName}</td>
+                    <td className="py-1.5 text-center text-muted-foreground">{item.dosage}</td>
+                    <td className="py-1.5 text-center text-muted-foreground">{item.frequency}</td>
+                    <td className="py-1.5 text-center text-muted-foreground">{item.duration}</td>
+                    <td className="py-1.5 text-center text-foreground">{item.quantity}</td>
+                    <td className="py-1.5 text-right text-foreground">{formatFee(item.price || 0)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Total */}
+          <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
+            <span className="font-semibold text-sm text-foreground">Total</span>
+            <span className="font-bold text-sm text-primary">{formatFee(totalAmount)}</span>
+          </div>
+        </div>
+
+        {/* Patient Action Buttons */}
+        {isPatient && (
+          <div className="px-4 pb-3">
+            {isPaid ? (
+              <div className="flex items-center justify-center gap-2 py-2 text-emerald-600">
+                <CheckCheck className="w-4 h-4" />
+                <span className="text-sm font-medium">Sudah Dibayar</span>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  className="flex-1 h-8 text-xs"
+                  onClick={() => handlePayPrescription(prescription)}
+                >
+                  <CreditCard className="w-3.5 h-3.5 mr-1" />
+                  Bayar Sekarang
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 h-8 text-xs"
+                  onClick={() => handleCheckoutPrescription(prescription)}
+                >
+                  <ShoppingCart className="w-3.5 h-3.5 mr-1" />
+                  Tambah ke Keranjang Apotek
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // ── Render message status icon ─────────────────────────────────────────
 
   const renderMessageStatus = (status: string, isOwn: boolean) => {
     if (!isOwn) return null;
-    if (status === 'read') {
-      return <CheckCheck className="w-3.5 h-3.5 text-primary" />;
-    }
-    if (status === 'delivered') {
-      return <CheckCheck className="w-3.5 h-3.5 text-muted-foreground" />;
-    }
+    if (status === 'read') return <CheckCheck className="w-3.5 h-3.5 text-primary" />;
+    if (status === 'delivered') return <CheckCheck className="w-3.5 h-3.5 text-muted-foreground" />;
     return <Check className="w-3.5 h-3.5 text-muted-foreground" />;
   };
 
-  // ── Render: Doctor List Card ───────────────────────────────────────────
+  // ── Render: Doctor List Card (Patient View) ────────────────────────────
 
   const renderDoctorCard = (doctor: DoctorWithProfile) => {
     const profile = doctor.doctorProfile;
     if (!profile) return null;
 
-    const existingConsultation = getConsultationForDoctor(profile.id);
+    const existingConsultation = getConsultationForDoctor(doctor.id);
     const online = isDoctorOnline(doctor.id);
     const isCreating = creatingConsultation === doctor.id;
     const lastMessage = existingConsultation?.messages?.[existingConsultation.messages.length - 1];
@@ -518,7 +940,7 @@ export function ChatPanel() {
         key={doctor.id}
         className={cn(
           'p-3 rounded-xl border border-border bg-card hover:bg-accent/50 transition-all duration-200 cursor-pointer group',
-          activeConsultation?.doctorId === profile.id && 'ring-2 ring-primary/30 bg-primary/5'
+          activeConsultation?.doctorId === doctor.id && 'ring-2 ring-primary/30 bg-primary/5'
         )}
         onClick={() => {
           if (existingConsultation) {
@@ -527,7 +949,6 @@ export function ChatPanel() {
         }}
       >
         <div className="flex gap-3">
-          {/* Avatar */}
           <div className="relative shrink-0">
             <Avatar className="w-12 h-12">
               <AvatarImage src={doctor.avatar || undefined} alt={doctor.name} />
@@ -538,12 +959,11 @@ export function ChatPanel() {
             <div
               className={cn(
                 'absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-card',
-                online ? 'bg-emerald-500 pulse-online' : 'bg-gray-400'
+                online ? 'bg-emerald-500' : 'bg-gray-400'
               )}
             />
           </div>
 
-          {/* Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -559,7 +979,6 @@ export function ChatPanel() {
               )}
             </div>
 
-            {/* Rating & Fee */}
             <div className="flex items-center gap-2 mt-1.5">
               <div className="flex items-center gap-0.5">
                 <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
@@ -570,10 +989,9 @@ export function ChatPanel() {
               </span>
             </div>
 
-            {/* Last message preview or start button */}
             {existingConsultation ? (
               <p className="text-xs text-muted-foreground mt-1 truncate">
-                {lastMessage?.content || 'Belum ada pesan'}
+                {lastMessage?.content?.startsWith('__PRESCRIPTION__') ? '📎 E-Resep Dokter' : lastMessage?.content || 'Belum ada pesan'}
               </p>
             ) : (
               <Button
@@ -601,79 +1019,138 @@ export function ChatPanel() {
     );
   };
 
+  // ── Render: Patient Consultation Card (Doctor View) ────────────────────
+
+  const renderPatientCard = (consultation: Consultation) => {
+    const patient = consultation.patient;
+    const lastMessage = consultation.messages?.[consultation.messages.length - 1];
+    const isActive = activeConsultation?.id === consultation.id;
+
+    return (
+      <div
+        key={consultation.id}
+        className={cn(
+          'p-3 rounded-xl border border-border bg-card hover:bg-accent/50 transition-all duration-200 cursor-pointer',
+          isActive && 'ring-2 ring-primary/30 bg-primary/5'
+        )}
+        onClick={() => openConsultation(consultation)}
+      >
+        <div className="flex gap-3">
+          <Avatar className="w-10 h-10 shrink-0">
+            <AvatarImage src={patient?.avatar || undefined} alt={patient?.name || ''} />
+            <AvatarFallback className="bg-emerald-500/10 text-emerald-600 font-semibold text-sm">
+              {patient?.name?.charAt(0).toUpperCase() || 'P'}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-semibold text-sm text-foreground truncate">{patient?.name || 'Pasien'}</h3>
+              <div className="flex items-center gap-1.5">
+                <Badge
+                  variant={consultation.status === 'active' ? 'default' : 'secondary'}
+                  className="text-[10px] px-1.5 py-0"
+                >
+                  {consultation.status === 'active' ? 'Aktif' : consultation.status === 'completed' ? 'Selesai' : 'Menunggu'}
+                </Badge>
+              </div>
+            </div>
+            {lastMessage && (
+              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                {lastMessage.content?.startsWith('__PRESCRIPTION__') ? '📎 E-Resep' : lastMessage.content}
+              </p>
+            )}
+            <span className="text-[10px] text-muted-foreground">
+              {formatTime(consultation.updatedAt)}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ── Render: Chat Header ────────────────────────────────────────────────
 
   const renderChatHeader = () => {
-    if (!activeConsultation && !selectedChatDoctor) return null;
+    if (!activeConsultation) return null;
 
-    const doctor = activeDoctor;
-    if (!doctor) return null;
+    const otherUser = isDoctor
+      ? activeConsultation.patient
+      : activeDoctor;
 
-    const profile = doctor.doctorProfile;
-    const online = isDoctorOnline(doctor.id);
+    const specialization = !isDoctor && activeDoctor?.doctorProfile
+      ? SPECIALIZATION_LABELS[activeDoctor.doctorProfile.specialization]
+      : undefined;
+
+    const online = !isDoctor && activeDoctor ? isDoctorOnline(activeDoctor.id) : false;
 
     return (
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-card/80 backdrop-blur-sm">
-        {/* Back button (mobile) */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0 lg:hidden"
-          onClick={handleBackToList}
-        >
+        <Button variant="ghost" size="icon" className="shrink-0 lg:hidden" onClick={handleBackToList}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
 
-        {/* Doctor avatar & info */}
         <div className="relative shrink-0">
           <Avatar className="w-10 h-10">
-            <AvatarImage src={doctor.avatar || undefined} alt={doctor.name} />
-            <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
-              {doctor.name.charAt(0).toUpperCase()}
+            <AvatarImage src={otherUser?.avatar || undefined} alt={otherUser?.name || ''} />
+            <AvatarFallback className={cn(
+              'font-semibold text-sm',
+              isDoctor ? 'bg-emerald-500/10 text-emerald-600' : 'bg-primary/10 text-primary'
+            )}>
+              {otherUser?.name?.charAt(0).toUpperCase() || '?'}
             </AvatarFallback>
           </Avatar>
-          <div
-            className={cn(
+          {!isDoctor && (
+            <div className={cn(
               'absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-card',
               online ? 'bg-emerald-500' : 'bg-gray-400'
-            )}
-          />
+            )} />
+          )}
         </div>
 
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-sm text-foreground truncate">{doctor.name}</h3>
+          <h3 className="font-semibold text-sm text-foreground truncate">{otherUser?.name || 'User'}</h3>
           <div className="flex items-center gap-1.5">
-            <span
-              className={cn(
-                'text-[11px] font-medium',
-                online ? 'text-emerald-600' : 'text-muted-foreground'
-              )}
-            >
-              {online ? 'Online' : 'Offline'}
-            </span>
-            {profile && (
+            {!isDoctor && (
               <>
-                <span className="text-[10px] text-muted-foreground">·</span>
-                <span className="text-[11px] text-muted-foreground">
-                  {SPECIALIZATION_LABELS[profile.specialization] || profile.specialization}
+                <span className={cn('text-[11px] font-medium', online ? 'text-emerald-600' : 'text-muted-foreground')}>
+                  {online ? 'Online' : 'Offline'}
                 </span>
+                {specialization && (
+                  <>
+                    <span className="text-[10px] text-muted-foreground">·</span>
+                    <span className="text-[11px] text-muted-foreground">{specialization}</span>
+                  </>
+                )}
               </>
+            )}
+            {isDoctor && (
+              <span className="text-[11px] text-muted-foreground">Pasien</span>
             )}
           </div>
         </div>
 
-        {/* Action buttons */}
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-            <Phone className="w-4 h-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-            <Video className="w-4 h-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-            <Info className="w-4 h-4" />
-          </Button>
-        </div>
+        {/* Doctor action buttons */}
+        {isDoctor && activeConsultation && (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs gap-1"
+              onClick={handleOpenMedicalRecordDialog}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              Rekam Medis
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 text-xs gap-1"
+              onClick={handleOpenPrescriptionDialog}
+            >
+              <Stethoscope className="w-3.5 h-3.5" />
+              E-Resep
+            </Button>
+          </div>
+        )}
       </div>
     );
   };
@@ -688,19 +1165,15 @@ export function ChatPanel() {
             <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center">
               <MessageCircle className="w-8 h-8 text-primary" />
             </div>
-            <h3 className="font-semibold text-foreground">Pilih Dokter</h3>
+            <h3 className="font-semibold text-foreground">
+              {isDoctor ? 'Pilih Pasien' : 'Pilih Dokter'}
+            </h3>
             <p className="text-sm text-muted-foreground max-w-xs">
-              Pilih dokter dari daftar untuk memulai konsultasi chat
+              {isDoctor
+                ? 'Pilih konsultasi pasien untuk memulai chat'
+                : 'Pilih dokter dari daftar untuk memulai konsultasi chat'}
             </p>
           </div>
-        </div>
-      );
-    }
-
-    if (isLoadingMessages) {
-      return (
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-6 h-6 animate-spin text-primary" />
         </div>
       );
     }
@@ -713,9 +1186,12 @@ export function ChatPanel() {
           const prevMsg = messages[index - 1];
           const showDateSeparator = index === 0 || (prevMsg && isDifferentDay(msg.createdAt, prevMsg.createdAt));
 
+          // Check if this is a prescription message
+          const prescriptionMatch = msg.content?.match(/^__PRESCRIPTION__(.+)__$/);
+          const isPrescriptionMsg = !!prescriptionMatch;
+
           return (
             <div key={msg.id}>
-              {/* Date separator */}
               {showDateSeparator && (
                 <div className="flex items-center justify-center py-3">
                   <span className="text-[11px] text-muted-foreground bg-muted px-3 py-1 rounded-full">
@@ -724,21 +1200,18 @@ export function ChatPanel() {
                 </div>
               )}
 
-              {/* System message */}
               {isSystem ? (
                 <div className="flex items-center justify-center py-2">
                   <span className="text-[11px] text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-lg text-center max-w-[85%]">
                     {msg.content}
                   </span>
                 </div>
+              ) : isPrescriptionMsg && prescriptionMatch ? (
+                <div className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}>
+                  {renderPrescriptionCard(prescriptionMatch[1])}
+                </div>
               ) : (
-                /* Regular message */
-                <div
-                  className={cn(
-                    'flex msg-animate',
-                    isOwn ? 'justify-end' : 'justify-start'
-                  )}
-                >
+                <div className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}>
                   <div
                     className={cn(
                       'max-w-[75%] sm:max-w-[65%] rounded-2xl px-3.5 py-2',
@@ -748,18 +1221,8 @@ export function ChatPanel() {
                     )}
                   >
                     <p className="text-sm leading-relaxed break-words">{msg.content}</p>
-                    <div
-                      className={cn(
-                        'flex items-center gap-1 mt-1',
-                        isOwn ? 'justify-end' : 'justify-start'
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          'text-[10px]',
-                          isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                        )}
-                      >
+                    <div className={cn('flex items-center gap-1 mt-1', isOwn ? 'justify-end' : 'justify-start')}>
+                      <span className={cn('text-[10px]', isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
                         {formatTime(msg.createdAt)}
                       </span>
                       {renderMessageStatus(msg.status, isOwn)}
@@ -771,9 +1234,8 @@ export function ChatPanel() {
           );
         })}
 
-        {/* Typing indicator */}
         {isTyping && (
-          <div className="flex justify-start msg-animate">
+          <div className="flex justify-start">
             <div className="bg-card border border-border rounded-2xl rounded-bl-md px-4 py-3">
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
@@ -797,14 +1259,6 @@ export function ChatPanel() {
     return (
       <div className="border-t border-border bg-card/80 backdrop-blur-sm px-4 py-3">
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="shrink-0 h-9 w-9 text-muted-foreground hover:text-foreground"
-          >
-            <Paperclip className="w-4 h-4" />
-          </Button>
-
           <div className="flex-1 relative">
             <Input
               ref={messageInputRef}
@@ -813,18 +1267,8 @@ export function ChatPanel() {
               onKeyDown={handleKeyPress}
               placeholder="Ketik pesan..."
               className="h-9 text-sm rounded-full border-border bg-background pr-2"
-              disabled={!activeConsultation}
             />
           </div>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="shrink-0 h-9 w-9 text-muted-foreground hover:text-foreground"
-          >
-            <Mic className="w-4 h-4" />
-          </Button>
-
           <Button
             size="icon"
             className="shrink-0 h-9 w-9 rounded-full"
@@ -842,24 +1286,218 @@ export function ChatPanel() {
     );
   };
 
-  // ── Render: Left Panel ─────────────────────────────────────────────────
+  // ── Render: E-Prescription Dialog (Doctor) ─────────────────────────────
 
-  const renderLeftPanel = () => (
-    <div
-      className={cn(
-        'flex flex-col border-r border-border bg-card h-full',
-        showChatArea ? 'hidden lg:flex' : 'flex'
-      )}
-    >
-      {/* Header */}
+  const renderPrescriptionDialog = () => (
+    <Dialog open={showPrescriptionDialog} onOpenChange={setShowPrescriptionDialog}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Stethoscope className="w-5 h-5 text-primary" />
+            Buat E-Resep
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {rxItems.length === 0 && (
+            <div className="text-center py-4 text-muted-foreground text-sm">
+              Belum ada obat ditambahkan. Klik tombol di bawah untuk menambahkan.
+            </div>
+          )}
+
+          {rxItems.map((item, index) => {
+            const selectedMed = DEMO_MEDICINES.find((m) => m.id === item.medicineId);
+            return (
+              <div key={index} className="border rounded-lg p-3 space-y-3 relative">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 h-6 w-6 text-muted-foreground hover:text-destructive"
+                  onClick={() => handleRemoveRxItem(index)}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium">Obat</Label>
+                  <Select
+                    value={item.medicineId}
+                    onValueChange={(val) => handleRxItemChange(index, 'medicineId', val)}
+                  >
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Pilih obat..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DEMO_MEDICINES.map((med) => (
+                        <SelectItem key={med.id} value={med.id}>
+                          {med.name} - {formatFee(med.price)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {selectedMed && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[10px]">Dosis</Label>
+                      <Input
+                        value={item.dosage}
+                        onChange={(e) => handleRxItemChange(index, 'dosage', e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px]">Frekuensi</Label>
+                      <Input
+                        value={item.frequency}
+                        onChange={(e) => handleRxItemChange(index, 'frequency', e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px]">Durasi</Label>
+                      <Input
+                        value={item.duration}
+                        onChange={(e) => handleRxItemChange(index, 'duration', e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px]">Jumlah</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={item.quantity}
+                        onChange={(e) => handleRxItemChange(index, 'quantity', parseInt(e.target.value) || 1)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full gap-1"
+            onClick={handleAddRxItem}
+          >
+            <Plus className="w-4 h-4" />
+            Tambah Obat
+          </Button>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowPrescriptionDialog(false)}>
+            Batal
+          </Button>
+          <Button
+            onClick={handleSendPrescription}
+            disabled={rxItems.length === 0 || rxItems.every((i) => !i.medicineId)}
+          >
+            Kirim E-Resep
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  // ── Render: Medical Record Dialog (Doctor) ─────────────────────────────
+
+  const renderMedicalRecordDialog = () => {
+    const existingMR = activeConsultation
+      ? medicalRecords.find((mr) => mr.consultationId === activeConsultation.id)
+      : null;
+
+    return (
+      <Dialog open={showMedicalRecordDialog} onOpenChange={setShowMedicalRecordDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              Rekam Medis
+              {existingMR?.rmNumber && (
+                <Badge variant="outline" className="text-xs font-mono">{existingMR.rmNumber}</Badge>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Diagnosis</Label>
+              <Textarea
+                value={mrDiagnosis}
+                onChange={(e) => setMrDiagnosis(e.target.value)}
+                placeholder="Masukkan diagnosis..."
+                className="min-h-[60px] text-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Gejala (Symptoms)</Label>
+              <Textarea
+                value={mrSymptoms}
+                onChange={(e) => setMrSymptoms(e.target.value)}
+                placeholder="Masukkan gejala..."
+                className="min-h-[60px] text-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Pengobatan (Treatment)</Label>
+              <Textarea
+                value={mrTreatment}
+                onChange={(e) => setMrTreatment(e.target.value)}
+                placeholder="Masukkan pengobatan..."
+                className="min-h-[60px] text-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Catatan (Notes)</Label>
+              <Textarea
+                value={mrNotes}
+                onChange={(e) => setMrNotes(e.target.value)}
+                placeholder="Catatan tambahan..."
+                className="min-h-[60px] text-sm"
+              />
+            </div>
+
+            {existingMR && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Status:</span>
+                <Badge variant={existingMR.status === 'selesai' ? 'default' : 'secondary'} className="text-[10px]">
+                  {existingMR.status === 'selesai' ? 'Selesai' : existingMR.status === 'draft' ? 'Draft' : 'Ditinjau'}
+                </Badge>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowMedicalRecordDialog(false)}>
+              Batal
+            </Button>
+            <Button onClick={handleSaveMedicalRecord}>
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
+  // ── Render: Left Panel (Patient - Doctor List) ─────────────────────────
+
+  const renderPatientLeftPanel = () => (
+    <div className={cn('flex flex-col border-r border-border bg-card h-full', showChatArea ? 'hidden lg:flex' : 'flex')}>
       <div className="px-4 py-3 border-b border-border">
         <h2 className="font-semibold text-foreground text-base">Chat Dokter</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Konsultasi dengan dokter pilihan Anda
-        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">Konsultasi dengan dokter pilihan Anda</p>
       </div>
 
-      {/* Search */}
       <div className="px-3 py-2">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -872,7 +1510,6 @@ export function ChatPanel() {
         </div>
       </div>
 
-      {/* Filter tabs */}
       <div className="px-3 pb-2">
         <div className="flex gap-1 overflow-x-auto custom-scrollbar pb-1">
           {FILTER_TABS.map((tab) => (
@@ -894,13 +1531,8 @@ export function ChatPanel() {
 
       <Separator />
 
-      {/* Doctor list */}
       <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
-        {isLoadingDoctors ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-5 h-5 animate-spin text-primary" />
-          </div>
-        ) : filteredDoctors.length === 0 ? (
+        {filteredDoctors.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-sm text-muted-foreground">Tidak ada dokter ditemukan</p>
           </div>
@@ -911,15 +1543,52 @@ export function ChatPanel() {
     </div>
   );
 
+  // ── Render: Left Panel (Doctor - Patient Consultation List) ────────────
+
+  const renderDoctorLeftPanel = () => (
+    <div className={cn('flex flex-col border-r border-border bg-card h-full', showChatArea ? 'hidden lg:flex' : 'flex')}>
+      <div className="px-4 py-3 border-b border-border">
+        <h2 className="font-semibold text-foreground text-base">Konsultasi Pasien</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">Daftar konsultasi aktif dan selesai</p>
+      </div>
+
+      <div className="px-3 py-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari pasien..."
+            className="h-8 text-xs pl-8 rounded-lg bg-background"
+          />
+        </div>
+      </div>
+
+      <Separator />
+
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
+        {doctorConsultations.length === 0 ? (
+          <div className="text-center py-8">
+            <MessageCircle className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">Belum ada konsultasi</p>
+          </div>
+        ) : (
+          doctorConsultations
+            .filter((c) => {
+              if (!searchQuery) return true;
+              const q = searchQuery.toLowerCase();
+              return c.patient?.name?.toLowerCase().includes(q);
+            })
+            .map((consultation) => renderPatientCard(consultation))
+        )}
+      </div>
+    </div>
+  );
+
   // ── Render: Right Panel ────────────────────────────────────────────────
 
   const renderRightPanel = () => (
-    <div
-      className={cn(
-        'flex flex-col h-full bg-background',
-        !showChatArea ? 'hidden lg:flex' : 'flex'
-      )}
-    >
+    <div className={cn('flex flex-col h-full bg-background', !showChatArea ? 'hidden lg:flex' : 'flex')}>
       {renderChatHeader()}
       {renderMessages()}
       {renderMessageInput()}
@@ -930,15 +1599,19 @@ export function ChatPanel() {
 
   return (
     <div className="h-[calc(100vh-8rem)] flex rounded-xl overflow-hidden border border-border shadow-sm">
-      {/* Left panel - Doctor/Conversation list */}
+      {/* Left panel */}
       <div className="w-full lg:w-80 xl:w-96 shrink-0">
-        {renderLeftPanel()}
+        {isDoctor ? renderDoctorLeftPanel() : renderPatientLeftPanel()}
       </div>
 
       {/* Right panel - Chat area */}
       <div className="flex-1">
         {renderRightPanel()}
       </div>
+
+      {/* Dialogs (Doctor View) */}
+      {isDoctor && renderPrescriptionDialog()}
+      {isDoctor && renderMedicalRecordDialog()}
     </div>
   );
 }

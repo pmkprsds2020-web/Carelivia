@@ -285,7 +285,7 @@ export function HomeDashboard() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="space-y-1">
               <h2 className="text-2xl md:text-3xl font-bold text-white">
-                {getGreeting()}, {currentUser?.name?.split(' ')[0] || 'Pasien'}!
+                {getGreeting()}, {currentUser?.name?.replace(/^(dr\.|drg\.)\s*/i, '').split(' ')[0] || 'Pasien'}!
               </h2>
               <p className="text-white/80 text-sm md:text-base">
                 Apa yang bisa kami bantu hari ini?
@@ -485,7 +485,7 @@ export function HomeDashboard() {
                         {doctor.name}
                       </p>
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                        {profile?.specialization || 'Umum'}
+                        {({ umum: 'Dokter Umum', anak: 'Dokter Anak', penyakit_dalam: 'Penyakit Dalam', kebidanan: 'Dokter Kebidanan', gigi: 'Dokter Gigi' } as Record<string, string>)[profile?.specialization || 'umum'] || profile?.specialization || 'Umum'}
                       </Badge>
                     </div>
                     {/* Rating */}

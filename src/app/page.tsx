@@ -60,13 +60,13 @@ export default function TelemedicineApp() {
       );
 
       if (dashData?.stats) setDashboardStats(dashData.stats);
-      if (dashData?.doctors) setDoctors(dashData.doctors);
-      if (dashData?.articles) setArticles(dashData.articles);
-      if (medData?.medicines) setMedicines(medData.medicines);
-      if (hcData?.services) setHomeCareServices(hcData.services);
-      if (notifData?.notifications) setNotifications(notifData.notifications);
-      if (consultData?.consultations) setConsultations(consultData.consultations);
-      if (hcBookings?.bookings) setHomeCareBookings(hcBookings.bookings);
+      if (dashData?.doctors && dashData.doctors.length > 0) setDoctors(dashData.doctors);
+      if (dashData?.articles && dashData.articles.length > 0) setArticles(dashData.articles);
+      if (medData?.medicines && medData.medicines.length > 0) setMedicines(medData.medicines);
+      if (hcData?.services && hcData.services.length > 0) setHomeCareServices(hcData.services);
+      if (notifData?.notifications && notifData.notifications.length > 0) setNotifications(notifData.notifications);
+      if (consultData?.consultations && consultData.consultations.length > 0) setConsultations(consultData.consultations);
+      if (hcBookings?.bookings && hcBookings.bookings.length > 0) setHomeCareBookings(hcBookings.bookings);
     } catch (error) {
       // Silently fail - components have their own demo data
       console.log('Background data load skipped:', error);
@@ -135,7 +135,7 @@ export default function TelemedicineApp() {
           <div className="flex-1">
             <h1 className="text-lg font-semibold text-foreground">
               {activePanel === 'home' && 'Dashboard'}
-              {activePanel === 'chat' && 'Chat Dokter'}
+              {activePanel === 'chat' && (currentUser?.role === 'doctor' ? 'Chat Pasien' : 'Chat Dokter')}
               {activePanel === 'video' && 'Video Call'}
               {activePanel === 'pharmacy' && 'Apotek Online'}
               {activePanel === 'homecare' && 'Home Care'}
@@ -154,7 +154,7 @@ export default function TelemedicineApp() {
           {currentUser && (
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm">
-                {currentUser.name.charAt(0)}
+                {currentUser.name.replace(/^(dr\.|drg\.)\s*/i, '').charAt(0)}
               </div>
               <span className="text-sm font-medium hidden sm:inline">{currentUser.name}</span>
             </div>

@@ -96,3 +96,32 @@ Stage Summary:
 - All 14 panels accessible via sidebar navigation
 - Real-time chat ready with Socket.IO on port 3003
 - Database seeded with comprehensive demo data
+
+---
+Task ID: 6
+Agent: Main Agent
+Task: Restore all previously working features that were accidentally lost
+
+Work Log:
+- Identified that store.ts was completely stripped of demo data and critical actions
+- Identified that medical-records.tsx was overwritten (lost DoctorMedicalRecordsView)
+- Identified that chat-panel.tsx was overwritten (lost e-resep, rekam medis dialog, doctor view)
+- Restored store.ts with all demo data: 5 doctors, 12 medicines, 5 home care services, 3 notifications
+- Restored all critical store actions: updateConsultation, addMedicalRecord, updateMedicalRecord, addPrescription, updatePrescriptionStatus
+- Restored activePanel default to 'home'
+- Added MedicalRecordStatus type and rmNumber/status fields to types.ts
+- Added price field to PrescriptionItem in types.ts
+- Fixed page.tsx API data loading to not overwrite store demo data with empty API arrays
+- Restored complete medical-records.tsx with DoctorMedicalRecordsView (3 tabs: Daftar Rekam Medis, Timeline Pasien, Resep Obat) and PatientMedicalRecordsView
+- Restored complete chat-panel.tsx with patient view (doctor list, auto-reply, e-prescription) and doctor view (patient list, e-resep dialog, rekam medis dialog)
+- Fixed dashboard specialization labels showing raw keys (umum → Dokter Umum, etc.)
+- Fixed doctor greeting showing "dr." instead of first name
+- Fixed header title showing "Chat Pasien" for doctor role
+- Fixed avatar initial stripping "dr./drg." prefix in both page.tsx and sidebar.tsx
+
+Stage Summary:
+- All major features restored: dashboard with doctors, chat with e-resep, medical records with doctor/patient views
+- Store fully populated with demo data and all CRUD actions
+- Role-based views work correctly for both doctor and patient accounts
+- No React duplicate key errors
+- Minor UI fixes applied (specialization labels, greeting, avatar initials)
