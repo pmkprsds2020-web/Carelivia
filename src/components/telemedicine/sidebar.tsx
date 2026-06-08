@@ -22,6 +22,7 @@ import {
   LogOut,
   Users,
   Activity,
+  ClipboardCheck,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -46,6 +47,7 @@ const allNavItems: NavItem[] = [
   { id: 'pharmacy', label: 'Apotek Online', icon: <Pill className="w-5 h-5" />, roles: ['patient'] },
   { id: 'homecare', label: 'Home Care', icon: <Heart className="w-5 h-5" />, roles: ['patient'] },
   { id: 'medical-records', label: 'Rekam Medis', icon: <FileText className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
+  { id: 'screening', label: 'Skrining Kesehatan', icon: <ClipboardCheck className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
   { id: 'payments', label: 'Pembayaran', icon: <CreditCard className="w-5 h-5" />, roles: ['patient'], section: 'Lainnya' },
   { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['patient'] },
   { id: 'profile', label: 'Profil', icon: <User className="w-5 h-5" />, roles: ['patient'] },
@@ -55,6 +57,7 @@ const allNavItems: NavItem[] = [
   { id: 'chat', label: 'Chat Pasien', icon: <MessageCircle className="w-5 h-5" />, roles: ['doctor'], section: 'Layanan' },
   { id: 'video', label: 'Video Call', icon: <Video className="w-5 h-5" />, roles: ['doctor'] },
   { id: 'medical-records', label: 'Rekam Medis', icon: <FileText className="w-5 h-5" />, roles: ['doctor'], section: 'Kesehatan' },
+  { id: 'screening', label: 'Skrining Pasien', icon: <ClipboardCheck className="w-5 h-5" />, roles: ['doctor'], section: 'Kesehatan' },
   { id: 'payments', label: 'Pendapatan', icon: <CreditCard className="w-5 h-5" />, roles: ['doctor'], section: 'Lainnya' },
   { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['doctor'] },
   { id: 'profile', label: 'Profil', icon: <User className="w-5 h-5" />, roles: ['doctor'] },
@@ -66,7 +69,7 @@ const allNavItems: NavItem[] = [
   { id: 'homecare', label: 'Home Care', icon: <Heart className="w-5 h-5" />, roles: ['admin'] },
   { id: 'pharmacist-panel', label: 'Kelola Apotek', icon: <Package className="w-5 h-5" />, roles: ['admin'] },
   { id: 'homecare-staff-panel', label: 'Kelola Petugas', icon: <Truck className="w-5 h-5" />, roles: ['admin'] },
-  { id: 'users', label: 'Kelola Pengguna', icon: <Users className="w-5 h-5" />, roles: ['admin'] },
+  { id: 'admin', label: 'Kelola Pengguna', icon: <Users className="w-5 h-5" />, roles: ['admin'] },
   { id: 'reports', label: 'Laporan', icon: <BarChart3 className="w-5 h-5" />, roles: ['admin'], section: 'Lainnya' },
   { id: 'payments', label: 'Pembayaran', icon: <CreditCard className="w-5 h-5" />, roles: ['admin'] },
   { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['admin'] },

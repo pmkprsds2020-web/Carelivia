@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useStore } from '@/lib/store';
-import type { User, Consultation, Message, DoctorProfile, Prescription, PrescriptionItem, MedicalRecord, MedicalRecordStatus } from '@/lib/types';
+import type { User, Consultation, Message, DoctorProfile, Prescription, PrescriptionItem, MedicalRecord, MedicalRecordStatus, ScreeningForm, ScreeningCategory } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  SCREENING_TEMPLATES,
+  SCREENING_CATEGORY_LABELS,
+  SCREENING_CATEGORY_ICONS,
+  getTemplateById,
+  calculateScreeningScore,
+  calculateProgress,
+} from '@/lib/screening-templates';
 import {
   Send,
   ArrowLeft,
@@ -44,6 +53,8 @@ import {
   Stethoscope,
   Eye,
   Download,
+  ClipboardCheck,
+  AlertTriangle,
 } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -221,6 +232,11 @@ export function ChatPanel() {
     setActivePanel,
     setPayments,
     setPendingPrescriptionCheckout,
+    screeningForms,
+    addScreeningForm,
+    updateScreeningForm,
+    addAuditLog,
+    addClinicalAlert,
   } = useStore();
 
   const { toast } = useToast();
@@ -237,6 +253,12 @@ export function ChatPanel() {
   // Doctor dialog state
   const [showPrescriptionDialog, setShowPrescriptionDialog] = useState(false);
   const [showMedicalRecordDialog, setShowMedicalRecordDialog] = useState(false);
+
+  // Screening dialog state
+  const [showScreeningDialog, setShowScreeningDialog] = useState(false);
+  const [selectedScreeningTemplates, setSelectedScreeningTemplates] = useState<string[]>([]);
+  const [screeningInstructions, setScreeningInstructions] = useState('');
+  const [screeningDeadline, setScreeningDeadline] = useState('');
 
   // Prescription form state
   const [rxItems, setRxItems] = useState<Array<{
@@ -776,6 +798,90 @@ export function ChatPanel() {
     setActivePanel('pharmacy');
   };
 
+  // ── Screening Flow ───────────────────────────────────────────────────────
+
+  const handleOpenScreeningDialog = () => {
+    setSelectedScreeningTemplates([]);
+    setScreeningInstructions('');
+    setScreeningDeadline('');
+    setShowScreeningDialog(true);
+  };
+
+  const handleToggleScreeningTemplate = (templateId: string) => {
+    setSelectedScreeningTemplates((prev) =>
+      prev.includes(templateId)
+        ? prev.filter((id) => id !== templateId)
+        : [...prev, templateId]
+    );
+  };
+
+  const handleSendScreening = () => {
+    if (!activeConsultation || !currentUser || selectedScreeningTemplates.length === 0) return;
+
+    selectedScreeningTemplates.forEach((templateId) => {
+      const template = getTemplateById(templateId);
+      if (!template) return;
+
+      const formId = generateId();
+      const screeningForm: ScreeningForm = {
+        id: formId,
+        templateId,
+        consultationId: activeConsultation.id,
+        doctorId: currentUser.id,
+        patientId: activeConsultation.patientId,
+        status: 'sent',
+        instructions: screeningInstructions || undefined,
+        deadline: screeningDeadline || undefined,
+        answers: {},
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      addScreeningForm(screeningForm);
+
+      // Send screening message in chat
+      const screeningMessage: Message = {
+        id: generateId(),
+        consultationId: activeConsultation.id,
+        senderId: currentUser.id,
+        content: `__SCREENING__${formId}__`,
+        type: 'text',
+        status: 'delivered',
+        createdAt: new Date().toISOString(),
+      };
+      addMessage(screeningMessage);
+      updateConsultation(activeConsultation.id, {
+        messages: [...(activeConsultation.messages || []), screeningMessage],
+        updatedAt: new Date().toISOString(),
+      });
+
+      addAuditLog({
+        id: generateId(),
+        screeningId: formId,
+        action: 'sent',
+        performedBy: currentUser.id,
+        timestamp: new Date().toISOString(),
+        details: `Template: ${template.name}`,
+      });
+    });
+
+    // System message
+    const sysMessage: Message = {
+      id: generateId(),
+      consultationId: activeConsultation.id,
+      senderId: 'system',
+      content: 'Formulir skrining kesehatan telah dikirim ke pasien.',
+      type: 'text',
+      status: 'read',
+      createdAt: new Date().toISOString(),
+    };
+    addMessage(sysMessage);
+
+    setShowScreeningDialog(false);
+    setSelectedScreeningTemplates([]);
+    toast({ title: 'Berhasil', description: 'Form skrining berhasil dikirim ke pasien.' });
+  };
+
   // ── Handle typing ──────────────────────────────────────────────────────
 
   const handleTyping = (value: string) => {
@@ -948,6 +1054,107 @@ export function ChatPanel() {
     );
   };
 
+  // ── Render Screening Card ──────────────────────────────────────────────
+
+  const renderScreeningCard = (formId: string) => {
+    const form = screeningForms.find((f) => f.id === formId);
+    if (!form) return null;
+
+    const template = getTemplateById(form.templateId);
+    if (!template) return null;
+
+    const isCompleted = form.status === 'completed' || form.status === 'reviewed';
+    const isPending = form.status === 'sent' || form.status === 'opened' || form.status === 'in_progress' || form.status === 'draft';
+    const riskColor = form.riskCategory === 'tinggi' ? 'text-red-600 bg-red-50 border-red-200' :
+                      form.riskCategory === 'sedang' ? 'text-amber-600 bg-amber-50 border-amber-200' :
+                      form.riskCategory === 'rendah' ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : '';
+
+    return (
+      <div className="border-2 border-teal-500 rounded-xl overflow-hidden bg-card max-w-sm my-2">
+        {/* Header */}
+        <div className="bg-teal-500/10 px-4 py-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ClipboardCheck className="w-4 h-4 text-teal-600" />
+            <span className="font-semibold text-sm text-teal-700">Form Skrining Kesehatan</span>
+          </div>
+          <Badge className={cn('text-[10px]', isCompleted ? 'bg-emerald-600' : 'bg-amber-500')}>
+            {isCompleted ? 'Selesai' : 'Menunggu Diisi'}
+          </Badge>
+        </div>
+
+        {/* Content */}
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{SCREENING_CATEGORY_ICONS[template.category]}</span>
+            <div>
+              <p className="font-medium text-sm text-foreground">{template.name}</p>
+              <p className="text-xs text-muted-foreground">Standar: {template.standard}</p>
+            </div>
+          </div>
+
+          {form.instructions && (
+            <p className="text-xs text-primary mt-2 bg-primary/5 p-2 rounded">📋 {form.instructions}</p>
+          )}
+
+          {/* Completed result */}
+          {isCompleted && form.score !== undefined && (
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Skor Risiko</span>
+                <span className="text-lg font-bold text-foreground">{form.score}</span>
+              </div>
+              {form.riskCategory && (
+                <div className={cn('text-xs font-medium px-2 py-1 rounded border', riskColor)}>
+                  {form.riskCategory === 'tinggi' && '🚨 '} 
+                  {form.riskCategory === 'sedang' && '⚠️ '}
+                  {form.riskCategory === 'rendah' && '✅ '}
+                  Risiko {form.riskCategory === 'tinggi' ? 'Tinggi' : form.riskCategory === 'sedang' ? 'Sedang' : 'Rendah'}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Patient Actions */}
+        {isPatient && isPending && (
+          <div className="px-4 pb-3">
+            <Button
+              size="sm"
+              className="w-full h-8 text-xs bg-teal-600 hover:bg-teal-700"
+              onClick={() => setActivePanel('screening')}
+            >
+              <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
+              Isi Form Skrining
+            </Button>
+          </div>
+        )}
+
+        {/* Doctor view - completed summary */}
+        {isDoctor && isCompleted && form.score !== undefined && (
+          <div className="px-4 pb-3">
+            <div className="bg-muted/50 rounded-lg p-3 text-xs space-y-1">
+              <p className="font-semibold text-foreground">✅ Form Skrining Telah Diselesaikan</p>
+              <p className="text-muted-foreground">Jenis: {template.name}</p>
+              <p className="text-muted-foreground">Skor: {form.score} — Risiko: {form.riskCategory === 'tinggi' ? 'Tinggi' : form.riskCategory === 'sedang' ? 'Sedang' : 'Rendah'}</p>
+              {form.recommendations && form.recommendations.length > 0 && (
+                <p className="text-muted-foreground">Rekomendasi: {form.recommendations[0]}...</p>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full h-8 text-xs mt-2"
+              onClick={() => setActivePanel('screening')}
+            >
+              <Eye className="w-3.5 h-3.5 mr-1" />
+              Lihat Detail
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ── Render message status icon ─────────────────────────────────────────
 
   const renderMessageStatus = (status: string, isOwn: boolean) => {
@@ -1024,7 +1231,7 @@ export function ChatPanel() {
 
             {existingConsultation ? (
               <p className="text-xs text-muted-foreground mt-1 truncate">
-                {lastMessage?.content?.startsWith('__PRESCRIPTION__') ? '📎 E-Resep Dokter' : lastMessage?.content || 'Belum ada pesan'}
+                {lastMessage?.content?.startsWith('__PRESCRIPTION__') ? '📎 E-Resep Dokter' : lastMessage?.content?.startsWith('__SCREENING__') ? '📋 Form Skrining' : lastMessage?.content || 'Belum ada pesan'}
               </p>
             ) : (
               <Button
@@ -1089,7 +1296,7 @@ export function ChatPanel() {
             </div>
             {lastMessage && (
               <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                {lastMessage.content?.startsWith('__PRESCRIPTION__') ? '📎 E-Resep' : lastMessage.content}
+                {lastMessage.content?.startsWith('__PRESCRIPTION__') ? '📎 E-Resep' : lastMessage.content?.startsWith('__SCREENING__') ? '📋 Skrining' : lastMessage.content}
               </p>
             )}
             <span className="text-[10px] text-muted-foreground">
@@ -1166,6 +1373,14 @@ export function ChatPanel() {
         {isDoctor && activeConsultation && (
           <div className="flex items-center gap-1">
             <Button
+              size="sm"
+              className="h-8 text-xs gap-1 bg-teal-600 hover:bg-teal-700"
+              onClick={handleOpenScreeningDialog}
+            >
+              <ClipboardCheck className="w-3.5 h-3.5" />
+              Kirim Form Skrining
+            </Button>
+            <Button
               variant="outline"
               size="sm"
               className="h-8 text-xs gap-1"
@@ -1223,6 +1438,10 @@ export function ChatPanel() {
           const prescriptionMatch = msg.content?.match(/^__PRESCRIPTION__(.+)__$/);
           const isPrescriptionMsg = !!prescriptionMatch;
 
+          // Check if this is a screening message
+          const screeningMatch = msg.content?.match(/^__SCREENING__(.+)__$/);
+          const isScreeningMsg = !!screeningMatch;
+
           return (
             <div key={msg.id}>
               {showDateSeparator && (
@@ -1238,6 +1457,10 @@ export function ChatPanel() {
                   <span className="text-[11px] text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-lg text-center max-w-[85%]">
                     {msg.content}
                   </span>
+                </div>
+              ) : isScreeningMsg && screeningMatch ? (
+                <div className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}>
+                  {renderScreeningCard(screeningMatch[1])}
                 </div>
               ) : isPrescriptionMsg && prescriptionMatch ? (
                 <div className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}>
@@ -1522,6 +1745,115 @@ export function ChatPanel() {
     );
   };
 
+  // ── Screening Dialog (Doctor View) ──────────────────────────────────────
+
+  const renderScreeningDialogUI = () => (
+    <Dialog open={showScreeningDialog} onOpenChange={setShowScreeningDialog}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ClipboardCheck className="w-5 h-5 text-teal-600" />
+            Kirim Form Skrining Kesehatan
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Pilih formulir skrining berdasarkan siklus hidup pasien. Anda dapat memilih lebih dari satu formulir.
+          </p>
+
+          {/* Category Grouped Templates */}
+          {Object.entries(SCREENING_CATEGORY_LABELS).map(([catKey, catLabel]) => {
+            const categoryTemplates = SCREENING_TEMPLATES.filter((t) => t.category === catKey);
+            if (categoryTemplates.length === 0) return null;
+            return (
+              <div key={catKey}>
+                <h4 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                  <span>{SCREENING_CATEGORY_ICONS[catKey as ScreeningCategory]}</span>
+                  {catLabel}
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {categoryTemplates.map((template) => {
+                    const isSelected = selectedScreeningTemplates.includes(template.id);
+                    return (
+                      <button
+                        key={template.id}
+                        onClick={() => handleToggleScreeningTemplate(template.id)}
+                        className={cn(
+                          'p-3 rounded-lg border text-left transition-all',
+                          isSelected
+                            ? 'border-teal-500 bg-teal-50 ring-1 ring-teal-500'
+                            : 'border-border hover:border-teal-300 hover:bg-teal-50/50'
+                        )}
+                      >
+                        <div className="flex items-start gap-2">
+                          <div className={cn(
+                            'w-4 h-4 rounded border mt-0.5 flex items-center justify-center shrink-0',
+                            isSelected ? 'bg-teal-500 border-teal-500' : 'border-muted-foreground'
+                          )}>
+                            {isSelected && <Check className="w-3 h-3 text-white" />}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{template.name}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{template.description}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="secondary" className="text-[10px]">
+                                {template.standard}
+                              </Badge>
+                              <span className="text-[10px] text-muted-foreground">
+                                ~{template.estimatedMinutes} menit
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Instructions */}
+          <div>
+            <Label className="text-sm font-medium">Instruksi Khusus (Opsional)</Label>
+            <Textarea
+              className="mt-1"
+              placeholder="Tambahkan instruksi untuk pasien..."
+              value={screeningInstructions}
+              onChange={(e) => setScreeningInstructions(e.target.value)}
+            />
+          </div>
+
+          {/* Deadline */}
+          <div>
+            <Label className="text-sm font-medium">Batas Waktu Pengisian (Opsional)</Label>
+            <Input
+              type="datetime-local"
+              className="mt-1"
+              value={screeningDeadline}
+              onChange={(e) => setScreeningDeadline(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowScreeningDialog(false)}>
+            Batal
+          </Button>
+          <Button
+            className="bg-teal-600 hover:bg-teal-700"
+            onClick={handleSendScreening}
+            disabled={selectedScreeningTemplates.length === 0}
+          >
+            <Send className="w-4 h-4 mr-1" />
+            Kirim ({selectedScreeningTemplates.length})
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   // ── Render: Left Panel (Patient - Doctor List) ─────────────────────────
 
   const renderPatientLeftPanel = () => (
@@ -1645,6 +1977,7 @@ export function ChatPanel() {
       {/* Dialogs (Doctor View) */}
       {isDoctor && renderPrescriptionDialog()}
       {isDoctor && renderMedicalRecordDialog()}
+      {isDoctor && renderScreeningDialogUI()}
     </div>
   );
 }

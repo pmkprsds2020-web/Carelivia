@@ -3,7 +3,8 @@ import type {
   User, Consultation, Message, Medicine, CartItem, 
   HomeCareService, HomeCareBooking, Notification, Article,
   ActivePanel, DashboardStats, MedicalRecord, Payment,
-  MedicineCategory, Prescription, MedicalRecordStatus
+  MedicineCategory, Prescription, MedicalRecordStatus,
+  ScreeningForm, ScreeningAuditLog
 } from './types';
 
 interface TelemedicineStore {
@@ -89,6 +90,16 @@ interface TelemedicineStore {
   // Prescription Checkout
   pendingPrescriptionCheckout: Prescription | null;
   setPendingPrescriptionCheckout: (prescription: Prescription | null) => void;
+
+  // Screening
+  screeningForms: ScreeningForm[];
+  setScreeningForms: (forms: ScreeningForm[]) => void;
+  addScreeningForm: (form: ScreeningForm) => void;
+  updateScreeningForm: (formId: string, data: Partial<ScreeningForm>) => void;
+  screeningAuditLog: ScreeningAuditLog[];
+  addAuditLog: (log: ScreeningAuditLog) => void;
+  clinicalAlerts: Notification[];
+  addClinicalAlert: (alert: Notification) => void;
 }
 
 export const useStore = create<TelemedicineStore>((set) => ({
@@ -338,4 +349,18 @@ export const useStore = create<TelemedicineStore>((set) => ({
   // Prescription Checkout
   pendingPrescriptionCheckout: null,
   setPendingPrescriptionCheckout: (prescription) => set({ pendingPrescriptionCheckout: prescription }),
+
+  // Screening
+  screeningForms: [],
+  setScreeningForms: (forms) => set({ screeningForms: forms }),
+  addScreeningForm: (form) => set((state) => ({ screeningForms: [...state.screeningForms, form] })),
+  updateScreeningForm: (formId, data) => set((state) => ({
+    screeningForms: state.screeningForms.map((f) =>
+      f.id === formId ? { ...f, ...data, updatedAt: new Date().toISOString() } : f
+    ),
+  })),
+  screeningAuditLog: [],
+  addAuditLog: (log) => set((state) => ({ screeningAuditLog: [...state.screeningAuditLog, log] })),
+  clinicalAlerts: [],
+  addClinicalAlert: (alert) => set((state) => ({ clinicalAlerts: [...state.clinicalAlerts, alert] })),
 }));

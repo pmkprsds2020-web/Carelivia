@@ -15,7 +15,7 @@ export type HomeCareBookingStatus = 'pending' | 'confirmed' | 'in_progress' | 'o
 
 export type MedicineCategory = 'resep' | 'bebas' | 'vitamin' | 'alat_kesehatan';
 
-export type NotificationType = 'consultation' | 'chat' | 'homecare' | 'pharmacy' | 'payment' | 'reminder';
+export type NotificationType = 'consultation' | 'chat' | 'homecare' | 'pharmacy' | 'payment' | 'reminder' | 'screening' | 'clinical_alert';
 
 export interface User {
   id: string;
@@ -270,6 +270,73 @@ export interface DashboardStats {
   topDoctors: { doctorId: string; name: string; count: number }[];
 }
 
+// ── Screening Types ─────────────────────────────────────────────────────────
+
+export type ScreeningCategory = 
+  | 'bayi' | 'balita' | 'anak_sekolah' | 'remaja' | 'dewasa' | 'lansia'
+  | 'ibu_hamil' | 'nifas' | 'penyakit_kronis' | 'kesehatan_jiwa'
+  | 'haji_umroh' | 'gaya_hidup' | 'ptm';
+
+export type ScreeningStatus = 'sent' | 'opened' | 'in_progress' | 'draft' | 'completed' | 'reviewed';
+
+export type RiskCategory = 'rendah' | 'sedang' | 'tinggi';
+
+export interface ScreeningQuestion {
+  id: string;
+  text: string;
+  type: 'radio' | 'checkbox' | 'number' | 'text' | 'scale';
+  options?: { label: string; value: string | number; score: number }[];
+  required: boolean;
+  section?: string;
+  min?: number;
+  max?: number;
+  placeholder?: string;
+}
+
+export interface ScreeningTemplate {
+  id: string;
+  name: string;
+  category: ScreeningCategory;
+  standard: string; // e.g. 'FINDRISC', 'PHQ-9', 'Framingham'
+  description: string;
+  estimatedMinutes: number;
+  questions: ScreeningQuestion[];
+  scoringAlgorithm: {
+    type: 'sum' | 'weighted' | 'custom';
+    ranges: { min: number; max: number; category: RiskCategory; label: string; recommendations: string[] }[];
+  };
+}
+
+export interface ScreeningForm {
+  id: string;
+  templateId: string;
+  consultationId: string;
+  doctorId: string;
+  patientId: string;
+  status: ScreeningStatus;
+  instructions?: string;
+  deadline?: string;
+  answers: Record<string, string | number | string[]>;
+  score?: number;
+  riskCategory?: RiskCategory;
+  recommendations?: string[];
+  doctorNotes?: string;
+  followUp?: string;
+  completedAt?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScreeningAuditLog {
+  id: string;
+  screeningId: string;
+  action: 'sent' | 'opened' | 'in_progress' | 'draft_saved' | 'completed' | 'reviewed' | 'commented';
+  performedBy: string;
+  timestamp: string;
+  details?: string;
+}
+
 export interface CartItem {
   medicine: Medicine;
   quantity: number;
@@ -290,4 +357,5 @@ export type ActivePanel =
   | 'notifications'
   | 'payments'
   | 'reports'
-  | 'profile';
+  | 'profile'
+  | 'screening';

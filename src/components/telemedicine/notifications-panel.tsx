@@ -16,6 +16,8 @@ import {
   CheckCheck,
   Stethoscope,
   Clock,
+  ClipboardCheck,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -64,6 +66,16 @@ const typeConfig: Record<NotificationType, { icon: React.ReactNode; bgColor: str
     icon: <Clock className="w-5 h-5" />,
     bgColor: 'bg-orange-100 dark:bg-orange-950/50',
     iconColor: 'text-orange-600 dark:text-orange-400',
+  },
+  screening: {
+    icon: <ClipboardCheck className="w-5 h-5" />,
+    bgColor: 'bg-teal-100 dark:bg-teal-950/50',
+    iconColor: 'text-teal-600 dark:text-teal-400',
+  },
+  clinical_alert: {
+    icon: <AlertTriangle className="w-5 h-5" />,
+    bgColor: 'bg-red-100 dark:bg-red-950/50',
+    iconColor: 'text-red-600 dark:text-red-400',
   },
 };
 

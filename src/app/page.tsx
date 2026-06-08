@@ -19,6 +19,7 @@ import { ProfilePanel } from '@/components/telemedicine/profile-panel';
 import { PharmacistPanel } from '@/components/telemedicine/pharmacist-panel';
 import { HomeCareStaffPanel } from '@/components/telemedicine/homecare-staff-panel';
 import { LoginPage } from '@/components/telemedicine/login-page';
+import { ScreeningPanel } from '@/components/telemedicine/screening-panel';
 import { Button } from '@/components/ui/button';
 import { Menu, X } from 'lucide-react';
 
@@ -90,6 +91,7 @@ export default function TelemedicineApp() {
       case 'pharmacy': return <PharmacyPanel />;
       case 'homecare': return <HomeCarePanel />;
       case 'medical-records': return <MedicalRecordsPanel />;
+      case 'screening': return <ScreeningPanel />;
       case 'doctor-panel': return <DoctorPanel />;
       case 'pharmacist-panel': return <PharmacistPanel />;
       case 'homecare-staff-panel': return <HomeCareStaffPanel />;
@@ -140,6 +142,7 @@ export default function TelemedicineApp() {
               {activePanel === 'pharmacy' && 'Apotek Online'}
               {activePanel === 'homecare' && 'Home Care'}
               {activePanel === 'medical-records' && 'Rekam Medis'}
+              {activePanel === 'screening' && (currentUser?.role === 'doctor' ? 'Skrining Pasien' : 'Skrining Kesehatan')}
               {activePanel === 'doctor-panel' && 'Panel Dokter'}
               {activePanel === 'pharmacist-panel' && 'Panel Apotek'}
               {activePanel === 'homecare-staff-panel' && 'Panel Petugas'}

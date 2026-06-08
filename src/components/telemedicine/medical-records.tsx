@@ -10,6 +10,8 @@ import type {
   Consultation,
   Payment,
   PaymentMethod,
+  ScreeningForm,
+  RiskCategory,
 } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -75,8 +77,14 @@ import {
   Smartphone,
   Wallet,
   Stamp,
+  ClipboardCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  SCREENING_CATEGORY_LABELS,
+  SCREENING_CATEGORY_ICONS,
+  getTemplateById,
+} from '@/lib/screening-templates';
 
 // ---------------------------------------------------------------------------
 // Constants & Helpers
@@ -2126,11 +2134,16 @@ function PatientMedicalRecordsView() {
         {/* Main Content */}
         <div className="lg:col-span-3">
           <Tabs defaultValue="consultations" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 mb-4">
+            <TabsList className="grid w-full grid-cols-4 mb-4">
               <TabsTrigger value="consultations" className="flex items-center gap-1.5">
                 <FileText className="w-4 h-4" />
                 <span className="hidden sm:inline">Riwayat Konsultasi</span>
                 <span className="sm:hidden">Konsultasi</span>
+              </TabsTrigger>
+              <TabsTrigger value="screening" className="flex items-center gap-1.5">
+                <ClipboardCheck className="w-4 h-4" />
+                <span className="hidden sm:inline">Skrining Kesehatan</span>
+                <span className="sm:hidden">Skrining</span>
               </TabsTrigger>
               <TabsTrigger value="lab" className="flex items-center gap-1.5">
                 <FlaskConical className="w-4 h-4" />
@@ -2248,7 +2261,12 @@ function PatientMedicalRecordsView() {
               )}
             </TabsContent>
 
-            {/* Tab 2: Hasil Lab */}
+            {/* Tab 2: Skrining Kesehatan */}
+            <TabsContent value="screening" className="space-y-3 mt-0">
+              <PatientScreeningTimeline />
+            </TabsContent>
+
+            {/* Tab 3: Hasil Lab */}
             <TabsContent value="lab" className="space-y-3 mt-0">
               {demoLabResults.map((lab) => (
                 <Card key={lab.id} className="border-0 hover:shadow-sm transition-shadow">
@@ -2583,6 +2601,116 @@ function PatientMedicalRecordsView() {
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PatientScreeningTimeline — Screening history in medical records
+// ---------------------------------------------------------------------------
+
+function PatientScreeningTimeline() {
+  const { screeningForms, currentUser } = useStore();
+  
+  const patientScreenings = useMemo(() => {
+    if (!currentUser) return [];
+    return screeningForms
+      .filter((f: ScreeningForm) => f.patientId === currentUser.id && (f.status === 'completed' || f.status === 'reviewed'))
+      .sort((a: ScreeningForm, b: ScreeningForm) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime());
+  }, [screeningForms, currentUser]);
+
+  const riskColors: Record<RiskCategory, { bg: string; text: string; border: string }> = {
+    rendah: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+    sedang: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+    tinggi: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+  };
+
+  if (patientScreenings.length === 0) {
+    return (
+      <Card className="border-0">
+        <CardContent className="p-8 text-center">
+          <ClipboardCheck className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">Belum ada riwayat skrining kesehatan</p>
+          <p className="text-xs text-muted-foreground mt-1">Hasil skrining akan muncul di sini setelah Anda mengisi form yang dikirim dokter</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="max-h-[calc(100vh-320px)] overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+      {patientScreenings.map((form: ScreeningForm) => {
+        const template = getTemplateById(form.templateId);
+        if (!template) return null;
+        const riskColor = form.riskCategory ? riskColors[form.riskCategory] : null;
+        const dateStr = form.completedAt || form.createdAt;
+        return (
+          <Card key={form.id} className="border-0 hover:shadow-sm transition-shadow">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-teal-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-lg">{SCREENING_CATEGORY_ICONS[template.category]}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="font-semibold text-sm text-foreground">{template.name}</h4>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {form.riskCategory && riskColor && (
+                        <Badge className={cn('text-[10px]', riskColor.bg, riskColor.text, riskColor.border, 'border')}>
+                          {form.riskCategory === 'tinggi' ? 'Risiko Tinggi' : form.riskCategory === 'sedang' ? 'Risiko Sedang' : 'Risiko Rendah'}
+                        </Badge>
+                      )}
+                      {form.score !== undefined && (
+                        <Badge variant="secondary" className="text-[10px]">Skor: {form.score}</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs text-muted-foreground">Standar: {template.standard}</span>
+                    <span className="text-xs text-muted-foreground">•</span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </span>
+                  </div>
+                  
+                  {/* Risk & Recommendations */}
+                  {form.recommendations && form.recommendations.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-xs font-medium text-foreground">Rekomendasi:</p>
+                      <ul className="mt-1 space-y-0.5">
+                        {form.recommendations.slice(0, 3).map((rec: string, idx: number) => (
+                          <li key={idx} className="text-xs text-muted-foreground flex items-start gap-1">
+                            <ChevronRight className="w-3 h-3 text-primary shrink-0 mt-0.5" />
+                            {rec}
+                          </li>
+                        ))}
+                        {form.recommendations.length > 3 && (
+                          <li className="text-xs text-muted-foreground">+{form.recommendations.length - 3} lainnya</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Doctor Notes */}
+                  {form.doctorNotes && (
+                    <div className="mt-2 bg-primary/5 rounded-lg p-2">
+                      <p className="text-xs font-medium text-primary">Catatan Dokter:</p>
+                      <p className="text-xs text-foreground mt-0.5">{form.doctorNotes}</p>
+                    </div>
+                  )}
+                  
+                  {/* Follow Up */}
+                  {form.followUp && (
+                    <div className="mt-1">
+                      <p className="text-xs font-medium text-foreground">Tindak Lanjut: {form.followUp}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }
