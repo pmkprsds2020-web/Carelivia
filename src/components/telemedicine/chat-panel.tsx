@@ -218,6 +218,7 @@ export function ChatPanel() {
     addToCart,
     setActivePanel,
     setPayments,
+    setPendingPrescriptionCheckout,
   } = useStore();
 
   const { toast } = useToast();
@@ -752,26 +753,8 @@ export function ChatPanel() {
   const handlePayPrescription = (prescription: Prescription) => {
     if (!currentUser) return;
 
-    const totalAmount = (prescription.items || []).reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
-    const paymentId = generateId();
-    const payment = {
-      id: paymentId,
-      userId: currentUser.id,
-      amount: totalAmount,
-      method: 'qris' as const,
-      status: 'success' as const,
-      type: 'prescription',
-      referenceId: prescription.id,
-      invoiceNumber: `INV-${Date.now()}`,
-      paidAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    setPayments([payment, ...(useStore.getState().payments || [])]);
-    updatePrescriptionStatus(prescription.id, 'paid');
-
-    toast({ title: 'Pembayaran Berhasil', description: `Pembayaran ${formatFee(totalAmount)} berhasil.` });
+    // Set the pending prescription checkout in store and navigate to payments
+    setPendingPrescriptionCheckout(prescription);
     setActivePanel('payments');
   };
 

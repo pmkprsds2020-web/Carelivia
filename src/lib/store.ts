@@ -85,6 +85,10 @@ interface TelemedicineStore {
   setIsLoading: (loading: boolean) => void;
   selectedChatDoctor: User | null;
   setSelectedChatDoctor: (doctor: User | null) => void;
+
+  // Prescription Checkout
+  pendingPrescriptionCheckout: Prescription | null;
+  setPendingPrescriptionCheckout: (prescription: Prescription | null) => void;
 }
 
 export const useStore = create<TelemedicineStore>((set) => ({
@@ -330,4 +334,8 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setIsLoading: (loading) => set({ isLoading: loading }),
   selectedChatDoctor: null,
   setSelectedChatDoctor: (doctor) => set({ selectedChatDoctor: doctor }),
+
+  // Prescription Checkout
+  pendingPrescriptionCheckout: null,
+  setPendingPrescriptionCheckout: (prescription) => set({ pendingPrescriptionCheckout: prescription }),
 }));

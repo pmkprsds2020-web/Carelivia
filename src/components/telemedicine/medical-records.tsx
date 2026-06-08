@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useStore } from '@/lib/store';
 import type {
   MedicalRecord,
@@ -64,6 +64,9 @@ import {
   CircleDot,
   Users,
   ListOrdered,
+  CreditCard,
+  ShoppingCart,
+  CheckCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -1630,8 +1633,8 @@ const demoPrescriptions = [
     date: '2025-01-10',
     doctor: 'dr. Andi Pratama',
     items: [
-      { name: 'Antasida', dosage: '3x sehari setelah makan', quantity: 30 },
-      { name: 'Omeprazole 20mg', dosage: '1x sehari sebelum sarapan', quantity: 14 },
+      { name: 'Antasida', dosage: '3x sehari setelah makan', quantity: 30, price: 22000 },
+      { name: 'Omeprazole 20mg', dosage: '1x sehari sebelum sarapan', quantity: 14, price: 35000 },
     ],
     status: 'active',
   },
@@ -1640,8 +1643,8 @@ const demoPrescriptions = [
     date: '2024-12-28',
     doctor: 'dr. Siti Rahayu',
     items: [
-      { name: 'Asam Folat 400mcg', dosage: '1x sehari', quantity: 30 },
-      { name: 'Vitamin B6', dosage: '1x sehari', quantity: 30 },
+      { name: 'Asam Folat 400mcg', dosage: '1x sehari', quantity: 30, price: 18000 },
+      { name: 'Vitamin B6', dosage: '1x sehari', quantity: 30, price: 25000 },
     ],
     status: 'completed',
   },
@@ -1650,7 +1653,7 @@ const demoPrescriptions = [
     date: '2024-12-15',
     doctor: 'dr. Budi Santoso',
     items: [
-      { name: 'Paracetamol Sirup 120mg/5ml', dosage: '3x sehari jika demam', quantity: 60 },
+      { name: 'Paracetamol Sirup 120mg/5ml', dosage: '3x sehari jika demam', quantity: 60, price: 15000 },
     ],
     status: 'completed',
   },
@@ -1659,7 +1662,7 @@ const demoPrescriptions = [
     date: '2024-11-20',
     doctor: 'dr. Andi Pratama',
     items: [
-      { name: 'Metformin 500mg', dosage: '2x sehari setelah makan', quantity: 60 },
+      { name: 'Metformin 500mg', dosage: '2x sehari setelah makan', quantity: 60, price: 22000 },
     ],
     status: 'active',
   },
@@ -1690,6 +1693,8 @@ interface PatientPrescriptionRecord {
   items: { name: string; dosage: string; quantity: number; frequency?: string; duration?: string; instructions?: string; price?: number }[];
   status: string;
   notes?: string;
+  // Reference to original store Prescription (for payment flow)
+  storePrescriptionId?: string;
 }
 
 // Build patient consultation records: merge demo + store medicalRecords + store consultations
@@ -1830,8 +1835,9 @@ function buildPatientPrescriptions(
       date: rx.createdAt,
       doctor: doctorName,
       items,
-      status: rx.status === 'active' ? 'active' : 'completed',
+      status: rx.status === 'paid' ? 'paid' : rx.status === 'active' ? 'active' : 'completed',
       notes: rx.notes,
+      storePrescriptionId: rx.id,
     });
   }
 
@@ -1846,7 +1852,7 @@ function buildPatientPrescriptions(
 // ---------------------------------------------------------------------------
 
 function PatientMedicalRecordsView() {
-  const { currentUser, medicalRecords, consultations, prescriptions } = useStore();
+  const { currentUser, medicalRecords, consultations, prescriptions, setActivePanel, setPendingPrescriptionCheckout } = useStore();
   const [expandedRecord, setExpandedRecord] = useState<string | null>(null);
 
   const patientInfo = useMemo(
@@ -1891,6 +1897,43 @@ function PatientMedicalRecordsView() {
     const activePrescriptions = patientPrescriptions.filter((p) => p.status === 'active').length;
     return { totalConsultations, activeConsultations, totalPrescriptions, activePrescriptions };
   }, [patientConsultations, patientPrescriptions]);
+
+  // Handle "Bayar Sekarang" for a prescription
+  const handlePayPrescription = useCallback((rx: PatientPrescriptionRecord) => {
+    // Find the full store prescription by storePrescriptionId
+    const storeRx = prescriptions.find((p) => p.id === rx.storePrescriptionId);
+
+    if (storeRx) {
+      setPendingPrescriptionCheckout(storeRx);
+      setActivePanel('payments');
+    } else {
+      // For demo prescriptions without store data, create a synthetic one
+      const syntheticRx: Prescription = {
+        id: rx.id,
+        consultationId: '',
+        doctorId: '',
+        patientId: currentPatientId,
+        status: 'active',
+        notes: rx.notes,
+        createdAt: rx.date,
+        updatedAt: rx.date,
+        items: rx.items.map((item, i) => ({
+          id: `${rx.id}-item-${i}`,
+          prescriptionId: rx.id,
+          medicineName: item.name,
+          dosage: item.dosage,
+          quantity: item.quantity,
+          frequency: item.frequency || '',
+          duration: item.duration || '',
+          instructions: item.instructions,
+          price: item.price,
+        })),
+      };
+
+      setPendingPrescriptionCheckout(syntheticRx);
+      setActivePanel('payments');
+    }
+  }, [prescriptions, currentPatientId, setActivePanel, setPendingPrescriptionCheckout]);
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -2212,12 +2255,14 @@ function PatientMedicalRecordsView() {
                             variant="secondary"
                             className={cn(
                               'text-[10px] shrink-0',
-                              rx.status === 'active'
-                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
-                                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+                              rx.status === 'paid'
+                                ? 'bg-emerald-600 text-white border-0'
+                                : rx.status === 'active'
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
+                                  : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
                             )}
                           >
-                            {rx.status === 'active' ? 'Aktif' : 'Selesai'}
+                            {rx.status === 'paid' ? 'Sudah Dibayar' : rx.status === 'active' ? 'Aktif' : 'Selesai'}
                           </Badge>
                         </div>
                         <div className="mt-3 space-y-2">
@@ -2254,6 +2299,27 @@ function PatientMedicalRecordsView() {
                               </p>
                             </div>
                           )}
+
+                          {/* Action Buttons */}
+                          <div className="pt-2 border-t border-border">
+                            {rx.status === 'paid' ? (
+                              <div className="flex items-center justify-center gap-2 py-2 text-emerald-600">
+                                <CheckCheck className="w-4 h-4" />
+                                <span className="text-sm font-medium">Sudah Dibayar</span>
+                              </div>
+                            ) : rx.status === 'active' ? (
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  className="flex-1 h-8 text-xs"
+                                  onClick={() => handlePayPrescription(rx)}
+                                >
+                                  <CreditCard className="w-3.5 h-3.5 mr-1" />
+                                  Bayar Sekarang
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       </CardContent>
                     </Card>

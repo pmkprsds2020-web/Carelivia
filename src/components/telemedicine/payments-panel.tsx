@@ -1,18 +1,18 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useStore } from '@/lib/store';
-import type { PaymentStatus, PaymentMethod } from '@/lib/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { PaymentStatus, PaymentMethod, Payment, Prescription } from '@/lib/types';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -31,12 +31,22 @@ import {
   Stethoscope,
   Pill,
   Heart,
+  Receipt,
+  ClipboardList,
+  CheckCheck,
+  ArrowRight,
+  Hash,
+  ShoppingCart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type PaymentType = 'Konsultasi' | 'Farmasi' | 'Home Care';
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
-interface DemoPayment {
+type PaymentType = 'Konsultasi' | 'Farmasi' | 'Home Care' | 'E-Resep';
+
+interface MergedPayment {
   id: string;
   invoiceNumber: string;
   type: PaymentType;
@@ -45,9 +55,18 @@ interface DemoPayment {
   status: PaymentStatus;
   date: string;
   description: string;
+  referenceId?: string;
+  paidAt?: string;
+  // For prescription-linked payments
+  prescriptionId?: string;
+  prescriptionItems?: { name: string; dosage: string; quantity: number; price?: number }[];
 }
 
-const demoPayments: DemoPayment[] = [
+// ---------------------------------------------------------------------------
+// Demo data
+// ---------------------------------------------------------------------------
+
+const demoPayments: MergedPayment[] = [
   {
     id: 'pay1',
     invoiceNumber: 'INV-2025-001',
@@ -120,6 +139,10 @@ const demoPayments: DemoPayment[] = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
 const statusConfig: Record<PaymentStatus, { label: string; variant: 'default' | 'secondary' | 'destructive'; className: string }> = {
   pending: { label: 'Menunggu', variant: 'secondary', className: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400' },
   success: { label: 'Berhasil', variant: 'default', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400' },
@@ -141,7 +164,29 @@ const typeIcons: Record<PaymentType, React.ReactNode> = {
   Konsultasi: <Stethoscope className="w-4 h-4" />,
   Farmasi: <Pill className="w-4 h-4" />,
   'Home Care': <Heart className="w-4 h-4" />,
+  'E-Resep': <ClipboardList className="w-4 h-4" />,
 };
+
+const typeColors: Record<PaymentType, string> = {
+  Konsultasi: 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400',
+  Farmasi: 'bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400',
+  'Home Care': 'bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400',
+  'E-Resep': 'bg-violet-100 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400',
+};
+
+const paymentMethods = [
+  { key: 'qris' as PaymentMethod, label: 'QRIS', icon: <QrCode className="w-6 h-6" /> },
+  { key: 'bank_transfer' as PaymentMethod, label: 'Transfer Bank', icon: <Building2 className="w-6 h-6" /> },
+  { key: 'va' as PaymentMethod, label: 'Virtual Account', icon: <Building2 className="w-6 h-6" /> },
+  { key: 'gopay' as PaymentMethod, label: 'GoPay', icon: <Smartphone className="w-6 h-6" /> },
+  { key: 'ovo' as PaymentMethod, label: 'OVO', icon: <Smartphone className="w-6 h-6" /> },
+  { key: 'dana' as PaymentMethod, label: 'DANA', icon: <Smartphone className="w-6 h-6" /> },
+  { key: 'shopeepay' as PaymentMethod, label: 'ShopeePay', icon: <Smartphone className="w-6 h-6" /> },
+];
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function formatCurrency(amount: number): string {
   return `Rp ${new Intl.NumberFormat('id-ID').format(amount)}`;
@@ -157,68 +202,489 @@ function formatDate(dateStr: string): string {
   });
 }
 
-type FilterKey = 'all' | PaymentStatus;
+function generateInvoiceNumber(): string {
+  return `INV-${Date.now()}`;
+}
 
-const paymentMethods = [
-  { key: 'qris' as PaymentMethod, label: 'QRIS', icon: <QrCode className="w-6 h-6" /> },
-  { key: 'bank_transfer' as PaymentMethod, label: 'Transfer Bank', icon: <Building2 className="w-6 h-6" /> },
-  { key: 'va' as PaymentMethod, label: 'Virtual Account', icon: <Building2 className="w-6 h-6" /> },
-  { key: 'gopay' as PaymentMethod, label: 'GoPay', icon: <Smartphone className="w-6 h-6" /> },
-  { key: 'ovo' as PaymentMethod, label: 'OVO', icon: <Smartphone className="w-6 h-6" /> },
-  { key: 'dana' as PaymentMethod, label: 'DANA', icon: <Smartphone className="w-6 h-6" /> },
-  { key: 'shopeepay' as PaymentMethod, label: 'ShopeePay', icon: <Smartphone className="w-6 h-6" /> },
-];
+// ---------------------------------------------------------------------------
+// Build merged payments from demo + store
+// ---------------------------------------------------------------------------
+
+function buildMergedPayments(storePayments: Payment[]): MergedPayment[] {
+  const payMap = new Map<string, MergedPayment>();
+
+  // Add demo payments
+  for (const dp of demoPayments) {
+    payMap.set(dp.id, dp);
+  }
+
+  // Add store payments
+  for (const sp of storePayments) {
+    const typeLabel = sp.type === 'prescription' ? 'E-Resep' : sp.type === 'consultation' ? 'Konsultasi' : sp.type === 'pharmacy' ? 'Farmasi' : sp.type === 'homecare' ? 'Home Care' : 'Konsultasi';
+    payMap.set(sp.id, {
+      id: sp.id,
+      invoiceNumber: sp.invoiceNumber || `INV-${sp.id}`,
+      type: typeLabel as PaymentType,
+      amount: sp.amount,
+      method: sp.method,
+      status: sp.status,
+      date: sp.paidAt || sp.createdAt,
+      description: sp.type === 'prescription' ? `Pembayaran E-Resep - INV-${sp.id.slice(-6)}` : `Pembayaran ${typeLabel}`,
+      referenceId: sp.referenceId,
+      paidAt: sp.paidAt,
+    });
+  }
+
+  return Array.from(payMap.values()).sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PaymentsPanel
+// ---------------------------------------------------------------------------
 
 export function PaymentsPanel() {
   const { toast } = useToast();
+  const { payments, setPayments, updatePrescriptionStatus, prescriptions } = useStore();
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
-  const [selectedPayment, setSelectedPayment] = useState<DemoPayment | null>(null);
+  const [selectedPayment, setSelectedPayment] = useState<MergedPayment | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('qris');
+  const [processingPayment, setProcessingPayment] = useState(false);
+
+  // Prescription checkout dialog (launched from Bayar Sekarang)
+  const [prescriptionCheckoutOpen, setPrescriptionCheckoutOpen] = useState(false);
+  const [checkoutPrescription, setCheckoutPrescription] = useState<Prescription | null>(null);
+  const [checkoutMethod, setCheckoutMethod] = useState<PaymentMethod>('qris');
+
+  // Listen for prescription checkout from store
+  const pendingCheckout = useStore((s) => s.pendingPrescriptionCheckout);
+  const clearPendingCheckout = useStore((s) => s.setPendingPrescriptionCheckout);
+  const lastProcessedId = useRef<string>('');
+
+  // Use a callback ref pattern to avoid setState in useEffect
+  const handlePendingCheckout = useCallback(() => {
+    if (pendingCheckout && pendingCheckout.id !== lastProcessedId.current) {
+      lastProcessedId.current = pendingCheckout.id;
+      setCheckoutPrescription(pendingCheckout);
+      setPrescriptionCheckoutOpen(true);
+      clearPendingCheckout(null);
+    }
+  }, [pendingCheckout, clearPendingCheckout]);
+
+  // Subscribe to store changes outside of render
+  useEffect(() => {
+    if (pendingCheckout && pendingCheckout.id !== lastProcessedId.current) {
+      // Use requestAnimationFrame to defer setState outside of the effect's synchronous phase
+      requestAnimationFrame(() => handlePendingCheckout());
+    }
+  }, [pendingCheckout, handlePendingCheckout]);
+
+  // Build merged payments
+  const allPayments = useMemo(
+    () => buildMergedPayments(payments),
+    [payments],
+  );
 
   const filteredPayments = useMemo(() => {
-    if (activeFilter === 'all') return demoPayments;
-    return demoPayments.filter((p) => p.status === activeFilter);
-  }, [activeFilter]);
+    if (activeFilter === 'all') return allPayments;
+    return allPayments.filter((p) => p.status === activeFilter);
+  }, [allPayments, activeFilter]);
 
   const stats = useMemo(() => {
-    const total = demoPayments.reduce((s, p) => s + p.amount, 0);
-    const pending = demoPayments.filter((p) => p.status === 'pending').reduce((s, p) => s + p.amount, 0);
-    const success = demoPayments.filter((p) => p.status === 'success').reduce((s, p) => s + p.amount, 0);
-    const refunded = demoPayments.filter((p) => p.status === 'refunded').reduce((s, p) => s + p.amount, 0);
+    const total = allPayments.reduce((s, p) => s + p.amount, 0);
+    const pending = allPayments.filter((p) => p.status === 'pending').reduce((s, p) => s + p.amount, 0);
+    const success = allPayments.filter((p) => p.status === 'success').reduce((s, p) => s + p.amount, 0);
+    const refunded = allPayments.filter((p) => p.status === 'refunded').reduce((s, p) => s + p.amount, 0);
     return { total, pending, success, refunded };
-  }, []);
+  }, [allPayments]);
 
-  const handlePayNow = (payment: DemoPayment) => {
+  // ── Handle pay from prescription checkout ────────────────────────────
+  const handlePrescriptionCheckout = useCallback(() => {
+    console.log('[DEBUG] handlePrescriptionCheckout called, checkoutPrescription:', checkoutPrescription?.id);
+    if (!checkoutPrescription) {
+      console.log('[DEBUG] checkoutPrescription is null, returning early');
+      return;
+    }
+
+    setProcessingPayment(true);
+    const rx = checkoutPrescription;
+    const totalAmount = (rx.items || []).reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
+    console.log('[DEBUG] Processing payment, totalAmount:', totalAmount, 'rx.id:', rx.id);
+
+    // Simulate processing delay
+    setTimeout(() => {
+      const paymentId = `pay-rx-${Date.now()}`;
+      const newPayment: Payment = {
+        id: paymentId,
+        userId: rx.patientId,
+        amount: totalAmount,
+        method: checkoutMethod,
+        status: 'success',
+        type: 'prescription',
+        referenceId: rx.id,
+        invoiceNumber: generateInvoiceNumber(),
+        paidAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      setPayments([newPayment, ...useStore.getState().payments]);
+      updatePrescriptionStatus(rx.id, 'paid');
+
+      setProcessingPayment(false);
+      setPrescriptionCheckoutOpen(false);
+      setCheckoutPrescription(null);
+
+      toast({
+        title: 'Pembayaran Berhasil! ✅',
+        description: `Pembayaran E-Resep ${formatCurrency(totalAmount)} via ${methodLabels[checkoutMethod].label} berhasil.`,
+      });
+    }, 1500);
+  }, [checkoutPrescription, checkoutMethod, setPayments, updatePrescriptionStatus, toast]);
+
+  // ── Handle pay from existing pending payment ─────────────────────────
+  const handlePayNow = (payment: MergedPayment) => {
     setSelectedPayment(payment);
     setPaymentDialogOpen(true);
   };
 
-  const handleConfirmPayment = () => {
-    toast({
-      title: 'Pembayaran Dikonfirmasi',
-      description: 'Pembayaran Anda sedang diproses. Silakan tunggu konfirmasi.',
-    });
-    setPaymentDialogOpen(false);
-    setSelectedPayment(null);
-  };
+  const handleConfirmPayment = useCallback(() => {
+    if (!selectedPayment) return;
 
-  const handleViewDetail = (payment: DemoPayment) => {
+    setProcessingPayment(true);
+
+    // Simulate processing
+    setTimeout(() => {
+      // Update the store payment status
+      const updatedPayments = useStore.getState().payments.map((p) =>
+        p.id === selectedPayment.id ? { ...p, status: 'success' as const, paidAt: new Date().toISOString() } : p,
+      );
+      setPayments(updatedPayments);
+
+      // If linked to prescription, update that too
+      if (selectedPayment.referenceId) {
+        updatePrescriptionStatus(selectedPayment.referenceId, 'paid');
+      }
+
+      setProcessingPayment(false);
+      setPaymentDialogOpen(false);
+      setSelectedPayment(null);
+
+      toast({
+        title: 'Pembayaran Berhasil! ✅',
+        description: `Pembayaran ${selectedPayment.description} ${formatCurrency(selectedPayment.amount)} berhasil.`,
+      });
+    }, 1500);
+  }, [selectedPayment, setPayments, updatePrescriptionStatus, toast]);
+
+  const handleViewDetail = (payment: MergedPayment) => {
     toast({
       title: 'Detail Pembayaran',
       description: `Invoice: ${payment.invoiceNumber} - ${formatCurrency(payment.amount)}`,
     });
   };
 
-  const handleDownload = (payment: DemoPayment) => {
+  const handleDownload = (payment: MergedPayment) => {
     toast({
       title: 'Bukti Pembayaran',
       description: `Bukti pembayaran ${payment.invoiceNumber} berhasil diunduh`,
     });
   };
 
+  // ── Render Prescription Checkout Dialog ──────────────────────────────
+  const renderPrescriptionCheckout = () => {
+    if (!checkoutPrescription) return null;
+
+    const rx = checkoutPrescription;
+    const items = rx.items || [];
+    const totalAmount = items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
+
+    return (
+      <Dialog open={prescriptionCheckoutOpen} onOpenChange={(open) => {
+        if (!processingPayment) {
+          setPrescriptionCheckoutOpen(open);
+          if (!open) setCheckoutPrescription(null);
+        }
+      }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-primary" />
+              Pembayaran E-Resep
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Dialog pembayaran e-resep dokter
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Prescription Summary */}
+            <div className="border border-border rounded-xl overflow-hidden">
+              <div className="bg-primary/10 px-4 py-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="w-4 h-4 text-primary" />
+                  <span className="font-semibold text-sm text-primary">Detail E-Resep</span>
+                </div>
+                <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border-0 text-[10px]">
+                  Menunggu Pembayaran
+                </Badge>
+              </div>
+
+              <div className="px-4 py-3">
+                {/* Medicine Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-1.5 text-muted-foreground font-medium">Obat</th>
+                        <th className="text-center py-1.5 text-muted-foreground font-medium">Qty</th>
+                        <th className="text-right py-1.5 text-muted-foreground font-medium">Harga</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((item) => (
+                        <tr key={item.id} className="border-b border-border/50 last:border-0">
+                          <td className="py-1.5">
+                            <p className="font-medium text-foreground">{item.medicineName}</p>
+                            <p className="text-muted-foreground">{item.dosage}</p>
+                          </td>
+                          <td className="py-1.5 text-center text-foreground">{item.quantity}</td>
+                          <td className="py-1.5 text-right text-foreground">{formatCurrency(item.price || 0)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Total */}
+                <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
+                  <span className="font-semibold text-sm">Total Pembayaran</span>
+                  <span className="font-bold text-lg text-primary">{formatCurrency(totalAmount)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Payment Method Selection */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Pilih Metode Pembayaran</Label>
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {paymentMethods.map((pm) => (
+                  <Button
+                    key={pm.key}
+                    variant={checkoutMethod === pm.key ? 'default' : 'outline'}
+                    size="sm"
+                    className={cn(
+                      'h-auto py-2.5 flex flex-col items-center gap-1',
+                      checkoutMethod === pm.key && 'ring-2 ring-primary',
+                    )}
+                    onClick={() => setCheckoutMethod(pm.key)}
+                    disabled={processingPayment}
+                  >
+                    {pm.icon}
+                    <span className="text-[10px]">{pm.label}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* QR Code */}
+            {checkoutMethod === 'qris' && (
+              <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6 text-center">
+                <QrCode className="w-28 h-28 mx-auto text-gray-400 mb-3" />
+                <p className="text-sm text-muted-foreground">Scan QR Code untuk membayar</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Batas waktu pembayaran 15 menit
+                </p>
+              </div>
+            )}
+
+            {/* Bank Transfer */}
+            {(checkoutMethod === 'bank_transfer' || checkoutMethod === 'va') && (
+              <div className="bg-muted/50 rounded-xl p-4 space-y-2.5">
+                <p className="text-sm font-semibold flex items-center gap-2">
+                  <Building2 className="w-4 h-4" />
+                  Detail Transfer
+                </p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Bank</span>
+                    <span className="font-medium">BCA</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">No. Rekening</span>
+                    <span className="font-mono font-bold">8720-3456-7890</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Atas Nama</span>
+                    <span className="font-medium">PT MedikaLink Indonesia</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Jumlah</span>
+                    <span className="font-bold text-primary">{formatCurrency(totalAmount)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* E-Wallet */}
+            {(checkoutMethod === 'gopay' || checkoutMethod === 'ovo' || checkoutMethod === 'dana' || checkoutMethod === 'shopeepay') && (
+              <div className="bg-muted/50 rounded-xl p-6 text-center">
+                <Smartphone className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+                <p className="text-sm text-muted-foreground">
+                  Anda akan diarahkan ke aplikasi {methodLabels[checkoutMethod].label}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Pastikan aplikasi {methodLabels[checkoutMethod].label} sudah terinstall
+                </p>
+              </div>
+            )}
+
+            {/* Confirm Button */}
+            <Button
+              className="w-full"
+              size="lg"
+              onClick={handlePrescriptionCheckout}
+              disabled={processingPayment}
+            >
+              {processingPayment ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                  Memproses Pembayaran...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Bayar {formatCurrency(totalAmount)}
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
+  // ── Render Payment Detail Dialog ─────────────────────────────────────
+  const renderPaymentDialog = () => (
+    <Dialog open={paymentDialogOpen} onOpenChange={(open) => {
+      if (!processingPayment) {
+        setPaymentDialogOpen(open);
+        if (!open) setSelectedPayment(null);
+      }
+    }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Pembayaran</DialogTitle>
+          <DialogDescription className="sr-only">
+            Dialog pembayaran transaksi
+          </DialogDescription>
+        </DialogHeader>
+        {selectedPayment && (
+          <div className="space-y-4">
+            <div className="bg-muted/50 rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Total Pembayaran</span>
+                <span className="text-lg font-bold text-primary">{formatCurrency(selectedPayment.amount)}</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{selectedPayment.description}</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Pilih Metode Pembayaran</Label>
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {paymentMethods.map((pm) => (
+                  <Button
+                    key={pm.key}
+                    variant={selectedMethod === pm.key ? 'default' : 'outline'}
+                    size="sm"
+                    className={cn(
+                      'h-auto py-2 flex flex-col items-center gap-1',
+                      selectedMethod === pm.key && 'ring-2 ring-primary',
+                    )}
+                    onClick={() => setSelectedMethod(pm.key)}
+                    disabled={processingPayment}
+                  >
+                    {pm.icon}
+                    <span className="text-[10px]">{pm.label}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {selectedMethod === 'qris' && (
+              <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-8 text-center">
+                <QrCode className="w-32 h-32 mx-auto text-gray-400 mb-2" />
+                <p className="text-sm text-muted-foreground">Scan QR Code untuk membayar</p>
+              </div>
+            )}
+
+            {(selectedMethod === 'bank_transfer' || selectedMethod === 'va') && (
+              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                <p className="text-sm font-medium">Detail Transfer Bank</p>
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Bank</span>
+                    <span className="font-medium">BCA</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">No. Rekening</span>
+                    <span className="font-mono font-medium">8720-3456-7890</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Atas Nama</span>
+                    <span className="font-medium">PT MedikaLink Indonesia</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Jumlah</span>
+                    <span className="font-bold text-primary">{formatCurrency(selectedPayment.amount)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {(selectedMethod === 'gopay' || selectedMethod === 'ovo' || selectedMethod === 'dana' || selectedMethod === 'shopeepay') && (
+              <div className="bg-muted/50 rounded-lg p-4 text-center">
+                <Smartphone className="w-10 h-10 mx-auto text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  Anda akan diarahkan ke aplikasi {methodLabels[selectedMethod].label}
+                </p>
+              </div>
+            )}
+
+            <Button className="w-full" size="lg" onClick={handleConfirmPayment} disabled={processingPayment}>
+              {processingPayment ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                  Memproses...
+                </>
+              ) : (
+                'Konfirmasi Pembayaran'
+              )}
+            </Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+
+  type FilterKey = 'all' | PaymentStatus;
+
   return (
     <div className="p-4 md:p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-foreground">Pembayaran</h2>
+          <p className="text-sm text-muted-foreground">Kelola pembayaran dan riwayat transaksi</p>
+        </div>
+        <Badge className="bg-primary/10 text-primary border-0">
+          <Receipt className="w-3.5 h-3.5 mr-1" />
+          {allPayments.length} Transaksi
+        </Badge>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="border-0">
@@ -294,160 +760,74 @@ export function PaymentsPanel() {
               </CardContent>
             </Card>
           ) : (
-            filteredPayments.map((payment) => {
-              const sc = statusConfig[payment.status];
-              const mc = methodLabels[payment.method];
+            <div className="max-h-[calc(100vh-360px)] overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+              {filteredPayments.map((payment) => {
+                const sc = statusConfig[payment.status];
+                const mc = methodLabels[payment.method];
+                const pType = payment.type;
 
-              return (
-                <Card key={payment.id} className="border-0 hover:shadow-sm transition-shadow">
-                  <CardContent className="p-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-start gap-3">
-                        <div className={cn(
-                          'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
-                          payment.type === 'Konsultasi'
-                            ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400'
-                            : payment.type === 'Farmasi'
-                              ? 'bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400'
-                              : 'bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400'
-                        )}>
-                          {typeIcons[payment.type]}
+                return (
+                  <Card key={payment.id} className="border-0 hover:shadow-sm transition-shadow">
+                    <CardContent className="p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className={cn(
+                            'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
+                            typeColors[pType] || 'bg-gray-100 text-gray-600',
+                          )}>
+                            {typeIcons[pType] || <CreditCard className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-mono text-xs text-muted-foreground">{payment.invoiceNumber}</p>
+                              <Badge variant="outline" className="text-[10px]">{pType}</Badge>
+                            </div>
+                            <p className="font-semibold text-sm text-foreground mt-0.5">{payment.description}</p>
+                            <div className="flex items-center gap-3 mt-1">
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                {mc.icon}
+                                {mc.label}
+                              </span>
+                              <span className="text-xs text-muted-foreground">{formatDate(payment.date)}</span>
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-mono text-xs text-muted-foreground">{payment.invoiceNumber}</p>
-                            <Badge variant="outline" className="text-[10px]">{payment.type}</Badge>
-                          </div>
-                          <p className="font-semibold text-sm text-foreground mt-0.5">{payment.description}</p>
-                          <div className="flex items-center gap-3 mt-1">
-                            <span className="text-xs text-muted-foreground flex items-center gap-1">
-                              {mc.icon}
-                              {mc.label}
-                            </span>
-                            <span className="text-xs text-muted-foreground">{formatDate(payment.date)}</span>
-                          </div>
+                        <div className="flex items-center gap-3 sm:flex-col sm:items-end">
+                          <p className="text-base font-bold text-foreground">{formatCurrency(payment.amount)}</p>
+                          <Badge className={cn('text-[10px] border-0', sc.className)}>{sc.label}</Badge>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 sm:flex-col sm:items-end">
-                        <p className="text-base font-bold text-foreground">{formatCurrency(payment.amount)}</p>
-                        <Badge className={cn('text-[10px] border-0', sc.className)}>{sc.label}</Badge>
-                      </div>
-                    </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
-                      {payment.status === 'pending' && (
-                        <Button size="sm" onClick={() => handlePayNow(payment)}>
-                          <Wallet className="w-3.5 h-3.5 mr-1" />
-                          Bayar
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
+                        {payment.status === 'pending' && (
+                          <Button size="sm" onClick={() => handlePayNow(payment)}>
+                            <Wallet className="w-3.5 h-3.5 mr-1" />
+                            Bayar
+                          </Button>
+                        )}
+                        <Button variant="outline" size="sm" onClick={() => handleViewDetail(payment)}>
+                          <Eye className="w-3.5 h-3.5 mr-1" />
+                          Lihat Detail
                         </Button>
-                      )}
-                      <Button variant="outline" size="sm" onClick={() => handleViewDetail(payment)}>
-                        <Eye className="w-3.5 h-3.5 mr-1" />
-                        Lihat Detail
-                      </Button>
-                      {payment.status === 'success' && (
-                        <Button variant="outline" size="sm" onClick={() => handleDownload(payment)}>
-                          <Download className="w-3.5 h-3.5 mr-1" />
-                          Unduh Bukti
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
+                        {payment.status === 'success' && (
+                          <Button variant="outline" size="sm" onClick={() => handleDownload(payment)}>
+                            <Download className="w-3.5 h-3.5 mr-1" />
+                            Unduh Bukti
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
           )}
         </TabsContent>
       </Tabs>
 
-      {/* Payment Dialog */}
-      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Pembayaran</DialogTitle>
-          </DialogHeader>
-          {selectedPayment && (
-            <div className="space-y-4">
-              <div className="bg-muted/50 rounded-lg p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Total Pembayaran</span>
-                  <span className="text-lg font-bold text-primary">{formatCurrency(selectedPayment.amount)}</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">{selectedPayment.description}</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Pilih Metode Pembayaran</Label>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                  {paymentMethods.map((pm) => (
-                    <Button
-                      key={pm.key}
-                      variant={selectedMethod === pm.key ? 'default' : 'outline'}
-                      size="sm"
-                      className={cn(
-                        'h-auto py-2 flex flex-col items-center gap-1',
-                        selectedMethod === pm.key && 'ring-2 ring-primary'
-                      )}
-                      onClick={() => setSelectedMethod(pm.key)}
-                    >
-                      {pm.icon}
-                      <span className="text-[10px]">{pm.label}</span>
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              {/* QR Code placeholder */}
-              {selectedMethod === 'qris' && (
-                <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-8 text-center">
-                  <QrCode className="w-32 h-32 mx-auto text-gray-400 mb-2" />
-                  <p className="text-sm text-muted-foreground">Scan QR Code untuk membayar</p>
-                </div>
-              )}
-
-              {/* Bank Transfer details */}
-              {(selectedMethod === 'bank_transfer' || selectedMethod === 'va') && (
-                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                  <p className="text-sm font-medium">Detail Transfer Bank</p>
-                  <div className="space-y-1.5 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Bank</span>
-                      <span className="font-medium">BCA</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">No. Rekening</span>
-                      <span className="font-mono font-medium">8720-3456-7890</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Atas Nama</span>
-                      <span className="font-medium">PT MedikaLink Indonesia</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Jumlah</span>
-                      <span className="font-bold text-primary">{formatCurrency(selectedPayment.amount)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* E-Wallet info */}
-              {(selectedMethod === 'gopay' || selectedMethod === 'ovo' || selectedMethod === 'dana' || selectedMethod === 'shopeepay') && (
-                <div className="bg-muted/50 rounded-lg p-4 text-center">
-                  <Smartphone className="w-10 h-10 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    Anda akan diarahkan ke aplikasi {methodLabels[selectedMethod].label}
-                  </p>
-                </div>
-              )}
-
-              <Button className="w-full" size="lg" onClick={handleConfirmPayment}>
-                Konfirmasi Pembayaran
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {renderPrescriptionCheckout()}
+      {renderPaymentDialog()}
     </div>
   );
 }
