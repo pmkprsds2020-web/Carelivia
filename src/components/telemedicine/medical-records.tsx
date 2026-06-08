@@ -8,6 +8,8 @@ import type {
   Prescription,
   PrescriptionItem,
   Consultation,
+  Payment,
+  PaymentMethod,
 } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -67,6 +69,12 @@ import {
   CreditCard,
   ShoppingCart,
   CheckCheck,
+  Download,
+  QrCode,
+  Building2,
+  Smartphone,
+  Wallet,
+  Stamp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -1646,7 +1654,10 @@ const demoPrescriptions = [
       { name: 'Asam Folat 400mcg', dosage: '1x sehari', quantity: 30, price: 18000 },
       { name: 'Vitamin B6', dosage: '1x sehari', quantity: 30, price: 25000 },
     ],
-    status: 'completed',
+    status: 'paid',
+    invoiceNumber: 'INV-2024-028',
+    paidAt: '2024-12-28T15:30:00Z',
+    paymentMethod: 'qris' as PaymentMethod,
   },
   {
     id: 'p3',
@@ -1655,7 +1666,10 @@ const demoPrescriptions = [
     items: [
       { name: 'Paracetamol Sirup 120mg/5ml', dosage: '3x sehari jika demam', quantity: 60, price: 15000 },
     ],
-    status: 'completed',
+    status: 'paid',
+    invoiceNumber: 'INV-2024-022',
+    paidAt: '2024-12-16T09:15:00Z',
+    paymentMethod: 'gopay' as PaymentMethod,
   },
   {
     id: 'p4',
@@ -1695,6 +1709,11 @@ interface PatientPrescriptionRecord {
   notes?: string;
   // Reference to original store Prescription (for payment flow)
   storePrescriptionId?: string;
+  // Payment proof info (for paid prescriptions)
+  paymentId?: string;
+  invoiceNumber?: string;
+  paidAt?: string;
+  paymentMethod?: PaymentMethod;
 }
 
 // Build patient consultation records: merge demo + store medicalRecords + store consultations
@@ -1791,6 +1810,7 @@ function buildPatientPrescriptions(
   currentPatientId: string,
   storePrescriptions: Prescription[],
   storeConsultations: Consultation[],
+  storePayments: Payment[],
 ): PatientPrescriptionRecord[] {
   // Doctor name lookup
   const DOCTOR_NAME_MAP: Record<string, string> = {
@@ -1805,6 +1825,14 @@ function buildPatientPrescriptions(
   for (const cons of storeConsultations) {
     if (cons.doctor?.name && !doctorNameById.has(cons.doctorId)) {
       doctorNameById.set(cons.doctorId, cons.doctor.name);
+    }
+  }
+
+  // Build prescriptionId → payment lookup for paid prescriptions
+  const paymentByRxId = new Map<string, Payment>();
+  for (const pay of storePayments) {
+    if (pay.referenceId && pay.type === 'prescription' && pay.status === 'success') {
+      paymentByRxId.set(pay.referenceId, pay);
     }
   }
 
@@ -1830,14 +1858,22 @@ function buildPatientPrescriptions(
       price: item.price,
     }));
 
+    // Check if this prescription has a linked payment
+    const linkedPayment = paymentByRxId.get(rx.id);
+    const isPaid = rx.status === 'paid' || !!linkedPayment;
+
     rxMap.set(rx.id, {
       id: rx.id,
       date: rx.createdAt,
       doctor: doctorName,
       items,
-      status: rx.status === 'paid' ? 'paid' : rx.status === 'active' ? 'active' : 'completed',
+      status: isPaid ? 'paid' : rx.status === 'active' ? 'active' : 'completed',
       notes: rx.notes,
       storePrescriptionId: rx.id,
+      paymentId: linkedPayment?.id,
+      invoiceNumber: linkedPayment?.invoiceNumber,
+      paidAt: linkedPayment?.paidAt,
+      paymentMethod: linkedPayment?.method,
     });
   }
 
@@ -1852,8 +1888,10 @@ function buildPatientPrescriptions(
 // ---------------------------------------------------------------------------
 
 function PatientMedicalRecordsView() {
-  const { currentUser, medicalRecords, consultations, prescriptions, setActivePanel, setPendingPrescriptionCheckout } = useStore();
+  const { currentUser, medicalRecords, consultations, prescriptions, payments, setActivePanel, setPendingPrescriptionCheckout } = useStore();
   const [expandedRecord, setExpandedRecord] = useState<string | null>(null);
+  const [proofDialogOpen, setProofDialogOpen] = useState(false);
+  const [proofPrescription, setProofPrescription] = useState<PatientPrescriptionRecord | null>(null);
 
   const patientInfo = useMemo(
     () => ({
@@ -1885,8 +1923,8 @@ function PatientMedicalRecordsView() {
 
   // Build merged prescription records (demo + store), sorted newest first
   const patientPrescriptions = useMemo(
-    () => buildPatientPrescriptions(currentPatientId, prescriptions, consultations),
-    [currentPatientId, prescriptions, consultations],
+    () => buildPatientPrescriptions(currentPatientId, prescriptions, consultations, payments),
+    [currentPatientId, prescriptions, consultations, payments],
   );
 
   // Stats
@@ -1934,6 +1972,59 @@ function PatientMedicalRecordsView() {
       setActivePanel('payments');
     }
   }, [prescriptions, currentPatientId, setActivePanel, setPendingPrescriptionCheckout]);
+
+  // Handle viewing payment proof
+  const handleViewProof = useCallback((rx: PatientPrescriptionRecord) => {
+    setProofPrescription(rx);
+    setProofDialogOpen(true);
+  }, []);
+
+  // Handle downloading payment proof
+  const handleDownloadProof = useCallback((rx: PatientPrescriptionRecord) => {
+    const items = rx.items.map((item) => ({
+      name: item.name,
+      dosage: item.dosage,
+      quantity: item.quantity,
+      price: item.price || 0,
+    }));
+
+    const params = new URLSearchParams({
+      invoiceNumber: rx.invoiceNumber || `INV-${rx.id}`,
+      amount: String(rx.items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0)),
+      method: rx.paymentMethod || 'qris',
+      paidAt: rx.paidAt || new Date().toISOString(),
+      patientName: currentUser?.name || 'Pasien',
+      doctorName: rx.doctor,
+      prescriptionId: rx.id,
+      items: JSON.stringify(items),
+    });
+
+    window.open(`/api/payment-proof?${params.toString()}`, '_blank');
+  }, [currentUser]);
+
+  // Payment method label helper
+  const methodLabel = useCallback((method?: PaymentMethod) => {
+    switch (method) {
+      case 'qris': return 'QRIS';
+      case 'bank_transfer': return 'Transfer Bank';
+      case 'va': return 'Virtual Account';
+      case 'gopay': return 'GoPay';
+      case 'ovo': return 'OVO';
+      case 'dana': return 'DANA';
+      case 'shopeepay': return 'ShopeePay';
+      default: return method || '-';
+    }
+  }, []);
+
+  // Payment method icon helper
+  const methodIcon = useCallback((method?: PaymentMethod) => {
+    switch (method) {
+      case 'qris': return <QrCode className="w-4 h-4" />;
+      case 'bank_transfer': case 'va': return <Building2 className="w-4 h-4" />;
+      case 'gopay': case 'ovo': case 'dana': case 'shopeepay': return <Smartphone className="w-4 h-4" />;
+      default: return <Wallet className="w-4 h-4" />;
+    }
+  }, []);
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -2303,9 +2394,49 @@ function PatientMedicalRecordsView() {
                           {/* Action Buttons */}
                           <div className="pt-2 border-t border-border">
                             {rx.status === 'paid' ? (
-                              <div className="flex items-center justify-center gap-2 py-2 text-emerald-600">
-                                <CheckCheck className="w-4 h-4" />
-                                <span className="text-sm font-medium">Sudah Dibayar</span>
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 py-1 text-emerald-600">
+                                  <CheckCheck className="w-4 h-4" />
+                                  <span className="text-sm font-medium">Sudah Dibayar</span>
+                                  {rx.paymentMethod && (
+                                    <span className="text-xs text-muted-foreground flex items-center gap-1 ml-2">
+                                      {methodIcon(rx.paymentMethod)}
+                                      {methodLabel(rx.paymentMethod)}
+                                    </span>
+                                  )}
+                                </div>
+                                {rx.invoiceNumber && (
+                                  <p className="text-xs text-muted-foreground">
+                                    <Hash className="w-3 h-3 inline mr-0.5" />
+                                    {rx.invoiceNumber}
+                                  </p>
+                                )}
+                                {rx.paidAt && (
+                                  <p className="text-xs text-muted-foreground">
+                                    <Calendar className="w-3 h-3 inline mr-0.5" />
+                                    Dibayar {formatDate(rx.paidAt)}
+                                  </p>
+                                )}
+                                <div className="flex gap-2 mt-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1 h-8 text-xs"
+                                    onClick={() => handleViewProof(rx)}
+                                  >
+                                    <Eye className="w-3.5 h-3.5 mr-1" />
+                                    Lihat Bukti
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1 h-8 text-xs"
+                                    onClick={() => handleDownloadProof(rx)}
+                                  >
+                                    <Download className="w-3.5 h-3.5 mr-1" />
+                                    Unduh Bukti
+                                  </Button>
+                                </div>
                               </div>
                             ) : rx.status === 'active' ? (
                               <div className="flex gap-2">
@@ -2330,6 +2461,128 @@ function PatientMedicalRecordsView() {
           </Tabs>
         </div>
       </div>
+
+      {/* Payment Proof Dialog */}
+      <Dialog open={proofDialogOpen} onOpenChange={setProofDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="w-5 h-5 text-primary" />
+              Bukti Pembayaran
+            </DialogTitle>
+          </DialogHeader>
+          {proofPrescription && (
+            <div className="space-y-4">
+              {/* Status Banner */}
+              <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-emerald-700 dark:text-emerald-400">Pembayaran Berhasil</p>
+                  <p className="text-xs text-emerald-600 dark:text-emerald-500">
+                    {proofPrescription.paidAt ? formatDate(proofPrescription.paidAt) : 'Sudah dibayar'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Invoice Info */}
+              <div className="border border-border rounded-xl overflow-hidden">
+                <div className="bg-primary/5 px-4 py-3">
+                  <p className="font-semibold text-sm text-primary">Detail Pembayaran</p>
+                </div>
+                <div className="px-4 py-3 space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">No. Invoice</span>
+                    <span className="font-mono font-semibold">{proofPrescription.invoiceNumber || `INV-${proofPrescription.id}`}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">No. Resep</span>
+                    <span className="font-mono">{proofPrescription.id}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Dokter</span>
+                    <span className="font-medium">{proofPrescription.doctor}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Metode Bayar</span>
+                    <span className="flex items-center gap-1.5 font-medium">
+                      {methodIcon(proofPrescription.paymentMethod)}
+                      {methodLabel(proofPrescription.paymentMethod)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Tanggal Bayar</span>
+                    <span className="font-medium">
+                      {proofPrescription.paidAt ? formatDate(proofPrescription.paidAt) : '-'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Prescription Items */}
+              <div className="border border-border rounded-xl overflow-hidden">
+                <div className="bg-violet-50 dark:bg-violet-950/30 px-4 py-3">
+                  <p className="font-semibold text-sm text-violet-700 dark:text-violet-400">Detail Obat</p>
+                </div>
+                <div className="px-4 py-3">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-1.5 text-muted-foreground font-medium">Obat</th>
+                        <th className="text-center py-1.5 text-muted-foreground font-medium">Qty</th>
+                        <th className="text-right py-1.5 text-muted-foreground font-medium">Harga</th>
+                        <th className="text-right py-1.5 text-muted-foreground font-medium">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {proofPrescription.items.map((item, i) => (
+                        <tr key={i} className="border-b border-border/50 last:border-0">
+                          <td className="py-1.5">
+                            <p className="font-medium text-foreground">{item.name}</p>
+                            <p className="text-muted-foreground">{item.dosage}</p>
+                          </td>
+                          <td className="py-1.5 text-center text-foreground">{item.quantity}</td>
+                          <td className="py-1.5 text-right text-foreground">{formatCurrency(item.price || 0)}</td>
+                          <td className="py-1.5 text-right font-medium text-foreground">
+                            {formatCurrency((item.price || 0) * item.quantity)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
+                    <span className="font-semibold text-sm">Total Pembayaran</span>
+                    <span className="font-bold text-lg text-primary">
+                      {formatCurrency(proofPrescription.items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0))}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stamp */}
+              <div className="flex items-center justify-center">
+                <div className="w-20 h-20 rounded-full border-2 border-emerald-500 flex items-center justify-center opacity-60 -rotate-12">
+                  <div className="text-center">
+                    <Stamp className="w-4 h-4 text-emerald-600 mx-auto" />
+                    <span className="text-[8px] font-bold text-emerald-600 uppercase tracking-wider">Dibayar</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Download Button */}
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={() => handleDownloadProof(proofPrescription)}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Unduh Bukti Pembayaran
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

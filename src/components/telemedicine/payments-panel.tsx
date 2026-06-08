@@ -37,6 +37,8 @@ import {
   ArrowRight,
   Hash,
   ShoppingCart,
+  Calendar,
+  Stamp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -253,6 +255,10 @@ export function PaymentsPanel() {
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('qris');
   const [processingPayment, setProcessingPayment] = useState(false);
 
+  // Payment proof dialog
+  const [proofDialogOpen, setProofDialogOpen] = useState(false);
+  const [proofPayment, setProofPayment] = useState<MergedPayment | null>(null);
+
   // Prescription checkout dialog (launched from Bayar Sekarang)
   const [prescriptionCheckoutOpen, setPrescriptionCheckoutOpen] = useState(false);
   const [checkoutPrescription, setCheckoutPrescription] = useState<Prescription | null>(null);
@@ -380,17 +386,44 @@ export function PaymentsPanel() {
   }, [selectedPayment, setPayments, updatePrescriptionStatus, toast]);
 
   const handleViewDetail = (payment: MergedPayment) => {
-    toast({
-      title: 'Detail Pembayaran',
-      description: `Invoice: ${payment.invoiceNumber} - ${formatCurrency(payment.amount)}`,
-    });
+    if (payment.status === 'success') {
+      setProofPayment(payment);
+      setProofDialogOpen(true);
+    } else {
+      toast({
+        title: 'Detail Pembayaran',
+        description: `Invoice: ${payment.invoiceNumber} - ${formatCurrency(payment.amount)}`,
+      });
+    }
   };
 
   const handleDownload = (payment: MergedPayment) => {
-    toast({
-      title: 'Bukti Pembayaran',
-      description: `Bukti pembayaran ${payment.invoiceNumber} berhasil diunduh`,
-    });
+    if (payment.status === 'success') {
+      // Open the payment proof API endpoint in a new tab for download
+      const items = payment.prescriptionItems || [];
+      const params = new URLSearchParams({
+        invoiceNumber: payment.invoiceNumber,
+        amount: String(payment.amount),
+        method: payment.method,
+        paidAt: payment.paidAt || payment.date,
+        patientName: '',
+        doctorName: '',
+        prescriptionId: payment.prescriptionId || '',
+        items: JSON.stringify(items.map((item) => ({
+          name: item.name,
+          dosage: item.dosage,
+          quantity: item.quantity,
+          price: item.price || 0,
+        }))),
+      });
+      window.open(`/api/payment-proof?${params.toString()}`, '_blank');
+    } else {
+      toast({
+        title: 'Bukti Pembayaran',
+        description: `Bukti pembayaran hanya tersedia untuk pembayaran yang berhasil`,
+        variant: 'destructive',
+      });
+    }
   };
 
   // ── Render Prescription Checkout Dialog ──────────────────────────────
@@ -828,6 +861,136 @@ export function PaymentsPanel() {
 
       {renderPrescriptionCheckout()}
       {renderPaymentDialog()}
+
+      {/* Payment Proof Dialog */}
+      <Dialog open={proofDialogOpen} onOpenChange={setProofDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="w-5 h-5 text-primary" />
+              Bukti Pembayaran
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Dialog bukti pembayaran yang telah berhasil
+            </DialogDescription>
+          </DialogHeader>
+          {proofPayment && (
+            <div className="space-y-4">
+              {/* Status Banner */}
+              <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-emerald-700 dark:text-emerald-400">Pembayaran Berhasil</p>
+                  <p className="text-xs text-emerald-600 dark:text-emerald-500">
+                    {proofPayment.paidAt ? formatDate(proofPayment.paidAt) : formatDate(proofPayment.date)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Invoice Info */}
+              <div className="border border-border rounded-xl overflow-hidden">
+                <div className="bg-primary/5 px-4 py-3">
+                  <p className="font-semibold text-sm text-primary">Detail Pembayaran</p>
+                </div>
+                <div className="px-4 py-3 space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">No. Invoice</span>
+                    <span className="font-mono font-semibold">{proofPayment.invoiceNumber}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Tipe</span>
+                    <span className="flex items-center gap-1.5 font-medium">
+                      {typeIcons[proofPayment.type]}
+                      {proofPayment.type}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Deskripsi</span>
+                    <span className="font-medium text-right max-w-[200px]">{proofPayment.description}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Metode Bayar</span>
+                    <span className="flex items-center gap-1.5 font-medium">
+                      {methodLabels[proofPayment.method].icon}
+                      {methodLabels[proofPayment.method].label}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Tanggal Bayar</span>
+                    <span className="font-medium">
+                      {proofPayment.paidAt ? formatDate(proofPayment.paidAt) : formatDate(proofPayment.date)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Prescription Items (if e-resep) */}
+              {proofPayment.prescriptionItems && proofPayment.prescriptionItems.length > 0 && (
+                <div className="border border-border rounded-xl overflow-hidden">
+                  <div className="bg-violet-50 dark:bg-violet-950/30 px-4 py-3">
+                    <p className="font-semibold text-sm text-violet-700 dark:text-violet-400">Detail Obat</p>
+                  </div>
+                  <div className="px-4 py-3">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="text-left py-1.5 text-muted-foreground font-medium">Obat</th>
+                          <th className="text-center py-1.5 text-muted-foreground font-medium">Qty</th>
+                          <th className="text-right py-1.5 text-muted-foreground font-medium">Harga</th>
+                          <th className="text-right py-1.5 text-muted-foreground font-medium">Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {proofPayment.prescriptionItems.map((item, i) => (
+                          <tr key={i} className="border-b border-border/50 last:border-0">
+                            <td className="py-1.5">
+                              <p className="font-medium text-foreground">{item.name}</p>
+                              <p className="text-muted-foreground">{item.dosage}</p>
+                            </td>
+                            <td className="py-1.5 text-center text-foreground">{item.quantity}</td>
+                            <td className="py-1.5 text-right text-foreground">{formatCurrency(item.price || 0)}</td>
+                            <td className="py-1.5 text-right font-medium text-foreground">
+                              {formatCurrency((item.price || 0) * item.quantity)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Total Amount */}
+              <div className="flex items-center justify-between p-4 bg-primary/5 rounded-xl">
+                <span className="font-semibold text-sm">Total Pembayaran</span>
+                <span className="font-bold text-lg text-primary">{formatCurrency(proofPayment.amount)}</span>
+              </div>
+
+              {/* Stamp */}
+              <div className="flex items-center justify-center">
+                <div className="w-20 h-20 rounded-full border-2 border-emerald-500 flex items-center justify-center opacity-60 -rotate-12">
+                  <div className="text-center">
+                    <Stamp className="w-4 h-4 text-emerald-600 mx-auto" />
+                    <span className="text-[8px] font-bold text-emerald-600 uppercase tracking-wider">Dibayar</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Download Button */}
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={() => handleDownload(proofPayment)}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Unduh Bukti Pembayaran
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -42,6 +42,8 @@ import {
   Plus,
   Trash2,
   Stethoscope,
+  Eye,
+  Download,
 } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -867,9 +869,57 @@ export function ChatPanel() {
         {isPatient && (
           <div className="px-4 pb-3">
             {isPaid ? (
-              <div className="flex items-center justify-center gap-2 py-2 text-emerald-600">
-                <CheckCheck className="w-4 h-4" />
-                <span className="text-sm font-medium">Sudah Dibayar</span>
+              <div className="space-y-2">
+                <div className="flex items-center justify-center gap-2 py-1 text-emerald-600">
+                  <CheckCheck className="w-4 h-4" />
+                  <span className="text-sm font-medium">Sudah Dibayar</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 h-8 text-xs"
+                    onClick={() => {
+                      setActivePanel('medical-records');
+                    }}
+                  >
+                    <Eye className="w-3.5 h-3.5 mr-1" />
+                    Lihat Bukti
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 h-8 text-xs"
+                    onClick={() => {
+                      // Find payment for this prescription and download
+                      const pay = useStore.getState().payments.find(
+                        (p) => p.referenceId === prescription.id && p.status === 'success'
+                      );
+                      if (pay) {
+                        const items = (prescription.items || []).map((item) => ({
+                          name: item.medicineName,
+                          dosage: item.dosage,
+                          quantity: item.quantity,
+                          price: item.price || 0,
+                        }));
+                        const params = new URLSearchParams({
+                          invoiceNumber: pay.invoiceNumber || `INV-${pay.id}`,
+                          amount: String(pay.amount),
+                          method: pay.method,
+                          paidAt: pay.paidAt || pay.createdAt,
+                          patientName: useStore.getState().currentUser?.name || '',
+                          doctorName: '',
+                          prescriptionId: prescription.id,
+                          items: JSON.stringify(items),
+                        });
+                        window.open(`/api/payment-proof?${params.toString()}`, '_blank');
+                      }
+                    }}
+                  >
+                    <Download className="w-3.5 h-3.5 mr-1" />
+                    Unduh Bukti
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="flex gap-2">
