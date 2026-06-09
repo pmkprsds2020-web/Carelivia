@@ -42,6 +42,42 @@ export async function POST(request: NextRequest) {
       triage.level === 'oranye' ? 'ORANYE (Home Care)' :
       triage.level === 'kuning' ? 'KUNING (Evaluasi 24 Jam)' : 'HIJAU (Aman Telekonsultasi)';
 
+    // Build module answers summary for richer context
+    let moduleAnswersSummary = '';
+    if (moduleAnswers && typeof moduleAnswers === 'object') {
+      const answerParts: string[] = [];
+      const moduleLabels: Record<string, string> = {
+        keluhan_utama: 'Keluhan Utama',
+        tanda_bahaya: 'Tanda Bahaya',
+        tanda_vital: 'Tanda Vital',
+        penyakit_kronis: 'Penyakit Kronis',
+        nyeri: 'Nyeri',
+        kesehatan_mental: 'Kesehatan Mental',
+        nutrisi: 'Nutrisi',
+        risiko_jatuh: 'Risiko Jatuh',
+        status_fungsional: 'Status Fungsional',
+        home_care: 'Home Care',
+        paliatif: 'Paliatif',
+        bukti_klinis: 'Bukti Klinis',
+      };
+      for (const [modId, answers] of Object.entries(moduleAnswers as Record<string, Record<string, string | number | string[]>>)) {
+        if (!answers || Object.keys(answers).length === 0) continue;
+        const label = moduleLabels[modId] || modId;
+        const ansEntries = Object.entries(answers)
+          .filter(([, v]) => v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0))
+          .map(([qId, v]) => {
+            if (Array.isArray(v)) return `${qId}: ${v.join(', ')}`;
+            return `${qId}: ${v}`;
+          });
+        if (ansEntries.length > 0) {
+          answerParts.push(`[${label}]\n${ansEntries.join('\n')}`);
+        }
+      }
+      if (answerParts.length > 0) {
+        moduleAnswersSummary = `\n**Jawaban Detail Per Modul**:\n${answerParts.join('\n\n')}`;
+      }
+    }
+
     const completion = await zai.chat.completions.create({
       messages: [
         {
@@ -72,6 +108,7 @@ export async function POST(request: NextRequest) {
 
 **Hasil Modul Skrining**:
 ${moduleScoresSummary || 'Tidak ada data modul'}
+${moduleAnswersSummary}
 
 Berikan analisis dalam format berikut:
 
@@ -109,7 +146,7 @@ Buat SOAP Note dari hasil skrining komprehensif:
   } catch (error) {
     console.error('Screening analysis error:', error);
     return NextResponse.json(
-      { analysis: 'Gagal menganalisis hasil skrining. Silakan coba lagi.' },
+      { analysis: 'Gagal menganalisis hasil skrining. Terjadi kesalahan pada server. Silakan coba lagi dalam beberapa saat.' },
       { status: 500 }
     );
   }

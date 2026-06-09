@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store';
 import type { ScreeningForm, ScreeningModuleId, RiskCategory, ScreeningAuditLog, Notification as AppNotification, ClinicalFile, TriageLevel } from '@/lib/types';
 import {
@@ -172,7 +172,7 @@ export function ScreeningPanel() {
   // ── Patient State ──
   const [activeFormId, setActiveFormId] = useState<string | null>(null);
   const [activeModuleIdx, setActiveModuleIdx] = useState(0);
-  const [moduleAnswers, setModuleAnswers] = useState<Record<ScreeningModuleId, Record<string, string | number | string[]>>>({});
+  const [moduleAnswers, setModuleAnswers] = useState<Record<ScreeningModuleId, Record<string, string | number | string[]>>>({} as Record<ScreeningModuleId, Record<string, string | number | string[]>>);
   const [clinicalFiles, setClinicalFiles] = useState<ClinicalFile[]>([]);
 
   // ── Computed Data ──
@@ -356,11 +356,6 @@ export function ScreeningPanel() {
     setAiLoading(true);
     setAiAnalysis('');
     try {
-      const summaryParts: string[] = [];
-      for (const [modId, scores] of Object.entries(form.moduleScores || {})) {
-        const mod = getModuleById(modId as ScreeningModuleId);
-        if (mod) summaryParts.push(`${mod.name}: Skor ${scores.score} (${scores.label})`);
-      }
       const res = await fetch('/api/screening-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -372,12 +367,109 @@ export function ScreeningPanel() {
           moduleAnswers: form.moduleAnswers,
         }),
       });
+      if (!res.ok) {
+        throw new Error(`HTTP error: ${res.status}`);
+      }
       const data = await res.json();
-      setAiAnalysis(data.analysis || 'Tidak dapat menganalisis hasil skrining.');
+      const analysisText = data.analysis || 'Tidak dapat menganalisis hasil skrining.';
+      setAiAnalysis(analysisText);
+      // Persist AI analysis to the store
+      updateScreeningForm(form.id, { aiAnalysis: analysisText });
     } catch {
-      setAiAnalysis('Gagal menganalisis. Silakan coba lagi.');
+      const errorMsg = 'Gagal menganalisis. Periksa koneksi internet dan coba lagi.';
+      setAiAnalysis(errorMsg);
     }
     setAiLoading(false);
+  };
+
+  // Simple Markdown renderer
+  const renderMarkdown = (text: string) => {
+    const lines = text.split('\n');
+    const elements: React.ReactNode[] = [];
+    let inList = false;
+    let listItems: React.ReactNode[] = [];
+    let listKey = 0;
+
+    const flushList = () => {
+      if (listItems.length > 0) {
+        elements.push(<ul key={`list-${listKey++}`} className="list-disc pl-5 space-y-1 my-2">{listItems}</ul>);
+        listItems = [];
+        inList = false;
+      }
+    };
+
+    lines.forEach((line, idx) => {
+      // Headings
+      if (line.startsWith('## ')) {
+        flushList();
+        elements.push(<h2 key={idx} className="text-base font-bold text-foreground mt-4 mb-2">{line.slice(3)}</h2>);
+        return;
+      }
+      if (line.startsWith('### ')) {
+        flushList();
+        elements.push(<h3 key={idx} className="text-sm font-bold text-foreground mt-3 mb-1">{line.slice(4)}</h3>);
+        return;
+      }
+
+      // List items
+      const listMatch = line.match(/^- (.+)/);
+      if (listMatch) {
+        inList = true;
+        const content = listMatch[1];
+        listItems.push(<li key={idx} className="text-sm text-foreground">{renderInlineMarkdown(content)}</li>);
+        return;
+      }
+
+      flushList();
+
+      // Horizontal rule
+      if (line.match(/^---+$/)) {
+        elements.push(<Separator key={idx} className="my-3" />);
+        return;
+      }
+
+      // Empty line
+      if (line.trim() === '') {
+        elements.push(<div key={idx} className="h-2" />);
+        return;
+      }
+
+      // Regular paragraph
+      elements.push(<p key={idx} className="text-sm text-foreground leading-relaxed">{renderInlineMarkdown(line)}</p>);
+    });
+
+    flushList();
+    return elements;
+  };
+
+  const renderInlineMarkdown = (text: string): React.ReactNode => {
+    // Split by bold patterns first, then italic within each segment
+    const segments: React.ReactNode[] = [];
+    let key = 0;
+
+    // Process bold: **text**
+    const boldParts = text.split(/(\*\*[^*]+\*\*)/g);
+    for (const part of boldParts) {
+      const boldMatch = part.match(/^\*\*(.+)\*\*$/);
+      if (boldMatch) {
+        segments.push(React.createElement('strong', { key: `b-${key++}`, className: 'font-semibold' }, boldMatch[1]));
+      } else {
+        // Process italic within non-bold parts: *text*
+        const italicParts = part.split(/(\*[^*]+\*)/g);
+        for (const ipart of italicParts) {
+          const italicMatch = ipart.match(/^\*(.+)\*$/);
+          if (italicMatch) {
+            segments.push(React.createElement('em', { key: `i-${key++}`, className: 'italic' }, italicMatch[1]));
+          } else {
+            segments.push(ipart);
+          }
+        }
+      }
+    }
+
+    if (segments.length === 0) return text;
+    if (segments.length === 1) return segments[0];
+    return React.createElement(React.Fragment, { key: `frag-${key++}` }, ...segments);
   };
 
   // ── Render: Patient Form Filling ───────────────────────────────────────
@@ -972,7 +1064,8 @@ export function ScreeningPanel() {
                   setViewingForm(form);
                   setDoctorNotes(form.doctorNotes || '');
                   setDoctorFollowUp(form.followUp || '');
-                  setAiAnalysis('');
+                  setAiAnalysis(form.aiAnalysis || '');
+                  setAiLoading(false);
                 }}
               >
                 <CardContent className="p-4">
@@ -992,6 +1085,11 @@ export function ScreeningPanel() {
                         </Badge>
                       )}
                       <Badge className={cn('text-xs', statusInfo.color)}>{statusInfo.label}</Badge>
+                      {form.aiAnalysis && (
+                        <Badge variant="secondary" className="text-xs flex items-center gap-1 bg-primary/10 text-primary">
+                          <Sparkles className="w-3 h-3" /> AI
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -1002,7 +1100,7 @@ export function ScreeningPanel() {
       )}
 
       {/* View Detail Dialog */}
-      <Dialog open={!!viewingForm} onOpenChange={(open) => { if (!open) setViewingForm(null); }}>
+      <Dialog open={!!viewingForm} onOpenChange={(open) => { if (!open) { setViewingForm(null); setAiAnalysis(''); setAiLoading(false); } }}>
         <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1015,6 +1113,7 @@ export function ScreeningPanel() {
               <TabsList className="flex flex-wrap h-auto gap-1">
                 <TabsTrigger value="ringkasan" className="text-xs">Ringkasan Klinis</TabsTrigger>
                 <TabsTrigger value="modul" className="text-xs">Detail Modul</TabsTrigger>
+                <TabsTrigger value="ai" className="text-xs flex items-center gap-1"><Sparkles className="w-3 h-3" /> AI Analysis</TabsTrigger>
                 <TabsTrigger value="catatan" className="text-xs">Catatan Dokter</TabsTrigger>
               </TabsList>
               <TabsContent value="ringkasan" className="mt-4">
@@ -1022,6 +1121,66 @@ export function ScreeningPanel() {
               </TabsContent>
               <TabsContent value="modul" className="mt-4">
                 {renderModuleResults(viewingForm)}
+              </TabsContent>
+              <TabsContent value="ai" className="mt-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-primary" />
+                    <h3 className="text-sm font-semibold">AI Clinical Assistant</h3>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleAiAnalysis(viewingForm)}
+                    disabled={aiLoading}
+                  >
+                    {aiLoading ? (
+                      <><Activity className="w-4 h-4 mr-2 animate-spin" /> Menganalisis...</>
+                    ) : (
+                      <><Brain className="w-4 h-4 mr-2" /> {aiAnalysis ? 'Analisis Ulang' : 'Mulai AI Analysis'}</>
+                    )}
+                  </Button>
+                </div>
+
+                {aiLoading && (
+                  <Card className="border-primary/30 bg-primary/5">
+                    <CardContent className="p-6">
+                      <div className="flex flex-col items-center justify-center gap-3">
+                        <div className="relative">
+                          <Brain className="w-12 h-12 text-primary animate-pulse" />
+                          <Sparkles className="w-5 h-5 text-primary absolute -top-1 -right-1 animate-bounce" />
+                        </div>
+                        <div className="text-center">
+                          <p className="text-sm font-medium text-foreground">AI sedang menganalisis hasil skrining...</p>
+                          <p className="text-xs text-muted-foreground mt-1">Proses ini memerlukan waktu sekitar 30-90 detik</p>
+                        </div>
+                        <div className="w-full max-w-xs">
+                          <Progress value={undefined} className="h-2 animate-pulse" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {aiAnalysis && !aiLoading && (
+                  <Card className="border-primary/30 bg-primary/5">
+                    <CardContent className="p-4">
+                      <div className="prose prose-sm max-w-none">
+                        {renderMarkdown(aiAnalysis)}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {!aiAnalysis && !aiLoading && !viewingForm.aiAnalysis && (
+                  <Card>
+                    <CardContent className="p-6 text-center">
+                      <Brain className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                      <p className="text-sm text-muted-foreground">Klik "Mulai AI Analysis" untuk mendapatkan analisis klinis AI berdasarkan hasil skrining.</p>
+                      <p className="text-xs text-muted-foreground mt-2">AI akan menganalisis seluruh modul skrining dan menghasilkan Ringkasan Klinis, Faktor Risiko, Rekomendasi Tindak Lanjut, dan SOAP Note.</p>
+                    </CardContent>
+                  </Card>
+                )}
               </TabsContent>
               <TabsContent value="catatan" className="mt-4 space-y-4">
                 <div>
@@ -1036,18 +1195,7 @@ export function ScreeningPanel() {
                   <Button onClick={handleReviewForm} className="flex-1">
                     <CheckCircle className="w-4 h-4 mr-2" /> Simpan & Tandai Ditinjau
                   </Button>
-                  <Button variant="outline" onClick={() => handleAiAnalysis(viewingForm)} disabled={aiLoading}>
-                    {aiLoading ? <><Activity className="w-4 h-4 mr-2 animate-spin" /> Menganalisis...</> : <><Brain className="w-4 h-4 mr-2" /> AI Analysis</>}
-                  </Button>
                 </div>
-                {aiAnalysis && (
-                  <Card className="border-primary/30 bg-primary/5">
-                    <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" /> AI Clinical Assistant</CardTitle></CardHeader>
-                    <CardContent className="p-4 pt-0">
-                      <div className="text-sm text-foreground whitespace-pre-wrap">{aiAnalysis}</div>
-                    </CardContent>
-                  </Card>
-                )}
               </TabsContent>
             </Tabs>
           )}

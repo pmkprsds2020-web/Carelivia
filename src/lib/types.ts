@@ -361,6 +361,7 @@ export interface ScreeningForm {
   clinicalSummary?: ClinicalSummary;
   doctorNotes?: string;
   followUp?: string;
+  aiAnalysis?: string;
   completedAt?: string;
   reviewedAt?: string;
   createdAt: string;

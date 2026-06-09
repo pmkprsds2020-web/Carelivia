@@ -255,3 +255,52 @@ Stage Summary:
 - All emojis/emoticons removed from screening UI across all files
 - Lucide icons replace emojis for professional, consistent appearance
 - VLM verification confirms no emojis visible and all icons are SVG/Lucide-style
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix AI analysis to work properly
+
+Work Log:
+- Explored codebase to understand AI analysis architecture: API route at /api/screening-analysis, screening-panel.tsx component, screening-templates.ts scoring/triage logic
+- Identified 6 key issues:
+  1. AI analysis not persisted — lost when dialog closes (local useState only)
+  2. No Markdown rendering — AI response is Markdown but displayed as plain text with whitespace-pre-wrap
+  3. Module answers not included in AI prompt — data sent to API but never used in the LLM prompt
+  4. Dead code — summaryParts variable built but never included in API request
+  5. AI Analysis hidden inside "Catatan Dokter" tab instead of having its own dedicated tab
+  6. No proper loading state with progress indication
+- Added `aiAnalysis?: string` field to `ScreeningForm` interface in types.ts
+- Rewrote `/api/screening-analysis/route.ts`:
+  - Added module answers summary in the AI prompt for richer clinical context
+  - Better error handling with HTTP status check
+  - Improved Indonesian error messages
+- Rewrote `handleAiAnalysis` in screening-panel.tsx:
+  - Removed dead code (unused summaryParts)
+  - Added HTTP response status check
+  - Persists AI analysis to store via `updateScreeningForm(form.id, { aiAnalysis })`
+  - Better error messages
+- Added dedicated "AI Analysis" tab in the screening detail dialog:
+  - Replaces old layout where AI Analysis was hidden inside "Catatan Dokter" tab
+  - Shows "Mulai AI Analysis" button with Brain icon
+  - Animated loading state with Brain/Sparkles icons, progress bar, and time estimate
+  - Markdown rendering of AI response with proper heading, list, bold, and italic formatting
+  - Empty state with helpful instructions
+  - "Analisis Ulang" button for re-running analysis
+- Added Markdown renderer functions (renderMarkdown, renderInlineMarkdown):
+  - Supports ## and ### headings, - list items, --- horizontal rules, **bold**, *italic*
+  - Uses React.createElement to avoid ESLint/TSX parsing conflicts
+- Loads persisted AI analysis when opening a screening form: `setAiAnalysis(form.aiAnalysis || '')`
+- Added AI badge indicator on screening form cards that already have AI analysis
+- Fixed TypeScript error: Added React import, fixed empty object type casting for moduleAnswers
+- Verified compilation: No TypeScript errors in screening-related files
+- Verified dev server: All 200 responses, API endpoint functional (200 in 78s)
+
+Stage Summary:
+- AI analysis now persists to store — no longer lost when dialog closes or form changes
+- AI response rendered as proper Markdown (headings, lists, bold, italic) instead of plain text
+- Module answers included in AI prompt for much richer clinical analysis
+- Dedicated "AI Analysis" tab replaces hidden button inside "Catatan Dokter" tab
+- Professional loading state with animation and time estimate
+- AI badge on screening cards indicates which forms have been analyzed
+- Files changed: types.ts, screening-analysis/route.ts, screening-panel.tsx
