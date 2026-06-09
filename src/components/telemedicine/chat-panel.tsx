@@ -92,7 +92,7 @@ const PALLIATIVE_TOOL_LABELS: Record<PalliativeToolType, { name: string; icon: R
   esas: { name: 'ESAS-r', icon: <Activity className="w-4 h-4" />, desc: 'Edmonton Symptom Assessment — 9 gejala VAS 0-10' },
   distress: { name: 'Distress Thermometer', icon: <Flame className="w-4 h-4" />, desc: 'NCCN Distress — Skor tekanan + daftar masalah' },
   spict: { name: 'SPICT', icon: <ClipboardList className="w-4 h-4" />, desc: 'Indikator kebutuhan perawatan paliatif' },
-  pps: { name: 'PPS / Karnofsky', icon: <HeartPulse className="w-4 h-4" />, desc: 'Palliative Performance Scale — 10 level performa' },
+  pps: { name: 'Skrining Kondisi Pasien (PPS)', icon: <HeartPulse className="w-4 h-4" />, desc: 'Palliative Performance Scale — 5 dimensi + pertanyaan tambahan' },
   zarit: { name: 'Zarit Caregiver Burden', icon: <Users className="w-4 h-4" />, desc: 'Beban pengasuh — 22 pertanyaan' },
   eortc: { name: 'EORTC QLQ-C15-PAL', icon: <Heart className="w-4 h-4" />, desc: 'Kualitas hidup paliatif — 15 item' },
 };

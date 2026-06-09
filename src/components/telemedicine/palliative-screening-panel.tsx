@@ -96,12 +96,12 @@ const TOOL_DEFS: Record<ToolType, {
     totalSteps: 7,
   },
   pps: {
-    name: 'PPS / Karnofsky',
+    name: 'Skrining Kondisi Pasien (PPS)',
     icon: <Activity className="w-6 h-6" />,
-    description: 'Palliative Performance Scale — 10 level performa fungsional paliatif',
-    items: '10 level (100%-10%)',
-    scale: 'PPS % + Karnofsky ekuivalen',
-    totalSteps: 1,
+    description: 'Palliative Performance Scale — 5 dimensi kondisi pasien dengan pertanyaan tambahan',
+    items: '5 dimensi + 5 pertanyaan tambahan',
+    scale: 'PPS % (rata-rata 5 dimensi)',
+    totalSteps: 2,
   },
   zarit: {
     name: 'Zarit Caregiver Burden',
@@ -148,7 +148,7 @@ const DT_PROBLEMS: { category: string; step: number; items: string[] }[] = [
 // ── SPICT Data ───────────────────────────────────────────────────────────
 
 const SPICT_GENERAL = [
-  'Performa fungsional menurun secara progresif (PPS/Karnofsky rendah)',
+  'Performa fungsional menurun secara progresif (PPS rendah)',
   'Bergantung pada orang lain untuk perawatan diri',
   'Kebutuhan perawatan meningkat di rumah atau fasilitas',
   'Penurunan berat badan progresif tanpa upaya diet',
@@ -167,17 +167,75 @@ const SPICT_DISEASE: { category: string; step: number; items: string[] }[] = [
 
 // ── PPS Data ─────────────────────────────────────────────────────────────
 
-const PPS_LEVELS = [
-  { pps: 100, karnofsky: 100, ambulasi: 'Penuh', aktivitas: 'Aktivitas normal & pekerjaan penuh, bukti penyakit tidak ada', perawatanDiri: 'Penuh', intake: 'Normal', kesadaran: 'Penuh' },
-  { pps: 90, karnofsky: 90, ambulasi: 'Penuh', aktivitas: 'Aktivitas normal, usaha/dorongan berkurang, bukti penyakit minimal', perawatanDiri: 'Penuh', intake: 'Normal', kesadaran: 'Penuh' },
-  { pps: 80, karnofsky: 80, ambulasi: 'Penuh', aktivitas: 'Aktivitas normal dengan usaha, bukti penyakit lebih nyata', perawatanDiri: 'Penuh', intake: 'Normal atau berkurang', kesadaran: 'Penuh' },
-  { pps: 70, karnofsky: 70, ambulasi: 'Berkurang', aktivitas: 'Tidak mampu pekerjaan normal, bukti penyakit signifikan', perawatanDiri: 'Penuh', intake: 'Normal atau berkurang', kesadaran: 'Penuh atau berkurang' },
-  { pps: 60, karnofsky: 60, ambulasi: 'Berkurang', aktivitas: 'Tidak mampu pekerjaan/hobi, bantuan sesekali diperlukan', perawatanDiri: 'Sebagian bantuan sesekali', intake: 'Normal atau berkurang', kesadaran: 'Penuh atau bingung' },
-  { pps: 50, karnofsky: 50, ambulasi: 'Duduk/berbaring', aktivitas: 'Bantuan considerable diperlukan, penyakit aktif', perawatanDiri: 'Bantuan considerable', intake: 'Normal atau berkurang', kesadaran: 'Penuh atau bingung' },
-  { pps: 40, karnofsky: 40, ambulasi: 'Terbatas di tempat tidur/kursi', aktivitas: 'Aktivitas minimal, penyakit progresif', perawatanDiri: 'Bantuan besar', intake: 'Berkurang', kesadaran: 'Penuh atau mengantuk' },
-  { pps: 30, karnofsky: 30, ambulasi: 'Terbatas di tempat tidur', aktivitas: 'Tidak ada aktivitas, penyakit progresif', perawatanDiri: 'Bantuan total', intake: 'Berkurang', kesadaran: 'Penuh atau mengantuk' },
-  { pps: 20, karnofsky: 20, ambulasi: 'Terbatas di tempat tidur', aktivitas: 'Tidak ada aktivitas, penyakit progresif', perawatanDiri: 'Bantuan total', intake: 'Minimal', kesadaran: 'Mengantuk atau bingung' },
-  { pps: 10, karnofsky: 10, ambulasi: 'Terbatas di tempat tidur', aktivitas: 'Tidak ada aktivitas', perawatanDiri: 'Bantuan total', intake: 'Mouth care saja', kesadaran: 'Koma atau tidak responsif' },
+const PPS_QUESTIONS = [
+  {
+    id: 'pps-bergerak',
+    title: '1. Kemampuan Bergerak',
+    options: [
+      { text: 'Jalan normal', desc: 'Masih bisa beraktivitas/ke luar rumah seperti biasa.', score: 100 },
+      { text: 'Jalan lambat', desc: 'Bisa keluar rumah, tapi kecepatan berkurang/mudah lelah.', score: 80 },
+      { text: 'Jalan dalam rumah', desc: 'Tidak keluar rumah, mobilitas hanya di area dalam rumah.', score: 60 },
+      { text: 'Duduk/berbaring', desc: 'Lebih banyak duduk/berbaring daripada berjalan.', score: 40 },
+      { text: 'Hampir selalu tidur', desc: 'Sangat jarang bangun dari tempat tidur.', score: 20 },
+      { text: 'Bedridden', desc: 'Tidak mampu bangun dari tempat tidur sama sekali.', score: 0 },
+    ],
+  },
+  {
+    id: 'pps-aktivitas',
+    title: '2. Aktivitas Sehari-hari',
+    options: [
+      { text: 'Aktivitas penuh', desc: 'Masih mampu melakukan semua kegiatan normal.', score: 100 },
+      { text: 'Aktivitas terbatas', desc: 'Masih beraktivitas, tapi butuh istirahat lebih sering.', score: 80 },
+      { text: 'Tanpa kerja berat', desc: 'Tidak mampu mencuci, mengangkat barang, atau berkebun.', score: 60 },
+      { text: 'Aktivitas ringan', desc: 'Hanya mampu melakukan kegiatan yang sangat ringan.', score: 40 },
+      { text: 'Hampir tidak ada aktivitas', desc: 'Hampir tidak melakukan kegiatan apa pun.', score: 20 },
+      { text: 'Tidak mampu mandiri', desc: 'Tidak bisa melakukan aktivitas sendiri sama sekali.', score: 0 },
+    ],
+  },
+  {
+    id: 'pps-kemandirian',
+    title: '3. Kemandirian',
+    options: [
+      { text: 'Mandiri penuh', desc: 'Tidak membutuhkan bantuan orang lain.', score: 100 },
+      { text: 'Sedikit bantuan', desc: 'Mandiri, hanya butuh bantu hal kecil (misal: kancing baju).', score: 80 },
+      { text: 'Bantuan beberapa', desc: 'Butuh bantuan fisik, misal saat ke kamar mandi/mandi.', score: 60 },
+      { text: 'Bantuan sebagian besar', desc: 'Sebagian besar kebutuhan rutin harus dibantu.', score: 40 },
+      { text: 'Bantuan penuh', desc: 'Butuh bantuan penuh untuk semua aktivitas dasar.', score: 20 },
+      { text: 'Total care', desc: 'Semua kebutuhan harus dibantu total oleh orang lain.', score: 0 },
+    ],
+  },
+  {
+    id: 'pps-makan',
+    title: '4. Makan dan Minum',
+    options: [
+      { text: 'Normal', desc: 'Nafsu makan dan porsi sama seperti biasanya.', score: 100 },
+      { text: 'Sedikit kurang', desc: 'Porsi sedikit berkurang, ada sedikit sisa makanan.', score: 80 },
+      { text: 'Kurang cukup banyak', desc: 'Penurunan asupan yang jelas (misal: hanya habis setengah).', score: 60 },
+      { text: 'Hanya sedikit', desc: 'Hanya sanggup makan beberapa suap/sangat sedikit.', score: 40 },
+      { text: 'Sangat sedikit', desc: 'Hampir tidak ada asupan makanan yang masuk.', score: 20 },
+      { text: 'Tidak mampu', desc: 'Sama sekali tidak mampu makan atau minum.', score: 0 },
+    ],
+  },
+  {
+    id: 'pps-kesadaran',
+    title: '5. Kesadaran dan Komunikasi',
+    options: [
+      { text: 'Sadar penuh', desc: 'Komunikasi normal dan sadar sepenuhnya.', score: 100 },
+      { text: 'Mengantuk ringan', desc: 'Sering mengantuk tapi masih bisa diajak bicara.', score: 80 },
+      { text: 'Sulit konsentrasi', desc: 'Sering mengantuk dan sulit fokus saat bicara.', score: 60 },
+      { text: 'Bingung sesekali', desc: 'Terkadang tampak bingung atau tidak nyambung.', score: 40 },
+      { text: 'Sering bingung', desc: 'Sering sulit diajak komunikasi atau bingung.', score: 20 },
+      { text: 'Tidak responsif', desc: 'Tidak sadar atau tidak memberikan respons.', score: 0 },
+    ],
+  },
+];
+
+const PPS_EXTRA_QUESTIONS = [
+  'Apakah kondisi pasien memburuk dibanding bulan lalu?',
+  'Apakah pasien pernah jatuh dalam 1 bulan terakhir?',
+  'Apakah pasien mengalami penurunan berat badan?',
+  'Apakah pasien lebih banyak tidur dibanding biasanya?',
+  'Apakah keluarga merasa pasien membutuhkan bantuan lebih banyak?',
 ];
 
 // ── Zarit Data ───────────────────────────────────────────────────────────
@@ -503,10 +561,23 @@ export function PalliativeScreeningPanel() {
     return { generalCount, specificCount, isPositive, checkedGeneral, checkedSpecific };
   }, [answers]);
 
-  const calcPPS = useCallback((): { pps: number; karnofsky: number; level: typeof PPS_LEVELS[0] | null } => {
-    const pps = Number(answers['pps-level']) || 0;
-    const level = PPS_LEVELS.find(l => l.pps === pps) || null;
-    return { pps, karnofsky: level?.karnofsky || 0, level };
+  const calcPPS = useCallback((): { pps: number; categoryAnswers: Record<string, number>; extraYesCount: number; dimensionDetails: { id: string; title: string; score: number; label: string }[] } => {
+    let total = 0;
+    const dimensionDetails: { id: string; title: string; score: number; label: string }[] = [];
+    const categoryAnswers: Record<string, number> = {};
+    for (const q of PPS_QUESTIONS) {
+      const score = Number(answers[q.id]) || 0;
+      total += score;
+      categoryAnswers[q.id] = score;
+      const selectedOption = q.options.find(o => o.score === score);
+      dimensionDetails.push({ id: q.id, title: q.title, score, label: selectedOption?.text || '-' });
+    }
+    const pps = Math.round(total / 5);
+    let extraYesCount = 0;
+    for (let i = 0; i < PPS_EXTRA_QUESTIONS.length; i++) {
+      if (Number(answers[`pps-extra-${i}`]) === 1) extraYesCount++;
+    }
+    return { pps, categoryAnswers, extraYesCount, dimensionDetails };
   }, [answers]);
 
   const calcZarit = useCallback((): { total: number; category: string; needReferral: boolean } => {
@@ -572,9 +643,9 @@ export function PalliativeScreeningPanel() {
         return 'hijau';
       }
       case 'pps': {
-        const { pps } = calcPPS();
-        if (pps <= 30) return 'merah';
-        if (pps <= 60) return 'kuning';
+        const { pps, extraYesCount } = calcPPS();
+        if (pps <= 30 || extraYesCount >= 3) return 'merah';
+        if (pps <= 60 || extraYesCount >= 2) return 'kuning';
         return 'hijau';
       }
       case 'zarit': {
@@ -644,12 +715,13 @@ export function PalliativeScreeningPanel() {
         const r = calcPPS();
         score = r.pps;
         scoreLabel = `PPS ${r.pps}%`;
-        interpretation = `PPS ${r.pps}%, Karnofsky ${r.karnofsky}. `;
-        if (r.pps <= 30) interpretation += 'Pasien bedbound dengan fungsi sangat terbatas. Perawatan paliatif intensif.';
-        else if (r.pps <= 50) interpretation += 'Pasien memerlukan bantuan considerable. Evaluasi kebutuhan paliatif.';
-        else if (r.pps <= 70) interpretation += 'Pasien aktivitas berkurang. Monitoring berkala diperlukan.';
-        else interpretation += 'Pasien masih ambulatory dengan performa baik.';
-        details = { pps: r.pps, karnofsky: r.karnofsky };
+        interpretation = `PPS ${r.pps}%. `;
+        if (r.pps >= 80) interpretation += 'Kondisi baik. Masih cukup mandiri. Kontrol rutin telemedicine.';
+        else if (r.pps >= 60) interpretation += 'Kondisi mulai menurun. Memerlukan pemantauan lebih sering. Pertimbangkan kunjungan home care.';
+        else if (r.pps >= 40) interpretation += 'Ketergantungan sedang-berat. Home care rutin. Evaluasi kebutuhan paliatif.';
+        else interpretation += 'Kondisi sangat berat. Perawatan intensif di rumah. Pertimbangkan Advance Care Planning.';
+        if (r.extraYesCount >= 3) interpretation += ` Alert: ${r.extraYesCount} indikator perburukan terdeteksi. Disarankan segera konsultasi dokter paliatif.`;
+        details = { pps: r.pps, dimensionDetails: r.dimensionDetails, extraYesCount: r.extraYesCount, categoryAnswers: r.categoryAnswers };
         break;
       }
       case 'zarit': {
@@ -897,62 +969,102 @@ export function PalliativeScreeningPanel() {
     );
   };
 
-  // ── PPS Step ──
+  // ── PPS Steps ──
   const renderPPS = () => {
-    const selectedPps = Number(answers['pps-level']) || 0;
-
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-muted-foreground mb-2">
-          Klik baris yang sesuai dengan kondisi pasien saat ini:
-        </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="bg-muted">
-                <th className="border border-border px-2 py-1.5 text-center font-semibold">PPS %</th>
-                <th className="border border-border px-2 py-1.5 text-center font-semibold">Ambulasi</th>
-                <th className="border border-border px-2 py-1.5 text-center font-semibold">Aktivitas & Bukti Penyakit</th>
-                <th className="border border-border px-2 py-1.5 text-center font-semibold">Perawatan Diri</th>
-                <th className="border border-border px-2 py-1.5 text-center font-semibold">Intake</th>
-                <th className="border border-border px-2 py-1.5 text-center font-semibold">Kesadaran</th>
-              </tr>
-            </thead>
-            <tbody>
-              {PPS_LEVELS.map(level => {
-                const isSelected = selectedPps === level.pps;
-                return (
-                  <tr
-                    key={level.pps}
-                    onClick={(e) => { e.stopPropagation(); setAnswer('pps-level', level.pps); }}
-                    className={cn(
-                      'cursor-pointer transition-all hover:bg-primary/5',
-                      isSelected ? 'bg-primary/10 ring-2 ring-primary ring-inset' : '',
-                    )}
-                  >
-                    <td className="border border-border px-2 py-1.5 text-center font-bold">
-                      <div className="flex items-center justify-center gap-1">
-                        {isSelected && <CheckCircle className="w-3 h-3 text-primary" />}
-                        {level.pps}%
-                      </div>
-                    </td>
-                    <td className="border border-border px-2 py-1.5">{level.ambulasi}</td>
-                    <td className="border border-border px-2 py-1.5">{level.aktivitas}</td>
-                    <td className="border border-border px-2 py-1.5">{level.perawatanDiri}</td>
-                    <td className="border border-border px-2 py-1.5">{level.intake}</td>
-                    <td className="border border-border px-2 py-1.5">{level.kesadaran}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+    if (currentStep === 0) {
+      // Step 1: 5 main dimension questions with radio cards
+      return (
+        <div className="space-y-6">
+          <p className="text-sm text-muted-foreground italic mb-2">
+            Pilih jawaban yang paling sesuai dengan kondisi pasien dalam 1 minggu terakhir.
+          </p>
+          {PPS_QUESTIONS.map(q => {
+            const selectedValue = Number(answers[q.id]) ?? -1;
+            return (
+              <div key={q.id} className="mb-4">
+                <p className="font-medium text-foreground mb-3">{q.title}</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {q.options.map(opt => {
+                    const isSelected = selectedValue === opt.score;
+                    return (
+                      <button
+                        key={opt.score}
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setAnswer(q.id, opt.score); }}
+                        className={cn(
+                          'w-full text-left border-2 rounded-lg p-3 cursor-pointer transition-all',
+                          isSelected
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border hover:border-primary/40 hover:bg-primary/5',
+                        )}
+                      >
+                        <div className="flex items-center">
+                          <div className={cn(
+                            'w-4 h-4 rounded-full border-2 mr-3 flex items-center justify-center shrink-0 transition-all',
+                            isSelected ? 'border-primary bg-primary' : 'border-muted-foreground/40',
+                          )}>
+                            {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-primary-foreground" />}
+                          </div>
+                          <span className="font-semibold text-foreground">{opt.text}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 ml-7">{opt.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          {PPS_QUESTIONS.every(q => answers[q.id] !== undefined) && (
+            <div className="p-3 rounded-lg bg-primary/10 text-center">
+              <p className="text-lg font-bold text-primary">PPS {calcPPS().pps}%</p>
+              <p className="text-xs text-muted-foreground">Rata-rata dari 5 dimensi</p>
+            </div>
+          )}
         </div>
-        {selectedPps > 0 && (
-          <div className="mt-3 p-3 rounded-lg bg-primary/10 text-center">
-            <p className="text-lg font-bold text-primary">PPS {selectedPps}%</p>
-            <p className="text-xs text-muted-foreground">Ekuivalen Karnofsky: {PPS_LEVELS.find(l => l.pps === selectedPps)?.karnofsky}%</p>
-          </div>
-        )}
+      );
+    }
+
+    // Step 2: Additional yes/no questions
+    return (
+      <div className="space-y-4">
+        <div className="border-t pt-4">
+          <p className="text-base font-semibold text-foreground mb-4">Pertanyaan Tambahan</p>
+        </div>
+        {PPS_EXTRA_QUESTIONS.map((q, idx) => {
+          const currentVal = Number(answers[`pps-extra-${idx}`]) ?? 0;
+          return (
+            <div key={idx} className="p-4 rounded-lg bg-muted/30 border border-border">
+              <p className="text-sm font-medium text-foreground mb-3">{q}</p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setAnswer(`pps-extra-${idx}`, 1); }}
+                  className={cn(
+                    'px-4 py-2 rounded-lg text-sm font-medium transition-all border',
+                    currentVal === 1
+                      ? 'bg-red-100 text-red-700 border-red-300'
+                      : 'bg-card text-foreground border-border hover:border-red-300',
+                  )}
+                >
+                  Ya
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setAnswer(`pps-extra-${idx}`, 0); }}
+                  className={cn(
+                    'px-4 py-2 rounded-lg text-sm font-medium transition-all border',
+                    currentVal === 0
+                      ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                      : 'bg-card text-foreground border-border hover:border-emerald-300',
+                  )}
+                >
+                  Tidak
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -1215,8 +1327,34 @@ export function PalliativeScreeningPanel() {
     };
 
     const renderPPSResult = () => {
-      const { pps, karnofsky } = calcPPS();
-      const level = PPS_LEVELS.find(l => l.pps === pps);
+      const { pps, extraYesCount, dimensionDetails } = calcPPS();
+
+      let statusLabel = '';
+      let statusColor = '';
+      let statusBg = '';
+      let advice = '';
+      if (pps >= 80) {
+        statusLabel = 'Kondisi Baik (PPS 80-100%)';
+        statusColor = 'text-emerald-700';
+        statusBg = 'bg-emerald-50 border-emerald-200';
+        advice = 'Masih cukup mandiri. Kontrol rutin telemedicine.';
+      } else if (pps >= 60) {
+        statusLabel = 'Kondisi Mulai Menurun (PPS 60-70%)';
+        statusColor = 'text-amber-700';
+        statusBg = 'bg-amber-50 border-amber-200';
+        advice = 'Memerlukan pemantauan lebih sering. Pertimbangkan kunjungan home care.';
+      } else if (pps >= 40) {
+        statusLabel = 'Ketergantungan Sedang-Berat (PPS 40-50%)';
+        statusColor = 'text-orange-700';
+        statusBg = 'bg-orange-50 border-orange-200';
+        advice = 'Home care rutin. Evaluasi kebutuhan paliatif.';
+      } else {
+        statusLabel = 'Kondisi Sangat Berat (PPS 10-30%)';
+        statusColor = 'text-red-700';
+        statusBg = 'bg-red-50 border-red-200';
+        advice = 'Perawatan intensif di rumah. Pertimbangkan Advance Care Planning.';
+      }
+
       return (
         <div className="space-y-4">
           <div className="text-center">
@@ -1226,32 +1364,36 @@ export function PalliativeScreeningPanel() {
           <div className={cn('rounded-lg border-2 px-4 py-2 text-center', ews.bg)}>
             <span className={cn('text-sm font-bold', ews.color)}>{ews.label}</span>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 rounded-lg border border-border text-center">
-              <p className="text-xs text-muted-foreground">Ekuivalen Karnofsky</p>
-              <p className="text-lg font-bold text-foreground">{karnofsky}%</p>
-            </div>
-            <div className="p-3 rounded-lg border border-border text-center">
-              <p className="text-xs text-muted-foreground">Ambulasi</p>
-              <p className="text-sm font-bold text-foreground">{level?.ambulasi || '-'}</p>
-            </div>
-            <div className="p-3 rounded-lg border border-border text-center">
-              <p className="text-xs text-muted-foreground">Perawatan Diri</p>
-              <p className="text-sm font-bold text-foreground">{level?.perawatanDiri || '-'}</p>
-            </div>
-            <div className="p-3 rounded-lg border border-border text-center">
-              <p className="text-xs text-muted-foreground">Intake</p>
-              <p className="text-sm font-bold text-foreground">{level?.intake || '-'}</p>
-            </div>
+          <div className={cn('rounded-xl border-2 p-4', statusBg)}>
+            <p className={cn('text-lg font-bold mb-2', statusColor)}>{statusLabel}</p>
+            <p className={cn('text-sm', statusColor)}>{advice}</p>
           </div>
-          <div className="p-3 rounded-lg bg-muted/50">
-            <p className="text-sm text-foreground">
-              {pps <= 30 ? 'Pasien bedbound, memerlukan perawatan paliatif intensif dan bantuan total. Pertimbangkan hospice.' :
-               pps <= 50 ? 'Pasien memerlukan bantuan considerable. Evaluasi kebutuhan perawatan paliatif aktif.' :
-               pps <= 70 ? 'Pasien aktivitas berkurang. Monitoring berkala dan dukungan supportif.' :
-               'Pasien masih ambulatory dengan performa baik. Lanjutkan perawatan standar.'}
-            </p>
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Detail Per Dimensi</p>
+            {dimensionDetails.map(d => (
+              <div key={d.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 border border-border">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{d.title}</p>
+                  <p className="text-xs text-muted-foreground">{d.label}</p>
+                </div>
+                <span className={cn(
+                  'text-sm font-bold',
+                  d.score >= 80 ? 'text-emerald-600' : d.score >= 60 ? 'text-amber-600' : d.score >= 40 ? 'text-orange-600' : 'text-red-600',
+                )}>
+                  {d.score}%
+                </span>
+              </div>
+            ))}
           </div>
+          {extraYesCount >= 3 && (
+            <div className="p-4 rounded-lg border-2 border-red-200 bg-red-50 flex items-start gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-red-700">Alert Risiko Perburukan</p>
+                <p className="text-xs text-red-600">Ditemukan {extraYesCount} indikator perburukan. Disarankan segera konsultasi dokter paliatif atau jadwal kunjungan home care.</p>
+              </div>
+            </div>
+          )}
         </div>
       );
     };

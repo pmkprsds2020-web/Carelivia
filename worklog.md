@@ -366,3 +366,37 @@ Stage Summary:
 - Doctor sees completed results with EWS badges in chat
 - All 6 tools preserved with full step-by-step modal functionality
 - Verified working with agent-browser: doctor can send, patient receives and can fill out
+
+---
+Task ID: 3
+Agent: Main
+Task: Replace PPS/Karnofsky screening with patient-friendly PPS version
+
+Work Log:
+- Replaced `PPS_LEVELS` constant (10-level clinical table) with `PPS_QUESTIONS` (5 patient-friendly dimension questions, each with 6 descriptive options scored 100/80/60/40/20/0)
+- Added `PPS_EXTRA_QUESTIONS` array (5 additional yes/no questions about patient condition worsening)
+- Updated TOOL_DEFS.pps: name, description, items, scale, totalSteps (1→2)
+- Rewrote `calcPPS()`: now computes average of 5 dimension scores, counts extra "Ya" answers, returns dimensionDetails with labels
+- Updated PPS EWS level: includes extraYesCount in threshold (≥3→merah, ≥2→kuning)
+- Updated PPS save result: new interpretation categories (Kondisi Baik 80-100%, Mulai Menurun 60-70%, Ketergantungan 40-50%, Sangat Berat 10-30%)
+- Replaced `renderPPS()` with 2-step UI:
+  - Step 0: 5 dimension questions with radio-card buttons (each option has title + description)
+  - Step 1: 5 additional yes/no questions with Ya/Tidak buttons
+- Replaced `renderPPSResult()` with new result view:
+  - PPS percentage with status category (colored)
+  - Clinical advice per category
+  - Detail per dimension (title, label, score%)
+  - Alert Risiko Perburukan when extraYesCount ≥ 3
+- Updated `PALLIATIVE_TOOL_LABELS.pps` in chat-panel.tsx with new name and description
+- Updated `SPICT_GENERAL` indicator from "PPS/Karnofsky rendah" to "PPS rendah"
+- Updated screening-templates.ts PPS radio question with patient-friendly options in Indonesian
+- Removed all "Karnofsky" references from the codebase
+
+Stage Summary:
+- PPS/Karnofsky clinical table replaced with patient-friendly 5-dimension questionnaire
+- Each dimension has 6 easy-to-understand options with descriptions (not clinical jargon)
+- Additional 5 yes/no questions detect deterioration risk
+- Result view shows dimension-level detail with color-coded scores
+- Alert triggers when ≥3 risk indicators are positive
+- Updated across: palliative-screening-panel.tsx, chat-panel.tsx, screening-templates.ts
+- Browser verified: PPS dialog opens with new card UI, step navigation works, result view displays correctly
