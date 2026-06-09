@@ -257,7 +257,11 @@ export function ChatPanel() {
 
   // Screening dialog state
   const [showScreeningDialog, setShowScreeningDialog] = useState(false);
-  const [selectedModules, setSelectedModules] = useState<ScreeningModuleId[]>(['keluhan_utama', 'tanda_bahaya', 'tanda_vital']);
+  const [selectedModules, setSelectedModules] = useState<ScreeningModuleId[]>([
+    'keluhan_utama', 'tanda_bahaya', 'tanda_vital', 'penyakit_kronis',
+    'nyeri', 'kesehatan_mental', 'nutrisi', 'risiko_jatuh',
+    'status_fungsional', 'home_care', 'paliatif', 'bukti_klinis'
+  ]);
   const [screeningInstructions, setScreeningInstructions] = useState('');
   const [screeningDeadline, setScreeningDeadline] = useState('');
 

@@ -188,7 +188,8 @@ export function ScreeningPanel() {
   }, [activeFormId, screeningForms]);
 
   const applicableModules = useMemo(() => {
-    return getModulesForPatient(undefined, true);
+    // Skrining Komprehensif: show ALL 12 modules
+    return getModulesForPatient();
   }, []);
 
   const activeModule = applicableModules[activeModuleIdx] || null;
@@ -380,8 +381,14 @@ export function ScreeningPanel() {
               <span className="text-sm font-bold text-primary">{overallProgress}%</span>
             </div>
             <Progress value={overallProgress} className="h-2" />
-            {/* Module indicators */}
-            <div className="flex gap-1 mt-3 flex-wrap">
+          </CardContent>
+        </Card>
+
+        {/* Module Navigation List */}
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Navigasi Modul (klik untuk membuka):</p>
+            <div className="grid grid-cols-1 gap-1 max-h-64 overflow-y-auto">
               {applicableModules.map((mod, idx) => {
                 const modAnswers = moduleAnswers[mod.id] || {};
                 const modProgress = mod.questions.filter(q => {
@@ -394,19 +401,36 @@ export function ScreeningPanel() {
                   <button
                     key={mod.id}
                     className={cn(
-                      'w-8 h-8 rounded-lg text-xs font-bold flex items-center justify-center transition-all border-2',
+                      'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all border-2',
                       idx === activeModuleIdx
-                        ? 'border-primary bg-primary text-primary-foreground'
+                        ? 'border-primary bg-primary/10'
                         : pct >= 100
-                        ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+                        ? 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100'
                         : pct > 0
-                        ? 'border-amber-400 bg-amber-50 text-amber-700'
-                        : 'border-border bg-muted text-muted-foreground',
+                        ? 'border-amber-300 bg-amber-50 hover:bg-amber-100'
+                        : 'border-transparent bg-muted/50 hover:bg-muted',
                     )}
                     onClick={() => setActiveModuleIdx(idx)}
-                    title={`${MODULE_LABELS[mod.id]} (${pct}%)`}
                   >
-                    {pct >= 100 ? '✓' : idx + 1}
+                    <span className="text-lg shrink-0">{mod.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className={cn('text-xs font-medium truncate', idx === activeModuleIdx ? 'text-primary' : 'text-foreground')}>
+                        {mod.name}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                          <div className={cn('h-full rounded-full transition-all', pct >= 100 ? 'bg-emerald-500' : pct > 0 ? 'bg-amber-500' : 'bg-transparent')} style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-[10px] text-muted-foreground shrink-0">{pct}%</span>
+                      </div>
+                    </div>
+                    <div className="shrink-0">
+                      {pct >= 100 ? (
+                        <CheckCircle className="w-4 h-4 text-emerald-500" />
+                      ) : mod.isRequired ? (
+                        <Badge variant="destructive" className="text-[10px] px-1 py-0">Wajib</Badge>
+                      ) : null}
+                    </div>
                   </button>
                 );
               })}
@@ -415,12 +439,19 @@ export function ScreeningPanel() {
         </Card>
 
         {/* Module Title */}
-        <Card>
+        <Card className={cn('border-2', activeModule.isRequired ? 'border-primary/30' : 'border-border')}>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <span className="text-3xl">{activeModule.icon}</span>
-              <div>
-                <h3 className="text-base font-semibold text-foreground">{activeModule.name}</h3>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-semibold text-foreground">{activeModule.name}</h3>
+                  {activeModule.isRequired ? (
+                    <Badge className="text-[10px] bg-primary text-primary-foreground">Wajib</Badge>
+                  ) : (
+                    <Badge variant="secondary" className="text-[10px]">Opsional</Badge>
+                  )}
+                </div>
                 <p className="text-sm text-muted-foreground">{activeModule.description}</p>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge variant="secondary" className="text-xs">

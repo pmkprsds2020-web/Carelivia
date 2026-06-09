@@ -484,6 +484,14 @@ export function getRequiredModules(): ScreeningModule[] {
 }
 
 export function getModulesForPatient(age?: number, hasChronic?: boolean): ScreeningModule[] {
+  // Skrining Komprehensif Telemedicine: ALL modules are available
+  // targetAudience is used for recommendation badges only, not for exclusion
+  return [...SCREENING_MODULES];
+}
+
+export function getRequiredModulesForPatient(age?: number, hasChronic?: boolean): ScreeningModule[] {
+  // Returns only the modules that are applicable based on patient profile
+  // Used for progress calculation and mandatory field validation
   let modules = SCREENING_MODULES.filter(m => m.targetAudience === 'all');
   if (age !== undefined && age >= 60) {
     modules = [...modules, ...SCREENING_MODULES.filter(m => m.targetAudience === 'lansia')];
@@ -491,6 +499,8 @@ export function getModulesForPatient(age?: number, hasChronic?: boolean): Screen
   if (hasChronic) {
     modules = [...modules, ...SCREENING_MODULES.filter(m => m.targetAudience === 'kronis')];
   }
+  // Always include paliatif modules as optional for comprehensive screening
+  modules = [...modules, ...SCREENING_MODULES.filter(m => m.targetAudience === 'paliatif')];
   // Remove duplicates
   const seen = new Set<ScreeningModuleId>();
   return modules.filter(m => {
