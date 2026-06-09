@@ -353,6 +353,7 @@ export interface ScreeningForm {
   status: ScreeningStatus;
   instructions?: string;
   deadline?: string;
+  selectedModules?: ScreeningModuleId[];
   moduleAnswers: Record<ScreeningModuleId, Record<string, string | number | string[]>>;
   moduleScores: Record<ScreeningModuleId, { score: number; riskCategory: RiskCategory; label: string; recommendations: string[] }>;
   clinicalFiles: ClinicalFile[];

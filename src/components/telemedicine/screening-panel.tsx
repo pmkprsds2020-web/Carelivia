@@ -71,6 +71,17 @@ import {
   TrendingUp,
   ArrowRight,
   AlertCircle,
+  Pill,
+  Flame,
+  Apple,
+  ShieldAlert,
+  Accessibility,
+  Home,
+  Paperclip,
+  Circle,
+  User,
+  Calendar,
+  Syringe,
 } from 'lucide-react';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -101,6 +112,22 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: 'Draft', color: 'bg-gray-100 text-gray-700' },
   completed: { label: 'Selesai', color: 'bg-emerald-100 text-emerald-700' },
   reviewed: { label: 'Ditinjau', color: 'bg-teal-100 text-teal-700' },
+};
+
+// ── Module Icon Map (Lucide icons replacing emojis) ──
+const MODULE_ICON_MAP: Record<ScreeningModuleId, React.ReactNode> = {
+  keluhan_utama: <Stethoscope className="w-5 h-5" />,
+  tanda_bahaya: <AlertTriangle className="w-5 h-5" />,
+  tanda_vital: <Activity className="w-5 h-5" />,
+  penyakit_kronis: <Pill className="w-5 h-5" />,
+  nyeri: <Flame className="w-5 h-5" />,
+  kesehatan_mental: <Brain className="w-5 h-5" />,
+  nutrisi: <Apple className="w-5 h-5" />,
+  risiko_jatuh: <ShieldAlert className="w-5 h-5" />,
+  status_fungsional: <Accessibility className="w-5 h-5" />,
+  home_care: <Home className="w-5 h-5" />,
+  paliatif: <Heart className="w-5 h-5" />,
+  bukti_klinis: <Paperclip className="w-5 h-5" />,
 };
 
 const CLINICAL_FILE_TYPE_LABELS: Record<ClinicalFile['type'], { label: string; icon: React.ReactNode }> = {
@@ -188,9 +215,14 @@ export function ScreeningPanel() {
   }, [activeFormId, screeningForms]);
 
   const applicableModules = useMemo(() => {
-    // Skrining Komprehensif: show ALL 12 modules
-    return getModulesForPatient();
-  }, []);
+    // Filter modules based on doctor's selection (selectedModules)
+    // If no selectedModules set (backward compat), show all modules
+    const allModules = getModulesForPatient();
+    if (!activeForm?.selectedModules || activeForm.selectedModules.length === 0) {
+      return allModules;
+    }
+    return allModules.filter(m => activeForm.selectedModules!.includes(m.id));
+  }, [activeForm]);
 
   const activeModule = applicableModules[activeModuleIdx] || null;
 
@@ -298,7 +330,7 @@ export function ScreeningPanel() {
     if ((triageResult.level === 'merah' || triageResult.level === 'oranye') && activeForm) {
       const alert: AppNotification = {
         id: generateId(), userId: activeForm.doctorId,
-        title: `🚨 Pasien Triase ${triageResult.label}`,
+        title: `Pasien Triase ${triageResult.label}`,
         message: `Hasil skrining menunjukkan triase ${triageResult.label}: ${triageResult.description}. Segera tinjau hasil skrining pasien.`,
         type: 'clinical_alert', isRead: false, referenceId: activeFormId, createdAt: new Date().toISOString(),
       };
@@ -412,7 +444,7 @@ export function ScreeningPanel() {
                     )}
                     onClick={() => setActiveModuleIdx(idx)}
                   >
-                    <span className="text-lg shrink-0">{mod.icon}</span>
+                    <span className="text-lg shrink-0">{MODULE_ICON_MAP[mod.id]}</span>
                     <div className="flex-1 min-w-0">
                       <p className={cn('text-xs font-medium truncate', idx === activeModuleIdx ? 'text-primary' : 'text-foreground')}>
                         {mod.name}
@@ -442,7 +474,7 @@ export function ScreeningPanel() {
         <Card className={cn('border-2', activeModule.isRequired ? 'border-primary/30' : 'border-border')}>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <span className="text-3xl">{activeModule.icon}</span>
+              <span className="text-3xl">{MODULE_ICON_MAP[activeModule.id]}</span>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <h3 className="text-base font-semibold text-foreground">{activeModule.name}</h3>
@@ -680,7 +712,7 @@ export function ScreeningPanel() {
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className={cn('w-14 h-14 rounded-xl flex items-center justify-center text-2xl font-black', TRIAGE_COLORS[triage.level].bg, TRIAGE_COLORS[triage.level].text)}>
-                  {triage.level === 'hijau' ? '🟢' : triage.level === 'kuning' ? '🟡' : triage.level === 'oranye' ? '🟠' : '🔴'}
+                  <Circle className={cn('w-8 h-8', triage.level === 'hijau' ? 'text-emerald-500 fill-emerald-500' : triage.level === 'kuning' ? 'text-amber-500 fill-amber-500' : triage.level === 'oranye' ? 'text-orange-500 fill-orange-500' : 'text-red-500 fill-red-500')} />
                 </div>
                 <div>
                   <p className={cn('text-lg font-bold', TRIAGE_COLORS[triage.level].text)}>{triage.label}</p>
@@ -807,7 +839,7 @@ export function ScreeningPanel() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-xl">{mod.icon}</span>
+                    <span className="text-xl">{MODULE_ICON_MAP[mod.id]}</span>
                     <div>
                       <h4 className="text-sm font-semibold">{mod.name}</h4>
                       {modScore && (
@@ -898,10 +930,10 @@ export function ScreeningPanel() {
           <SelectTrigger className="w-[160px]"><SelectValue placeholder="Triase" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Triase</SelectItem>
-            <SelectItem value="hijau">🟢 Hijau</SelectItem>
-            <SelectItem value="kuning">🟡 Kuning</SelectItem>
-            <SelectItem value="oranye">🟠 Oranye</SelectItem>
-            <SelectItem value="merah">🔴 Merah</SelectItem>
+            <SelectItem value="hijau">Hijau</SelectItem>
+            <SelectItem value="kuning">Kuning</SelectItem>
+            <SelectItem value="oranye">Oranye</SelectItem>
+            <SelectItem value="merah">Merah</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -948,9 +980,9 @@ export function ScreeningPanel() {
                     <div className="flex-1 min-w-0">
                       <h4 className="font-semibold text-sm text-foreground">Skrining Komprehensif</h4>
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                        <span className="text-xs text-muted-foreground">👤 {patientName}</span>
-                        <span className="text-xs text-muted-foreground">📅 {formatDate(form.createdAt)}</span>
-                        {form.completedAt && <span className="text-xs text-muted-foreground">✅ {formatDate(form.completedAt)}</span>}
+                        <span className="text-xs text-muted-foreground flex items-center gap-1"><User className="w-3 h-3" /> {patientName}</span>
+                        <span className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(form.createdAt)}</span>
+                        {form.completedAt && <span className="text-xs text-muted-foreground flex items-center gap-1"><CheckCircle className="w-3 h-3" /> {formatDate(form.completedAt)}</span>}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">

@@ -228,3 +228,30 @@ Stage Summary:
 - Fix: `getModulesForPatient()` now returns all 12 modules unconditionally (comprehensive screening = all modules)
 - Improved UX: Module navigation list replaces number-only buttons with full module names, progress bars, and status indicators
 - Files changed: screening-templates.ts, screening-panel.tsx, chat-panel.tsx
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix screening - allow doctors to select which screenings patients must fill, and remove all emojis
+
+Work Log:
+- Added `selectedModules?: ScreeningModuleId[]` field to `ScreeningForm` interface in `src/lib/types.ts`
+- Replaced all emoji icon values in `screening-templates.ts` (MODULE_ICONS and module icon fields) with Lucide icon name strings (e.g., '🩺' → 'stethoscope', '🚨' → 'alert-triangle')
+- Created `MODULE_ICON_MAP` (ScreeningModuleId → Lucide React component) in 3 files: screening-panel.tsx, chat-panel.tsx, medical-records.tsx
+- Updated `applicableModules` in screening-panel.tsx to filter by `activeForm.selectedModules` (doctor's selection) instead of showing all 12 modules
+- Saved `selectedModules` when creating screening form in chat-panel.tsx `handleSendScreening()`
+- Replaced all emoji rendering in screening-panel.tsx with Lucide icon components (MODULE_ICON_MAP)
+- Replaced triage emoji indicators (🟢🟡🟠🔴) with colored Circle Lucide components
+- Removed 🚨 from clinical alert title
+- Replaced triage filter dropdown emojis with plain text labels
+- Replaced emoji rendering in chat-panel.tsx (screening dialog, screening card, message previews, triage display)
+- Replaced emoji rendering in medical-records.tsx (module icons in scored modules)
+- Removed emojis from screening-analysis API route prompt
+- Fixed duplicate Activity/Heart/Pill/AlertTriangle imports in medical-records.tsx
+- Fixed useMemo dependency warning in screening-panel.tsx
+
+Stage Summary:
+- Doctor can now select which screening modules to send to patient via the "Kirim Form Skrining" dialog
+- Patient only sees the modules the doctor selected (not all 12)
+- All emojis/emoticons removed from screening UI across all files
+- Lucide icons replace emojis for professional, consistent appearance
+- VLM verification confirms no emojis visible and all icons are SVG/Lucide-style

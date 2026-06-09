@@ -52,13 +52,13 @@ export async function POST(request: NextRequest) {
           role: 'user',
           content: `Analisis hasil Skrining Komprehensif Telemedicine berikut:
 
-📋 **Jenis Skrining**: ${screeningType || 'Skrining Komprehensif Telemedicine'}
+**Jenis Skrining**: ${screeningType || 'Skrining Komprehensif Telemedicine'}
 
-🚦 **Hasil Triage**: ${triageLabel}
+**Hasil Triage**: ${triageLabel}
 - Deskripsi: ${triage.description || '-'}
 - Rekomendasi Triage: ${triage.recommendation || '-'}
 
-🏥 **Ringkasan Klinis**:
+**Ringkasan Klinis**:
 - Keluhan Utama: ${clinicalSummary.chiefComplaint || 'Tidak disebutkan'}
 - Skala Nyeri: ${clinicalSummary.painScore !== null && clinicalSummary.painScore !== undefined ? clinicalSummary.painScore + '/10' : 'Tidak dinilai'}
 - Status Mental: ${clinicalSummary.mentalStatus || 'Normal'}
@@ -70,21 +70,21 @@ export async function POST(request: NextRequest) {
 - Tanda Bahaya (Red Flags): ${clinicalSummary.redFlags?.length > 0 ? clinicalSummary.redFlags.join(', ') : 'Tidak ada'}
 - Tanda Vital: ${vitalSignsParts.length > 0 ? vitalSignsParts.join(', ') : 'Tidak tersedia'}
 
-📊 **Hasil Modul Skrining**:
+**Hasil Modul Skrining**:
 ${moduleScoresSummary || 'Tidak ada data modul'}
 
 Berikan analisis dalam format berikut:
 
-## 🏥 Ringkasan Klinis
+## Ringkasan Klinis
 Ringkasan komprehensif kondisi pasien berdasarkan seluruh hasil skrining. Sertakan keluhan utama, temuan signifikan, dan kondisi kritis jika ada.
 
-## ⚠️ Faktor Risiko & Tanda Bahaya
+## Faktor Risiko & Tanda Bahaya
 Identifikasi faktor risiko utama dan tanda bahaya dari seluruh modul skrining. Prioritaskan yang memerlukan tindakan segera.
 
-## 📊 Analisis Per Modul
+## Analisis Per Modul
 Untuk setiap modul yang menunjukkan risiko sedang atau tinggi, berikan analisis singkat dan rekomendasi spesifik.
 
-## 💊 Rekomendasi Tindak Lanjut
+## Rekomendasi Tindak Lanjut
 Rekomendasi tindak lanjut berdasarkan pedoman klinis Indonesia:
 - Tindakan segera yang diperlukan (jika ada)
 - Pemeriksaan penunjang yang perlu dilakukan
@@ -92,7 +92,7 @@ Rekomendasi tindak lanjut berdasarkan pedoman klinis Indonesia:
 - Modifikasi gaya hidup dan edukasi pasien
 - Follow-up timeline
 
-## 📝 SOAP Note
+## SOAP Note
 Buat SOAP Note dari hasil skrining komprehensif:
 - **Subjective**: Keluhan utama, riwayat penyakit, gejala yang dilaporkan pasien
 - **Objective**: Tanda vital, skor skrining per modul, kategori risiko, tanda bahaya

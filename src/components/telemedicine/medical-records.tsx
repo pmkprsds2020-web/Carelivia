@@ -80,6 +80,14 @@ import {
   Wallet,
   Stamp,
   ClipboardCheck,
+  Flame,
+  Apple,
+  ShieldAlert,
+  Accessibility,
+  Home,
+  Paperclip,
+  Brain,
+  Circle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -89,6 +97,22 @@ import {
   TRIAGE_COLORS,
   TRIAGE_LABELS,
 } from '@/lib/screening-templates';
+
+// ── Module Icon Map (Lucide icons replacing emojis) ──
+const MODULE_ICON_MAP: Record<string, React.ReactNode> = {
+  keluhan_utama: <Stethoscope className="w-4 h-4" />,
+  tanda_bahaya: <AlertTriangle className="w-4 h-4" />,
+  tanda_vital: <Activity className="w-4 h-4" />,
+  penyakit_kronis: <Pill className="w-4 h-4" />,
+  nyeri: <Flame className="w-4 h-4" />,
+  kesehatan_mental: <Brain className="w-4 h-4" />,
+  nutrisi: <Apple className="w-4 h-4" />,
+  risiko_jatuh: <ShieldAlert className="w-4 h-4" />,
+  status_fungsional: <Accessibility className="w-4 h-4" />,
+  home_care: <Home className="w-4 h-4" />,
+  paliatif: <Heart className="w-4 h-4" />,
+  bukti_klinis: <Paperclip className="w-4 h-4" />,
+};
 
 // ---------------------------------------------------------------------------
 // Constants & Helpers
@@ -1723,7 +1747,7 @@ function DoctorMedicalRecordsView() {
               .map((modId) => ({
                 id: modId,
                 label: MODULE_LABELS[modId] || modId,
-                icon: MODULE_ICONS[modId] || '📋',
+                icon: MODULE_ICON_MAP[modId] || <ClipboardCheck className="w-4 h-4" />,
                 ...form.moduleScores[modId],
               }));
 
@@ -1896,7 +1920,7 @@ function DoctorMedicalRecordsView() {
                             const modColor = riskColors[mod.riskCategory as RiskCategory];
                             return (
                               <div key={mod.id} className="flex items-center gap-2 bg-muted/30 rounded-lg px-3 py-2">
-                                <span className="text-sm shrink-0">{mod.icon}</span>
+                                <span className="text-sm shrink-0">{MODULE_ICON_MAP[mod.id] || <ClipboardCheck className="w-4 h-4" />}</span>
                                 <span className="text-xs text-foreground flex-1 min-w-0 truncate">{mod.label}</span>
                                 <span className="text-xs text-muted-foreground shrink-0">Skor: {mod.score}</span>
                                 {modColor && (
@@ -3254,7 +3278,7 @@ function PatientScreeningTimeline() {
               .map((modId) => ({
                 id: modId,
                 label: MODULE_LABELS[modId] || modId,
-                icon: MODULE_ICONS[modId] || '📋',
+                icon: MODULE_ICON_MAP[modId] || <ClipboardCheck className="w-4 h-4" />,
                 ...selectedForm.moduleScores[modId],
               }))
               .filter((m) => m.score > 0 || m.riskCategory !== 'rendah' || m.recommendations.length > 0);
@@ -3404,7 +3428,7 @@ function PatientScreeningTimeline() {
                             const modColor = riskColors[mod.riskCategory as RiskCategory];
                             return (
                               <div key={mod.id} className="flex items-center gap-2 bg-muted/30 rounded-lg px-3 py-2">
-                                <span className="text-sm shrink-0">{mod.icon}</span>
+                                <span className="text-sm shrink-0">{MODULE_ICON_MAP[mod.id] || <ClipboardCheck className="w-4 h-4" />}</span>
                                 <span className="text-xs text-foreground flex-1 min-w-0 truncate">{mod.label}</span>
                                 <span className="text-xs text-muted-foreground shrink-0">Skor: {mod.score}</span>
                                 {modColor && (

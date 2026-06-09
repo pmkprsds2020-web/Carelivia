@@ -56,7 +56,34 @@ import {
   Download,
   ClipboardCheck,
   AlertTriangle,
+  Circle,
+  Pill,
+  Flame,
+  Apple,
+  ShieldAlert,
+  Accessibility,
+  Home,
+  Paperclip,
+  Brain,
+  Activity,
+  Heart,
 } from 'lucide-react';
+
+// ── Module Icon Map (Lucide icons replacing emojis) ──
+const MODULE_ICON_MAP: Record<ScreeningModuleId, React.ReactNode> = {
+  keluhan_utama: <Stethoscope className="w-4 h-4" />,
+  tanda_bahaya: <AlertTriangle className="w-4 h-4" />,
+  tanda_vital: <Activity className="w-4 h-4" />,
+  penyakit_kronis: <Pill className="w-4 h-4" />,
+  nyeri: <Flame className="w-4 h-4" />,
+  kesehatan_mental: <Brain className="w-4 h-4" />,
+  nutrisi: <Apple className="w-4 h-4" />,
+  risiko_jatuh: <ShieldAlert className="w-4 h-4" />,
+  status_fungsional: <Accessibility className="w-4 h-4" />,
+  home_care: <Home className="w-4 h-4" />,
+  paliatif: <Heart className="w-4 h-4" />,
+  bukti_klinis: <Paperclip className="w-4 h-4" />,
+};
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -832,6 +859,7 @@ export function ChatPanel() {
       status: 'sent',
       instructions: screeningInstructions || undefined,
       deadline: screeningDeadline || undefined,
+      selectedModules: [...selectedModules],
       moduleAnswers: {} as Record<ScreeningModuleId, Record<string, string | number | string[]>>,
       moduleScores: {} as Record<ScreeningModuleId, { score: number; riskCategory: 'rendah' | 'sedang' | 'tinggi'; label: string; recommendations: string[] }>,
       clinicalFiles: [],
@@ -1085,14 +1113,14 @@ export function ChatPanel() {
           <p className="text-xs text-muted-foreground">12 modul skrining komprehensif</p>
 
           {form.instructions && (
-            <p className="text-xs text-primary mt-2 bg-primary/5 p-2 rounded">📋 {form.instructions}</p>
+            <p className="text-xs text-primary mt-2 bg-primary/5 p-2 rounded flex items-start gap-1"><FileText className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {form.instructions}</p>
           )}
 
           {/* Triage result */}
           {isCompleted && triage && (
             <div className="mt-3 space-y-2">
               <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg border', TRIAGE_COLORS[triage.level].bg, TRIAGE_COLORS[triage.level].border)}>
-                <span className="text-xl">{triage.level === 'hijau' ? '🟢' : triage.level === 'kuning' ? '🟡' : triage.level === 'oranye' ? '🟠' : '🔴'}</span>
+                <Circle className={cn('w-5 h-5', triage.level === 'hijau' ? 'text-emerald-500 fill-emerald-500' : triage.level === 'kuning' ? 'text-amber-500 fill-amber-500' : triage.level === 'oranye' ? 'text-orange-500 fill-orange-500' : 'text-red-500 fill-red-500')} />
                 <div>
                   <p className={cn('text-sm font-bold', TRIAGE_COLORS[triage.level].text)}>{triage.label}</p>
                   <p className="text-xs text-foreground">{triage.description}</p>
@@ -1221,7 +1249,7 @@ export function ChatPanel() {
 
             {existingConsultation ? (
               <p className="text-xs text-muted-foreground mt-1 truncate">
-                {lastMessage?.content?.startsWith('__PRESCRIPTION__') ? '📎 E-Resep Dokter' : lastMessage?.content?.startsWith('__SCREENING__') ? '📋 Form Skrining' : lastMessage?.content || 'Belum ada pesan'}
+                {lastMessage?.content?.startsWith('__PRESCRIPTION__') ? <span className="flex items-center gap-1"><Paperclip className="w-3.5 h-3.5" /> E-Resep Dokter</span> : lastMessage?.content?.startsWith('__SCREENING__') ? <span className="flex items-center gap-1"><ClipboardCheck className="w-3.5 h-3.5" /> Form Skrining</span> : lastMessage?.content || 'Belum ada pesan'}
               </p>
             ) : (
               <Button
@@ -1286,7 +1314,7 @@ export function ChatPanel() {
             </div>
             {lastMessage && (
               <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                {lastMessage.content?.startsWith('__PRESCRIPTION__') ? '📎 E-Resep' : lastMessage.content?.startsWith('__SCREENING__') ? '📋 Skrining' : lastMessage.content}
+                {lastMessage.content?.startsWith('__PRESCRIPTION__') ? <span className="flex items-center gap-1"><Paperclip className="w-3.5 h-3.5" /> E-Resep</span> : lastMessage.content?.startsWith('__SCREENING__') ? <span className="flex items-center gap-1"><ClipboardCheck className="w-3.5 h-3.5" /> Skrining</span> : lastMessage.content}
               </p>
             )}
             <span className="text-[10px] text-muted-foreground">
@@ -1778,7 +1806,7 @@ export function ChatPanel() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-foreground">
-                        <span className="mr-1">{mod.icon}</span>
+                        <span className="mr-1">{MODULE_ICON_MAP[mod.id]}</span>
                         {mod.name}
                         {isRequired && <Badge variant="secondary" className="text-[9px] ml-1.5">Wajib</Badge>}
                       </p>

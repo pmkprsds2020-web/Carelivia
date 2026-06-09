@@ -18,18 +18,18 @@ export const MODULE_LABELS: Record<ScreeningModuleId, string> = {
 };
 
 export const MODULE_ICONS: Record<ScreeningModuleId, string> = {
-  keluhan_utama: '🩺',
-  tanda_bahaya: '🚨',
-  tanda_vital: '📊',
-  penyakit_kronis: '💊',
-  nyeri: '🔥',
-  kesehatan_mental: '🧠',
-  nutrisi: '🥗',
-  risiko_jatuh: '⚠️',
-  status_fungsional: '♿',
-  home_care: '🏠',
-  paliatif: '🕊️',
-  bukti_klinis: '📎',
+  keluhan_utama: 'stethoscope',
+  tanda_bahaya: 'alert-triangle',
+  tanda_vital: 'activity',
+  penyakit_kronis: 'pill',
+  nyeri: 'flame',
+  kesehatan_mental: 'brain',
+  nutrisi: 'apple',
+  risiko_jatuh: 'shield-alert',
+  status_fungsional: 'accessibility',
+  home_care: 'home',
+  paliatif: 'heart',
+  bukti_klinis: 'paperclip',
 };
 
 // ── 12 Screening Modules ─────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ export const SCREENING_MODULES: ScreeningModule[] = [
   {
     id: 'keluhan_utama',
     name: 'Skrining Keluhan Utama',
-    icon: '🩺',
+    icon: 'stethoscope',
     description: 'Mengumpulkan data keluhan utama pasien secara terstruktur',
     estimatedMinutes: 3,
     isRequired: true,
@@ -65,7 +65,7 @@ export const SCREENING_MODULES: ScreeningModule[] = [
   {
     id: 'tanda_bahaya',
     name: 'Skrining Tanda Bahaya (Red Flag)',
-    icon: '🚨',
+    icon: 'alert-triangle',
     description: 'Deteksi dini tanda bahaya yang memerlukan penanganan segera',
     estimatedMinutes: 2,
     isRequired: true,
@@ -113,7 +113,7 @@ export const SCREENING_MODULES: ScreeningModule[] = [
   {
     id: 'tanda_vital',
     name: 'Skrining Tanda Vital Mandiri',
-    icon: '📊',
+    icon: 'activity',
     description: 'Pengukuran tanda vital yang dapat dilakukan pasien secara mandiri di rumah',
     estimatedMinutes: 5,
     isRequired: true,
@@ -134,7 +134,7 @@ export const SCREENING_MODULES: ScreeningModule[] = [
   {
     id: 'penyakit_kronis',
     name: 'Skrining Penyakit Kronis',
-    icon: '💊',
+    icon: 'pill',
     description: 'Riwayat dan monitoring penyakit kronis pasien',
     estimatedMinutes: 4,
     isRequired: false,
@@ -172,7 +172,7 @@ export const SCREENING_MODULES: ScreeningModule[] = [
   {
     id: 'nyeri',
     name: 'Skrining Nyeri (NRS)',
-    icon: '🔥',
+    icon: 'flame',
     description: 'Penilaian nyeri menggunakan Numeric Rating Scale',
     estimatedMinutes: 2,
     isRequired: false,
@@ -208,7 +208,7 @@ export const SCREENING_MODULES: ScreeningModule[] = [
   {
     id: 'kesehatan_mental',
     name: 'Skrining Kesehatan Mental',
-    icon: '🧠',
+    icon: 'brain',
     description: 'Skrining menggunakan instrumen PHQ-2 dan GAD-2, dengan rekomendasi PHQ-9/GAD-7 lanjutan',
     estimatedMinutes: 3,
     isRequired: false,
@@ -250,7 +250,7 @@ export const SCREENING_MODULES: ScreeningModule[] = [
       if (phq2 >= 3) details += ' → Disarankan PHQ-9 lanjutan';
       details += ` | GAD-2 Score: ${gad2}/6`;
       if (gad2 >= 3) details += ' → Disarankan GAD-7 lanjutan';
-      if (suicidal) details += ' | ⚠️ RISIKO BUNUH DIRI TERDETEKSI';
+      if (suicidal) details += ' | RISIKO BUNUH DIRI TERDETEKSI';
       return { label: 'Kesehatan Mental', value: phq2 >= 3 || gad2 >= 3 ? 'Perlu Evaluasi Lanjutan' : 'Dalam Batas Normal', details };
     },
   },
@@ -259,7 +259,7 @@ export const SCREENING_MODULES: ScreeningModule[] = [
   {
     id: 'nutrisi',
     name: 'Skrining Nutrisi',
-    icon: '🥗',
+    icon: 'apple',
     description: 'Evaluasi status nutrisi dan risiko malnutrisi pasien',
     estimatedMinutes: 2,
     isRequired: false,
@@ -299,7 +299,7 @@ export const SCREENING_MODULES: ScreeningModule[] = [
   {
     id: 'risiko_jatuh',
     name: 'Skrining Risiko Jatuh',
-    icon: '⚠️',
+    icon: 'shield-alert',
     description: 'Penilaian risiko jatuh terutama untuk lansia',
     estimatedMinutes: 2,
     isRequired: false,
@@ -334,7 +334,7 @@ export const SCREENING_MODULES: ScreeningModule[] = [
   {
     id: 'status_fungsional',
     name: 'Skrining Status Fungsional (ADL)',
-    icon: '♿',
+    icon: 'accessibility',
     description: 'Penilaian kemampuan melakukan Activities of Daily Living',
     estimatedMinutes: 3,
     isRequired: false,
@@ -375,7 +375,7 @@ export const SCREENING_MODULES: ScreeningModule[] = [
   {
     id: 'home_care',
     name: 'Skrining Kebutuhan Home Care',
-    icon: '🏠',
+    icon: 'home',
     description: 'Menilai kebutuhan pasien untuk kunjungan kesehatan di rumah',
     estimatedMinutes: 2,
     isRequired: false,
@@ -415,7 +415,7 @@ export const SCREENING_MODULES: ScreeningModule[] = [
   {
     id: 'paliatif',
     name: 'Skrining Paliatif (ESAS & PPS)',
-    icon: '🕊️',
+    icon: 'heart',
     description: 'Edmonton Symptom Assessment System dan Palliative Performance Scale',
     estimatedMinutes: 5,
     isRequired: false,
@@ -456,7 +456,7 @@ export const SCREENING_MODULES: ScreeningModule[] = [
   {
     id: 'bukti_klinis',
     name: 'Upload Bukti Klinis',
-    icon: '📎',
+    icon: 'paperclip',
     description: 'Pasien dapat mengunggah foto luka, obat, hasil lab, hasil radiologi, video, dan dokumen medis',
     estimatedMinutes: 3,
     isRequired: false,
