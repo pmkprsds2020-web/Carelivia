@@ -23,6 +23,7 @@ import {
   Users,
   Activity,
   ClipboardCheck,
+  HeartPulse,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -48,6 +49,7 @@ const allNavItems: NavItem[] = [
   { id: 'homecare', label: 'Home Care', icon: <Heart className="w-5 h-5" />, roles: ['patient'] },
   { id: 'medical-records', label: 'Rekam Medis', icon: <FileText className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
   { id: 'screening', label: 'Skrining Kesehatan', icon: <ClipboardCheck className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
+  { id: 'palliative-screening', label: 'Skrining Paliatif', icon: <HeartPulse className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
   { id: 'payments', label: 'Pembayaran', icon: <CreditCard className="w-5 h-5" />, roles: ['patient'], section: 'Lainnya' },
   { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['patient'] },
   { id: 'profile', label: 'Profil', icon: <User className="w-5 h-5" />, roles: ['patient'] },
@@ -58,6 +60,7 @@ const allNavItems: NavItem[] = [
   { id: 'video', label: 'Video Call', icon: <Video className="w-5 h-5" />, roles: ['doctor'] },
   { id: 'medical-records', label: 'Rekam Medis', icon: <FileText className="w-5 h-5" />, roles: ['doctor'], section: 'Kesehatan' },
   { id: 'screening', label: 'Skrining Pasien', icon: <ClipboardCheck className="w-5 h-5" />, roles: ['doctor'], section: 'Kesehatan' },
+  { id: 'palliative-screening', label: 'Skrining Paliatif', icon: <HeartPulse className="w-5 h-5" />, roles: ['doctor'], section: 'Kesehatan' },
   { id: 'payments', label: 'Pendapatan', icon: <CreditCard className="w-5 h-5" />, roles: ['doctor'], section: 'Lainnya' },
   { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['doctor'] },
   { id: 'profile', label: 'Profil', icon: <User className="w-5 h-5" />, roles: ['doctor'] },

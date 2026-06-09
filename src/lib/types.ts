@@ -398,4 +398,5 @@ export type ActivePanel =
   | 'payments'
   | 'reports'
   | 'profile'
-  | 'screening';
+  | 'screening'
+  | 'palliative-screening';
