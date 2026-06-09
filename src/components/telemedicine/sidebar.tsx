@@ -49,7 +49,6 @@ const allNavItems: NavItem[] = [
   { id: 'homecare', label: 'Home Care', icon: <Heart className="w-5 h-5" />, roles: ['patient'] },
   { id: 'medical-records', label: 'Rekam Medis', icon: <FileText className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
   { id: 'screening', label: 'Skrining Kesehatan', icon: <ClipboardCheck className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
-  { id: 'palliative-screening', label: 'Skrining Paliatif', icon: <HeartPulse className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
   { id: 'payments', label: 'Pembayaran', icon: <CreditCard className="w-5 h-5" />, roles: ['patient'], section: 'Lainnya' },
   { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['patient'] },
   { id: 'profile', label: 'Profil', icon: <User className="w-5 h-5" />, roles: ['patient'] },

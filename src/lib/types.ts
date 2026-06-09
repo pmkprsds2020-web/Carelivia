@@ -382,6 +382,35 @@ export interface CartItem {
   quantity: number;
 }
 
+// ── Palliative Screening Types ────────────────────────────────────────────
+
+export type PalliativeToolType = 'esas' | 'distress' | 'spict' | 'pps' | 'zarit' | 'eortc';
+
+export type PalliativeEwsLevel = 'merah' | 'kuning' | 'hijau';
+
+export interface PalliativeScreeningForm {
+  id: string;
+  consultationId: string;
+  doctorId: string;
+  patientId: string;
+  status: ScreeningStatus;
+  instructions?: string;
+  selectedTools: PalliativeToolType[];
+  toolAnswers: Record<string, number | string | string[]>;
+  toolResults: Record<PalliativeToolType, {
+    score: number;
+    scoreLabel: string;
+    interpretation: string;
+    ewsLevel: PalliativeEwsLevel;
+    details: Record<string, unknown>;
+  }>;
+  doctorNotes?: string;
+  completedAt?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type ActivePanel = 
   | 'home' 
   | 'chat' 

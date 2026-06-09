@@ -4,7 +4,8 @@ import type {
   HomeCareService, HomeCareBooking, Notification, Article,
   ActivePanel, DashboardStats, MedicalRecord, Payment,
   MedicineCategory, Prescription, MedicalRecordStatus,
-  ScreeningForm, ScreeningAuditLog, ScreeningModuleId
+  ScreeningForm, ScreeningAuditLog, ScreeningModuleId,
+  PalliativeScreeningForm, PalliativeToolType
 } from './types';
 
 interface TelemedicineStore {
@@ -100,6 +101,14 @@ interface TelemedicineStore {
   addAuditLog: (log: ScreeningAuditLog) => void;
   clinicalAlerts: Notification[];
   addClinicalAlert: (alert: Notification) => void;
+
+  // Palliative Screening
+  palliativeScreeningForms: PalliativeScreeningForm[];
+  setPalliativeScreeningForms: (forms: PalliativeScreeningForm[]) => void;
+  addPalliativeScreeningForm: (form: PalliativeScreeningForm) => void;
+  updatePalliativeScreeningForm: (formId: string, data: Partial<PalliativeScreeningForm>) => void;
+  activePalliativeFormId: string | null;
+  setActivePalliativeFormId: (id: string | null) => void;
 }
 
 export const useStore = create<TelemedicineStore>((set) => ({
@@ -363,4 +372,16 @@ export const useStore = create<TelemedicineStore>((set) => ({
   addAuditLog: (log) => set((state) => ({ screeningAuditLog: [...state.screeningAuditLog, log] })),
   clinicalAlerts: [],
   addClinicalAlert: (alert) => set((state) => ({ clinicalAlerts: [...state.clinicalAlerts, alert] })),
+
+  // Palliative Screening
+  palliativeScreeningForms: [],
+  setPalliativeScreeningForms: (forms) => set({ palliativeScreeningForms: forms }),
+  addPalliativeScreeningForm: (form) => set((state) => ({ palliativeScreeningForms: [...state.palliativeScreeningForms, form] })),
+  updatePalliativeScreeningForm: (formId, data) => set((state) => ({
+    palliativeScreeningForms: state.palliativeScreeningForms.map((f) =>
+      f.id === formId ? { ...f, ...data, updatedAt: new Date().toISOString() } : f
+    ),
+  })),
+  activePalliativeFormId: null,
+  setActivePalliativeFormId: (id) => set({ activePalliativeFormId: id }),
 }));

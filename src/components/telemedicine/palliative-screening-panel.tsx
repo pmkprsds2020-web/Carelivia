@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useStore } from '@/lib/store';
+import type { PalliativeScreeningForm, PalliativeToolType, ScreeningStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -39,13 +40,12 @@ import {
   AlertTriangle,
   CheckCircle,
   ArrowRight,
-  TrendingUp,
   User,
 } from 'lucide-react';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-type ToolType = 'esas' | 'distress' | 'spict' | 'pps' | 'zarit' | 'eortc';
+type ToolType = PalliativeToolType;
 
 interface ScreeningResult {
   id: string;
@@ -280,7 +280,11 @@ function getEwsBadge(level: 'merah' | 'kuning' | 'hijau'): { label: string; colo
 // ── Main Component ───────────────────────────────────────────────────────
 
 export function PalliativeScreeningPanel() {
-  const { currentUser, consultations, doctors } = useStore();
+  const {
+    currentUser, consultations, doctors,
+    palliativeScreeningForms, addPalliativeScreeningForm, updatePalliativeScreeningForm,
+    activePalliativeFormId, setActivePalliativeFormId,
+  } = useStore();
   const { toast } = useToast();
 
   const isDoctor = currentUser?.role === 'doctor';
@@ -293,15 +297,20 @@ export function PalliativeScreeningPanel() {
   const [currentStep, setCurrentStep] = useState(0);
   const [showResult, setShowResult] = useState(false);
   const [answers, setAnswers] = useState<Record<string, number | string | string[]>>({});
-  const [history, setHistory] = useState<ScreeningResult[]>([]);
   const [detailResult, setDetailResult] = useState<ScreeningResult | null>(null);
+  const [activeFormId, setActiveFormId] = useState<string | null>(null);
 
-  // ── Auto-select patient if user is a patient ──
-  useEffect(() => {
-    if (isPatient && currentUser && !selectedPatientId) {
-      setSelectedPatientId(currentUser.id);
-    }
+  // ── Effective patient ID (auto-select for patients) ──
+  const effectivePatientId = useMemo(() => {
+    if (isPatient && currentUser) return currentUser.id;
+    return selectedPatientId;
   }, [isPatient, currentUser, selectedPatientId]);
+
+  // ── Effective active form ID (auto-open from store) ──
+  const effectiveActiveFormId = useMemo(() => {
+    if (activePalliativeFormId && isPatient) return activePalliativeFormId;
+    return activeFormId;
+  }, [activePalliativeFormId, isPatient, activeFormId]);
 
   // ── Patients List ──
   const patients = useMemo(() => {
@@ -321,9 +330,66 @@ export function PalliativeScreeningPanel() {
   }, [consultations, isDoctor, isPatient, currentUser]);
 
   const selectedPatient = useMemo(() => {
-    if (!selectedPatientId) return null;
-    return patients.find(p => p.id === selectedPatientId) || null;
-  }, [selectedPatientId, patients]);
+    if (!effectivePatientId) return null;
+    return patients.find(p => p.id === effectivePatientId) || null;
+  }, [effectivePatientId, patients]);
+
+  // ── Mark form as opened when it becomes active ──
+  useEffect(() => {
+    if (activePalliativeFormId && isPatient) {
+      const form = palliativeScreeningForms.find(f => f.id === activePalliativeFormId);
+      if (form && form.status === 'sent') {
+        updatePalliativeScreeningForm(activePalliativeFormId, { status: 'opened' });
+      }
+    }
+  }, [activePalliativeFormId, isPatient, palliativeScreeningForms, updatePalliativeScreeningForm]);
+
+  // ── Active form for patient filling ──
+  const activeForm = useMemo(() => {
+    if (!effectiveActiveFormId) return null;
+    return palliativeScreeningForms.find(f => f.id === effectiveActiveFormId) || null;
+  }, [effectiveActiveFormId, palliativeScreeningForms]);
+
+  // ── Patient's forms from store ──
+  const patientForms = useMemo(() => {
+    if (!currentUser) return [];
+    if (isPatient) {
+      return palliativeScreeningForms.filter(f => f.patientId === currentUser.id);
+    }
+    if (isDoctor) {
+      return palliativeScreeningForms;
+    }
+    return [];
+  }, [currentUser, isPatient, isDoctor, palliativeScreeningForms]);
+
+  // ── Build screening history from store ──
+  const screeningHistory = useMemo(() => {
+    const results: ScreeningResult[] = [];
+    for (const form of palliativeScreeningForms) {
+      const patient = consultations
+        .filter(c => c.patientId === form.patientId && c.patient)
+        .map(c => c.patient!)[0];
+      const patientName = patient?.name || (currentUser?.id === form.patientId ? currentUser.name : 'Pasien');
+      for (const [toolKey, toolResult] of Object.entries(form.toolResults) as [string, { score: number; scoreLabel: string; interpretation: string; ewsLevel: 'merah' | 'kuning' | 'hijau'; details: Record<string, unknown> }][]) {
+        const tool = toolKey as ToolType;
+        if (!TOOL_DEFS[tool]) continue;
+        results.push({
+          id: `${form.id}-${tool}`,
+          tool,
+          toolName: TOOL_DEFS[tool].name,
+          patientId: form.patientId,
+          patientName,
+          score: toolResult.score,
+          scoreLabel: toolResult.scoreLabel,
+          interpretation: toolResult.interpretation,
+          ewsLevel: toolResult.ewsLevel,
+          details: toolResult.details,
+          savedAt: form.updatedAt,
+        });
+      }
+    }
+    return results.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+  }, [palliativeScreeningForms, consultations, currentUser]);
 
   // ── Tool Step Info ──
   const toolSteps = useMemo(() => {
@@ -340,16 +406,26 @@ export function PalliativeScreeningPanel() {
 
   // ── Handlers ──
   const handleStartTool = useCallback((tool: ToolType) => {
-    if (!selectedPatientId && isDoctor) {
+    if (!effectivePatientId && isDoctor) {
       toast({ title: 'Pilih Pasien', description: 'Silakan pilih pasien terlebih dahulu sebelum memulai skrining.' });
       return;
     }
     setActiveTool(tool);
     setCurrentStep(0);
     setShowResult(false);
-    setAnswers({});
+    // Pre-fill answers from store form if patient is resuming
+    if (effectiveActiveFormId && isPatient) {
+      const form = palliativeScreeningForms.find(f => f.id === effectiveActiveFormId);
+      if (form && Object.keys(form.toolAnswers).length > 0) {
+        setAnswers({ ...form.toolAnswers });
+      } else {
+        setAnswers({});
+      }
+    } else {
+      setAnswers({});
+    }
     setModalOpen(true);
-  }, [selectedPatientId, isDoctor, toast]);
+  }, [effectivePatientId, isDoctor, isPatient, effectiveActiveFormId, palliativeScreeningForms, toast]);
 
   const handleCloseModal = useCallback(() => {
     setModalOpen(false);
@@ -519,7 +595,7 @@ export function PalliativeScreeningPanel() {
   // ── Save Result ──
 
   const handleSaveResult = useCallback(() => {
-    if (!activeTool || !selectedPatientId) return;
+    if (!activeTool || !effectivePatientId) return;
 
     let score = 0;
     let scoreLabel = '';
@@ -601,24 +677,47 @@ export function PalliativeScreeningPanel() {
 
     const ewsLevel = getEwsLevel(activeTool);
 
-    const result: ScreeningResult = {
-      id: generateId(),
-      tool: activeTool,
-      toolName: TOOL_DEFS[activeTool].name,
-      patientId: selectedPatientId,
-      patientName: selectedPatient?.name || 'Pasien',
-      score,
-      scoreLabel,
-      interpretation,
-      ewsLevel,
-      details,
-      savedAt: new Date().toISOString(),
-    };
+    // Update store form
+    if (effectiveActiveFormId) {
+      // Patient or doctor filling an existing form
+      const form = palliativeScreeningForms.find(f => f.id === effectiveActiveFormId);
+      if (form) {
+        const updatedToolResults = { ...form.toolResults, [activeTool]: { score, scoreLabel, interpretation, ewsLevel, details } };
+        const updatedToolAnswers = { ...form.toolAnswers, ...answers };
+        // Check if all selected tools have results
+        const allToolsCompleted = form.selectedTools.every(t => updatedToolResults[t] !== undefined);
+        const newStatus: ScreeningStatus = allToolsCompleted ? 'completed' : 'in_progress';
+        const updateData: Partial<PalliativeScreeningForm> = {
+          toolResults: updatedToolResults,
+          toolAnswers: updatedToolAnswers,
+          status: newStatus,
+        };
+        if (allToolsCompleted) {
+          updateData.completedAt = new Date().toISOString();
+        }
+        updatePalliativeScreeningForm(effectiveActiveFormId, updateData);
+      }
+    } else if (isDoctor && effectivePatientId) {
+      // Doctor screening directly - create a form entry in the store
+      const newForm: PalliativeScreeningForm = {
+        id: generateId(),
+        consultationId: consultations.find(c => c.patientId === effectivePatientId)?.id || '',
+        doctorId: currentUser?.id || '',
+        patientId: effectivePatientId,
+        status: 'completed',
+        selectedTools: [activeTool],
+        toolAnswers: { ...answers },
+        toolResults: { [activeTool]: { score, scoreLabel, interpretation, ewsLevel, details } } as Record<ToolType, { score: number; scoreLabel: string; interpretation: string; ewsLevel: 'merah' | 'kuning' | 'hijau'; details: Record<string, unknown> }>,
+        completedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      addPalliativeScreeningForm(newForm);
+    }
 
-    setHistory(prev => [result, ...prev]);
     toast({ title: 'Hasil Disimpan', description: `Hasil ${TOOL_DEFS[activeTool].name} berhasil disimpan ke RME.` });
     handleCloseModal();
-  }, [activeTool, selectedPatientId, selectedPatient, calcESAS, calcDistress, calcSPICT, calcPPS, calcZarit, calcEORTC, getEwsLevel, handleCloseModal, toast]);
+  }, [activeTool, effectivePatientId, selectedPatient, effectiveActiveFormId, palliativeScreeningForms, isDoctor, currentUser, consultations, answers, calcESAS, calcDistress, calcSPICT, calcPPS, calcZarit, calcEORTC, getEwsLevel, handleCloseModal, toast, updatePalliativeScreeningForm, addPalliativeScreeningForm]);
 
   // ── VAS Slider Component ──
   const renderVasSlider = (id: string, label: string) => {
@@ -1268,133 +1367,483 @@ export function PalliativeScreeningPanel() {
 
   // ── Render: Main Panel ──
 
+  // ── Status badge helper ──
+  const getStatusBadge = (status: ScreeningStatus) => {
+    switch (status) {
+      case 'sent': return { label: 'Terkirim', color: 'text-blue-700', bg: 'bg-blue-100 border-blue-300' };
+      case 'opened': return { label: 'Dibuka', color: 'text-sky-700', bg: 'bg-sky-100 border-sky-300' };
+      case 'in_progress': return { label: 'Sedang Diisi', color: 'text-amber-700', bg: 'bg-amber-100 border-amber-300' };
+      case 'completed': return { label: 'Selesai', color: 'text-emerald-700', bg: 'bg-emerald-100 border-emerald-300' };
+      case 'reviewed': return { label: 'Ditinjau', color: 'text-purple-700', bg: 'bg-purple-100 border-purple-300' };
+      default: return { label: status, color: 'text-muted-foreground', bg: 'bg-muted border-border' };
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-        <div className="flex-1">
-          <h2 className="text-xl font-bold text-foreground">Modul Skrining Paliatif</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            6 alat skrining klinis paliatif dengan modal interaktif step-by-step
-          </p>
-        </div>
-        {/* Patient Selector */}
-        <div className="w-full sm:w-72">
-          <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Pilih Pasien</Label>
-          <Select value={selectedPatientId} onValueChange={setSelectedPatientId}>
-            <SelectTrigger>
-              <User className="w-4 h-4 mr-2 text-muted-foreground" />
-              <SelectValue placeholder="Pilih pasien..." />
-            </SelectTrigger>
-            <SelectContent>
-              {patients.map(p => (
-                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Tool Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {(Object.entries(TOOL_DEFS) as [ToolType, typeof TOOL_DEFS[ToolType]][]).map(([toolKey, tool]) => (
-          <Card
-            key={toolKey}
-            className="group cursor-pointer transition-all duration-200 hover:-translate-y-[3px] hover:shadow-lg border-border hover:border-primary/30"
-            onClick={() => handleStartTool(toolKey)}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                  {tool.icon}
+      {/* ══════════════════════════════════════════════════════════════════
+          PATIENT VIEW
+         ══════════════════════════════════════════════════════════════════ */}
+      {isPatient && (
+        <>
+          {/* ── Patient: Active Form Filling ── */}
+          {activeForm && activeForm.status !== 'completed' && activeForm.status !== 'reviewed' ? (
+            <div className="space-y-4">
+              {/* Form Header */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-bold text-foreground">Form Skrining Paliatif</h2>
+                    <Badge variant="outline" className={cn('text-[10px] font-bold border', getStatusBadge(activeForm.status).bg, getStatusBadge(activeForm.status).color)}>
+                      {getStatusBadge(activeForm.status).label}
+                    </Badge>
+                  </div>
+                  {activeForm.instructions && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Instruksi: {activeForm.instructions}
+                    </p>
+                  )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <CardTitle className="text-sm font-bold">{tool.name}</CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setActiveFormId(null);
+                    setActivePalliativeFormId(null);
+                  }}
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" /> Kembali
+                </Button>
+              </div>
+
+              {/* Progress */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    Progres: {activeForm.selectedTools.filter(t => activeForm.toolResults[t]).length}/{activeForm.selectedTools.length} alat selesai
+                  </span>
+                  <span className="text-sm font-medium text-primary">
+                    {Math.round((activeForm.selectedTools.filter(t => activeForm.toolResults[t]).length / activeForm.selectedTools.length) * 100)}%
+                  </span>
                 </div>
+                <Progress
+                  value={(activeForm.selectedTools.filter(t => activeForm.toolResults[t]).length / activeForm.selectedTools.length) * 100}
+                  className="h-2"
+                />
               </div>
-            </CardHeader>
-            <CardContent className="p-4 pt-0 space-y-3">
-              <p className="text-xs text-muted-foreground leading-relaxed">{tool.description}</p>
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="text-[10px]">{tool.items}</Badge>
-                <Badge variant="outline" className="text-[10px]">{tool.scale}</Badge>
-              </div>
-              <Button
-                size="sm"
-                className="w-full text-xs"
-                onClick={(e) => { e.stopPropagation(); handleStartTool(toolKey); }}
-              >
-                Mulai Skrining
-                <ArrowRight className="w-3 h-3 ml-1" />
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
 
-      <Separator />
+              <Separator />
 
-      {/* History Table */}
-      <div>
-        <h3 className="text-base font-semibold text-foreground mb-3">Riwayat Hasil Skrining</h3>
-        {history.length === 0 ? (
-          <Card className="border-dashed">
-            <CardContent className="p-8 text-center">
-              <ClipboardList className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">Belum ada hasil skrining paliatif. Mulai skrining untuk menyimpan hasil.</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-muted/50">
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Waktu</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Pasien</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Alat</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Skor Utama</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Interpretasi</th>
-                  <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">EWS</th>
-                  <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((row) => {
-                  const ews = getEwsBadge(row.ewsLevel);
+              {/* Tool List for this Form */}
+              <div className="space-y-3">
+                {activeForm.selectedTools.map((toolKey) => {
+                  const tool = TOOL_DEFS[toolKey];
+                  const result = activeForm.toolResults[toolKey];
+                  const isCompleted = !!result;
+
                   return (
-                    <tr key={row.id} className="border-t border-border hover:bg-muted/30">
-                      <td className="px-3 py-2 text-xs">{formatDate(row.savedAt)}</td>
-                      <td className="px-3 py-2 text-xs font-medium">{row.patientName}</td>
-                      <td className="px-3 py-2 text-xs">{row.toolName}</td>
-                      <td className="px-3 py-2 text-xs font-bold">{row.scoreLabel}</td>
-                      <td className="px-3 py-2 text-xs max-w-[200px] truncate" title={row.interpretation}>
-                        {row.interpretation}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <Badge variant="outline" className={cn('text-[10px] font-bold border', ews.bg, ews.color)}>
-                          {ews.label}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs h-7"
-                          onClick={() => setDetailResult(row)}
-                        >
-                          Detail
-                        </Button>
-                      </td>
-                    </tr>
+                    <Card
+                      key={toolKey}
+                      className={cn(
+                        'transition-all duration-200',
+                        isCompleted ? 'border-emerald-200 bg-emerald-50/50' : 'border-border hover:border-primary/30 cursor-pointer hover:-translate-y-[2px] hover:shadow-md',
+                      )}
+                      onClick={() => { if (!isCompleted) handleStartTool(toolKey); }}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-4">
+                          <div className={cn(
+                            'w-12 h-12 rounded-lg flex items-center justify-center shrink-0',
+                            isCompleted ? 'bg-emerald-100 text-emerald-600' : 'bg-primary/10 text-primary',
+                          )}>
+                            {isCompleted ? <CheckCircle className="w-6 h-6" /> : tool.icon}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-bold text-foreground">{tool.name}</p>
+                              {isCompleted && (
+                                <Badge variant="outline" className={cn('text-[10px] font-bold border', getEwsBadge(result.ewsLevel).bg, getEwsBadge(result.ewsLevel).color)}>
+                                  {getEwsBadge(result.ewsLevel).label}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {isCompleted ? `Skor: ${result.scoreLabel}` : tool.description}
+                            </p>
+                          </div>
+                          <div className="shrink-0">
+                            {isCompleted ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDetailResult({
+                                    id: `${activeForm.id}-${toolKey}`,
+                                    tool: toolKey,
+                                    toolName: tool.name,
+                                    patientId: activeForm.patientId,
+                                    patientName: currentUser?.name || 'Pasien',
+                                    score: result.score,
+                                    scoreLabel: result.scoreLabel,
+                                    interpretation: result.interpretation,
+                                    ewsLevel: result.ewsLevel,
+                                    details: result.details,
+                                    savedAt: activeForm.updatedAt,
+                                  });
+                                }}
+                              >
+                                Detail
+                              </Button>
+                            ) : (
+                              <Button size="sm" className="text-xs" onClick={(e) => { e.stopPropagation(); handleStartTool(toolKey); }}>
+                                Mulai <ArrowRight className="w-3 h-3 ml-1" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
                   );
                 })}
-              </tbody>
-            </table>
+              </div>
+            </div>
+          ) : (
+            /* ── Patient: Forms List ── */
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-xl font-bold text-foreground">Skrining Paliatif</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Form skrining paliatif yang dikirim oleh dokter
+                </p>
+              </div>
+
+              <Separator />
+
+              {/* Pending Forms */}
+              {(() => {
+                const pendingForms = patientForms.filter(f => f.status !== 'completed' && f.status !== 'reviewed');
+                if (pendingForms.length === 0) return null;
+                return (
+                  <div className="space-y-3">
+                    <h3 className="text-base font-semibold text-foreground">Menunggu Pengisian</h3>
+                    {pendingForms.map(form => {
+                      const completedCount = form.selectedTools.filter(t => form.toolResults[t]).length;
+                      return (
+                        <Card
+                          key={form.id}
+                          className="border-amber-200 bg-amber-50/30 cursor-pointer transition-all hover:-translate-y-[2px] hover:shadow-md"
+                          onClick={() => {
+                            setActiveFormId(form.id);
+                            setActivePalliativeFormId(form.id);
+                          }}
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-bold text-foreground">Form Skrining Paliatif</p>
+                                  <Badge variant="outline" className={cn('text-[10px] font-bold border', getStatusBadge(form.status).bg, getStatusBadge(form.status).color)}>
+                                    {getStatusBadge(form.status).label}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {form.selectedTools.length} alat skrining • {completedCount}/{form.selectedTools.length} selesai
+                                </p>
+                                {form.instructions && (
+                                  <p className="text-xs text-muted-foreground mt-0.5 italic">
+                                    {form.instructions}
+                                  </p>
+                                )}
+                              </div>
+                              <Button size="sm" className="text-xs">
+                                {completedCount > 0 ? 'Lanjutkan' : 'Isi Skrining'}
+                                <ArrowRight className="w-3 h-3 ml-1" />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* Completed Forms */}
+              {(() => {
+                const completedForms = patientForms.filter(f => f.status === 'completed' || f.status === 'reviewed');
+                if (completedForms.length === 0) return null;
+                return (
+                  <div className="space-y-3">
+                    <h3 className="text-base font-semibold text-foreground">Selesai</h3>
+                    {completedForms.map(form => {
+                      const toolResultEntries = Object.entries(form.toolResults) as [ToolType, { score: number; scoreLabel: string; interpretation: string; ewsLevel: 'merah' | 'kuning' | 'hijau'; details: Record<string, unknown> }][];
+                      // Find worst EWS level
+                      const worstEws = toolResultEntries.reduce<'merah' | 'kuning' | 'hijau' | null>((worst, [, r]) => {
+                        if (r.ewsLevel === 'merah') return 'merah';
+                        if (worst !== 'merah' && r.ewsLevel === 'kuning') return 'kuning';
+                        if (worst === null && r.ewsLevel === 'hijau') return 'hijau';
+                        return worst;
+                      }, null);
+                      return (
+                        <Card key={form.id} className="border-emerald-200 bg-emerald-50/30">
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-bold text-foreground">Form Skrining Paliatif</p>
+                                  <Badge variant="outline" className={cn('text-[10px] font-bold border', getStatusBadge(form.status).bg, getStatusBadge(form.status).color)}>
+                                    {getStatusBadge(form.status).label}
+                                  </Badge>
+                                  {worstEws && (
+                                    <Badge variant="outline" className={cn('text-[10px] font-bold border', getEwsBadge(worstEws).bg, getEwsBadge(worstEws).color)}>
+                                      {getEwsBadge(worstEws).label}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                  {toolResultEntries.map(([toolKey, toolResult]) => (
+                                    <Badge key={toolKey} variant="secondary" className="text-[10px]">
+                                      {TOOL_DEFS[toolKey]?.name}: {toolResult.scoreLabel}
+                                    </Badge>
+                                  ))}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {formatDate(form.completedAt || form.updatedAt)}
+                                </p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* Empty State */}
+              {patientForms.length === 0 && (
+                <Card className="border-dashed">
+                  <CardContent className="p-8 text-center">
+                    <ClipboardList className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Belum ada form skrining paliatif. Dokter akan mengirim form melalui chat.</p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          DOCTOR VIEW
+         ══════════════════════════════════════════════════════════════════ */}
+      {isDoctor && (
+        <>
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="flex-1">
+              <h2 className="text-xl font-bold text-foreground">Modul Skrining Paliatif</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                6 alat skrining klinis paliatif dengan modal interaktif step-by-step
+              </p>
+            </div>
+            {/* Patient Selector */}
+            <div className="w-full sm:w-72">
+              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Pilih Pasien</Label>
+              <Select value={selectedPatientId} onValueChange={setSelectedPatientId}>
+                <SelectTrigger>
+                  <User className="w-4 h-4 mr-2 text-muted-foreground" />
+                  <SelectValue placeholder="Pilih pasien..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {patients.map(p => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        )}
-      </div>
+
+          <Separator />
+
+          {/* Tool Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {(Object.entries(TOOL_DEFS) as [ToolType, typeof TOOL_DEFS[ToolType]][]).map(([toolKey, tool]) => (
+              <Card
+                key={toolKey}
+                className="group cursor-pointer transition-all duration-200 hover:-translate-y-[3px] hover:shadow-lg border-border hover:border-primary/30"
+                onClick={() => handleStartTool(toolKey)}
+              >
+                <CardHeader className="pb-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                      {tool.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-sm font-bold">{tool.name}</CardTitle>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4 pt-0 space-y-3">
+                  <p className="text-xs text-muted-foreground leading-relaxed">{tool.description}</p>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-[10px]">{tool.items}</Badge>
+                    <Badge variant="outline" className="text-[10px]">{tool.scale}</Badge>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="w-full text-xs"
+                    onClick={(e) => { e.stopPropagation(); handleStartTool(toolKey); }}
+                  >
+                    Mulai Skrining
+                    <ArrowRight className="w-3 h-3 ml-1" />
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <Separator />
+
+          {/* Palliative Screening Forms from Store */}
+          {palliativeScreeningForms.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-base font-semibold text-foreground">Form Skrining Pasien</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-64 overflow-y-auto">
+                {palliativeScreeningForms.map(form => {
+                  const patient = consultations
+                    .filter(c => c.patientId === form.patientId && c.patient)
+                    .map(c => c.patient!)[0];
+                  const toolResultEntries = Object.entries(form.toolResults) as [ToolType, { score: number; scoreLabel: string; interpretation: string; ewsLevel: 'merah' | 'kuning' | 'hijau'; details: Record<string, unknown> }][];
+                  const completedCount = form.selectedTools.filter(t => form.toolResults[t]).length;
+                  const statusBadge = getStatusBadge(form.status);
+                  return (
+                    <Card key={form.id} className="border-border">
+                      <CardContent className="p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-foreground">
+                            {patient?.name || 'Pasien'}
+                          </p>
+                          <Badge variant="outline" className={cn('text-[10px] font-bold border', statusBadge.bg, statusBadge.color)}>
+                            {statusBadge.label}
+                          </Badge>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          {form.selectedTools.length} alat • {completedCount} selesai • {formatDate(form.updatedAt)}
+                        </p>
+                        {toolResultEntries.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {toolResultEntries.map(([toolKey, toolResult]) => {
+                              const ewsBadge = getEwsBadge(toolResult.ewsLevel);
+                              return (
+                                <Badge key={toolKey} variant="outline" className={cn('text-[9px] font-bold border', ewsBadge.bg, ewsBadge.color)}>
+                                  {TOOL_DEFS[toolKey]?.name}: {toolResult.scoreLabel}
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {toolResultEntries.length > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-[10px] h-6 w-full"
+                            onClick={() => {
+                              // Show first result detail
+                              const [firstTool, firstResult] = toolResultEntries[0];
+                              setDetailResult({
+                                id: `${form.id}-${firstTool}`,
+                                tool: firstTool,
+                                toolName: TOOL_DEFS[firstTool]?.name || firstTool,
+                                patientId: form.patientId,
+                                patientName: patient?.name || 'Pasien',
+                                score: firstResult.score,
+                                scoreLabel: firstResult.scoreLabel,
+                                interpretation: firstResult.interpretation,
+                                ewsLevel: firstResult.ewsLevel,
+                                details: firstResult.details,
+                                savedAt: form.updatedAt,
+                              });
+                            }}
+                          >
+                            Lihat Detail
+                          </Button>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* History Table (from store) */}
+          <div>
+            <h3 className="text-base font-semibold text-foreground mb-3">Riwayat Hasil Skrining</h3>
+            {screeningHistory.length === 0 ? (
+              <Card className="border-dashed">
+                <CardContent className="p-8 text-center">
+                  <ClipboardList className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Belum ada hasil skrining paliatif. Mulai skrining untuk menyimpan hasil.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/50">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Waktu</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Pasien</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Alat</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Skor Utama</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Interpretasi</th>
+                      <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">EWS</th>
+                      <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {screeningHistory.map((row) => {
+                      const ews = getEwsBadge(row.ewsLevel);
+                      return (
+                        <tr key={row.id} className="border-t border-border hover:bg-muted/30">
+                          <td className="px-3 py-2 text-xs">{formatDate(row.savedAt)}</td>
+                          <td className="px-3 py-2 text-xs font-medium">{row.patientName}</td>
+                          <td className="px-3 py-2 text-xs">{row.toolName}</td>
+                          <td className="px-3 py-2 text-xs font-bold">{row.scoreLabel}</td>
+                          <td className="px-3 py-2 text-xs max-w-[200px] truncate" title={row.interpretation}>
+                            {row.interpretation}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <Badge variant="outline" className={cn('text-[10px] font-bold border', ews.bg, ews.color)}>
+                              {ews.label}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs h-7"
+                              onClick={() => setDetailResult(row)}
+                            >
+                              Detail
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          SHARED MODALS
+         ══════════════════════════════════════════════════════════════════ */}
 
       {/* ── Universal Modal ── */}
       <Dialog open={modalOpen} onOpenChange={(open) => { if (!open) handleCloseModal(); }}>

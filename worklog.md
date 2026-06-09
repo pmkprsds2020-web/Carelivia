@@ -337,3 +337,32 @@ Stage Summary:
 - VAS sliders with gradient coloring work correctly
 - PPS table row selection works with Dialog interaction protection
 - UI is fully in Bahasa Indonesia
+---
+Task ID: 1
+Agent: Main
+Task: Fix palliative screening - make it doctor-only and sendable via chat
+
+Work Log:
+- Added `PalliativeToolType`, `PalliativeEwsLevel`, and `PalliativeScreeningForm` types to `src/lib/types.ts`
+- Added `palliativeScreeningForms`, `addPalliativeScreeningForm`, `updatePalliativeScreeningForm`, `activePalliativeFormId`, `setActivePalliativeFormId` to Zustand store (`src/lib/store.ts`)
+- Removed `palliative-screening` from patient sidebar in `src/components/telemedicine/sidebar.tsx` - now only visible for doctors
+- Added `PALLIATIVE_TOOL_LABELS` constant with 6 tools (ESAS-r, Distress Thermometer, SPICT, PPS/Karnofsky, Zarit, EORTC QLQ-C15-PAL) to chat panel
+- Added palliative screening dialog state, handlers (`handleOpenPalliativeDialog`, `handleTogglePalliativeTool`, `handleSendPalliativeScreening`) to chat panel
+- Added `renderPalliativeCard()` function for rendering palliative screening cards in chat messages
+- Added `__PALLIATIVE__` message detection alongside `__PRESCRIPTION__` and `__SCREENING__`
+- Added "Skrining Paliatif" button (rose-colored) in doctor chat header
+- Added `renderPalliativeDialogUI()` with tool selection checkboxes and instructions textarea
+- Updated patient/doctor card last message preview to handle `__PALLIATIVE__` messages
+- Updated `PalliativeScreeningPanel` to integrate with Zustand store for form state management
+- Patient view now auto-opens form when `activePalliativeFormId` is set from chat
+- Patient can fill out tools one-by-one with progress tracking
+- Results save back to store, form status updates to 'completed' when all tools done
+
+Stage Summary:
+- Palliative screening is now doctor-only (removed from patient sidebar)
+- Doctor can send palliative screening forms via chat using "Skrining Paliatif" button
+- Patient receives the form as a card in chat with "Isi Skrining Paliatif" button
+- Patient fills out each tool step-by-step, results saved to store
+- Doctor sees completed results with EWS badges in chat
+- All 6 tools preserved with full step-by-step modal functionality
+- Verified working with agent-browser: doctor can send, patient receives and can fill out

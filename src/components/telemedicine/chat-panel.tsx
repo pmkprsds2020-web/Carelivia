@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useStore } from '@/lib/store';
-import type { User, Consultation, Message, DoctorProfile, Prescription, PrescriptionItem, MedicalRecord, MedicalRecordStatus, ScreeningForm, ScreeningModuleId } from '@/lib/types';
+import type { User, Consultation, Message, DoctorProfile, Prescription, PrescriptionItem, MedicalRecord, MedicalRecordStatus, ScreeningForm, ScreeningModuleId, PalliativeToolType, PalliativeScreeningForm } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -67,6 +67,8 @@ import {
   Brain,
   Activity,
   Heart,
+  HeartPulse,
+  Users,
 } from 'lucide-react';
 
 // ── Module Icon Map (Lucide icons replacing emojis) ──
@@ -83,6 +85,16 @@ const MODULE_ICON_MAP: Record<ScreeningModuleId, React.ReactNode> = {
   home_care: <Home className="w-4 h-4" />,
   paliatif: <Heart className="w-4 h-4" />,
   bukti_klinis: <Paperclip className="w-4 h-4" />,
+};
+
+// ── Palliative Screening Tool Labels ──
+const PALLIATIVE_TOOL_LABELS: Record<PalliativeToolType, { name: string; icon: React.ReactNode; desc: string }> = {
+  esas: { name: 'ESAS-r', icon: <Activity className="w-4 h-4" />, desc: 'Edmonton Symptom Assessment — 9 gejala VAS 0-10' },
+  distress: { name: 'Distress Thermometer', icon: <Flame className="w-4 h-4" />, desc: 'NCCN Distress — Skor tekanan + daftar masalah' },
+  spict: { name: 'SPICT', icon: <ClipboardList className="w-4 h-4" />, desc: 'Indikator kebutuhan perawatan paliatif' },
+  pps: { name: 'PPS / Karnofsky', icon: <HeartPulse className="w-4 h-4" />, desc: 'Palliative Performance Scale — 10 level performa' },
+  zarit: { name: 'Zarit Caregiver Burden', icon: <Users className="w-4 h-4" />, desc: 'Beban pengasuh — 22 pertanyaan' },
+  eortc: { name: 'EORTC QLQ-C15-PAL', icon: <Heart className="w-4 h-4" />, desc: 'Kualitas hidup paliatif — 15 item' },
 };
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -265,6 +277,10 @@ export function ChatPanel() {
     updateScreeningForm,
     addAuditLog,
     addClinicalAlert,
+    palliativeScreeningForms,
+    addPalliativeScreeningForm,
+    updatePalliativeScreeningForm,
+    setActivePalliativeFormId,
   } = useStore();
 
   const { toast } = useToast();
@@ -291,6 +307,11 @@ export function ChatPanel() {
   ]);
   const [screeningInstructions, setScreeningInstructions] = useState('');
   const [screeningDeadline, setScreeningDeadline] = useState('');
+
+  // Palliative screening dialog state
+  const [showPalliativeDialog, setShowPalliativeDialog] = useState(false);
+  const [selectedPalliativeTools, setSelectedPalliativeTools] = useState<PalliativeToolType[]>(['esas', 'distress', 'spict', 'pps', 'zarit', 'eortc']);
+  const [palliativeInstructions, setPalliativeInstructions] = useState('');
 
   // Prescription form state
   const [rxItems, setRxItems] = useState<Array<{
@@ -911,6 +932,73 @@ export function ChatPanel() {
     toast({ title: 'Berhasil', description: 'Form skrining komprehensif berhasil dikirim ke pasien.' });
   };
 
+  // ── Palliative Screening Flow ────────────────────────────────────────────
+
+  const handleOpenPalliativeDialog = () => {
+    setSelectedPalliativeTools(['esas', 'distress', 'spict', 'pps', 'zarit', 'eortc']);
+    setPalliativeInstructions('');
+    setShowPalliativeDialog(true);
+  };
+
+  const handleTogglePalliativeTool = (tool: PalliativeToolType) => {
+    setSelectedPalliativeTools((prev) =>
+      prev.includes(tool) ? prev.filter((t) => t !== tool) : [...prev, tool]
+    );
+  };
+
+  const handleSendPalliativeScreening = () => {
+    if (!activeConsultation || !currentUser || selectedPalliativeTools.length === 0) return;
+
+    const formId = generateId();
+    const palliativeForm: PalliativeScreeningForm = {
+      id: formId,
+      consultationId: activeConsultation.id,
+      doctorId: currentUser.id,
+      patientId: activeConsultation.patientId,
+      status: 'sent',
+      instructions: palliativeInstructions || undefined,
+      selectedTools: [...selectedPalliativeTools],
+      toolAnswers: {},
+      toolResults: {} as PalliativeScreeningForm['toolResults'],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    addPalliativeScreeningForm(palliativeForm);
+
+    // Send palliative screening message in chat
+    const palliativeMessage: Message = {
+      id: generateId(),
+      consultationId: activeConsultation.id,
+      senderId: currentUser.id,
+      content: `__PALLIATIVE__${formId}__`,
+      type: 'text',
+      status: 'delivered',
+      createdAt: new Date().toISOString(),
+    };
+    addMessage(palliativeMessage);
+    updateConsultation(activeConsultation.id, {
+      messages: [...(activeConsultation.messages || []), palliativeMessage],
+      updatedAt: new Date().toISOString(),
+    });
+
+    // System message
+    const sysMessage: Message = {
+      id: generateId(),
+      consultationId: activeConsultation.id,
+      senderId: 'system',
+      content: `Formulir Skrining Paliatif telah dikirim. Alat: ${selectedPalliativeTools.map(t => PALLIATIVE_TOOL_LABELS[t].name).join(', ')}`,
+      type: 'text',
+      status: 'read',
+      createdAt: new Date().toISOString(),
+    };
+    addMessage(sysMessage);
+
+    setShowPalliativeDialog(false);
+    setSelectedPalliativeTools(['esas', 'distress', 'spict', 'pps', 'zarit', 'eortc']);
+    toast({ title: 'Berhasil', description: 'Form skrining paliatif berhasil dikirim ke pasien.' });
+  };
+
   // ── Handle typing ──────────────────────────────────────────────────────
 
   const handleTyping = (value: string) => {
@@ -1173,6 +1261,119 @@ export function ChatPanel() {
     );
   };
 
+  // ── Render Palliative Screening Card ──────────────────────────────────
+
+  const renderPalliativeCard = (formId: string) => {
+    const form = palliativeScreeningForms.find((f) => f.id === formId);
+    if (!form) return null;
+
+    const isCompleted = form.status === 'completed' || form.status === 'reviewed';
+    const isPending = form.status === 'sent' || form.status === 'opened' || form.status === 'in_progress' || form.status === 'draft';
+    const toolNames = form.selectedTools.map(t => PALLIATIVE_TOOL_LABELS[t].name);
+
+    // Determine worst EWS level for badge
+    const ewsLevels = Object.values(form.toolResults).map(r => r.ewsLevel);
+    const worstEws = ewsLevels.includes('merah') ? 'merah' : ewsLevels.includes('kuning') ? 'kuning' : 'hijau';
+    const ewsBadge = worstEws === 'merah' ? { label: 'Kritis', color: 'text-red-700', bg: 'bg-red-100 border-red-300' } :
+                     worstEws === 'kuning' ? { label: 'Perhatian', color: 'text-amber-700', bg: 'bg-amber-100 border-amber-300' } :
+                     { label: 'Normal', color: 'text-emerald-700', bg: 'bg-emerald-100 border-emerald-300' };
+
+    return (
+      <div className="border-2 border-rose-500 rounded-xl overflow-hidden bg-card max-w-sm my-2">
+        {/* Header */}
+        <div className="bg-rose-500/10 px-4 py-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <HeartPulse className="w-4 h-4 text-rose-600" />
+            <span className="font-semibold text-sm text-rose-700">Skrining Paliatif</span>
+          </div>
+          <Badge className={cn('text-[10px]', isCompleted ? 'bg-emerald-600' : 'bg-amber-500')}>
+            {isCompleted ? 'Selesai' : 'Menunggu Diisi'}
+          </Badge>
+        </div>
+
+        {/* Content */}
+        <div className="px-4 py-3">
+          <p className="font-medium text-sm text-foreground">Skrining Paliatif Telemedicine</p>
+          <p className="text-xs text-muted-foreground">{form.selectedTools.length} alat skrining paliatif</p>
+
+          {form.instructions && (
+            <p className="text-xs text-rose-600 mt-2 bg-rose-50 p-2 rounded flex items-start gap-1"><FileText className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {form.instructions}</p>
+          )}
+
+          {/* Tool list */}
+          <div className="flex flex-wrap gap-1 mt-2">
+            {form.selectedTools.map(tool => (
+              <Badge key={tool} variant="outline" className="text-[10px]">
+                {PALLIATIVE_TOOL_LABELS[tool].name}
+              </Badge>
+            ))}
+          </div>
+
+          {/* Completed results summary */}
+          {isCompleted && Object.keys(form.toolResults).length > 0 && (
+            <div className="mt-3 space-y-2">
+              <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg border', ewsBadge.bg)}>
+                <div className={cn('w-4 h-4 rounded-full', worstEws === 'merah' ? 'bg-red-500' : worstEws === 'kuning' ? 'bg-amber-500' : 'bg-emerald-500')} />
+                <div>
+                  <p className={cn('text-sm font-bold', ewsBadge.color)}>{ewsBadge.label}</p>
+                </div>
+              </div>
+              <div className="space-y-1">
+                {Object.entries(form.toolResults).map(([toolKey, result]) => (
+                  <div key={toolKey} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">{PALLIATIVE_TOOL_LABELS[toolKey as PalliativeToolType]?.name || toolKey}</span>
+                    <span className={cn('font-bold', result.ewsLevel === 'merah' ? 'text-red-600' : result.ewsLevel === 'kuning' ? 'text-amber-600' : 'text-emerald-600')}>
+                      {result.scoreLabel}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Patient Actions */}
+        {isPatient && isPending && (
+          <div className="px-4 pb-3">
+            <Button
+              size="sm"
+              className="w-full h-8 text-xs bg-rose-600 hover:bg-rose-700"
+              onClick={() => {
+                setActivePalliativeFormId(formId);
+                setActivePanel('palliative-screening');
+              }}
+            >
+              <HeartPulse className="w-3.5 h-3.5 mr-1" />
+              Isi Skrining Paliatif
+            </Button>
+          </div>
+        )}
+
+        {/* Doctor view - completed summary */}
+        {isDoctor && isCompleted && (
+          <div className="px-4 pb-3">
+            <div className="bg-muted/50 rounded-lg p-3 text-xs space-y-1">
+              <p className="font-semibold text-foreground">Skrining Paliatif Telah Diselesaikan</p>
+              <p className={cn('font-medium', ewsBadge.color)}>EWS: {ewsBadge.label}</p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full h-8 text-xs mt-2"
+              onClick={() => {
+                setActivePalliativeFormId(formId);
+                setActivePanel('palliative-screening');
+              }}
+            >
+              <Eye className="w-3.5 h-3.5 mr-1" />
+              Lihat Detail
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ── Render message status icon ─────────────────────────────────────────
 
   const renderMessageStatus = (status: string, isOwn: boolean) => {
@@ -1249,7 +1450,7 @@ export function ChatPanel() {
 
             {existingConsultation ? (
               <p className="text-xs text-muted-foreground mt-1 truncate">
-                {lastMessage?.content?.startsWith('__PRESCRIPTION__') ? <span className="flex items-center gap-1"><Paperclip className="w-3.5 h-3.5" /> E-Resep Dokter</span> : lastMessage?.content?.startsWith('__SCREENING__') ? <span className="flex items-center gap-1"><ClipboardCheck className="w-3.5 h-3.5" /> Form Skrining</span> : lastMessage?.content || 'Belum ada pesan'}
+                {lastMessage?.content?.startsWith('__PRESCRIPTION__') ? <span className="flex items-center gap-1"><Paperclip className="w-3.5 h-3.5" /> E-Resep Dokter</span> : lastMessage?.content?.startsWith('__PALLIATIVE__') ? <span className="flex items-center gap-1"><HeartPulse className="w-3.5 h-3.5" /> Skrining Paliatif</span> : lastMessage?.content?.startsWith('__SCREENING__') ? <span className="flex items-center gap-1"><ClipboardCheck className="w-3.5 h-3.5" /> Form Skrining</span> : lastMessage?.content || 'Belum ada pesan'}
               </p>
             ) : (
               <Button
@@ -1314,7 +1515,7 @@ export function ChatPanel() {
             </div>
             {lastMessage && (
               <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                {lastMessage.content?.startsWith('__PRESCRIPTION__') ? <span className="flex items-center gap-1"><Paperclip className="w-3.5 h-3.5" /> E-Resep</span> : lastMessage.content?.startsWith('__SCREENING__') ? <span className="flex items-center gap-1"><ClipboardCheck className="w-3.5 h-3.5" /> Skrining</span> : lastMessage.content}
+                {lastMessage.content?.startsWith('__PRESCRIPTION__') ? <span className="flex items-center gap-1"><Paperclip className="w-3.5 h-3.5" /> E-Resep</span> : lastMessage.content?.startsWith('__PALLIATIVE__') ? <span className="flex items-center gap-1"><HeartPulse className="w-3.5 h-3.5" /> Skrining Paliatif</span> : lastMessage.content?.startsWith('__SCREENING__') ? <span className="flex items-center gap-1"><ClipboardCheck className="w-3.5 h-3.5" /> Skrining</span> : lastMessage.content}
               </p>
             )}
             <span className="text-[10px] text-muted-foreground">
@@ -1389,14 +1590,24 @@ export function ChatPanel() {
 
         {/* Doctor action buttons */}
         {isDoctor && activeConsultation && (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-wrap">
             <Button
               size="sm"
               className="h-8 text-xs gap-1 bg-teal-600 hover:bg-teal-700"
               onClick={handleOpenScreeningDialog}
             >
               <ClipboardCheck className="w-3.5 h-3.5" />
-              Kirim Form Skrining
+              <span className="hidden sm:inline">Kirim Form Skrining</span>
+              <span className="sm:hidden">Skrining</span>
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 text-xs gap-1 bg-rose-600 hover:bg-rose-700"
+              onClick={handleOpenPalliativeDialog}
+            >
+              <HeartPulse className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Skrining Paliatif</span>
+              <span className="sm:hidden">Paliatif</span>
             </Button>
             <Button
               variant="outline"
@@ -1405,7 +1616,8 @@ export function ChatPanel() {
               onClick={handleOpenMedicalRecordDialog}
             >
               <FileText className="w-3.5 h-3.5" />
-              Rekam Medis
+              <span className="hidden sm:inline">Rekam Medis</span>
+              <span className="sm:hidden">RM</span>
             </Button>
             <Button
               size="sm"
@@ -1413,7 +1625,8 @@ export function ChatPanel() {
               onClick={handleOpenPrescriptionDialog}
             >
               <Stethoscope className="w-3.5 h-3.5" />
-              E-Resep
+              <span className="hidden sm:inline">E-Resep</span>
+              <span className="sm:hidden">Resep</span>
             </Button>
           </div>
         )}
@@ -1460,6 +1673,10 @@ export function ChatPanel() {
           const screeningMatch = msg.content?.match(/^__SCREENING__(.+)__$/);
           const isScreeningMsg = !!screeningMatch;
 
+          // Check if this is a palliative screening message
+          const palliativeMatch = msg.content?.match(/^__PALLIATIVE__(.+)__$/);
+          const isPalliativeMsg = !!palliativeMatch;
+
           return (
             <div key={msg.id}>
               {showDateSeparator && (
@@ -1475,6 +1692,10 @@ export function ChatPanel() {
                   <span className="text-[11px] text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-lg text-center max-w-[85%]">
                     {msg.content}
                   </span>
+                </div>
+              ) : isPalliativeMsg && palliativeMatch ? (
+                <div className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}>
+                  {renderPalliativeCard(palliativeMatch[1])}
                 </div>
               ) : isScreeningMsg && screeningMatch ? (
                 <div className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}>
@@ -1913,6 +2134,83 @@ export function ChatPanel() {
     </div>
   );
 
+  // ── Render: Palliative Screening Dialog (Doctor) ────────────────────────
+
+  const renderPalliativeDialogUI = () => (
+    <Dialog open={showPalliativeDialog} onOpenChange={setShowPalliativeDialog}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <HeartPulse className="w-5 h-5 text-rose-600" />
+            Kirim Skrining Paliatif
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div>
+            <Label className="text-sm font-medium mb-2 block">Pilih Alat Skrining Paliatif</Label>
+            <p className="text-xs text-muted-foreground mb-3">Pilih alat skrining yang ingin dikirim ke pasien:</p>
+            <div className="space-y-2">
+              {(Object.entries(PALLIATIVE_TOOL_LABELS) as [PalliativeToolType, typeof PALLIATIVE_TOOL_LABELS[PalliativeToolType]][]).map(([toolKey, tool]) => (
+                <div
+                  key={toolKey}
+                  className={cn(
+                    'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all',
+                    selectedPalliativeTools.includes(toolKey)
+                      ? 'border-rose-500 bg-rose-50'
+                      : 'border-border hover:border-rose-300 hover:bg-rose-50/50'
+                  )}
+                  onClick={() => handleTogglePalliativeTool(toolKey)}
+                >
+                  <Checkbox
+                    checked={selectedPalliativeTools.includes(toolKey)}
+                    onCheckedChange={() => handleTogglePalliativeTool(toolKey)}
+                  />
+                  <div className={cn('w-8 h-8 rounded-md flex items-center justify-center', selectedPalliativeTools.includes(toolKey) ? 'bg-rose-600 text-white' : 'bg-muted text-muted-foreground')}>
+                    {tool.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{tool.name}</p>
+                    <p className="text-xs text-muted-foreground">{tool.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-sm font-medium mb-1.5 block">Instruksi Tambahan (Opsional)</Label>
+            <Textarea
+              placeholder="Contoh: Mohon isi semua alat skrining paliatif berikut..."
+              value={palliativeInstructions}
+              onChange={(e) => setPalliativeInstructions(e.target.value)}
+              className="min-h-[80px] text-sm"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowPalliativeDialog(false)}
+          >
+            Batal
+          </Button>
+          <Button
+            size="sm"
+            className="bg-rose-600 hover:bg-rose-700"
+            onClick={handleSendPalliativeScreening}
+            disabled={selectedPalliativeTools.length === 0}
+          >
+            <HeartPulse className="w-4 h-4 mr-1" />
+            Kirim Skrining Paliatif ({selectedPalliativeTools.length} alat)
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   // ── Render: Left Panel (Doctor - Patient Consultation List) ────────────
 
   const renderDoctorLeftPanel = () => (
@@ -1983,6 +2281,7 @@ export function ChatPanel() {
       {isDoctor && renderPrescriptionDialog()}
       {isDoctor && renderMedicalRecordDialog()}
       {isDoctor && renderScreeningDialogUI()}
+      {isDoctor && renderPalliativeDialogUI()}
     </div>
   );
 }
