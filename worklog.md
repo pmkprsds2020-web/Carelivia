@@ -149,3 +149,60 @@ Stage Summary:
 - Download generates a professional HTML receipt that auto-opens print dialog for PDF save
 - Backend API `/api/payment-proof` works correctly (verified 200 responses in dev log)
 - Demo data includes paid prescriptions with proof data for testing
+
+---
+Task ID: 5
+Agent: Main Agent
+Task: Add "Skrining Komprehensif" tab to medical records panel for both doctor and patient views
+
+Work Log:
+- Added 4th tab "Skrining Komprehensif" to DoctorMedicalRecordsView (was 3 tabs, now 4)
+  - Changed TabsList from grid-cols-3 to grid-cols-4
+  - Added ClipboardCheck icon tab trigger for screening
+  - Tab content shows screening forms filtered by doctorId === currentUser.id, sorted newest first
+  - Each card displays: patient name (via PATIENT_NAME_MAP), date, status badge, triage level (colored), chief complaint
+  - Clicking a card opens a detail dialog with: patient info, triage result (colored indicator), clinical summary (vital signs, red flags, chronic diseases, pain score, mental status, functional status, home care need, palliative status), module scores breakdown with risk category badges, clinical files, editable doctor notes/follow-up (for completed/reviewed forms), "Tinjau" button to mark as reviewed
+  - Added selectedScreeningId, screeningDoctorNotes, screeningFollowUp state variables
+  - Added screeningForms, updateScreeningForm, doctors from useStore
+- Enhanced PatientScreeningTimeline component:
+  - Now shows ALL screening forms (not just completed/reviewed) filtered by patientId
+  - Added doctor name resolution using doctors array and DOCTOR_NAME_MAP
+  - Each card shows: date, doctor name, status badge, triage level (colored), chief complaint
+  - Added "Isi Skrining" button for pending forms (navigates to screening panel via setActivePanel)
+  - Added "Lihat Detail" button for completed/reviewed forms that opens a detail dialog
+  - Detail dialog shows: doctor info, triage result, clinical summary (read-only), module scores, clinical files, doctor notes and follow-up (read-only)
+  - Added selectedFormId state, screeningStatusBadge and screeningStatusLabel helpers
+  - Used extractPatientKey for robust patient ID resolution (same pattern as other patient views)
+- No new files created; only modified medical-records.tsx
+- All existing imports were already present (ScreeningForm, ScreeningModuleId, RiskCategory, TriageLevel, TRIAGE_COLORS, MODULE_LABELS, MODULE_ICONS, ClipboardCheck, etc.)
+- Lint passes with zero errors on the modified file
+- Dev server compiles successfully
+
+Stage Summary:
+- Doctor view now has 4 tabs: Daftar Rekam Medis, Timeline Pasien, Resep Obat, Skrining Komprehensif
+- Patient view Skrining tab enhanced with full screening list, doctor names, action buttons, and detail dialog
+- Doctor can review screenings with editable notes/follow-up and "Tinjau" button
+- Patient can fill pending screenings ("Isi Skrining" → screening panel) and view completed details
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix chat-panel bug and implement Skrining Komprehensif Telemedicine features
+
+Work Log:
+- Read entire codebase structure: store.ts, types.ts, screening-templates.ts, chat-panel.tsx, screening-panel.tsx, medical-records.tsx, payments-panel.tsx, payment-proof API
+- Fixed critical bug in chat-panel.tsx line 805: setSelectedScreeningTemplates → setSelectedModules
+- Verified screening system: All 12 modules already implemented in screening-templates.ts with proper scoring algorithms
+- Verified triage calculation engine: calculateTriage() correctly handles merah/oranye/kuning/hijau levels
+- Verified clinical summary generation: generateClinicalSummary() properly extracts data from all module answers
+- Verified chat integration: screening card rendering, "Kirim Form Skrining" button for doctors, "Isi Skrining" for patients
+- Verified payment flow: Bayar Sekarang → setPendingPrescriptionCheckout → payments panel → prescription checkout dialog → simulate payment → update prescription status to paid
+- Verified payment proof: view via dialog, download via /api/payment-proof endpoint (HTML with print)
+- Delegated EMR screening tab to sub-agent: Added "Skrining Komprehensif" tab to DoctorMedicalRecordsView (4th tab) and "Skrining Kesehatan" tab to PatientMedicalRecordsView
+- Browser verified: login, doctor dashboard, chat panel, screening panel, medical records (with new screening tab), payments panel all work without errors
+
+Stage Summary:
+- Fixed 1 critical bug (setSelectedScreeningTemplates)
+- Screening system is fully functional with all 12 modules
+- Payment flow (Bayar Sekarang → payment → proof view/download) is complete
+- EMR integration: Screening tabs added to both doctor and patient medical records views
+- Dev server running without errors on port 3000

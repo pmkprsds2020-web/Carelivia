@@ -795,6 +795,9 @@ function DoctorMedicalRecordsView() {
     updateMedicalRecord,
     updateConsultation,
     currentUser,
+    screeningForms,
+    updateScreeningForm,
+    doctors,
   } = useStore();
 
   const [activeTab, setActiveTab] = useState('records-list');
@@ -803,6 +806,9 @@ function DoctorMedicalRecordsView() {
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [selectedTimelinePatientId, setSelectedTimelinePatientId] = useState<string | null>(null);
   const [selectedTimelineRecordId, setSelectedTimelineRecordId] = useState<string | null>(null);
+  const [selectedScreeningId, setSelectedScreeningId] = useState<string | null>(null);
+  const [screeningDoctorNotes, setScreeningDoctorNotes] = useState('');
+  const [screeningFollowUp, setScreeningFollowUp] = useState('');
 
   // Build merged data
   const mergedRecords = useMemo(
@@ -971,7 +977,7 @@ function DoctorMedicalRecordsView() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-4">
+        <TabsList className="grid w-full grid-cols-4 mb-4">
           <TabsTrigger value="records-list" className="flex items-center gap-1.5">
             <ClipboardList className="w-4 h-4" />
             <span className="hidden sm:inline">Daftar Rekam Medis</span>
@@ -986,6 +992,11 @@ function DoctorMedicalRecordsView() {
             <Pill className="w-4 h-4" />
             <span className="hidden sm:inline">Resep Obat</span>
             <span className="sm:hidden">Resep</span>
+          </TabsTrigger>
+          <TabsTrigger value="screening" className="flex items-center gap-1.5">
+            <ClipboardCheck className="w-4 h-4" />
+            <span className="hidden sm:inline">Skrining Komprehensif</span>
+            <span className="sm:hidden">Skrining</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1324,10 +1335,139 @@ function DoctorMedicalRecordsView() {
             </div>
           )}
         </TabsContent>
+
+        {/* ================================================================= */}
+        {/* Tab 4: Skrining Komprehensif                                      */}
+        {/* ================================================================= */}
+        <TabsContent value="screening" className="space-y-4 mt-0">
+          {(() => {
+            const doctorScreenings = screeningForms
+              .filter((f: ScreeningForm) => f.doctorId === currentUser?.id)
+              .sort((a: ScreeningForm, b: ScreeningForm) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+            if (doctorScreenings.length === 0) {
+              return (
+                <Card className="border-0">
+                  <CardContent className="p-8 text-center">
+                    <ClipboardCheck className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-sm text-muted-foreground">
+                      Belum ada form skrining yang dikirim
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Form skrining akan muncul setelah Anda mengirimkannya ke pasien
+                    </p>
+                  </CardContent>
+                </Card>
+              );
+            }
+
+            const riskColors: Record<RiskCategory, { bg: string; text: string; border: string }> = {
+              rendah: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+              sedang: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+              tinggi: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+            };
+
+            const screeningStatusBadge = (status: string) => {
+              switch (status) {
+                case 'sent':
+                  return 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400 border-0';
+                case 'opened':
+                  return 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400 border-0';
+                case 'in_progress':
+                  return 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border-0';
+                case 'draft':
+                  return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-0';
+                case 'completed':
+                  return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border-0';
+                case 'reviewed':
+                  return 'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400 border-0';
+                default:
+                  return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-0';
+              }
+            };
+
+            const screeningStatusLabel = (status: string) => {
+              switch (status) {
+                case 'sent': return 'Terkirim';
+                case 'opened': return 'Dibuka';
+                case 'in_progress': return 'Sedang Diisi';
+                case 'draft': return 'Draft';
+                case 'completed': return 'Selesai';
+                case 'reviewed': return 'Ditinjau';
+                default: return status;
+              }
+            };
+
+            return (
+              <div className="space-y-3 max-h-[calc(100vh-420px)] overflow-y-auto pr-1 custom-scrollbar">
+                {doctorScreenings.map((form: ScreeningForm) => {
+                  const triage = form.triageResult;
+                  const triageColor = triage ? TRIAGE_COLORS[triage.level as TriageLevel] : null;
+                  const patientName = PATIENT_NAME_MAP[form.patientId] || form.patientId;
+                  const chiefComplaint = form.clinicalSummary?.chiefComplaint;
+
+                  return (
+                    <Card
+                      key={form.id}
+                      className="border-0 hover:shadow-md transition-shadow cursor-pointer"
+                      onClick={() => {
+                        setSelectedScreeningId(form.id);
+                        setScreeningDoctorNotes(form.doctorNotes || '');
+                        setScreeningFollowUp(form.followUp || '');
+                      }}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3 min-w-0">
+                            <div className={cn(
+                              'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5',
+                              triageColor ? triageColor.bg : 'bg-primary/10'
+                            )}>
+                              <ClipboardCheck className={cn('w-5 h-5', triageColor ? triageColor.text : 'text-primary')} />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-semibold text-sm text-foreground truncate">
+                                  {patientName}
+                                </p>
+                                <Badge
+                                  variant="secondary"
+                                  className={cn('text-[10px] shrink-0', screeningStatusBadge(form.status))}
+                                >
+                                  {screeningStatusLabel(form.status)}
+                                </Badge>
+                                {triage && triageColor && (
+                                  <Badge className={cn('text-[10px] font-bold shrink-0', triageColor.bg, triageColor.text, triageColor.border, 'border')}>
+                                    {triage.label}
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                <Calendar className="w-3 h-3 inline mr-0.5" />
+                                {formatDate(form.createdAt)}
+                              </p>
+                              {chiefComplaint && chiefComplaint !== 'Tidak disebutkan' && (
+                                <p className="text-sm text-foreground mt-1 truncate">
+                                  <Stethoscope className="w-3 h-3 inline mr-0.5 text-primary" />
+                                  {chiefComplaint}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0 mt-1" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </TabsContent>
       </Tabs>
 
       {/* ================================================================= */}
-      {/* Detail Dialog                                                     */}
+      {/* Detail Dialog (Medical Record)                                    */}
       {/* ================================================================= */}
       <Dialog
         open={!!selectedRecord}
@@ -1551,6 +1691,342 @@ function DoctorMedicalRecordsView() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ================================================================= */}
+      {/* Screening Detail Dialog (Doctor View)                             */}
+      {/* ================================================================= */}
+      <Dialog
+        open={!!selectedScreeningId}
+        onOpenChange={(open) => {
+          if (!open) setSelectedScreeningId(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          {selectedScreeningId && (() => {
+            const form = screeningForms.find((f: ScreeningForm) => f.id === selectedScreeningId);
+            if (!form) return null;
+
+            const triage = form.triageResult;
+            const summary = form.clinicalSummary;
+            const triageColor = triage ? TRIAGE_COLORS[triage.level as TriageLevel] : null;
+            const patientName = PATIENT_NAME_MAP[form.patientId] || form.patientId;
+
+            const riskColors: Record<RiskCategory, { bg: string; text: string; border: string }> = {
+              rendah: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+              sedang: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+              tinggi: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+            };
+
+            const scoredModules = (Object.keys(form.moduleScores) as ScreeningModuleId[])
+              .map((modId) => ({
+                id: modId,
+                label: MODULE_LABELS[modId] || modId,
+                icon: MODULE_ICONS[modId] || '📋',
+                ...form.moduleScores[modId],
+              }));
+
+            const screeningStatusBadge = (status: string) => {
+              switch (status) {
+                case 'sent': return 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400 border-0';
+                case 'opened': return 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400 border-0';
+                case 'in_progress': return 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border-0';
+                case 'draft': return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-0';
+                case 'completed': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border-0';
+                case 'reviewed': return 'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400 border-0';
+                default: return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-0';
+              }
+            };
+
+            const screeningStatusLabel = (status: string) => {
+              switch (status) {
+                case 'sent': return 'Terkirim';
+                case 'opened': return 'Dibuka';
+                case 'in_progress': return 'Sedang Diisi';
+                case 'draft': return 'Draft';
+                case 'completed': return 'Selesai';
+                case 'reviewed': return 'Ditinjau';
+                default: return status;
+              }
+            };
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 flex-wrap">
+                    <ClipboardCheck className="w-5 h-5 text-primary" />
+                    <span>Detail Skrining Komprehensif</span>
+                    <Badge variant="secondary" className={cn('text-[10px]', screeningStatusBadge(form.status))}>
+                      {screeningStatusLabel(form.status)}
+                    </Badge>
+                  </DialogTitle>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  {/* Patient Info */}
+                  <div className="flex items-center gap-3 bg-muted/50 rounded-lg p-3">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <User className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm text-foreground">{patientName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        <Calendar className="w-3 h-3 inline mr-0.5" />
+                        {formatDate(form.createdAt)} {form.completedAt && `— Selesai: ${formatDate(form.completedAt)}`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Triage Result */}
+                  {triage && (
+                    <div className={cn('rounded-xl p-4', triageColor?.bg || 'bg-gray-50')}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={cn('w-8 h-8 rounded-full flex items-center justify-center', triageColor?.bg)}>
+                          <AlertTriangle className={cn('w-4 h-4', triageColor?.text)} />
+                        </div>
+                        <div>
+                          <p className={cn('font-bold text-sm', triageColor?.text)}>{triage.label}</p>
+                          <p className={cn('text-xs', triageColor?.text, 'opacity-80')}>{triage.description}</p>
+                        </div>
+                      </div>
+                      <p className={cn('text-xs mt-1', triageColor?.text, 'opacity-70')}>{triage.recommendation}</p>
+                    </div>
+                  )}
+
+                  {/* Clinical Summary */}
+                  {summary && (
+                    <>
+                      <Separator />
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Ringkasan Klinis</p>
+                        <div className="space-y-2">
+                          {summary.chiefComplaint && (
+                            <div className="flex items-start gap-2">
+                              <Stethoscope className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                              <p className="text-xs text-foreground"><span className="font-medium">Keluhan Utama:</span> {summary.chiefComplaint}</p>
+                            </div>
+                          )}
+
+                          {summary.vitalSigns && (
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 pl-5">
+                              {summary.vitalSigns.bloodPressure && <span className="text-xs text-muted-foreground">TD: {summary.vitalSigns.bloodPressure} mmHg</span>}
+                              {summary.vitalSigns.heartRate && <span className="text-xs text-muted-foreground">Nadi: {summary.vitalSigns.heartRate} bpm</span>}
+                              {summary.vitalSigns.temperature && <span className="text-xs text-muted-foreground">Suhu: {summary.vitalSigns.temperature}°C</span>}
+                              {summary.vitalSigns.oxygenSat && <span className="text-xs text-muted-foreground">SpO2: {summary.vitalSigns.oxygenSat}%</span>}
+                              {summary.vitalSigns.weight && <span className="text-xs text-muted-foreground">BB: {summary.vitalSigns.weight} kg</span>}
+                              {summary.vitalSigns.bloodSugar && <span className="text-xs text-muted-foreground">GDS: {summary.vitalSigns.bloodSugar} mg/dL</span>}
+                            </div>
+                          )}
+
+                          {summary.redFlags && summary.redFlags.length > 0 && (
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs font-medium text-red-600">Tanda Bahaya:</p>
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {summary.redFlags.map((flag, idx) => (
+                                    <Badge key={idx} className="text-[10px] bg-red-50 text-red-700 border-red-200 border">{flag}</Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {summary.chronicDiseases && summary.chronicDiseases.length > 0 && (
+                            <div className="flex items-start gap-2">
+                              <Pill className="w-3.5 h-3.5 text-violet-500 shrink-0 mt-0.5" />
+                              <div className="flex flex-wrap gap-1">
+                                {summary.chronicDiseases.map((d, idx) => (
+                                  <Badge key={idx} variant="secondary" className="text-[10px]">{d}</Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {summary.painScore !== null && summary.painScore > 0 && (
+                            <div className="flex items-center gap-2">
+                              <Activity className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                              <span className="text-xs text-foreground">Skala Nyeri: <span className={cn('font-bold', summary.painScore >= 7 ? 'text-red-600' : summary.painScore >= 4 ? 'text-amber-600' : 'text-emerald-600')}>{summary.painScore}/10</span></span>
+                            </div>
+                          )}
+
+                          {summary.mentalStatus && summary.mentalStatus !== 'Normal' && (
+                            <div className="flex items-center gap-2">
+                              <Heart className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                              <span className={cn('text-xs font-medium', summary.mentalStatus === 'KRISIS MENTAL' ? 'text-red-600' : 'text-foreground')}>
+                                Status Mental: {summary.mentalStatus}
+                              </span>
+                            </div>
+                          )}
+
+                          {summary.functionalStatus && summary.functionalStatus !== 'Mandiri' && (
+                            <div className="flex items-center gap-2">
+                              <Ruler className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                              <span className="text-xs text-foreground">Status Fungsional: {summary.functionalStatus}</span>
+                            </div>
+                          )}
+
+                          {summary.homeCareNeed && summary.homeCareNeed !== 'Tidak diperlukan' && (
+                            <div className="flex items-center gap-2">
+                              <ClipboardCheck className="w-3.5 h-3.5 text-teal-500 shrink-0" />
+                              <span className="text-xs text-foreground">Kebutuhan Home Care: {summary.homeCareNeed}</span>
+                            </div>
+                          )}
+
+                          {summary.palliativeStatus && summary.palliativeStatus !== 'Tidak diperlukan' && (
+                            <div className="flex items-center gap-2">
+                              <Heart className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                              <span className="text-xs text-foreground">Status Paliatif: {summary.palliativeStatus}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Module Scores */}
+                  {scoredModules.length > 0 && (
+                    <>
+                      <Separator />
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Hasil Modul Skrining</p>
+                        <div className="space-y-1.5">
+                          {scoredModules.map((mod) => {
+                            const modColor = riskColors[mod.riskCategory as RiskCategory];
+                            return (
+                              <div key={mod.id} className="flex items-center gap-2 bg-muted/30 rounded-lg px-3 py-2">
+                                <span className="text-sm shrink-0">{mod.icon}</span>
+                                <span className="text-xs text-foreground flex-1 min-w-0 truncate">{mod.label}</span>
+                                <span className="text-xs text-muted-foreground shrink-0">Skor: {mod.score}</span>
+                                {modColor && (
+                                  <Badge className={cn('text-[10px] shrink-0', modColor.bg, modColor.text, modColor.border, 'border')}>
+                                    {mod.riskCategory === 'tinggi' ? 'Tinggi' : mod.riskCategory === 'sedang' ? 'Sedang' : 'Rendah'}
+                                  </Badge>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {/* Recommendations */}
+                        {scoredModules.some((m) => m.recommendations.length > 0 && m.riskCategory !== 'rendah') && (
+                          <div className="mt-3">
+                            <p className="text-xs font-medium text-foreground">Rekomendasi:</p>
+                            <ul className="mt-1 space-y-0.5">
+                              {scoredModules
+                                .filter((m) => m.riskCategory !== 'rendah')
+                                .flatMap((m) => m.recommendations.slice(0, 2).map((rec) => ({ rec, modLabel: m.label })))
+                                .slice(0, 8)
+                                .map((item, idx) => (
+                                  <li key={idx} className="text-xs text-muted-foreground flex items-start gap-1">
+                                    <ChevronRight className="w-3 h-3 text-primary shrink-0 mt-0.5" />
+                                    <span><span className="font-medium text-foreground">{item.modLabel}:</span> {item.rec}</span>
+                                  </li>
+                                ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Clinical Files */}
+                  {form.clinicalFiles && form.clinicalFiles.length > 0 && (
+                    <>
+                      <Separator />
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Bukti Klinis</p>
+                        <div className="flex flex-wrap gap-2">
+                          {form.clinicalFiles.map((file) => (
+                            <div key={file.id} className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2.5 py-1.5">
+                              <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                              <span className="text-xs text-foreground">{file.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Doctor Notes & Follow-up (editable if completed) */}
+                  <Separator />
+                  <div className="space-y-3">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Catatan & Tindak Lanjut Dokter</p>
+
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Catatan Dokter</label>
+                      {form.status === 'completed' || form.status === 'reviewed' ? (
+                        <textarea
+                          className="w-full text-sm bg-muted/50 rounded-lg p-3 min-h-[60px] border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                          value={screeningDoctorNotes}
+                          onChange={(e) => setScreeningDoctorNotes(e.target.value)}
+                          placeholder="Tulis catatan dokter..."
+                        />
+                      ) : (
+                        <p className="text-sm text-foreground bg-muted/30 rounded-lg p-3">
+                          {form.doctorNotes || 'Belum ada catatan'}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Tindak Lanjut</label>
+                      {form.status === 'completed' || form.status === 'reviewed' ? (
+                        <textarea
+                          className="w-full text-sm bg-muted/50 rounded-lg p-3 min-h-[60px] border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                          value={screeningFollowUp}
+                          onChange={(e) => setScreeningFollowUp(e.target.value)}
+                          placeholder="Tulis tindak lanjut..."
+                        />
+                      ) : (
+                        <p className="text-sm text-foreground bg-muted/30 rounded-lg p-3">
+                          {form.followUp || 'Belum ada tindak lanjut'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <DialogFooter className="mt-4 flex gap-2">
+                  {(form.status === 'completed') && (
+                    <Button
+                      className="bg-violet-600 hover:bg-violet-700 text-white"
+                      onClick={() => {
+                        updateScreeningForm(form.id, {
+                          doctorNotes: screeningDoctorNotes,
+                          followUp: screeningFollowUp,
+                          status: 'reviewed',
+                          reviewedAt: new Date().toISOString(),
+                        });
+                        setSelectedScreeningId(null);
+                      }}
+                    >
+                      <BadgeCheck className="w-4 h-4 mr-1" />
+                      Tinjau
+                    </Button>
+                  )}
+                  {(form.status === 'reviewed') && (
+                    <Button
+                      className="bg-violet-600 hover:bg-violet-700 text-white"
+                      onClick={() => {
+                        updateScreeningForm(form.id, {
+                          doctorNotes: screeningDoctorNotes,
+                          followUp: screeningFollowUp,
+                        });
+                        setSelectedScreeningId(null);
+                      }}
+                    >
+                      <CheckCheck className="w-4 h-4 mr-1" />
+                      Simpan Perubahan
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={() => setSelectedScreeningId(null)}>
+                    Tutup
+                  </Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>
@@ -2614,19 +3090,60 @@ function PatientMedicalRecordsView() {
 // ---------------------------------------------------------------------------
 
 function PatientScreeningTimeline() {
-  const { screeningForms, currentUser } = useStore();
+  const { screeningForms, currentUser, doctors, setActivePanel } = useStore();
+  const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
+
+  // Doctor name lookup
+  const DOCTOR_NAME_MAP: Record<string, string> = {
+    'doc-sarah': 'dr. Sarah Wijaya',
+    'doc-ahmad': 'dr. Ahmad Rizki',
+    'doc-lisa': 'dr. Lisa Permata',
+    'doc-dewi': 'dr. Dewi Sartika',
+    'doc-budi': 'drg. Budi Santoso',
+  };
+
+  const getDoctorName = useCallback((doctorId: string) => {
+    const doctor = doctors.find((d: { id: string }) => d.id === doctorId);
+    if (doctor?.name) return doctor.name;
+    return DOCTOR_NAME_MAP[doctorId] || 'Dokter';
+  }, [doctors]);
 
   const patientScreenings = useMemo(() => {
     if (!currentUser) return [];
+    const patientId = currentUser.id.startsWith('pat-') ? currentUser.id : (extractPatientKey(currentUser.name || '') || currentUser.id);
     return screeningForms
-      .filter((f: ScreeningForm) => f.patientId === currentUser.id && (f.status === 'completed' || f.status === 'reviewed'))
-      .sort((a: ScreeningForm, b: ScreeningForm) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime());
+      .filter((f: ScreeningForm) => f.patientId === patientId)
+      .sort((a: ScreeningForm, b: ScreeningForm) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [screeningForms, currentUser]);
 
   const riskColors: Record<RiskCategory, { bg: string; text: string; border: string }> = {
     rendah: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
     sedang: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
     tinggi: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+  };
+
+  const screeningStatusBadge = (status: string) => {
+    switch (status) {
+      case 'sent': return 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400 border-0';
+      case 'opened': return 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400 border-0';
+      case 'in_progress': return 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border-0';
+      case 'draft': return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-0';
+      case 'completed': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border-0';
+      case 'reviewed': return 'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400 border-0';
+      default: return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-0';
+    }
+  };
+
+  const screeningStatusLabel = (status: string) => {
+    switch (status) {
+      case 'sent': return 'Terkirim';
+      case 'opened': return 'Dibuka';
+      case 'in_progress': return 'Sedang Diisi';
+      case 'draft': return 'Draft';
+      case 'completed': return 'Selesai';
+      case 'reviewed': return 'Ditinjau';
+      default: return status;
+    }
   };
 
   if (patientScreenings.length === 0) {
@@ -2641,223 +3158,336 @@ function PatientScreeningTimeline() {
     );
   }
 
+  const selectedForm = selectedFormId ? screeningForms.find((f: ScreeningForm) => f.id === selectedFormId) : null;
+
   return (
-    <div className="max-h-[calc(100vh-320px)] overflow-y-auto space-y-4 pr-1 custom-scrollbar">
-      {patientScreenings.map((form: ScreeningForm) => {
-        const dateStr = form.completedAt || form.createdAt;
-        const triage = form.triageResult;
-        const summary = form.clinicalSummary;
-        const triageColor = triage ? TRIAGE_COLORS[triage.level as TriageLevel] : null;
+    <>
+      <div className="max-h-[calc(100vh-320px)] overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+        {patientScreenings.map((form: ScreeningForm) => {
+          const dateStr = form.completedAt || form.createdAt;
+          const triage = form.triageResult;
+          const summary = form.clinicalSummary;
+          const triageColor = triage ? TRIAGE_COLORS[triage.level as TriageLevel] : null;
+          const doctorName = getDoctorName(form.doctorId);
+          const isPending = form.status === 'sent' || form.status === 'opened' || form.status === 'in_progress';
 
-        // Collect modules with scores
-        const scoredModules = (Object.keys(form.moduleScores) as ScreeningModuleId[])
-          .map((modId) => ({
-            id: modId,
-            label: MODULE_LABELS[modId] || modId,
-            icon: MODULE_ICONS[modId] || '📋',
-            ...form.moduleScores[modId],
-          }))
-          .filter((m) => m.score > 0 || m.riskCategory !== 'rendah' || m.recommendations.length > 0);
-
-        return (
-          <Card key={form.id} className="border-0 hover:shadow-sm transition-shadow">
-            <CardContent className="p-4 space-y-3">
-              {/* Header: Triage level + date */}
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 rounded-xl bg-teal-500/10 flex items-center justify-center shrink-0">
-                    <ClipboardCheck className="w-5 h-5 text-teal-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-sm text-foreground">Skrining Komprehensif Telemedicine</h4>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
-                    </p>
+          return (
+            <Card key={form.id} className="border-0 hover:shadow-sm transition-shadow">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-3">
+                    <div className={cn(
+                      'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5',
+                      triageColor ? triageColor.bg : 'bg-teal-500/10'
+                    )}>
+                      <ClipboardCheck className={cn('w-5 h-5', triageColor ? triageColor.text : 'text-teal-600')} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-sm text-foreground">Skrining Komprehensif</p>
+                        <Badge variant="secondary" className={cn('text-[10px] shrink-0', screeningStatusBadge(form.status))}>
+                          {screeningStatusLabel(form.status)}
+                        </Badge>
+                        {triage && triageColor && (
+                          <Badge className={cn('text-[10px] font-bold shrink-0', triageColor.bg, triageColor.text, triageColor.border, 'border')}>
+                            {triage.label}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {doctorName} — {formatDate(form.createdAt)}
+                      </p>
+                      {summary?.chiefComplaint && summary.chiefComplaint !== 'Tidak disebutkan' && (
+                        <p className="text-xs text-foreground mt-1 truncate">
+                          <Stethoscope className="w-3 h-3 inline mr-0.5 text-primary" />
+                          {summary.chiefComplaint}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-                {triage && triageColor && (
-                  <Badge className={cn('text-[10px] font-bold shrink-0', triageColor.bg, triageColor.text, triageColor.border, 'border')}>
-                    {triage.label}
-                  </Badge>
+
+                {/* Action buttons for pending forms */}
+                {isPending && (
+                  <div className="mt-3 pt-2 border-t border-border flex gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1 h-8 text-xs"
+                      onClick={() => setActivePanel('screening')}
+                    >
+                      <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
+                      Isi Skrining
+                    </Button>
+                  </div>
                 )}
-              </div>
 
-              {/* Triage description */}
-              {triage && (
-                <div className={cn('rounded-lg p-2.5', triageColor?.bg || 'bg-gray-50')}>
-                  <p className={cn('text-xs font-medium', triageColor?.text || 'text-gray-700')}>
-                    {triage.description}
-                  </p>
-                  <p className={cn('text-xs mt-0.5', triageColor?.text || 'text-gray-600', 'opacity-80')}>
-                    {triage.recommendation}
-                  </p>
-                </div>
-              )}
+                {/* View detail button for completed/reviewed */}
+                {(form.status === 'completed' || form.status === 'reviewed') && (
+                  <div className="mt-3 pt-2 border-t border-border">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-8 text-xs"
+                      onClick={() => setSelectedFormId(form.id)}
+                    >
+                      <Eye className="w-3.5 h-3.5 mr-1" />
+                      Lihat Detail
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
 
-              {/* Clinical Summary */}
-              {summary && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-foreground">Ringkasan Klinis</p>
+      {/* Patient Screening Detail Dialog */}
+      <Dialog open={!!selectedFormId} onOpenChange={(open) => { if (!open) setSelectedFormId(null); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          {selectedForm && (() => {
+            const triage = selectedForm.triageResult;
+            const summary = selectedForm.clinicalSummary;
+            const triageColor = triage ? TRIAGE_COLORS[triage.level as TriageLevel] : null;
+            const doctorName = getDoctorName(selectedForm.doctorId);
 
-                  {/* Chief Complaint */}
-                  {summary.chiefComplaint && summary.chiefComplaint !== 'Tidak disebutkan' && (
-                    <div className="flex items-start gap-2">
-                      <Stethoscope className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
-                      <p className="text-xs text-foreground"><span className="font-medium">Keluhan:</span> {summary.chiefComplaint}</p>
+            const scoredModules = (Object.keys(selectedForm.moduleScores) as ScreeningModuleId[])
+              .map((modId) => ({
+                id: modId,
+                label: MODULE_LABELS[modId] || modId,
+                icon: MODULE_ICONS[modId] || '📋',
+                ...selectedForm.moduleScores[modId],
+              }))
+              .filter((m) => m.score > 0 || m.riskCategory !== 'rendah' || m.recommendations.length > 0);
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 flex-wrap">
+                    <ClipboardCheck className="w-5 h-5 text-primary" />
+                    <span>Detail Skrining Komprehensif</span>
+                    <Badge variant="secondary" className={cn('text-[10px]', screeningStatusBadge(selectedForm.status))}>
+                      {screeningStatusLabel(selectedForm.status)}
+                    </Badge>
+                  </DialogTitle>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  {/* Doctor Info */}
+                  <div className="flex items-center gap-3 bg-muted/50 rounded-lg p-3">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <Stethoscope className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm text-foreground">{doctorName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        <Calendar className="w-3 h-3 inline mr-0.5" />
+                        {formatDate(selectedForm.createdAt)} {selectedForm.completedAt && `— Selesai: ${formatDate(selectedForm.completedAt)}`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Triage Result */}
+                  {triage && (
+                    <div className={cn('rounded-xl p-4', triageColor?.bg || 'bg-gray-50')}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={cn('w-8 h-8 rounded-full flex items-center justify-center', triageColor?.bg)}>
+                          <AlertTriangle className={cn('w-4 h-4', triageColor?.text)} />
+                        </div>
+                        <div>
+                          <p className={cn('font-bold text-sm', triageColor?.text)}>{triage.label}</p>
+                          <p className={cn('text-xs', triageColor?.text, 'opacity-80')}>{triage.description}</p>
+                        </div>
+                      </div>
+                      <p className={cn('text-xs mt-1', triageColor?.text, 'opacity-70')}>{triage.recommendation}</p>
                     </div>
                   )}
 
-                  {/* Vital Signs */}
-                  {summary.vitalSigns && (
-                    <div className="flex flex-wrap gap-x-3 gap-y-1">
-                      {summary.vitalSigns.bloodPressure && (
-                        <span className="text-xs text-muted-foreground">TD: {summary.vitalSigns.bloodPressure} mmHg</span>
-                      )}
-                      {summary.vitalSigns.heartRate && (
-                        <span className="text-xs text-muted-foreground">Nadi: {summary.vitalSigns.heartRate} bpm</span>
-                      )}
-                      {summary.vitalSigns.temperature && (
-                        <span className="text-xs text-muted-foreground">Suhu: {summary.vitalSigns.temperature}°C</span>
-                      )}
-                      {summary.vitalSigns.oxygenSat && (
-                        <span className="text-xs text-muted-foreground">SpO2: {summary.vitalSigns.oxygenSat}%</span>
-                      )}
-                      {summary.vitalSigns.weight && (
-                        <span className="text-xs text-muted-foreground">BB: {summary.vitalSigns.weight} kg</span>
-                      )}
-                      {summary.vitalSigns.bloodSugar && (
-                        <span className="text-xs text-muted-foreground">GDS: {summary.vitalSigns.bloodSugar} mg/dL</span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Pain Score */}
-                  {summary.painScore !== null && summary.painScore > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Activity className="w-3.5 h-3.5 text-orange-500 shrink-0" />
-                      <span className="text-xs text-foreground">Skala Nyeri: <span className={cn('font-bold', summary.painScore >= 7 ? 'text-red-600' : summary.painScore >= 4 ? 'text-amber-600' : 'text-emerald-600')}>{summary.painScore}/10</span></span>
-                    </div>
-                  )}
-
-                  {/* Mental Status */}
-                  {summary.mentalStatus && summary.mentalStatus !== 'Normal' && (
-                    <div className="flex items-center gap-2">
-                      <Heart className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                      <span className={cn('text-xs font-medium', summary.mentalStatus === 'KRISIS MENTAL' ? 'text-red-600' : 'text-foreground')}>
-                        Status Mental: {summary.mentalStatus}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Functional Status */}
-                  {summary.functionalStatus && summary.functionalStatus !== 'Mandiri' && (
-                    <div className="flex items-center gap-2">
-                      <Ruler className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                      <span className="text-xs text-foreground">Status Fungsional: {summary.functionalStatus}</span>
-                    </div>
-                  )}
-
-                  {/* Red Flags */}
-                  {summary.redFlags && summary.redFlags.length > 0 && (
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                  {/* Clinical Summary */}
+                  {summary && (
+                    <>
+                      <Separator />
                       <div>
-                        <p className="text-xs font-medium text-red-600">Tanda Bahaya:</p>
-                        <div className="flex flex-wrap gap-1 mt-0.5">
-                          {summary.redFlags.map((flag, idx) => (
-                            <Badge key={idx} className="text-[10px] bg-red-50 text-red-700 border-red-200 border">
-                              {flag}
-                            </Badge>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Ringkasan Klinis</p>
+                        <div className="space-y-2">
+                          {summary.chiefComplaint && summary.chiefComplaint !== 'Tidak disebutkan' && (
+                            <div className="flex items-start gap-2">
+                              <Stethoscope className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                              <p className="text-xs text-foreground"><span className="font-medium">Keluhan Utama:</span> {summary.chiefComplaint}</p>
+                            </div>
+                          )}
+
+                          {summary.vitalSigns && (
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 pl-5">
+                              {summary.vitalSigns.bloodPressure && <span className="text-xs text-muted-foreground">TD: {summary.vitalSigns.bloodPressure} mmHg</span>}
+                              {summary.vitalSigns.heartRate && <span className="text-xs text-muted-foreground">Nadi: {summary.vitalSigns.heartRate} bpm</span>}
+                              {summary.vitalSigns.temperature && <span className="text-xs text-muted-foreground">Suhu: {summary.vitalSigns.temperature}°C</span>}
+                              {summary.vitalSigns.oxygenSat && <span className="text-xs text-muted-foreground">SpO2: {summary.vitalSigns.oxygenSat}%</span>}
+                              {summary.vitalSigns.weight && <span className="text-xs text-muted-foreground">BB: {summary.vitalSigns.weight} kg</span>}
+                              {summary.vitalSigns.bloodSugar && <span className="text-xs text-muted-foreground">GDS: {summary.vitalSigns.bloodSugar} mg/dL</span>}
+                            </div>
+                          )}
+
+                          {summary.redFlags && summary.redFlags.length > 0 && (
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs font-medium text-red-600">Tanda Bahaya:</p>
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {summary.redFlags.map((flag, idx) => (
+                                    <Badge key={idx} className="text-[10px] bg-red-50 text-red-700 border-red-200 border">{flag}</Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {summary.chronicDiseases && summary.chronicDiseases.length > 0 && (
+                            <div className="flex items-start gap-2">
+                              <Pill className="w-3.5 h-3.5 text-violet-500 shrink-0 mt-0.5" />
+                              <div className="flex flex-wrap gap-1">
+                                {summary.chronicDiseases.map((d, idx) => (
+                                  <Badge key={idx} variant="secondary" className="text-[10px]">{d}</Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {summary.painScore !== null && summary.painScore > 0 && (
+                            <div className="flex items-center gap-2">
+                              <Activity className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                              <span className="text-xs text-foreground">Skala Nyeri: <span className={cn('font-bold', summary.painScore >= 7 ? 'text-red-600' : summary.painScore >= 4 ? 'text-amber-600' : 'text-emerald-600')}>{summary.painScore}/10</span></span>
+                            </div>
+                          )}
+
+                          {summary.mentalStatus && summary.mentalStatus !== 'Normal' && (
+                            <div className="flex items-center gap-2">
+                              <Heart className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                              <span className={cn('text-xs font-medium', summary.mentalStatus === 'KRISIS MENTAL' ? 'text-red-600' : 'text-foreground')}>
+                                Status Mental: {summary.mentalStatus}
+                              </span>
+                            </div>
+                          )}
+
+                          {summary.functionalStatus && summary.functionalStatus !== 'Mandiri' && (
+                            <div className="flex items-center gap-2">
+                              <Ruler className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                              <span className="text-xs text-foreground">Status Fungsional: {summary.functionalStatus}</span>
+                            </div>
+                          )}
+
+                          {summary.homeCareNeed && summary.homeCareNeed !== 'Tidak diperlukan' && (
+                            <div className="flex items-center gap-2">
+                              <ClipboardCheck className="w-3.5 h-3.5 text-teal-500 shrink-0" />
+                              <span className="text-xs text-foreground">Kebutuhan Home Care: {summary.homeCareNeed}</span>
+                            </div>
+                          )}
+
+                          {summary.palliativeStatus && summary.palliativeStatus !== 'Tidak diperlukan' && (
+                            <div className="flex items-center gap-2">
+                              <Heart className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                              <span className="text-xs text-foreground">Status Paliatif: {summary.palliativeStatus}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Module Scores */}
+                  {scoredModules.length > 0 && (
+                    <>
+                      <Separator />
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Hasil Modul Skrining</p>
+                        <div className="space-y-1.5">
+                          {scoredModules.map((mod) => {
+                            const modColor = riskColors[mod.riskCategory as RiskCategory];
+                            return (
+                              <div key={mod.id} className="flex items-center gap-2 bg-muted/30 rounded-lg px-3 py-2">
+                                <span className="text-sm shrink-0">{mod.icon}</span>
+                                <span className="text-xs text-foreground flex-1 min-w-0 truncate">{mod.label}</span>
+                                <span className="text-xs text-muted-foreground shrink-0">Skor: {mod.score}</span>
+                                {modColor && (
+                                  <Badge className={cn('text-[10px] shrink-0', modColor.bg, modColor.text, modColor.border, 'border')}>
+                                    {mod.riskCategory === 'tinggi' ? 'Tinggi' : mod.riskCategory === 'sedang' ? 'Sedang' : 'Rendah'}
+                                  </Badge>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {scoredModules.some((m) => m.recommendations.length > 0 && m.riskCategory !== 'rendah') && (
+                          <div className="mt-3">
+                            <p className="text-xs font-medium text-foreground">Rekomendasi Utama:</p>
+                            <ul className="mt-1 space-y-0.5">
+                              {scoredModules
+                                .filter((m) => m.riskCategory !== 'rendah')
+                                .flatMap((m) => m.recommendations.slice(0, 2).map((rec) => ({ rec, modLabel: m.label })))
+                                .slice(0, 6)
+                                .map((item, idx) => (
+                                  <li key={idx} className="text-xs text-muted-foreground flex items-start gap-1">
+                                    <ChevronRight className="w-3 h-3 text-primary shrink-0 mt-0.5" />
+                                    <span><span className="font-medium text-foreground">{item.modLabel}:</span> {item.rec}</span>
+                                  </li>
+                                ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Clinical Files */}
+                  {selectedForm.clinicalFiles && selectedForm.clinicalFiles.length > 0 && (
+                    <>
+                      <Separator />
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Bukti Klinis</p>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedForm.clinicalFiles.map((file) => (
+                            <div key={file.id} className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2.5 py-1.5">
+                              <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                              <span className="text-xs text-foreground">{file.name}</span>
+                            </div>
                           ))}
                         </div>
                       </div>
-                    </div>
+                    </>
                   )}
 
-                  {/* Chronic Diseases */}
-                  {summary.chronicDiseases && summary.chronicDiseases.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {summary.chronicDiseases.map((disease, idx) => (
-                        <Badge key={idx} variant="secondary" className="text-[10px]">
-                          {disease}
-                        </Badge>
-                      ))}
-                    </div>
+                  {/* Doctor Notes & Follow-up (read-only for patient) */}
+                  {(selectedForm.doctorNotes || selectedForm.followUp) && (
+                    <>
+                      <Separator />
+                      <div className="space-y-2">
+                        {selectedForm.doctorNotes && (
+                          <div className="bg-primary/5 rounded-lg p-3">
+                            <p className="text-xs font-medium text-primary">Catatan Dokter:</p>
+                            <p className="text-xs text-foreground mt-0.5">{selectedForm.doctorNotes}</p>
+                          </div>
+                        )}
+                        {selectedForm.followUp && (
+                          <div className="flex items-center gap-2">
+                            <ArrowRight className="w-3.5 h-3.5 text-primary shrink-0" />
+                            <p className="text-xs font-medium text-foreground">Tindak Lanjut: {selectedForm.followUp}</p>
+                          </div>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
-              )}
 
-              {/* Module Scores */}
-              {scoredModules.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-foreground">Hasil Modul Skrining</p>
-                  <div className="space-y-1.5">
-                    {scoredModules.map((mod) => {
-                      const modColor = riskColors[mod.riskCategory as RiskCategory];
-                      return (
-                        <div key={mod.id} className="flex items-center gap-2">
-                          <span className="text-sm shrink-0">{mod.icon}</span>
-                          <span className="text-xs text-foreground flex-1 min-w-0 truncate">{mod.label}</span>
-                          {modColor && (
-                            <Badge className={cn('text-[10px] shrink-0', modColor.bg, modColor.text, modColor.border, 'border')}>
-                              {mod.riskCategory === 'tinggi' ? 'Tinggi' : mod.riskCategory === 'sedang' ? 'Sedang' : 'Rendah'}
-                            </Badge>
-                          )}
-                          <Badge variant="secondary" className="text-[10px] shrink-0">{mod.score}</Badge>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Module Recommendations (show top ones) */}
-                  {scoredModules.some((m) => m.recommendations.length > 0) && (
-                    <div className="mt-2">
-                      <p className="text-xs font-medium text-foreground">Rekomendasi Utama:</p>
-                      <ul className="mt-1 space-y-0.5">
-                        {scoredModules
-                          .filter((m) => m.riskCategory !== 'rendah')
-                          .flatMap((m) => m.recommendations.slice(0, 2).map((rec) => ({ rec, modLabel: m.label })))
-                          .slice(0, 6)
-                          .map((item, idx) => (
-                            <li key={idx} className="text-xs text-muted-foreground flex items-start gap-1">
-                              <ChevronRight className="w-3 h-3 text-primary shrink-0 mt-0.5" />
-                              <span><span className="font-medium text-foreground">{item.modLabel}:</span> {item.rec}</span>
-                            </li>
-                          ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Clinical Files Count */}
-              {form.clinicalFiles && form.clinicalFiles.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  <span className="text-xs text-muted-foreground">{form.clinicalFiles.length} bukti klinis terlampir</span>
-                </div>
-              )}
-
-              {/* Doctor Notes */}
-              {form.doctorNotes && (
-                <div className="bg-primary/5 rounded-lg p-2.5">
-                  <p className="text-xs font-medium text-primary">Catatan Dokter:</p>
-                  <p className="text-xs text-foreground mt-0.5">{form.doctorNotes}</p>
-                </div>
-              )}
-
-              {/* Follow Up */}
-              {form.followUp && (
-                <div className="flex items-center gap-2">
-                  <ArrowRight className="w-3.5 h-3.5 text-primary shrink-0" />
-                  <p className="text-xs font-medium text-foreground">Tindak Lanjut: {form.followUp}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        );
-      })}
-    </div>
+                <DialogFooter className="mt-4">
+                  <Button variant="outline" onClick={() => setSelectedFormId(null)}>
+                    Tutup
+                  </Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

@@ -802,7 +802,7 @@ export function ChatPanel() {
   // ── Screening Flow ───────────────────────────────────────────────────────
 
   const handleOpenScreeningDialog = () => {
-    setSelectedScreeningTemplates([]);
+    setSelectedModules(['keluhan_utama', 'tanda_bahaya', 'tanda_vital']);
     setScreeningInstructions('');
     setScreeningDeadline('');
     setShowScreeningDialog(true);
