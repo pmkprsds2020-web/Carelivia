@@ -1,1031 +1,755 @@
-import type { ScreeningTemplate, ScreeningCategory, ScreeningForm, RiskCategory } from './types';
+import type { ScreeningModule, ScreeningModuleId, ScreeningForm, TriageResult, ClinicalSummary, TriageLevel } from './types';
 
-// ── Category Labels ─────────────────────────────────────────────────────────
+// ── Module Labels & Icons ────────────────────────────────────────────────────
 
-export const SCREENING_CATEGORY_LABELS: Record<ScreeningCategory, string> = {
-  bayi: 'Bayi (0–11 bulan)',
-  balita: 'Balita (1–5 tahun)',
-  anak_sekolah: 'Anak Sekolah (6–12 tahun)',
-  remaja: 'Remaja (13–18 tahun)',
-  dewasa: 'Dewasa (19–59 tahun)',
-  lansia: 'Lansia (≥60 tahun)',
-  ibu_hamil: 'Ibu Hamil',
-  nifas: 'Nifas',
+export const MODULE_LABELS: Record<ScreeningModuleId, string> = {
+  keluhan_utama: 'Keluhan Utama',
+  tanda_bahaya: 'Tanda Bahaya (Red Flag)',
+  tanda_vital: 'Tanda Vital Mandiri',
   penyakit_kronis: 'Penyakit Kronis',
-  kesehatan_jiwa: 'Kesehatan Jiwa',
-  haji_umroh: 'Haji dan Umroh',
-  gaya_hidup: 'Skrining Gaya Hidup',
-  ptm: 'Skrining Risiko PTM',
+  nyeri: 'Skrining Nyeri (NRS)',
+  kesehatan_mental: 'Kesehatan Mental',
+  nutrisi: 'Skrining Nutrisi',
+  risiko_jatuh: 'Risiko Jatuh',
+  status_fungsional: 'Status Fungsional (ADL)',
+  home_care: 'Kebutuhan Home Care',
+  paliatif: 'Skrining Paliatif',
+  bukti_klinis: 'Upload Bukti Klinis',
 };
 
-export const SCREENING_CATEGORY_ICONS: Record<ScreeningCategory, string> = {
-  bayi: '👶',
-  balita: '🧒',
-  anak_sekolah: '📚',
-  remaja: '🧑',
-  dewasa: '👤',
-  lansia: '🧓',
-  ibu_hamil: '🤰',
-  nifas: '🤱',
-  penyakit_kronis: '🏥',
-  kesehatan_jiwa: '🧠',
-  haji_umroh: '🕋',
-  gaya_hidup: '🏃',
-  ptm: '⚕️',
+export const MODULE_ICONS: Record<ScreeningModuleId, string> = {
+  keluhan_utama: '🩺',
+  tanda_bahaya: '🚨',
+  tanda_vital: '📊',
+  penyakit_kronis: '💊',
+  nyeri: '🔥',
+  kesehatan_mental: '🧠',
+  nutrisi: '🥗',
+  risiko_jatuh: '⚠️',
+  status_fungsional: '♿',
+  home_care: '🏠',
+  paliatif: '🕊️',
+  bukti_klinis: '📎',
 };
 
-// ── Templates ───────────────────────────────────────────────────────────────
+// ── 12 Screening Modules ─────────────────────────────────────────────────────
 
-export const SCREENING_TEMPLATES: ScreeningTemplate[] = [
-  // ── FINDRISC Diabetes Risk Score ──────────────────────────────────────────
+export const SCREENING_MODULES: ScreeningModule[] = [
+  // ── 1. Skrining Keluhan Utama ────────────────────────────────────────────
   {
-    id: 'tmpl-findrisc',
-    name: 'Skrining Risiko Diabetes (FINDRISC)',
-    category: 'ptm',
-    standard: 'FINDRISC',
-    description: 'Kuesioner FINDRISC untuk menilai risiko terkena diabetes tipe 2 dalam 10 tahun ke depan.',
-    estimatedMinutes: 5,
+    id: 'keluhan_utama',
+    name: 'Skrining Keluhan Utama',
+    icon: '🩺',
+    description: 'Mengumpulkan data keluhan utama pasien secara terstruktur',
+    estimatedMinutes: 3,
+    isRequired: true,
+    targetAudience: 'all',
     questions: [
-      {
-        id: 'findrisc-age',
-        text: 'Berapa usia Anda?',
-        type: 'radio',
-        options: [
-          { label: '< 45 tahun', value: 0, score: 0 },
-          { label: '45–54 tahun', value: 1, score: 2 },
-          { label: '55–64 tahun', value: 2, score: 3 },
-          { label: '> 64 tahun', value: 3, score: 4 },
-        ],
-        required: true,
-        section: 'Data Dasar',
-      },
-      {
-        id: 'findrisc-bmi',
-        text: 'Berapa Indeks Massa Tubuh (BMI) Anda?',
-        type: 'radio',
-        options: [
-          { label: '< 25 kg/m² (Normal)', value: 0, score: 0 },
-          { label: '25–30 kg/m² (Kelebihan berat badan)', value: 1, score: 1 },
-          { label: '> 30 kg/m² (Obesitas)', value: 2, score: 3 },
-        ],
-        required: true,
-        section: 'Data Dasar',
-      },
-      {
-        id: 'findrisc-waist',
-        text: 'Berapa lingkar pinggang Anda?',
-        type: 'radio',
-        options: [
-          { label: 'Pria < 94 cm / Wanita < 80 cm', value: 0, score: 0 },
-          { label: 'Pria 94–102 cm / Wanita 80–88 cm', value: 1, score: 3 },
-          { label: 'Pria > 102 cm / Wanita > 88 cm', value: 2, score: 4 },
-        ],
-        required: true,
-        section: 'Data Dasar',
-      },
-      {
-        id: 'findrisc-activity',
-        text: 'Apakah Anda melakukan aktivitas fisik minimal 30 menit/hari?',
-        type: 'radio',
-        options: [
-          { label: 'Ya', value: 0, score: 0 },
-          { label: 'Tidak', value: 1, score: 2 },
-        ],
-        required: true,
-        section: 'Gaya Hidup',
-      },
-      {
-        id: 'findrisc-diet',
-        text: 'Apakah Anda mengonsumsi buah dan sayur setiap hari?',
-        type: 'radio',
-        options: [
-          { label: 'Ya, setiap hari', value: 0, score: 0 },
-          { label: 'Tidak setiap hari', value: 1, score: 1 },
-        ],
-        required: true,
-        section: 'Gaya Hidup',
-      },
-      {
-        id: 'findrisc-bp',
-        text: 'Apakah Anda pernah diketahui memiliki tekanan darah tinggi?',
-        type: 'radio',
-        options: [
-          { label: 'Tidak', value: 0, score: 0 },
-          { label: 'Ya', value: 1, score: 2 },
-        ],
-        required: true,
-        section: 'Riwayat Kesehatan',
-      },
-      {
-        id: 'findrisc-glucose',
-        text: 'Apakah Anda pernah ditemukan kadar glukosa darah tinggi?',
-        type: 'radio',
-        options: [
-          { label: 'Tidak', value: 0, score: 0 },
-          { label: 'Ya', value: 1, score: 5 },
-        ],
-        required: true,
-        section: 'Riwayat Kesehatan',
-      },
-      {
-        id: 'findrisc-family',
-        text: 'Apakah ada anggota keluarga Anda yang menderita diabetes?',
-        type: 'radio',
-        options: [
-          { label: 'Tidak', value: 0, score: 0 },
-          { label: 'Ya (keluarga dekat: orang tua, saudara)', value: 1, score: 5 },
-          { label: 'Ya (keluarga jauh: kakek/nenek, paman/bibi)', value: 2, score: 3 },
-        ],
-        required: true,
-        section: 'Riwayat Keluarga',
-      },
+      { id: 'ku-keluhan', text: 'Apa keluhan utama Anda saat ini?', type: 'text', required: true, placeholder: 'Jelaskan keluhan utama Anda...' },
+      { id: 'ku-lama', text: 'Sejak kapan keluhan ini dirasakan?', type: 'radio', required: true, section: 'Durasi Keluhan', options: [
+        { label: '< 1 hari', value: 0, score: 0 }, { label: '1–3 hari', value: 1, score: 1 },
+        { label: '4–7 hari', value: 2, score: 2 }, { label: '1–4 minggu', value: 3, score: 3 },
+        { label: '> 1 bulan', value: 4, score: 4 },
+      ]},
+      { id: 'ku-keparahan', text: 'Tingkat keparahan keluhan (0 = tidak ada, 10 = sangat berat)', type: 'scale', required: true, min: 0, max: 10 },
+      { id: 'ku-memperberat', text: 'Faktor yang memperberat keluhan?', type: 'text', required: false, placeholder: 'Contoh: saat beraktivitas, setelah makan...' },
+      { id: 'ku-mengurangi', text: 'Faktor yang mengurangi keluhan?', type: 'text', required: false, placeholder: 'Contoh: istirahat, minum obat...' },
+      { id: 'ku-riwayat', text: 'Apakah pernah mengalami keluhan serupa sebelumnya?', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya, pernah', value: 1, score: 1 },
+        { label: 'Ya, sering kambuh', value: 2, score: 2 },
+      ]},
+    ],
+  },
+
+  // ── 2. Skrining Tanda Bahaya (Red Flag) ──────────────────────────────────
+  {
+    id: 'tanda_bahaya',
+    name: 'Skrining Tanda Bahaya (Red Flag)',
+    icon: '🚨',
+    description: 'Deteksi dini tanda bahaya yang memerlukan penanganan segera',
+    estimatedMinutes: 2,
+    isRequired: true,
+    targetAudience: 'all',
+    questions: [
+      { id: 'tb-sesak', text: 'Sesak napas berat', type: 'radio', required: true, section: 'Tanda Bahaya', options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 5 },
+      ]},
+      { id: 'tb-nyeridada', text: 'Nyeri dada', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 5 },
+      ]},
+      { id: 'tb-kesadaran', text: 'Penurunan kesadaran', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 5 },
+      ]},
+      { id: 'tb-kejang', text: 'Kejang', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 5 },
+      ]},
+      { id: 'tb-perdarahan', text: 'Perdarahan aktif', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 5 },
+      ]},
+      { id: 'tb-kelemahan', text: 'Kelemahan mendadak pada anggota gerak', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 5 },
+      ]},
+      { id: 'tb-demam', text: 'Demam tinggi (>39°C)', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 4 },
+      ]},
+      { id: 'tb-dehidrasi', text: 'Dehidrasi berat', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 4 },
+      ]},
+      { id: 'tb-tidakmakan', text: 'Tidak mampu makan atau minum', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 4 },
+      ]},
     ],
     scoringAlgorithm: {
       type: 'sum',
       ranges: [
-        { min: 0, max: 7, category: 'rendah', label: 'Risiko Rendah', recommendations: ['Pertahankan gaya hidup sehat', 'Pemeriksaan gula darah rutin setiap 3 tahun', 'Jaga berat badan ideal'] },
-        { min: 8, max: 14, category: 'sedang', label: 'Risiko Sedang', recommendations: ['Lakukan pemeriksaan gula darah', 'Tingkatkan aktivitas fisik', 'Perbaiki pola makan', 'Konsultasi dengan dokter'] },
-        { min: 15, max: 99, category: 'tinggi', label: 'Risiko Tinggi', recommendations: ['Pemeriksaan Gula Darah Puasa segera', 'Pemeriksaan HbA1c', 'Konsultasi dokter segera', 'Modifikasi gaya hidup intensif', 'Program pengelolaan berat badan'] },
+        { min: 0, max: 0, category: 'rendah', label: 'Tidak Ada Tanda Bahaya', recommendations: ['Pasien dapat dilanjutkan telekonsultasi', 'Lanjutkan skrining modul lainnya'] },
+        { min: 1, max: 4, category: 'sedang', label: 'Perlu Evaluasi Dokter Dalam 24 Jam', recommendations: ['Evaluasi dokter dalam 24 jam', 'Pantau kondisi pasien secara berkala', 'Instruksikan pasien untuk segera ke IGD jika memburuk'] },
+        { min: 5, max: 99, category: 'tinggi', label: 'MEMERLUKAN EVALUASI LANGSUNG / RUJUKAN SEGERA', recommendations: ['Pasien memerlukan evaluasi langsung atau rujukan segera', 'Dianjurkan pemeriksaan di fasilitas kesehatan', 'Jika tanda bahaya mengancam jiwa, segera rujuk ke IGD'] },
       ],
     },
   },
 
-  // ── PHQ-9 Depression Screening ───────────────────────────────────────────
+  // ── 3. Skrining Tanda Vital Mandiri ──────────────────────────────────────
   {
-    id: 'tmpl-phq9',
-    name: 'Skrining Depresi (PHQ-9)',
-    category: 'kesehatan_jiwa',
-    standard: 'PHQ-9',
-    description: 'Patient Health Questionnaire-9 untuk skrining dan menilai tingkat depresi.',
+    id: 'tanda_vital',
+    name: 'Skrining Tanda Vital Mandiri',
+    icon: '📊',
+    description: 'Pengukuran tanda vital yang dapat dilakukan pasien secara mandiri di rumah',
     estimatedMinutes: 5,
+    isRequired: true,
+    targetAudience: 'all',
     questions: [
-      {
-        id: 'phq9-1',
-        text: 'Minat atau kesenangan dalam melakukan sesuatu',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-        section: 'Dalam 2 minggu terakhir, seberapa sering Anda terganggu oleh:',
-      },
-      {
-        id: 'phq9-2',
-        text: 'Merasa murung, depresi, atau putus asa',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-        section: 'Dalam 2 minggu terakhir, seberapa sering Anda terganggu oleh:',
-      },
-      {
-        id: 'phq9-3',
-        text: 'Sulit tidur atau terlalu banyak tidur',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-      },
-      {
-        id: 'phq9-4',
-        text: 'Merasa lelah atau kurang energi',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-      },
-      {
-        id: 'phq9-5',
-        text: 'Nafsu makan berkurang atau berlebihan',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-      },
-      {
-        id: 'phq9-6',
-        text: 'Merasa gagal atau mengecewakan diri sendiri atau keluarga',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-      },
-      {
-        id: 'phq9-7',
-        text: 'Sulit berkonsentrasi pada sesuatu',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-      },
-      {
-        id: 'phq9-8',
-        text: 'Bergerak sangat lambat atau terlalu gelisah',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-      },
-      {
-        id: 'phq9-9',
-        text: 'Pikiran untuk menyakiti diri sendiri',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-      },
+      { id: 'tv-berat', text: 'Berat badan (kg)', type: 'number', required: true, section: 'Pengukuran Fisik', placeholder: 'Contoh: 70', unit: 'kg', min: 20, max: 300 },
+      { id: 'tv-tinggi', text: 'Tinggi badan (cm)', type: 'number', required: true, placeholder: 'Contoh: 170', unit: 'cm', min: 50, max: 250 },
+      { id: 'tv-suhu', text: 'Suhu tubuh (°C)', type: 'number', required: true, section: 'Tanda Vital', placeholder: 'Contoh: 36.5', unit: '°C', min: 34, max: 42 },
+      { id: 'tv-sistolik', text: 'Tekanan darah sistolik (mmHg)', type: 'number', required: false, placeholder: 'Contoh: 120', unit: 'mmHg', min: 60, max: 250 },
+      { id: 'tv-diastolik', text: 'Tekanan darah diastolik (mmHg)', type: 'number', required: false, placeholder: 'Contoh: 80', unit: 'mmHg', min: 30, max: 150 },
+      { id: 'tv-nadi', text: 'Denyut nadi (bpm)', type: 'number', required: false, placeholder: 'Contoh: 80', unit: 'bpm', min: 30, max: 220 },
+      { id: 'tv-spo2', text: 'Saturasi oksigen (%)', type: 'number', required: false, placeholder: 'Contoh: 98', unit: '%', min: 50, max: 100 },
+      { id: 'tv-gds', text: 'Kadar gula darah sewaktu (mg/dL) — opsional', type: 'number', required: false, placeholder: 'Contoh: 120', unit: 'mg/dL', min: 20, max: 600 },
     ],
-    scoringAlgorithm: {
-      type: 'sum',
-      ranges: [
-        { min: 0, max: 4, category: 'rendah', label: 'Minimal/Tidak Depresi', recommendations: ['Tidak memerlukan penanganan khusus', 'Pertahankan kesehatan mental', 'Lakukan aktivitas yang menyenangkan'] },
-        { min: 5, max: 9, category: 'rendah', label: 'Depresi Ringan', recommendations: ['Pengamatan dan evaluasi ulang', 'Psikoedukasi', 'Terapi aktivitas', 'Evaluasi ulang dalam 1 bulan'] },
-        { min: 10, max: 14, category: 'sedang', label: 'Depresi Sedang', recommendations: ['Konsultasi dengan psikolog/psikiater', 'Pertimbangkan terapi kognitif perilaku', 'Evaluasi ulang dalam 2 minggu'] },
-        { min: 15, max: 19, category: 'tinggi', label: 'Depresi Moderat Berat', recommendations: ['Rujuk ke psikiater', 'Pertimbangkan farmakoterapi', 'Terapi kognitif perilaku', 'Monitoring ketat'] },
-        { min: 20, max: 99, category: 'tinggi', label: 'Depresi Berat', recommendations: ['Rujuk segera ke psikiater', 'Farmakoterapi diperlukan', 'Monitoring intensif', 'Evaluasi risiko bunuh diri'] },
-      ],
-    },
   },
 
-  // ── GAD-7 Anxiety Screening ──────────────────────────────────────────────
+  // ── 4. Skrining Penyakit Kronis ──────────────────────────────────────────
   {
-    id: 'tmpl-gad7',
-    name: 'Skrining Kecemasan (GAD-7)',
-    category: 'kesehatan_jiwa',
-    standard: 'GAD-7',
-    description: 'Generalized Anxiety Disorder 7-item untuk skrining gangguan kecemasan umum.',
+    id: 'penyakit_kronis',
+    name: 'Skrining Penyakit Kronis',
+    icon: '💊',
+    description: 'Riwayat dan monitoring penyakit kronis pasien',
     estimatedMinutes: 4,
+    isRequired: false,
+    targetAudience: 'kronis',
     questions: [
-      {
-        id: 'gad7-1',
-        text: 'Merasa gugup, cemas, atau tegang',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-        section: 'Dalam 2 minggu terakhir, seberapa sering Anda terganggu oleh:',
-      },
-      {
-        id: 'gad7-2',
-        text: 'Tidak dapat berhenti mengkhawatirkan sesuatu',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-      },
-      {
-        id: 'gad7-3',
-        text: 'Mengkhawatirkan banyak hal',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-      },
-      {
-        id: 'gad7-4',
-        text: 'Sulit untuk rileks',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-      },
-      {
-        id: 'gad7-5',
-        text: 'Sangat gelisah sehingga sulit diam',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-      },
-      {
-        id: 'gad7-6',
-        text: 'Mudah tersinggung atau jengkel',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-      },
-      {
-        id: 'gad7-7',
-        text: 'Merasa takut seolah-olah sesuatu yang mengerikan akan terjadi',
-        type: 'radio',
-        options: [
-          { label: 'Tidak sama sekali (0)', value: 0, score: 0 },
-          { label: 'Beberapa hari (1)', value: 1, score: 1 },
-          { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 },
-          { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
-        ],
-        required: true,
-      },
+      { id: 'pk-riwayat', text: 'Riwayat penyakit kronis (pilih yang sesuai)', type: 'checkbox', required: true, section: 'Riwayat Penyakit', options: [
+        { label: 'Hipertensi', value: 'ht', score: 2 }, { label: 'Diabetes Mellitus', value: 'dm', score: 2 },
+        { label: 'Penyakit Jantung', value: 'jantung', score: 3 }, { label: 'Stroke', value: 'stroke', score: 3 },
+        { label: 'PPOK', value: 'ppok', score: 2 }, { label: 'Asma', value: 'asma', score: 1 },
+        { label: 'Gagal Ginjal', value: 'gginjal', score: 3 }, { label: 'Kanker', value: 'kanker', score: 3 },
+        { label: 'Tidak ada', value: 'tidak_ada', score: 0 },
+      ]},
+      { id: 'pk-lainnya', text: 'Penyakit lainnya (sebutkan)', type: 'text', required: false, placeholder: 'Tuliskan penyakit lainnya...' },
+      { id: 'pk-kepatuhan', text: 'Kepatuhan minum obat', type: 'radio', required: true, section: 'Monitoring', options: [
+        { label: 'Rutin sesuai anjuran', value: 0, score: 0 }, { label: 'Kadang lupa', value: 1, score: 1 },
+        { label: 'Sering lupa/tidak minum', value: 2, score: 2 }, { label: 'Berhenti minum obat', value: 3, score: 3 },
+      ]},
+      { id: 'pk-keluhan', text: 'Keluhan terkait penyakit kronis saat ini', type: 'text', required: false, placeholder: 'Jelaskan keluhan saat ini...' },
+      { id: 'pk-kontrol', text: 'Kontrol terakhir ke dokter', type: 'radio', required: true, options: [
+        { label: '< 1 bulan', value: 0, score: 0 }, { label: '1–3 bulan', value: 1, score: 1 },
+        { label: '3–6 bulan', value: 2, score: 2 }, { label: '> 6 bulan / tidak ingat', value: 3, score: 3 },
+      ]},
     ],
     scoringAlgorithm: {
       type: 'sum',
       ranges: [
-        { min: 0, max: 4, category: 'rendah', label: 'Kecemasan Minimal', recommendations: ['Tidak memerlukan penanganan khusus', 'Teknik relaksasi sederhana'] },
-        { min: 5, max: 9, category: 'rendah', label: 'Kecemasan Ringan', recommendations: ['Teknik relaksasi', 'Latihan pernapasan', 'Evaluasi ulang dalam 1 bulan'] },
-        { min: 10, max: 14, category: 'sedang', label: 'Kecemasan Sedang', recommendations: ['Konsultasi psikolog', 'Terapi kognitif perilaku', 'Evaluasi ulang dalam 2 minggu'] },
-        { min: 15, max: 99, category: 'tinggi', label: 'Kecemasan Berat', recommendations: ['Rujuk ke psikiater', 'Pertimbangkan farmakoterapi', 'Monitoring ketat', 'Terapi kognitif perilaku'] },
+        { min: 0, max: 1, category: 'rendah', label: 'Tidak Ada / Terkontrol', recommendations: ['Lanjutkan pengobatan dan monitoring', 'Kontrol rutin sesuai jadwal'] },
+        { min: 2, max: 5, category: 'sedang', label: 'Perlu Monitoring', recommendations: ['Evaluasi kepatuhan obat', 'Jadwalkan kontrol', 'Monitor gejala'] },
+        { min: 6, max: 99, category: 'tinggi', label: 'Perlu Evaluasi Intensif', recommendations: ['Konsultasi dokter segera', 'Evaluasi ulang pengobatan', 'Pemeriksaan penunjang'] },
       ],
     },
   },
 
-  // ── Skrining Risiko Hipertensi ────────────────────────────────────────────
+  // ── 5. Skrining Nyeri (NRS) ──────────────────────────────────────────────
   {
-    id: 'tmpl-hipertensi',
-    name: 'Skrining Risiko Hipertensi',
-    category: 'ptm',
-    standard: 'Skrining PTM Kemenkes RI',
-    description: 'Skrining risiko hipertensi berdasarkan pedoman PTM Kementerian Kesehatan RI.',
+    id: 'nyeri',
+    name: 'Skrining Nyeri (NRS)',
+    icon: '🔥',
+    description: 'Penilaian nyeri menggunakan Numeric Rating Scale',
+    estimatedMinutes: 2,
+    isRequired: false,
+    targetAudience: 'all',
+    questions: [
+      { id: 'ny-skala', text: 'Skala nyeri (0 = tidak nyeri, 10 = nyeri terburuk)', type: 'scale', required: true, min: 0, max: 10 },
+      { id: 'ny-lokasi', text: 'Lokasi nyeri', type: 'text', required: true, placeholder: 'Contoh: punggung bawah, lutut kiri...' },
+      { id: 'ny-karakter', text: 'Karakter nyeri', type: 'radio', required: true, options: [
+        { label: 'Tajam/terbakar', value: 'tajam', score: 2 }, { label: 'Tumpul/pegal', value: 'tumpul', score: 1 },
+        { label: 'Berdenyut', value: 'denyut', score: 2 }, { label: 'Tertusuk', value: 'tusuk', score: 2 },
+        { label: 'Kejang/kram', value: 'kejang', score: 1 },
+      ]},
+      { id: 'ny-durasi', text: 'Durasi nyeri', type: 'radio', required: true, section: 'Durasi & Frekuensi', options: [
+        { label: 'Hilang timbul (< 1 jam)', value: 0, score: 0 }, { label: 'Beberapa jam', value: 1, score: 1 },
+        { label: 'Terus menerus', value: 2, score: 2 }, { label: 'Kronis (> 3 bulan)', value: 3, score: 3 },
+      ]},
+      { id: 'ny-frekuensi', text: 'Frekuensi nyeri', type: 'radio', required: true, options: [
+        { label: 'Jarang (< 1x/minggu)', value: 0, score: 0 }, { label: 'Sering (beberapa x/minggu)', value: 1, score: 1 },
+        { label: 'Harian', value: 2, score: 2 }, { label: 'Terus-menerus', value: 3, score: 3 },
+      ]},
+    ],
+    scoringAlgorithm: {
+      type: 'sum',
+      ranges: [
+        { min: 0, max: 3, category: 'rendah', label: 'Nyeri Ringan', recommendations: ['Obat OTC jika perlu', 'Istirahat', 'Kompres hangat/dingin'] },
+        { min: 4, max: 7, category: 'sedang', label: 'Nyeri Sedang', recommendations: ['Konsultasi dokter', 'Analgesik sesuai resep', 'Modifikasi aktivitas'] },
+        { min: 8, max: 99, category: 'tinggi', label: 'Nyeri Berat', recommendations: ['Evaluasi segera', 'Manajemen nyeri intensif', 'Pertimbangkan rujukan'] },
+      ],
+    },
+  },
+
+  // ── 6. Skrining Kesehatan Mental ─────────────────────────────────────────
+  {
+    id: 'kesehatan_mental',
+    name: 'Skrining Kesehatan Mental',
+    icon: '🧠',
+    description: 'Skrining menggunakan instrumen PHQ-2 dan GAD-2, dengan rekomendasi PHQ-9/GAD-7 lanjutan',
+    estimatedMinutes: 3,
+    isRequired: false,
+    targetAudience: 'all',
+    questions: [
+      { id: 'km-phq2a', text: 'Minat atau kesenangan dalam melakukan sesuatu berkurang?', type: 'radio', required: true, section: 'PHQ-2 (Depresi)', options: [
+        { label: 'Tidak sama sekali (0)', value: 0, score: 0 }, { label: 'Beberapa hari (1)', value: 1, score: 1 },
+        { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 }, { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
+      ]},
+      { id: 'km-phq2b', text: 'Merasa murung, depresi, atau putus asa?', type: 'radio', required: true, options: [
+        { label: 'Tidak sama sekali (0)', value: 0, score: 0 }, { label: 'Beberapa hari (1)', value: 1, score: 1 },
+        { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 }, { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
+      ]},
+      { id: 'km-gad2a', text: 'Merasa gugup, cemas, atau tegang?', type: 'radio', required: true, section: 'GAD-2 (Kecemasan)', options: [
+        { label: 'Tidak sama sekali (0)', value: 0, score: 0 }, { label: 'Beberapa hari (1)', value: 1, score: 1 },
+        { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 }, { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
+      ]},
+      { id: 'km-gad2b', text: 'Tidak dapat berhenti mengkhawatirkan sesuatu?', type: 'radio', required: true, options: [
+        { label: 'Tidak sama sekali (0)', value: 0, score: 0 }, { label: 'Beberapa hari (1)', value: 1, score: 1 },
+        { label: 'Lebih dari setengah hari (2)', value: 2, score: 2 }, { label: 'Hampir setiap hari (3)', value: 3, score: 3 },
+      ]},
+      { id: 'km-pikiran', text: 'Apakah Anda memiliki pikiran untuk menyakiti diri sendiri?', type: 'radio', required: true, section: 'Evaluasi Lanjutan', options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 10 },
+      ]},
+    ],
+    scoringAlgorithm: {
+      type: 'sum',
+      ranges: [
+        { min: 0, max: 2, category: 'rendah', label: 'Kesehatan Mental Baik', recommendations: ['Tidak memerlukan penanganan khusus', 'Pertahankan pola hidup sehat', 'Aktivitas relaksasi'] },
+        { min: 3, max: 5, category: 'sedang', label: 'Perlu Evaluasi Lanjutan', recommendations: ['Disarankan skrining lengkap PHQ-9 dan GAD-7', 'Teknik relaksasi dan manajemen stres', 'Evaluasi ulang dalam 2 minggu'] },
+        { min: 6, max: 99, category: 'tinggi', label: 'Perlu Intervensi Mental', recommendations: ['Skrining lengkap PHQ-9 dan GAD-7 segera', 'Konsultasi psikolog/psikiater', 'Dukungan krisis jika pikiran menyakiti diri', 'Monitoring ketat'] },
+      ],
+    },
+    customOutput: (answers) => {
+      const phq2 = (Number(answers['km-phq2a']) || 0) + (Number(answers['km-phq2b']) || 0);
+      const gad2 = (Number(answers['km-gad2a']) || 0) + (Number(answers['km-gad2b']) || 0);
+      const suicidal = Number(answers['km-pikiran']) === 1;
+      let details = `PHQ-2 Score: ${phq2}/6`;
+      if (phq2 >= 3) details += ' → Disarankan PHQ-9 lanjutan';
+      details += ` | GAD-2 Score: ${gad2}/6`;
+      if (gad2 >= 3) details += ' → Disarankan GAD-7 lanjutan';
+      if (suicidal) details += ' | ⚠️ RISIKO BUNUH DIRI TERDETEKSI';
+      return { label: 'Kesehatan Mental', value: phq2 >= 3 || gad2 >= 3 ? 'Perlu Evaluasi Lanjutan' : 'Dalam Batas Normal', details };
+    },
+  },
+
+  // ── 7. Skrining Nutrisi ──────────────────────────────────────────────────
+  {
+    id: 'nutrisi',
+    name: 'Skrining Nutrisi',
+    icon: '🥗',
+    description: 'Evaluasi status nutrisi dan risiko malnutrisi pasien',
+    estimatedMinutes: 2,
+    isRequired: false,
+    targetAudience: 'all',
+    questions: [
+      { id: 'nu-penurunan', text: 'Penurunan berat badan dalam 6 bulan terakhir?', type: 'radio', required: true, options: [
+        { label: 'Tidak ada penurunan', value: 0, score: 0 }, { label: 'Turun 1–3 kg', value: 1, score: 1 },
+        { label: 'Turun 3–6 kg', value: 2, score: 2 }, { label: 'Turun > 6 kg', value: 3, score: 3 },
+      ]},
+      { id: 'nu-nafsumakan', text: 'Penurunan nafsu makan?', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Sedikit berkurang', value: 1, score: 1 },
+        { label: 'Berkuang cukup banyak', value: 2, score: 2 }, { label: 'Sangat berkurang/tidak ada', value: 3, score: 3 },
+      ]},
+      { id: 'nu-sulitmakan', text: 'Kesulitan makan (mengunyah, menelan)?', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya, sedikit', value: 1, score: 1 },
+        { label: 'Ya, cukup sulit', value: 2, score: 2 },
+      ]},
+      { id: 'nu-mual', text: 'Mual atau muntah?', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Kadang-kadang', value: 1, score: 1 },
+        { label: 'Sering', value: 2, score: 2 },
+      ]},
+      { id: 'nu-menelan', text: 'Kesulitan menelan?', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 },
+      ]},
+    ],
+    scoringAlgorithm: {
+      type: 'sum',
+      ranges: [
+        { min: 0, max: 2, category: 'rendah', label: 'Status Nutrisi Baik', recommendations: ['Pertahankan pola makan seimbang', 'Asupan cairan cukup'] },
+        { min: 3, max: 5, category: 'sedang', label: 'Risiko Malnutrisi', recommendations: ['Evaluasi pola makan', 'Konsultasi gizi', 'Suplementasi jika perlu'] },
+        { min: 6, max: 99, category: 'tinggi', label: 'Malnutrisi', recommendations: ['Intervensi gizi segera', 'Konsultasi ahli gizi', 'Evaluasi penyebab malnutrisi', 'Pertimbangkan suplemen nutrisi'] },
+      ],
+    },
+  },
+
+  // ── 8. Skrining Risiko Jatuh ─────────────────────────────────────────────
+  {
+    id: 'risiko_jatuh',
+    name: 'Skrining Risiko Jatuh',
+    icon: '⚠️',
+    description: 'Penilaian risiko jatuh terutama untuk lansia',
+    estimatedMinutes: 2,
+    isRequired: false,
+    targetAudience: 'lansia',
+    questions: [
+      { id: 'rj-jatuh', text: 'Pernah jatuh dalam 1 tahun terakhir?', type: 'radio', required: true, options: [
+        { label: 'Tidak pernah', value: 0, score: 0 }, { label: 'Ya, 1 kali', value: 1, score: 2 },
+        { label: 'Ya, 2 kali atau lebih', value: 2, score: 4 },
+      ]},
+      { id: 'rj-keseimbangan', text: 'Gangguan keseimbangan?', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Kadang-kadang', value: 1, score: 2 },
+        { label: 'Sering', value: 2, score: 3 },
+      ]},
+      { id: 'rj-alatbantu', text: 'Menggunakan alat bantu jalan?', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 },
+      ]},
+      { id: 'rj-penglihatan', text: 'Gangguan penglihatan?', type: 'radio', required: true, options: [
+        { label: 'Tidak / Terkoreksi dengan kacamata', value: 0, score: 0 }, { label: 'Ya, gangguan penglihatan', value: 1, score: 2 },
+      ]},
+    ],
+    scoringAlgorithm: {
+      type: 'sum',
+      ranges: [
+        { min: 0, max: 1, category: 'rendah', label: 'Risiko Jatuh Rendah', recommendations: ['Lanjutkan aktivitas fisik teratur', 'Pertahankan keseimbangan'] },
+        { min: 2, max: 5, category: 'sedang', label: 'Risiko Jatuh Sedang', recommendations: ['Latihan keseimbangan', 'Evaluasi penglihatan', 'Modifikasi lingkungan rumah', 'Pertimbangkan alat bantu'] },
+        { min: 6, max: 99, category: 'tinggi', label: 'Risiko Jatuh Tinggi', recommendations: ['Program pencegahan jatuh intensif', 'Evaluasi lingkungan rumah', 'Alat bantu jalan', 'Monitoring ketat', 'Pertimbangkan home care'] },
+      ],
+    },
+  },
+
+  // ── 9. Skrining Status Fungsional (ADL) ──────────────────────────────────
+  {
+    id: 'status_fungsional',
+    name: 'Skrining Status Fungsional (ADL)',
+    icon: '♿',
+    description: 'Penilaian kemampuan melakukan Activities of Daily Living',
+    estimatedMinutes: 3,
+    isRequired: false,
+    targetAudience: 'lansia',
+    questions: [
+      { id: 'sf-makan', text: 'Kemampuan makan', type: 'radio', required: true, section: 'Activities of Daily Living', options: [
+        { label: 'Mandiri', value: 0, score: 0 }, { label: 'Sebagian bergantung (perlu bantuan sebagian)', value: 1, score: 1 },
+        { label: 'Bergantung total', value: 2, score: 2 },
+      ]},
+      { id: 'sf-berpindah', text: 'Kemampuan berpindah tempat (dari tempat tidur ke kursi)', type: 'radio', required: true, options: [
+        { label: 'Mandiri', value: 0, score: 0 }, { label: 'Sebagian bergantung', value: 1, score: 1 },
+        { label: 'Bergantung total', value: 2, score: 2 },
+      ]},
+      { id: 'sf-mandi', text: 'Kemampuan mandi', type: 'radio', required: true, options: [
+        { label: 'Mandiri', value: 0, score: 0 }, { label: 'Sebagian bergantung', value: 1, score: 1 },
+        { label: 'Bergantung total', value: 2, score: 2 },
+      ]},
+      { id: 'sf-berpakaian', text: 'Kemampuan berpakaian', type: 'radio', required: true, options: [
+        { label: 'Mandiri', value: 0, score: 0 }, { label: 'Sebagian bergantung', value: 1, score: 1 },
+        { label: 'Bergantung total', value: 2, score: 2 },
+      ]},
+      { id: 'sf-toileting', text: 'Kemampuan toileting', type: 'radio', required: true, options: [
+        { label: 'Mandiri', value: 0, score: 0 }, { label: 'Sebagian bergantung', value: 1, score: 1 },
+        { label: 'Bergantung total', value: 2, score: 2 },
+      ]},
+    ],
+    scoringAlgorithm: {
+      type: 'sum',
+      ranges: [
+        { min: 0, max: 0, category: 'rendah', label: 'Mandiri Penuh', recommendations: ['Pertahankan kemandirian', 'Aktivitas fisik teratur'] },
+        { min: 1, max: 5, category: 'sedang', label: 'Sebagian Bergantung', recommendations: ['Bantuan sebagian untuk ADL', 'Program rehabilitasi', 'Pertimbangkan home care'] },
+        { min: 6, max: 99, category: 'tinggi', label: 'Bergantung Total', recommendations: ['Perlu pengasuh penuh waktu', 'Home care atau rawat inap', 'Program rehabilitasi intensif'] },
+      ],
+    },
+  },
+
+  // ── 10. Skrining Home Care ───────────────────────────────────────────────
+  {
+    id: 'home_care',
+    name: 'Skrining Kebutuhan Home Care',
+    icon: '🏠',
+    description: 'Menilai kebutuhan pasien untuk kunjungan kesehatan di rumah',
+    estimatedMinutes: 2,
+    isRequired: false,
+    targetAudience: 'all',
+    questions: [
+      { id: 'hc-sulitdatang', text: 'Sulit datang ke fasilitas kesehatan?', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya, sedikit kesulitan', value: 1, score: 1 },
+        { label: 'Ya, sangat sulit/tidak bisa', value: 2, score: 3 },
+      ]},
+      { id: 'hc-tirahbaring', text: 'Tirah baring?', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 3 },
+      ]},
+      { id: 'hc-pascastroke', text: 'Pasca stroke?', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 },
+      ]},
+      { id: 'hc-lansiafrail', text: 'Lansia frail (rentan)?', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 },
+      ]},
+      { id: 'hc-perawatanluka', text: 'Perlu perawatan luka di rumah?', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 3 },
+      ]},
+      { id: 'hc-alatmedis', text: 'Menggunakan alat medis di rumah (oksigen, kateter, dll)?', type: 'radio', required: true, options: [
+        { label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 },
+      ]},
+    ],
+    scoringAlgorithm: {
+      type: 'sum',
+      ranges: [
+        { min: 0, max: 1, category: 'rendah', label: 'Tidak Memerlukan Home Care', recommendations: ['Konsultasi di fasilitas kesehatan cukup', 'Telekonsultasi dapat dilanjutkan'] },
+        { min: 2, max: 4, category: 'sedang', label: 'Direkomendasikan Home Care', recommendations: ['Pertimbangkan kunjungan home care', 'Evaluasi berkala di rumah', 'Koordinasi dengan perawat home care'] },
+        { min: 5, max: 99, category: 'tinggi', label: 'Memerlukan Home Care Segera', recommendations: ['Jadwalkan kunjungan home care segera', 'Perawat home care intensif', 'Evaluasi kebutuhan rawat inap'] },
+      ],
+    },
+  },
+
+  // ── 11. Skrining Paliatif ────────────────────────────────────────────────
+  {
+    id: 'paliatif',
+    name: 'Skrining Paliatif (ESAS & PPS)',
+    icon: '🕊️',
+    description: 'Edmonton Symptom Assessment System dan Palliative Performance Scale',
     estimatedMinutes: 5,
+    isRequired: false,
+    targetAudience: 'paliatif',
     questions: [
-      {
-        id: 'ht-age',
-        text: 'Berapa usia Anda?',
-        type: 'radio',
-        options: [
-          { label: '< 40 tahun', value: 0, score: 0 },
-          { label: '40–59 tahun', value: 1, score: 1 },
-          { label: '≥ 60 tahun', value: 2, score: 2 },
-        ],
-        required: true,
-        section: 'Data Dasar',
-      },
-      {
-        id: 'ht-bp-systolic',
-        text: 'Tekanan darah sistolik terakhir (mmHg)?',
-        type: 'radio',
-        options: [
-          { label: '< 120 mmHg', value: 0, score: 0 },
-          { label: '120–139 mmHg', value: 1, score: 2 },
-          { label: '≥ 140 mmHg', value: 2, score: 4 },
-          { label: 'Tidak tahu', value: 3, score: 1 },
-        ],
-        required: true,
-        section: 'Pemeriksaan Fisik',
-      },
-      {
-        id: 'ht-bmi',
-        text: 'Berapa BMI Anda?',
-        type: 'radio',
-        options: [
-          { label: '< 23 kg/m² (Normal)', value: 0, score: 0 },
-          { label: '23–27.5 kg/m² (Overweight)', value: 1, score: 2 },
-          { label: '> 27.5 kg/m² (Obesitas)', value: 2, score: 3 },
-        ],
-        required: true,
-        section: 'Pemeriksaan Fisik',
-      },
-      {
-        id: 'ht-salt',
-        text: 'Apakah Anda sering mengonsumsi makanan tinggi garam?',
-        type: 'radio',
-        options: [
-          { label: 'Tidak', value: 0, score: 0 },
-          { label: 'Kadang-kadang', value: 1, score: 1 },
-          { label: 'Sering', value: 2, score: 2 },
-        ],
-        required: true,
-        section: 'Gaya Hidup',
-      },
-      {
-        id: 'ht-alcohol',
-        text: 'Apakah Anda mengonsumsi alkohol?',
-        type: 'radio',
-        options: [
-          { label: 'Tidak', value: 0, score: 0 },
-          { label: 'Kadang-kadang', value: 1, score: 1 },
-          { label: 'Sering', value: 2, score: 2 },
-        ],
-        required: true,
-        section: 'Gaya Hidup',
-      },
-      {
-        id: 'ht-exercise',
-        text: 'Apakah Anda berolahraga secara teratur (min 150 menit/minggu)?',
-        type: 'radio',
-        options: [
-          { label: 'Ya', value: 0, score: 0 },
-          { label: 'Tidak', value: 1, score: 2 },
-        ],
-        required: true,
-        section: 'Gaya Hidup',
-      },
-      {
-        id: 'ht-family',
-        text: 'Apakah ada riwayat hipertensi di keluarga?',
-        type: 'radio',
-        options: [
-          { label: 'Tidak', value: 0, score: 0 },
-          { label: 'Ya', value: 1, score: 2 },
-        ],
-        required: true,
-        section: 'Riwayat Keluarga',
-      },
-      {
-        id: 'ht-stress',
-        text: 'Apakah Anda sering mengalami stres?',
-        type: 'radio',
-        options: [
-          { label: 'Tidak', value: 0, score: 0 },
-          { label: 'Kadang-kadang', value: 1, score: 1 },
-          { label: 'Sering', value: 2, score: 2 },
-        ],
-        required: true,
-        section: 'Psikologis',
-      },
+      { id: 'pal-nyeri', text: 'Nyeri', type: 'scale', required: true, min: 0, max: 10, section: 'ESAS (Edmonton Symptom Assessment)' },
+      { id: 'pal-sesak', text: 'Sesak napas', type: 'scale', required: true, min: 0, max: 10 },
+      { id: 'pal-mual', text: 'Mual', type: 'scale', required: true, min: 0, max: 10 },
+      { id: 'pal-kelelahan', text: 'Kelelahan', type: 'scale', required: true, min: 0, max: 10 },
+      { id: 'pal-nafsumakan', text: 'Nafsu makan berkurang', type: 'scale', required: true, min: 0, max: 10 },
+      { id: 'pal-kecemasan', text: 'Kecemasan', type: 'scale', required: true, min: 0, max: 10 },
+      { id: 'pal-depresi', text: 'Depresi', type: 'scale', required: true, min: 0, max: 10 },
+      { id: 'pal-kesejahteraan', text: 'Kesejahteraan umum', type: 'scale', required: true, min: 0, max: 10 },
+      { id: 'pal-pps', text: 'Palliative Performance Scale (PPS)', type: 'radio', required: true, section: 'PPS (Palliative Performance Scale)', options: [
+        { label: '100% — Ambulatory, fully active', value: 100, score: 0 },
+        { label: '90% — Ambulatory, some effort', value: 90, score: 1 },
+        { label: '80% — Ambulatory, some disease', value: 80, score: 2 },
+        { label: '70% — Ambulatory, reduced capability', value: 70, score: 3 },
+        { label: '60% — Requires occasional assistance', value: 60, score: 4 },
+        { label: '50% — Requires considerable assistance', value: 50, score: 5 },
+        { label: '40% — Mainly in bed/sitting', value: 40, score: 6 },
+        { label: '30% — Bedbound, can talk', value: 30, score: 7 },
+        { label: '20% — Bedbound, limited talking', value: 20, score: 8 },
+        { label: '10% — Bedbound, minimal activity', value: 10, score: 9 },
+      ]},
     ],
     scoringAlgorithm: {
       type: 'sum',
       ranges: [
-        { min: 0, max: 5, category: 'rendah', label: 'Risiko Rendah', recommendations: ['Pertahankan gaya hidup sehat', 'Pemeriksaan tekanan darah rutin', 'Kurangi asupan garam'] },
-        { min: 6, max: 11, category: 'sedang', label: 'Risiko Sedang', recommendations: ['Monitoring tekanan darah berkala', 'Modifikasi gaya hidup', 'Kurangi garam dan lemak', 'Olahraga teratur', 'Konsultasi dokter'] },
-        { min: 12, max: 99, category: 'tinggi', label: 'Risiko Tinggi', recommendations: ['Pemeriksaan tekanan darah segera', 'Konsultasi dokter', 'Modifikasi gaya hidup intensif', 'Pertimbangkan pengobatan', 'Monitoring rutin'] },
+        { min: 0, max: 15, category: 'rendah', label: 'Tidak Memerlukan Perawatan Paliatif', recommendations: ['Perawatan standar', 'Monitoring gejala', 'Supportif'] },
+        { min: 16, max: 35, category: 'sedang', label: 'Pertimbangkan Perawatan Paliatif', recommendations: ['Evaluasi kebutuhan paliatif', 'Manajemen gejala', 'Dukungan psikososial', 'Diskusi tujuan perawatan'] },
+        { min: 36, max: 99, category: 'tinggi', label: 'Memerlukan Evaluasi Paliatif', recommendations: ['Rujuk tim paliatif', 'Manajemen gejala intensif', 'Perencanaan perawatan lanjutan', 'Dukungan keluarga', 'Pertimbangkan hospice'] },
       ],
     },
   },
 
-  // ── Skrining Stunting (Balita) ────────────────────────────────────────────
+  // ── 12. Upload Bukti Klinis ──────────────────────────────────────────────
   {
-    id: 'tmpl-stunting',
-    name: 'Skrining Stunting (Balita)',
-    category: 'balita',
-    standard: 'Skrining Stunting Kemenkes',
-    description: 'Skrining risiko stunting pada anak usia 1–5 tahun berdasarkan pedoman Kemenkes.',
-    estimatedMinutes: 8,
+    id: 'bukti_klinis',
+    name: 'Upload Bukti Klinis',
+    icon: '📎',
+    description: 'Pasien dapat mengunggah foto luka, obat, hasil lab, hasil radiologi, video, dan dokumen medis',
+    estimatedMinutes: 3,
+    isRequired: false,
+    targetAudience: 'all',
     questions: [
-      {
-        id: 'stunt-age',
-        text: 'Berapa usia anak?',
-        type: 'radio',
-        options: [
-          { label: '12–23 bulan', value: 0, score: 1 },
-          { label: '24–35 bulan', value: 1, score: 1 },
-          { label: '36–47 bulan', value: 2, score: 0 },
-          { label: '48–59 bulan', value: 3, score: 0 },
-        ],
-        required: true,
-        section: 'Data Anak',
-      },
-      {
-        id: 'stunt-bb',
-        text: 'Apakah berat badan anak sesuai usia (menurut KMS)?',
-        type: 'radio',
-        options: [
-          { label: 'Ya, naik sesuai garis', value: 0, score: 0 },
-          { label: 'Naik tetapi tidak sesuai garis', value: 1, score: 1 },
-          { label: 'Tidak naik / turun', value: 2, score: 3 },
-        ],
-        required: true,
-        section: 'Data Anak',
-      },
-      {
-        id: 'stunt-tb',
-        text: 'Apakah tinggi/panjang badan anak sesuai usia?',
-        type: 'radio',
-        options: [
-          { label: 'Ya, normal', value: 0, score: 0 },
-          { label: 'Pendek (di bawah -2 SD)', value: 1, score: 3 },
-          { label: 'Sangat pendek (di bawah -3 SD)', value: 2, score: 5 },
-        ],
-        required: true,
-        section: 'Data Anak',
-      },
-      {
-        id: 'stunt-asi',
-        text: 'Apakah anak mendapat ASI eksklusif 0–6 bulan?',
-        type: 'radio',
-        options: [
-          { label: 'Ya', value: 0, score: 0 },
-          { label: 'Tidak', value: 1, score: 2 },
-        ],
-        required: true,
-        section: 'Riwayat Nutrisi',
-      },
-      {
-        id: 'stunt-mpasi',
-        text: 'Apakah MPASI diberikan tepat waktu (usia 6 bulan)?',
-        type: 'radio',
-        options: [
-          { label: 'Ya, tepat waktu dan adekuat', value: 0, score: 0 },
-          { label: 'Terlalu dini (< 6 bulan)', value: 1, score: 2 },
-          { label: 'Terlambat (> 6 bulan)', value: 2, score: 2 },
-          { label: 'Tidak adekuat', value: 3, score: 3 },
-        ],
-        required: true,
-        section: 'Riwayat Nutrisi',
-      },
-      {
-        id: 'stunt-immunization',
-        text: 'Apakah imunisasi anak lengkap sesuai jadwal?',
-        type: 'radio',
-        options: [
-          { label: 'Ya, lengkap', value: 0, score: 0 },
-          { label: 'Tidak lengkap', value: 1, score: 2 },
-        ],
-        required: true,
-        section: 'Riwayat Kesehatan',
-      },
-      {
-        id: 'stunt-infection',
-        text: 'Apakah anak sering mengalami diare atau ISPA?',
-        type: 'radio',
-        options: [
-          { label: 'Tidak', value: 0, score: 0 },
-          { label: 'Kadang (1–3 kali/6 bulan)', value: 1, score: 1 },
-          { label: 'Sering (> 3 kali/6 bulan)', value: 2, score: 3 },
-        ],
-        required: true,
-        section: 'Riwayat Kesehatan',
-      },
-      {
-        id: 'stunt-sanitation',
-        text: 'Bagaimana akses keluarga terhadap air bersih dan sanitasi?',
-        type: 'radio',
-        options: [
-          { label: 'Baik (air bersih & jamban layak)', value: 0, score: 0 },
-          { label: 'Cukup', value: 1, score: 1 },
-          { label: 'Buruk', value: 2, score: 3 },
-        ],
-        required: true,
-        section: 'Lingkungan',
-      },
-      {
-        id: 'stunt-education',
-        text: 'Berapa tingkat pendidikan ibu?',
-        type: 'radio',
-        options: [
-          { label: 'Akademi/Universitas', value: 0, score: 0 },
-          { label: 'SMA/sederajat', value: 1, score: 1 },
-          { label: 'SMP/sederajat', value: 2, score: 2 },
-          { label: 'SD atau tidak sekolah', value: 3, score: 3 },
-        ],
-        required: true,
-        section: 'Sosial Ekonomi',
-      },
+      { id: 'bk-fotoluka', text: 'Foto luka (jika ada)', type: 'file_upload', required: false, section: 'Foto & Video' },
+      { id: 'bk-fotoobat', text: 'Foto obat yang sedang dikonsumsi', type: 'file_upload', required: false },
+      { id: 'bk-fotolab', text: 'Foto hasil laboratorium', type: 'file_upload', required: false, section: 'Hasil Pemeriksaan' },
+      { id: 'bk-fotoradio', text: 'Foto hasil radiologi', type: 'file_upload', required: false },
+      { id: 'bk-videopernapasan', text: 'Video pernapasan (jika ada keluhan napas)', type: 'file_upload', required: false, section: 'Video' },
+      { id: 'bk-videomobilisasi', text: 'Video mobilisasi (jika ada gangguan gerak)', type: 'file_upload', required: false },
+      { id: 'bk-dokmedis', text: 'Dokumen medis pendukung lainnya', type: 'file_upload', required: false, section: 'Dokumen' },
     ],
-    scoringAlgorithm: {
-      type: 'sum',
-      ranges: [
-        { min: 0, max: 5, category: 'rendah', label: 'Risiko Rendah Stunting', recommendations: ['Pertahankan pola asuh yang baik', 'Monitoring tumbuh kembang rutin', 'Berikan nutrisi seimbang'] },
-        { min: 6, max: 12, category: 'sedang', label: 'Risiko Sedang Stunting', recommendations: ['Konsultasi gizi', 'Perbaiki pola makan anak', 'Pastikan ASI/MPASI adekuat', 'Peningkatan sanitasi', 'Monitoring tumbuh kembang bulanan'] },
-        { min: 13, max: 99, category: 'tinggi', label: 'Risiko Tinggi Stunting', recommendations: ['Rujuk ke gizi klinik', 'Intervensi gizi intensif', 'Pemeriksaan kesehatan menyeluruh', 'Pendampingan pola asuh', 'Perbaikan sanitasi dan akses air bersih'] },
-      ],
-    },
-  },
-
-  // ── Skrining Lansia (GDS-15) ─────────────────────────────────────────────
-  {
-    id: 'tmpl-gds15',
-    name: 'Skrining Depresi Lansia (GDS-15)',
-    category: 'lansia',
-    standard: 'GDS (Geriatric Depression Scale)',
-    description: 'Geriatric Depression Scale 15-item untuk skrining depresi pada lansia.',
-    estimatedMinutes: 7,
-    questions: [
-      { id: 'gds1', text: 'Apakah Anda pada dasarnya puas dengan hidup Anda?', type: 'radio', options: [{ label: 'Ya', value: 0, score: 0 }, { label: 'Tidak', value: 1, score: 1 }], required: true },
-      { id: 'gds2', text: 'Apakah Anda telah mengurangi banyak kegiatan dan minat Anda?', type: 'radio', options: [{ label: 'Ya', value: 1, score: 1 }, { label: 'Tidak', value: 0, score: 0 }], required: true },
-      { id: 'gds3', text: 'Apakah Anda merasa hidup Anda kosong?', type: 'radio', options: [{ label: 'Ya', value: 1, score: 1 }, { label: 'Tidak', value: 0, score: 0 }], required: true },
-      { id: 'gds4', text: 'Apakah Anda sering merasa bosan?', type: 'radio', options: [{ label: 'Ya', value: 1, score: 1 }, { label: 'Tidak', value: 0, score: 0 }], required: true },
-      { id: 'gds5', text: 'Apakah Anda merasa semangat sepanjang hari?', type: 'radio', options: [{ label: 'Ya', value: 0, score: 0 }, { label: 'Tidak', value: 1, score: 1 }], required: true },
-      { id: 'gds6', text: 'Apakah Anda khawatir ada yang buruk akan terjadi pada Anda?', type: 'radio', options: [{ label: 'Ya', value: 1, score: 1 }, { label: 'Tidak', value: 0, score: 0 }], required: true },
-      { id: 'gds7', text: 'Apakah Anda merasa senang sebagian besar waktu?', type: 'radio', options: [{ label: 'Ya', value: 0, score: 0 }, { label: 'Tidak', value: 1, score: 1 }], required: true },
-      { id: 'gds8', text: 'Apakah Anda sering merasa tidak berdaya?', type: 'radio', options: [{ label: 'Ya', value: 1, score: 1 }, { label: 'Tidak', value: 0, score: 0 }], required: true },
-      { id: 'gds9', text: 'Apakah Anda lebih suka tinggal di rumah daripada keluar?', type: 'radio', options: [{ label: 'Ya', value: 1, score: 1 }, { label: 'Tidak', value: 0, score: 0 }], required: true },
-      { id: 'gds10', text: 'Apakah Anda merasa lebih banyak masalah ingatan daripada kebanyakan orang?', type: 'radio', options: [{ label: 'Ya', value: 1, score: 1 }, { label: 'Tidak', value: 0, score: 0 }], required: true },
-      { id: 'gds11', text: 'Apakah Anda pikiran lebih baik hidup sekarang daripada waktu muda?', type: 'radio', options: [{ label: 'Ya', value: 0, score: 0 }, { label: 'Tidak', value: 1, score: 1 }], required: true },
-      { id: 'gds12', text: 'Apakah Anda merasa sangat tidak berguna sekarang?', type: 'radio', options: [{ label: 'Ya', value: 1, score: 1 }, { label: 'Tidak', value: 0, score: 0 }], required: true },
-      { id: 'gds13', text: 'Apakah Anda merasa sangat bersemangat?', type: 'radio', options: [{ label: 'Ya', value: 0, score: 0 }, { label: 'Tidak', value: 1, score: 1 }], required: true },
-      { id: 'gds14', text: 'Apakah Anda merasa situasi Anda tanpa harapan?', type: 'radio', options: [{ label: 'Ya', value: 1, score: 1 }, { label: 'Tidak', value: 0, score: 0 }], required: true },
-      { id: 'gds15', text: 'Apakah Anda berpikir kebanyakan orang lebih baik daripada Anda?', type: 'radio', options: [{ label: 'Ya', value: 1, score: 1 }, { label: 'Tidak', value: 0, score: 0 }], required: true },
-    ],
-    scoringAlgorithm: {
-      type: 'sum',
-      ranges: [
-        { min: 0, max: 4, category: 'rendah', label: 'Depresi Normal', recommendations: ['Pertahankan aktivitas sosial', 'Olahraga ringan teratur', 'Hobi dan kegiatan menyenangkan'] },
-        { min: 5, max: 9, category: 'sedang', label: 'Depresi Ringan-Sedang', recommendations: ['Konsultasi dengan dokter', 'Tingkatkan aktivitas sosial', 'Terapi aktivitas', 'Evaluasi ulang dalam 1 bulan'] },
-        { min: 10, max: 99, category: 'tinggi', label: 'Depresi Berat', recommendations: ['Rujuk ke psikiater/gériatri', 'Evaluasi lengkap', 'Pertimbangkan farmakoterapi', 'Monitoring ketat', 'Dukungan keluarga'] },
-      ],
-    },
-  },
-
-  // ── Skrining Ibu Hamil (ANC Terpadu) ──────────────────────────────────────
-  {
-    id: 'tmpl-anc',
-    name: 'Skrining Kehamilan (ANC Terpadu)',
-    category: 'ibu_hamil',
-    standard: 'ANC Terpadu',
-    description: 'Skrining kehamilan berdasarkan standar ANC Terpadu untuk mendeteksi risiko kehamilan.',
-    estimatedMinutes: 10,
-    questions: [
-      { id: 'anc-age', text: 'Berapa usia ibu saat ini?', type: 'radio', options: [{ label: '20–35 tahun', value: 0, score: 0 }, { label: '< 20 tahun', value: 1, score: 2 }, { label: '> 35 tahun', value: 2, score: 2 }], required: true, section: 'Data Ibu' },
-      { id: 'anc-gestational', text: 'Berapa usia kehamilan saat ini?', type: 'radio', options: [{ label: 'Trimester 1 (0–12 minggu)', value: 0, score: 0 }, { label: 'Trimester 2 (13–27 minggu)', value: 1, score: 0 }, { label: 'Trimester 3 (28–40 minggu)', value: 2, score: 1 }], required: true, section: 'Data Kehamilan' },
-      { id: 'anc-gravida', text: 'Berapa kali ibu hamil (termasuk kehamilan ini)?', type: 'radio', options: [{ label: '1 (primigravida)', value: 0, score: 1 }, { label: '2–3', value: 1, score: 0 }, { label: '≥ 4 (multigravida)', value: 2, score: 2 }], required: true, section: 'Data Kehamilan' },
-      { id: 'anc-abortion', text: 'Apakah pernah mengalami keguguran?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya, 1 kali', value: 1, score: 1 }, { label: 'Ya, ≥ 2 kali', value: 2, score: 3 }], required: true, section: 'Riwayat Obstetri' },
-      { id: 'anc-cesarean', text: 'Apakah pernah melahirkan dengan seksio sesarea?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya, 1 kali', value: 1, score: 2 }, { label: 'Ya, ≥ 2 kali', value: 2, score: 3 }], required: true, section: 'Riwayat Obstetri' },
-      { id: 'anc-bleeding', text: 'Apakah mengalami perdarahan pada kehamilan ini?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 4 }], required: true, section: 'Keluhan Saat Ini' },
-      { id: 'anc-headache', text: 'Apakah mengalami sakit kepala berat atau penglihatan kabur?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 3 }], required: true, section: 'Keluhan Saat Ini' },
-      { id: 'anc-swelling', text: 'Apakah mengalami pembengkakan pada wajah atau tangan?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 3 }], required: true, section: 'Keluhan Saat Ini' },
-      { id: 'anc-chronic', text: 'Apakah ibu memiliki penyakit kronis (DM, hipertensi, HIV, dll)?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 3 }], required: true, section: 'Riwayat Penyakit' },
-      { id: 'anc-iron', text: 'Apakah ibu mengonsumsi tablet tambah darah (TTD)?', type: 'radio', options: [{ label: 'Ya, rutin', value: 0, score: 0 }, { label: 'Kadang-kadang', value: 1, score: 1 }, { label: 'Tidak', value: 2, score: 2 }], required: true, section: 'Nutrisi & Suplemen' },
-    ],
-    scoringAlgorithm: {
-      type: 'sum',
-      ranges: [
-        { min: 0, max: 4, category: 'rendah', label: 'Risiko Rendah', recommendations: ['ANC rutin sesuai jadwal', 'Konsumsi TTD dan vitamin prenatal', 'Gizi seimbang', 'Olahraga ringan'] },
-        { min: 5, max: 10, category: 'sedang', label: 'Risiko Sedang', recommendations: ['Frekuensi ANC lebih sering', 'Pemeriksaan laboratorium lengkap', 'Monitoring tekanan darah', 'Konsultasi gizi', 'USG sesuai jadwal'] },
-        { min: 11, max: 99, category: 'tinggi', label: 'Risiko Tinggi', recommendations: ['Rujuk ke rumah sakit', 'ANC setiap 2 minggu', 'Monitoring ketat', 'Persiapan persalinan di fasilitas kesehatan', 'Pemeriksaan lengkap segera'] },
-      ],
-    },
-  },
-
-  // ── Skrining Gaya Hidup ───────────────────────────────────────────────────
-  {
-    id: 'tmpl-lifestyle',
-    name: 'Skrining Gaya Hidup',
-    category: 'gaya_hidup',
-    standard: 'WHO STEPS',
-    description: 'Skrining gaya hidup berdasarkan pendekatan WHO STEPS untuk menilai faktor risiko PTM.',
-    estimatedMinutes: 8,
-    questions: [
-      { id: 'ls-smoke', text: 'Status merokok Anda?', type: 'radio', options: [{ label: 'Tidak pernah merokok', value: 0, score: 0 }, { label: 'Mantan perokok', value: 1, score: 1 }, { label: 'Perokok aktif', value: 2, score: 3 }], required: true, section: 'Kebiasaan' },
-      { id: 'ls-alcohol', text: 'Konsumsi alkohol?', type: 'radio', options: [{ label: 'Tidak pernah', value: 0, score: 0 }, { label: 'Kadang-kadang', value: 1, score: 1 }, { label: 'Sering', value: 2, score: 2 }], required: true, section: 'Kebiasaan' },
-      { id: 'ls-exercise', text: 'Aktivitas fisik per minggu?', type: 'radio', options: [{ label: '≥ 150 menit (Aktif)', value: 0, score: 0 }, { label: '60–149 menit (Kurang aktif)', value: 1, score: 1 }, { label: '< 60 menit (Tidak aktif)', value: 2, score: 3 }], required: true, section: 'Aktivitas Fisik' },
-      { id: 'ls-diet-fruit', text: 'Berapa porsi buah dan sayur per hari?', type: 'radio', options: [{ label: '≥ 5 porsi/hari', value: 0, score: 0 }, { label: '3–4 porsi/hari', value: 1, score: 1 }, { label: '< 3 porsi/hari', value: 2, score: 2 }], required: true, section: 'Pola Makan' },
-      { id: 'ls-sugar', text: 'Konsumsi minuman manis/bergula?', type: 'radio', options: [{ label: 'Jarang/tidak pernah', value: 0, score: 0 }, { label: '1–3 kali/minggu', value: 1, score: 1 }, { label: 'Hampir setiap hari', value: 2, score: 2 }], required: true, section: 'Pola Makan' },
-      { id: 'ls-fastfood', text: 'Konsumsi makanan cepat saji?', type: 'radio', options: [{ label: 'Jarang/tidak pernah', value: 0, score: 0 }, { label: '1–2 kali/minggu', value: 1, score: 1 }, { label: '≥ 3 kali/minggu', value: 2, score: 2 }], required: true, section: 'Pola Makan' },
-      { id: 'ls-sleep', text: 'Berapa jam tidur per malam?', type: 'radio', options: [{ label: '7–9 jam', value: 0, score: 0 }, { label: '6 jam', value: 1, score: 1 }, { label: '< 6 jam atau > 9 jam', value: 2, score: 2 }], required: true, section: 'Pola Tidur' },
-      { id: 'ls-stress', text: 'Tingkat stres yang dirasakan?', type: 'radio', options: [{ label: 'Rendah', value: 0, score: 0 }, { label: 'Sedang', value: 1, score: 1 }, { label: 'Tinggi', value: 2, score: 2 }], required: true, section: 'Kesehatan Mental' },
-      { id: 'ls-weight', text: 'Apakah berat badan Anda naik signifikan dalam 1 tahun terakhir?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya, 2–5 kg', value: 1, score: 1 }, { label: 'Ya, > 5 kg', value: 2, score: 2 }], required: true, section: 'Berat Badan' },
-    ],
-    scoringAlgorithm: {
-      type: 'sum',
-      ranges: [
-        { min: 0, max: 5, category: 'rendah', label: 'Gaya Hidup Sehat', recommendations: ['Pertahankan gaya hidup sehat', 'Lanjutkan aktivitas fisik teratur', 'Jaga pola makan seimbang'] },
-        { min: 6, max: 12, category: 'sedang', label: 'Perlu Perbaikan Gaya Hidup', recommendations: ['Tingkatkan aktivitas fisik', 'Perbaiki pola makan', 'Kurangi konsumsi gula dan lemak', 'Kelola stres dengan baik', 'Perbaiki pola tidur'] },
-        { min: 13, max: 99, category: 'tinggi', label: 'Gaya Hidup Berisiko Tinggi', recommendations: ['Konsultasi dokter untuk evaluasi kesehatan', 'Program modifikasi gaya hidup intensif', 'Berhenti merokok', 'Konsultasi gizi', 'Program pengelolaan stres'] },
-      ],
-    },
-  },
-
-  // ── Skrining Penyakit Kronis ──────────────────────────────────────────────
-  {
-    id: 'tmpl-kronis',
-    name: 'Skrining Penyakit Kronis (DM, HT, PPOK, Jantung)',
-    category: 'penyakit_kronis',
-    standard: 'Skrining PTM Kemenkes RI',
-    description: 'Skrining komprehensif untuk penyakit tidak menular kronis: Diabetes, Hipertensi, PPOK, dan Penyakit Jantung.',
-    estimatedMinutes: 12,
-    questions: [
-      { id: 'kronis-dm-family', text: 'Apakah ada riwayat diabetes di keluarga?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 }], required: true, section: 'Riwayat Diabetes' },
-      { id: 'kronis-dm-thirst', text: 'Apakah Anda sering merasa haus dan sering buang air kecil?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 }], required: true, section: 'Riwayat Diabetes' },
-      { id: 'kronis-dm-wound', text: 'Apakah luka Anda lambat sembuh?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 }], required: true, section: 'Riwayat Diabetes' },
-      { id: 'kronis-ht-headache', text: 'Apakah Anda sering sakit kepala atau pusing?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 }], required: true, section: 'Riwayat Hipertensi' },
-      { id: 'kronis-ht-neck', text: 'Apakah Anda merasa kaku atau nyeri di tengkuk?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 1 }], required: true, section: 'Riwayat Hipertensi' },
-      { id: 'kronis-copd-smoke', text: 'Apakah Anda merokok atau terpapar asap rokok?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya, perokok pasif', value: 1, score: 1 }, { label: 'Ya, perokok aktif', value: 2, score: 3 }], required: true, section: 'Riwayat PPOK' },
-      { id: 'kronis-copd-cough', text: 'Apakah Anda batuk berdahak > 3 bulan/tahun?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 3 }], required: true, section: 'Riwayat PPOK' },
-      { id: 'kronis-copd-sob', text: 'Apakah Anda sesak napas saat aktivitas?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya, ringan', value: 1, score: 2 }, { label: 'Ya, berat', value: 2, score: 3 }], required: true, section: 'Riwayat PPOK' },
-      { id: 'kronis-chest', text: 'Apakah Anda pernah merasa nyeri dada?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya, kadang-kadang', value: 1, score: 2 }, { label: 'Ya, sering', value: 2, score: 4 }], required: true, section: 'Riwayat Jantung' },
-      { id: 'kronis-palpitation', text: 'Apakah Anda merasakan jantung berdebar-debar?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 }], required: true, section: 'Riwayat Jantung' },
-      { id: 'kronis-swelling-feet', text: 'Apakah Anda mengalami bengkak pada kaki?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 }], required: true, section: 'Riwayat Jantung' },
-    ],
-    scoringAlgorithm: {
-      type: 'sum',
-      ranges: [
-        { min: 0, max: 5, category: 'rendah', label: 'Risiko Rendah Penyakit Kronis', recommendations: ['Pemeriksaan kesehatan rutin tahunan', 'Pertahankan gaya hidup sehat', 'Monitoring tekanan darah dan gula darah'] },
-        { min: 6, max: 14, category: 'sedang', label: 'Risiko Sedang Penyakit Kronis', recommendations: ['Pemeriksaan laboratorium lengkap', 'Konsultasi dokter', 'Modifikasi gaya hidup', 'Monitoring berkala'] },
-        { min: 15, max: 99, category: 'tinggi', label: 'Risiko Tinggi Penyakit Kronis', recommendations: ['Rujuk ke dokter spesialis', 'Pemeriksaan lengkap segera', 'ECG dan spirometri', 'Farmakoterapi jika diperlukan', 'Monitoring ketat'] },
-      ],
-    },
-  },
-
-  // ── Skrining Haji dan Umroh ──────────────────────────────────────────────
-  {
-    id: 'tmpl-haji',
-    name: 'Skrining Kesehatan Haji & Umroh',
-    category: 'haji_umroh',
-    standard: 'Kuesioner Istithaah Kesehatan Haji',
-    description: 'Skrining kesehatan untuk jemaah haji dan umroh berdasarkan kuesioner Istithaah Kesehatan.',
-    estimatedMinutes: 10,
-    questions: [
-      { id: 'haji-chronic', text: 'Apakah Anda memiliki penyakit kronis?', type: 'checkbox', options: [{ label: 'Diabetes', value: 'dm', score: 2 }, { label: 'Hipertensi', value: 'ht', score: 2 }, { label: 'Penyakit Jantung', value: 'jantung', score: 3 }, { label: 'Asma/PPOK', value: 'asma', score: 2 }, { label: 'Ginjal', value: 'ginjal', score: 3 }, { label: 'Tidak ada', value: 'tidak_ada', score: 0 }], required: true, section: 'Riwayat Penyakit' },
-      { id: 'haji-medication', text: 'Apakah Anda minum obat rutin?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya, 1–2 jenis', value: 1, score: 1 }, { label: 'Ya, > 2 jenis', value: 2, score: 2 }], required: true, section: 'Pengobatan' },
-      { id: 'haji-surgery', text: 'Apakah pernah menjalani operasi?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya, > 1 tahun lalu', value: 1, score: 1 }, { label: 'Ya, < 1 tahun lalu', value: 2, score: 2 }], required: true, section: 'Riwayat Pengobatan' },
-      { id: 'haji-allergy', text: 'Apakah Anda memiliki alergi obat?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 1 }], required: true, section: 'Alergi' },
-      { id: 'haji-walking', text: 'Apakah Anda mampu berjalan jarak jauh (± 5 km)?', type: 'radio', options: [{ label: 'Ya, tanpa kesulitan', value: 0, score: 0 }, { label: 'Ya, dengan sedikit kesulitan', value: 1, score: 1 }, { label: 'Tidak mampu', value: 2, score: 3 }], required: true, section: 'Kemampuan Fisik' },
-      { id: 'haji-vaccine', text: 'Apakah vaksinasi sudah lengkap (Meningitis, COVID-19)?', type: 'radio', options: [{ label: 'Ya, lengkap', value: 0, score: 0 }, { label: 'Belum lengkap', value: 1, score: 2 }], required: true, section: 'Vaksinasi' },
-    ],
-    scoringAlgorithm: {
-      type: 'sum',
-      ranges: [
-        { min: 0, max: 3, category: 'rendah', label: 'Istithaah Sehat', recommendations: ['Lanjutkan persiapan haji/umroh', 'Vaksinasi lengkap', 'Persiapkan fisik', 'Bawa obat pribadi'] },
-        { min: 4, max: 8, category: 'sedang', label: 'Perlu Pengawasan', recommendations: ['Konsultasi dokter sebelum berangkat', 'Siapkan obat cadangan', 'Monitoring kesehatan selama perjalanan', 'Daftar ke klinik haji'] },
-        { min: 9, max: 99, category: 'tinggi', label: 'Risiko Tinggi', recommendations: ['Evaluasi menyeluruh sebelum keberangkatan', 'Pendampingan medis diperlukan', 'Siapkan surat keterangan dokter', 'Pertimbangkan penundaan jika perlu'] },
-      ],
-    },
-  },
-
-  // ── Edinburgh Postnatal Depression Scale ──────────────────────────────────
-  {
-    id: 'tmpl-epds',
-    name: 'Skrining Depresi Postpartum (EPDS)',
-    category: 'nifas',
-    standard: 'Edinburgh Postnatal Depression Scale',
-    description: 'Edinburgh Postnatal Depression Scale untuk skrining depresi pada ibu nifas.',
-    estimatedMinutes: 6,
-    questions: [
-      { id: 'epds1', text: 'Saya bisa tertawa dan melihat sisi yang menyenangkan dari sesuatu', type: 'radio', options: [{ label: 'Sama seperti biasanya (0)', value: 0, score: 0 }, { label: 'Tidak begitu banyak sekarang (1)', value: 1, score: 1 }, { label: 'Jauh lebih sedikit sekarang (2)', value: 2, score: 2 }, { label: 'Sama sekali tidak (3)', value: 3, score: 3 }], required: true },
-      { id: 'epds2', text: 'Saya menantikan sesuatu dengan senang hati', type: 'radio', options: [{ label: 'Sama seperti biasanya (0)', value: 0, score: 0 }, { label: 'Lebih sedikit dari biasanya (1)', value: 1, score: 1 }, { label: 'Jauh lebih sedikit dari biasanya (2)', value: 2, score: 2 }, { label: 'Hampir tidak pernah (3)', value: 3, score: 3 }], required: true },
-      { id: 'epds3', text: 'Saya menyalahkan diri saya tanpa alasan ketika ada yang salah', type: 'radio', options: [{ label: 'Tidak pernah (0)', value: 0, score: 0 }, { label: 'Tidak sering (1)', value: 1, score: 1 }, { label: 'Kadang-kadang (2)', value: 2, score: 2 }, { label: 'Ya, sering kali (3)', value: 3, score: 3 }], required: true },
-      { id: 'epds4', text: 'Saya merasa cemas atau khawatir tanpa alasan yang jelas', type: 'radio', options: [{ label: 'Tidak pernah (0)', value: 0, score: 0 }, { label: 'Kadang-kadang (1)', value: 1, score: 1 }, { label: 'Sering (2)', value: 2, score: 2 }, { label: 'Sangat sering (3)', value: 3, score: 3 }], required: true },
-      { id: 'epds5', text: 'Saya merasa takut atau panik tanpa alasan yang jelas', type: 'radio', options: [{ label: 'Tidak pernah (0)', value: 0, score: 0 }, { label: 'Kadang-kadang (1)', value: 1, score: 1 }, { label: 'Sering (2)', value: 2, score: 2 }, { label: 'Sangat sering (3)', value: 3, score: 3 }], required: true },
-      { id: 'epds6', text: 'Segala sesuatu di luar kemampuan saya', type: 'radio', options: [{ label: 'Tidak pernah (0)', value: 0, score: 0 }, { label: 'Kadang-kadang (1)', value: 1, score: 1 }, { label: 'Sering (2)', value: 2, score: 2 }, { label: 'Sangat sering (3)', value: 3, score: 3 }], required: true },
-      { id: 'epds7', text: 'Saya merasa sangat sedih sehingga sulit tidur', type: 'radio', options: [{ label: 'Tidak pernah (0)', value: 0, score: 0 }, { label: 'Kadang-kadang (1)', value: 1, score: 1 }, { label: 'Sering (2)', value: 2, score: 2 }, { label: 'Sangat sering (3)', value: 3, score: 3 }], required: true },
-      { id: 'epds8', text: 'Saya merasa sedih dan tidak bahagia', type: 'radio', options: [{ label: 'Tidak pernah (0)', value: 0, score: 0 }, { label: 'Kadang-kadang (1)', value: 1, score: 1 }, { label: 'Sering (2)', value: 2, score: 2 }, { label: 'Sangat sering (3)', value: 3, score: 3 }], required: true },
-      { id: 'epds9', text: 'Saya merasa sangat tidak bahagia sehingga menangis', type: 'radio', options: [{ label: 'Tidak pernah (0)', value: 0, score: 0 }, { label: 'Kadang-kadang (1)', value: 1, score: 1 }, { label: 'Sering (2)', value: 2, score: 2 }, { label: 'Sangat sering (3)', value: 3, score: 3 }], required: true },
-      { id: 'epds10', text: 'Pikiran menyakiti diri sendiri pernah muncul', type: 'radio', options: [{ label: 'Tidak pernah (0)', value: 0, score: 0 }, { label: 'Kadang-kadang (1)', value: 1, score: 1 }, { label: 'Sering (2)', value: 2, score: 2 }, { label: 'Sangat sering (3)', value: 3, score: 3 }], required: true },
-    ],
-    scoringAlgorithm: {
-      type: 'sum',
-      ranges: [
-        { min: 0, max: 8, category: 'rendah', label: 'Tidak Depresi', recommendations: ['Dukungan emosional dari keluarga', 'Istirahat cukup', 'Aktivitas ringan'] },
-        { min: 9, max: 12, category: 'sedang', label: 'Kemungkinan Depresi', recommendations: ['Konsultasi dengan tenaga kesehatan', 'Dukungan psikososial', 'Evaluasi ulang dalam 2 minggu'] },
-        { min: 13, max: 99, category: 'tinggi', label: 'Depresi Postpartum', recommendations: ['Rujuk ke psikiater', 'Evaluasi risiko bunuh diri', 'Dukungan intensif', 'Pertimbangkan farmakoterapi'] },
-      ],
-    },
-  },
-
-  // ── Skrining Bayi (0-11 bulan) ────────────────────────────────────────────
-  {
-    id: 'tmpl-bayi',
-    name: 'Skrining Tumbuh Kembang Bayi (0–11 bulan)',
-    category: 'bayi',
-    standard: 'KPSP',
-    description: 'Skrining tumbuh kembang bayi berdasarkan Kuesioner Pra Skrining Perkembangan (KPSP).',
-    estimatedMinutes: 8,
-    questions: [
-      { id: 'bayi-age', text: 'Berapa usia bayi?', type: 'radio', options: [{ label: '0–3 bulan', value: 0, score: 0 }, { label: '4–6 bulan', value: 1, score: 0 }, { label: '7–9 bulan', value: 2, score: 0 }, { label: '10–11 bulan', value: 3, score: 0 }], required: true, section: 'Data Bayi' },
-      { id: 'bayi-smile', text: 'Apakah bayi sudah bisa tersenyum saat diajak bermain?', type: 'radio', options: [{ label: 'Ya', value: 0, score: 0 }, { label: 'Belum', value: 1, score: 2 }], required: true, section: 'Perkembangan Sosial' },
-      { id: 'bayi-follow', text: 'Apakah bayi bisa mengikuti gerakan benda dengan matanya?', type: 'radio', options: [{ label: 'Ya', value: 0, score: 0 }, { label: 'Belum', value: 1, score: 2 }], required: true, section: 'Perkembangan Sosial' },
-      { id: 'bayi-head', text: 'Apakah bayi sudah bisa mengangkat kepala saat tengkurap?', type: 'radio', options: [{ label: 'Ya', value: 0, score: 0 }, { label: 'Belum', value: 1, score: 2 }], required: true, section: 'Motorik Kasar' },
-      { id: 'bayi-grasp', text: 'Apakah bayi sudah bisa menggenggam benda?', type: 'radio', options: [{ label: 'Ya', value: 0, score: 0 }, { label: 'Belum', value: 1, score: 2 }], required: true, section: 'Motorik Halus' },
-      { id: 'bayi-babble', text: 'Apakah bayi sudah bisa mengoceh (babbling)?', type: 'radio', options: [{ label: 'Ya', value: 0, score: 0 }, { label: 'Belum', value: 1, score: 2 }], required: true, section: 'Bahasa' },
-      { id: 'bayi-bb', text: 'Apakah berat badan bayi naik sesuai KMS?', type: 'radio', options: [{ label: 'Ya', value: 0, score: 0 }, { label: 'Tidak naik', value: 1, score: 3 }], required: true, section: 'Pertumbuhan' },
-      { id: 'bayi-asi', text: 'Apakah bayi mendapat ASI eksklusif?', type: 'radio', options: [{ label: 'Ya', value: 0, score: 0 }, { label: 'Tidak', value: 1, score: 1 }], required: true, section: 'Nutrisi' },
-    ],
-    scoringAlgorithm: {
-      type: 'sum',
-      ranges: [
-        { min: 0, max: 3, category: 'rendah', label: 'Perkembangan Sesuai Usia', recommendations: ['Lanjutkan stimulasi tumbuh kembang', 'ASI eksklusif hingga 6 bulan', 'Imunisasi sesuai jadwal'] },
-        { min: 4, max: 8, category: 'sedang', label: 'Perlu Stimulasi Lebih', recommendations: ['Tingkatkan stimulasi', 'Konsultasi dengan dokter anak', 'Latihan motorik dan bahasa', 'Evaluasi ulang 1 bulan'] },
-        { min: 9, max: 99, category: 'tinggi', label: 'Perkembangan Terlambat', recommendations: ['Rujuk ke dokter anak spesialis tumbuh kembang', 'Intervensi dini', 'Terapi okupasi/fisioterapi', 'Evaluasi menyeluruh'] },
-      ],
-    },
-  },
-
-  // ── Skrining Anak Sekolah (SDQ) ──────────────────────────────────────────
-  {
-    id: 'tmpl-sdq',
-    name: 'Skrining Kesehatan Anak (SDQ)',
-    category: 'anak_sekolah',
-    standard: 'SDQ Anak',
-    description: 'Strengths and Difficulties Questionnaire untuk skrining kesehatan mental anak usia sekolah.',
-    estimatedMinutes: 8,
-    questions: [
-      { id: 'sdq1', text: 'Saya sering mengalami sakit kepala, sakit perut, atau merasa tidak enak badan', type: 'radio', options: [{ label: 'Tidak benar (0)', value: 0, score: 0 }, { label: 'Agak benar (1)', value: 1, score: 1 }, { label: 'Pasti benar (2)', value: 2, score: 2 }], required: true, section: 'Gejala Somatic' },
-      { id: 'sdq2', text: 'Saya sering merasa khawatir', type: 'radio', options: [{ label: 'Tidak benar (0)', value: 0, score: 0 }, { label: 'Agak benar (1)', value: 1, score: 1 }, { label: 'Pasti benar (2)', value: 2, score: 2 }], required: true, section: 'Gejala Emosional' },
-      { id: 'sdq3', text: 'Saya sering merasa sedih atau depresi', type: 'radio', options: [{ label: 'Tidak benar (0)', value: 0, score: 0 }, { label: 'Agak benar (1)', value: 1, score: 1 }, { label: 'Pasti benar (2)', value: 2, score: 2 }], required: true, section: 'Gejala Emosional' },
-      { id: 'sdq4', text: 'Saya gelisah, tidak bisa diam lama', type: 'radio', options: [{ label: 'Tidak benar (0)', value: 0, score: 0 }, { label: 'Agak benar (1)', value: 1, score: 1 }, { label: 'Pasti benar (2)', value: 2, score: 2 }], required: true, section: 'Hiperaktivitas' },
-      { id: 'sdq5', text: 'Saya terus-menerus bergerak', type: 'radio', options: [{ label: 'Tidak benar (0)', value: 0, score: 0 }, { label: 'Agak benar (1)', value: 1, score: 1 }, { label: 'Pasti benar (2)', value: 2, score: 2 }], required: true, section: 'Hiperaktivitas' },
-      { id: 'sdq6', text: 'Saya mudah teralihkan, sulit berkonsentrasi', type: 'radio', options: [{ label: 'Tidak benar (0)', value: 0, score: 0 }, { label: 'Agak benar (1)', value: 1, score: 1 }, { label: 'Pasti benar (2)', value: 2, score: 2 }], required: true, section: 'Hiperaktivitas' },
-      { id: 'sdq7', text: 'Saya sering bertengkar dengan anak lain', type: 'radio', options: [{ label: 'Tidak benar (0)', value: 0, score: 0 }, { label: 'Agak benar (1)', value: 1, score: 1 }, { label: 'Pasti benar (2)', value: 2, score: 2 }], required: true, section: 'Masalah Perilaku' },
-      { id: 'sdq8', text: 'Saya sering berbohong atau curang', type: 'radio', options: [{ label: 'Tidak benar (0)', value: 0, score: 0 }, { label: 'Agak benar (1)', value: 1, score: 1 }, { label: 'Pasti benar (2)', value: 2, score: 2 }], required: true, section: 'Masalah Perilaku' },
-      { id: 'sdq9', text: 'Saya lebih suka sendiri daripada bersama orang lain', type: 'radio', options: [{ label: 'Tidak benar (0)', value: 0, score: 0 }, { label: 'Agak benar (1)', value: 1, score: 1 }, { label: 'Pasti benar (2)', value: 2, score: 2 }], required: true, section: 'Masalah Teman Sebaya' },
-      { id: 'sdq10', text: 'Saya umumnya disukai oleh anak lain', type: 'radio', options: [{ label: 'Pasti benar (0)', value: 0, score: 0 }, { label: 'Agak benar (1)', value: 1, score: 1 }, { label: 'Tidak benar (2)', value: 2, score: 2 }], required: true, section: 'Masalah Teman Sebaya' },
-    ],
-    scoringAlgorithm: {
-      type: 'sum',
-      ranges: [
-        { min: 0, max: 8, category: 'rendah', label: 'Normal', recommendations: ['Anak dalam kondisi normal', 'Dukungan orang tua yang baik', 'Lanjutkan pengasuhan positif'] },
-        { min: 9, max: 14, category: 'sedang', label: 'Agak Sulit', recommendations: ['Perhatikan lebih lanjut', 'Diskusi dengan guru', 'Peningkatan komunikasi orang tua-anak', 'Evaluasi ulang'] },
-        { min: 15, max: 99, category: 'tinggi', label: 'Sangat Sulit', recommendations: ['Konsultasi psikolog anak', 'Evaluasi lebih lanjut', 'Pertimbangkan intervensi', 'Dukungan keluarga dan sekolah'] },
-      ],
-    },
-  },
-
-  // ── Skrining Remaja ──────────────────────────────────────────────────────
-  {
-    id: 'tmpl-remaja',
-    name: 'Skrining Kesehatan Remaja',
-    category: 'remaja',
-    standard: 'Skrining PTM Kemenkes RI',
-    description: 'Skrining kesehatan untuk remaja usia 13–18 tahun mencakup kesehatan fisik dan mental.',
-    estimatedMinutes: 8,
-    questions: [
-      { id: 'remaja-bmi', text: 'Bagaimana status BMI Anda?', type: 'radio', options: [{ label: 'Normal (18.5–22.9)', value: 0, score: 0 }, { label: 'Underweight (< 18.5)', value: 1, score: 1 }, { label: 'Overweight (23–27.4)', value: 2, score: 1 }, { label: 'Obesitas (≥ 27.5)', value: 3, score: 2 }], required: true, section: 'Fisik' },
-      { id: 'remaja-exercise', text: 'Apakah Anda berolahraga minimal 60 menit/hari?', type: 'radio', options: [{ label: 'Ya', value: 0, score: 0 }, { label: 'Tidak', value: 1, score: 2 }], required: true, section: 'Fisik' },
-      { id: 'remaja-sleep', text: 'Berapa jam tidur per malam?', type: 'radio', options: [{ label: '8–10 jam', value: 0, score: 0 }, { label: '6–7 jam', value: 1, score: 1 }, { label: '< 6 jam', value: 2, score: 2 }], required: true, section: 'Fisik' },
-      { id: 'remaja-smoke', text: 'Apakah Anda merokok atau menggunakan vape?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Pernah mencoba', value: 1, score: 1 }, { label: 'Ya, rutin', value: 2, score: 3 }], required: true, section: 'Gaya Hidup' },
-      { id: 'remaja-stress', text: 'Seberapa sering Anda merasa tertekan/stres?', type: 'radio', options: [{ label: 'Jarang', value: 0, score: 0 }, { label: 'Kadang-kadang', value: 1, score: 1 }, { label: 'Sering', value: 2, score: 2 }], required: true, section: 'Mental' },
-      { id: 'remaja-sad', text: 'Apakah Anda sering merasa sedih tanpa alasan jelas?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Kadang-kadang', value: 1, score: 1 }, { label: 'Sering', value: 2, score: 3 }], required: true, section: 'Mental' },
-      { id: 'remaja-bullying', text: 'Apakah Anda pernah mengalami perundungan/bullying?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Pernah', value: 1, score: 2 }, { label: 'Sering', value: 2, score: 3 }], required: true, section: 'Sosial' },
-      { id: 'remaja-screen', text: 'Berapa jam penggunaan gadget per hari (di luar sekolah)?', type: 'radio', options: [{ label: '< 2 jam', value: 0, score: 0 }, { label: '2–4 jam', value: 1, score: 1 }, { label: '> 4 jam', value: 2, score: 2 }], required: true, section: 'Gaya Hidup' },
-    ],
-    scoringAlgorithm: {
-      type: 'sum',
-      ranges: [
-        { min: 0, max: 4, category: 'rendah', label: 'Sehat', recommendations: ['Pertahankan gaya hidup sehat', 'Olahraga teratur', 'Tidur cukup', 'Batasi penggunaan gadget'] },
-        { min: 5, max: 10, category: 'sedang', label: 'Perlu Perhatian', recommendations: ['Tingkatkan aktivitas fisik', 'Perbaiki pola tidur', 'Kelola stres dengan baik', 'Kurangi waktu layar', 'Bicara dengan orang tua/konselor'] },
-        { min: 11, max: 99, category: 'tinggi', label: 'Berisiko', recommendations: ['Konsultasi dengan dokter/psikolog', 'Evaluasi kesehatan mental', 'Dukungan keluarga', 'Intervensi gaya hidup', 'Monitoring berkala'] },
-      ],
-    },
-  },
-
-  // ── Skrining Risiko PTM Umum ─────────────────────────────────────────────
-  {
-    id: 'tmpl-ptm',
-    name: 'Skrining Risiko Penyakit Tidak Menular (PTM)',
-    category: 'ptm',
-    standard: 'Skrining PTM Kementerian Kesehatan RI',
-    description: 'Skrining risiko PTM berdasarkan pedoman Kementerian Kesehatan RI untuk pendekatan upaya kesehatan masyarakat.',
-    estimatedMinutes: 10,
-    questions: [
-      { id: 'ptm-age', text: 'Berapa usia Anda?', type: 'radio', options: [{ label: '< 40 tahun', value: 0, score: 0 }, { label: '40–54 tahun', value: 1, score: 1 }, { label: '≥ 55 tahun', value: 2, score: 2 }], required: true, section: 'Faktor Risiko' },
-      { id: 'ptm-smoke', text: 'Status merokok?', type: 'radio', options: [{ label: 'Tidak pernah', value: 0, score: 0 }, { label: 'Mantan perokok', value: 1, score: 1 }, { label: 'Perokok aktif', value: 2, score: 3 }], required: true, section: 'Faktor Risiko' },
-      { id: 'ptm-alcohol', text: 'Konsumsi alkohol?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 }], required: true, section: 'Faktor Risiko' },
-      { id: 'ptm-physical', text: 'Aktivitas fisik?', type: 'radio', options: [{ label: 'Aktif (≥ 150 menit/minggu)', value: 0, score: 0 }, { label: 'Kurang aktif', value: 1, score: 2 }], required: true, section: 'Faktor Risiko' },
-      { id: 'ptm-diet', text: 'Pola makan?', type: 'radio', options: [{ label: 'Sehat (banyak sayur/buah, rendah garam/gula)', value: 0, score: 0 }, { label: 'Cukup', value: 1, score: 1 }, { label: 'Tidak sehat', value: 2, score: 2 }], required: true, section: 'Faktor Risiko' },
-      { id: 'ptm-bmi', text: 'Status BMI?', type: 'radio', options: [{ label: 'Normal', value: 0, score: 0 }, { label: 'Overweight', value: 1, score: 1 }, { label: 'Obesitas', value: 2, score: 2 }], required: true, section: 'Faktor Risiko' },
-      { id: 'ptm-waist', text: 'Lingkar pinggang berlebih?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 }], required: true, section: 'Faktor Risiko' },
-      { id: 'ptm-bp', text: 'Tekanan darah tinggi?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 }], required: true, section: 'Kondisi Saat Ini' },
-      { id: 'ptm-glucose', text: 'Kadar gula darah tinggi?', type: 'radio', options: [{ label: 'Tidak tahu/Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 }], required: true, section: 'Kondisi Saat Ini' },
-      { id: 'ptm-cholesterol', text: 'Kolesterol tinggi?', type: 'radio', options: [{ label: 'Tidak tahu/Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 }], required: true, section: 'Kondisi Saat Ini' },
-      { id: 'ptm-family', text: 'Riwayat keluarga dengan PTM?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 2 }], required: true, section: 'Riwayat Keluarga' },
-    ],
-    scoringAlgorithm: {
-      type: 'sum',
-      ranges: [
-        { min: 0, max: 5, category: 'rendah', label: 'Risiko Rendah PTM', recommendations: ['Pertahankan gaya hidup sehat', 'Cek kesehatan rutin tahunan', 'Jaga berat badan ideal'] },
-        { min: 6, max: 12, category: 'sedang', label: 'Risiko Sedang PTM', recommendations: ['Pemeriksaan kesehatan berkala', 'Modifikasi gaya hidup', 'Konsultasi gizi', 'Monitoring tekanan darah dan gula darah'] },
-        { min: 13, max: 99, category: 'tinggi', label: 'Risiko Tinggi PTM', recommendations: ['Pemeriksaan menyeluruh segera', 'Konsultasi dokter', 'Program modifikasi gaya hidup intensif', 'Pemeriksaan laboratorium lengkap', 'Monitoring rutin'] },
-      ],
-    },
-  },
-
-  // ── Skrining Dewasa ──────────────────────────────────────────────────────
-  {
-    id: 'tmpl-dewasa',
-    name: 'Skrining Kesehatan Dewasa',
-    category: 'dewasa',
-    standard: 'WHO STEPS',
-    description: 'Skrining kesehatan umum untuk dewasa usia 19–59 tahun.',
-    estimatedMinutes: 8,
-    questions: [
-      { id: 'dewasa-checkup', text: 'Kapan terakhir kali Anda melakukan pemeriksaan kesehatan?', type: 'radio', options: [{ label: '< 1 tahun', value: 0, score: 0 }, { label: '1–3 tahun', value: 1, score: 1 }, { label: '> 3 tahun atau tidak pernah', value: 2, score: 2 }], required: true, section: 'Riwayat Kesehatan' },
-      { id: 'dewasa-chronic', text: 'Apakah Anda memiliki penyakit kronis?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya, terkontrol', value: 1, score: 1 }, { label: 'Ya, tidak terkontrol', value: 2, score: 3 }], required: true, section: 'Riwayat Kesehatan' },
-      { id: 'dewasa-medication', text: 'Apakah Anda mengonsumsi obat rutin?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Ya', value: 1, score: 1 }], required: true, section: 'Riwayat Kesehatan' },
-      { id: 'dewasa-exercise', text: 'Aktivitas fisik?', type: 'radio', options: [{ label: '≥ 150 menit/minggu', value: 0, score: 0 }, { label: '< 150 menit/minggu', value: 1, score: 2 }], required: true, section: 'Gaya Hidup' },
-      { id: 'dewasa-smoke', text: 'Status merokok?', type: 'radio', options: [{ label: 'Tidak', value: 0, score: 0 }, { label: 'Mantan perokok', value: 1, score: 1 }, { label: 'Perokok aktif', value: 2, score: 2 }], required: true, section: 'Gaya Hidup' },
-      { id: 'dewasa-bmi', text: 'Status BMI?', type: 'radio', options: [{ label: 'Normal', value: 0, score: 0 }, { label: 'Overweight', value: 1, score: 1 }, { label: 'Obesitas', value: 2, score: 2 }], required: true, section: 'Fisik' },
-      { id: 'dewasa-stress', text: 'Tingkat stres?', type: 'radio', options: [{ label: 'Rendah', value: 0, score: 0 }, { label: 'Sedang', value: 1, score: 1 }, { label: 'Tinggi', value: 2, score: 2 }], required: true, section: 'Mental' },
-      { id: 'dewasa-sleep', text: 'Kualitas tidur?', type: 'radio', options: [{ label: 'Baik (7–9 jam)', value: 0, score: 0 }, { label: 'Cukup', value: 1, score: 1 }, { label: 'Buruk', value: 2, score: 2 }], required: true, section: 'Gaya Hidup' },
-    ],
-    scoringAlgorithm: {
-      type: 'sum',
-      ranges: [
-        { min: 0, max: 4, category: 'rendah', label: 'Sehat', recommendations: ['Pertahankan gaya hidup sehat', 'Pemeriksaan rutin tahunan', 'Jaga berat badan ideal'] },
-        { min: 5, max: 10, category: 'sedang', label: 'Perlu Perhatian', recommendations: ['Perbaiki gaya hidup', 'Konsultasi dokter', 'Tingkatkan aktivitas fisik', 'Kelola stres'] },
-        { min: 11, max: 99, category: 'tinggi', label: 'Berisiko', recommendations: ['Pemeriksaan kesehatan menyeluruh', 'Konsultasi dokter segera', 'Program modifikasi gaya hidup', 'Monitoring berkala'] },
-      ],
-    },
   },
 ];
 
-// ── Scoring Engine ──────────────────────────────────────────────────────────
+// ── Helper Functions ─────────────────────────────────────────────────────────
 
-export function calculateScreeningScore(
-  template: ScreeningTemplate,
+export function getModuleById(id: ScreeningModuleId): ScreeningModule | undefined {
+  return SCREENING_MODULES.find(m => m.id === id);
+}
+
+export function getRequiredModules(): ScreeningModule[] {
+  return SCREENING_MODULES.filter(m => m.isRequired);
+}
+
+export function getModulesForPatient(age?: number, hasChronic?: boolean): ScreeningModule[] {
+  let modules = SCREENING_MODULES.filter(m => m.targetAudience === 'all');
+  if (age !== undefined && age >= 60) {
+    modules = [...modules, ...SCREENING_MODULES.filter(m => m.targetAudience === 'lansia')];
+  }
+  if (hasChronic) {
+    modules = [...modules, ...SCREENING_MODULES.filter(m => m.targetAudience === 'kronis')];
+  }
+  // Remove duplicates
+  const seen = new Set<ScreeningModuleId>();
+  return modules.filter(m => {
+    if (seen.has(m.id)) return false;
+    seen.add(m.id);
+    return true;
+  });
+}
+
+export function calculateModuleScore(
+  module: ScreeningModule,
   answers: Record<string, string | number | string[]>
-): { score: number; riskCategory: RiskCategory; label: string; recommendations: string[] } {
-  let totalScore = 0;
+): { score: number; riskCategory: 'rendah' | 'sedang' | 'tinggi'; label: string; recommendations: string[] } {
+  if (!module.scoringAlgorithm) {
+    return { score: 0, riskCategory: 'rendah', label: 'Tidak ada scoring', recommendations: [] };
+  }
 
-  for (const question of template.questions) {
-    const answer = answers[question.id];
-    if (answer === undefined || answer === null || answer === '') continue;
+  let score = 0;
+  for (const q of module.questions) {
+    const answer = answers[q.id];
+    if (answer === undefined || answer === '') continue;
 
-    if (question.type === 'checkbox' && Array.isArray(answer)) {
-      // For checkbox, sum scores of selected options
-      for (const selectedValue of answer as string[]) {
-        const option = question.options?.find((o) => String(o.value) === String(selectedValue));
-        if (option) totalScore += option.score;
+    if (q.type === 'checkbox' && Array.isArray(answer)) {
+      for (const val of answer) {
+        const opt = q.options?.find(o => String(o.value) === String(val));
+        if (opt) score += opt.score;
       }
-    } else if (question.type === 'radio' && question.options) {
-      const option = question.options.find((o) => String(o.value) === String(answer));
-      if (option) totalScore += option.score;
-    } else if (question.type === 'number') {
-      // For number type, direct value as score if no options
-      if (!question.options) {
-        totalScore += Number(answer) || 0;
-      }
+    } else if (q.type === 'radio' && q.options) {
+      const opt = q.options.find(o => String(o.value) === String(answer));
+      if (opt) score += opt.score;
+    } else if (q.type === 'scale') {
+      score += Number(answer) || 0;
     }
   }
 
-  // Find matching risk range
-  const range = template.scoringAlgorithm.ranges.find(
-    (r) => totalScore >= r.min && totalScore <= r.max
-  );
-
+  const range = module.scoringAlgorithm.ranges.find(r => score >= r.min && score <= r.max);
   return {
-    score: totalScore,
+    score,
     riskCategory: range?.category || 'rendah',
-    label: range?.label || 'Tidak Dapat Dinilai',
+    label: range?.label || 'Tidak terklasifikasi',
     recommendations: range?.recommendations || [],
   };
 }
 
-// ── Progress Calculator ─────────────────────────────────────────────────────
-
 export function calculateProgress(
-  template: ScreeningTemplate,
-  answers: Record<string, string | number | string[]>
+  modules: ScreeningModule[],
+  moduleAnswers: Record<string, Record<string, string | number | string[]>>
 ): number {
-  const totalQuestions = template.questions.length;
-  if (totalQuestions === 0) return 0;
+  let totalRequired = 0;
+  let filledRequired = 0;
 
-  const answeredQuestions = template.questions.filter((q) => {
-    const answer = answers[q.id];
-    if (answer === undefined || answer === null || answer === '') return false;
-    if (Array.isArray(answer) && answer.length === 0) return false;
-    return true;
-  }).length;
+  for (const mod of modules) {
+    const requiredQuestions = mod.questions.filter(q => q.required);
+    totalRequired += requiredQuestions.length;
+    const answers = moduleAnswers[mod.id] || {};
+    for (const q of requiredQuestions) {
+      const answer = answers[q.id];
+      if (answer !== undefined && answer !== '' && !(Array.isArray(answer) && answer.length === 0)) {
+        filledRequired++;
+      }
+    }
+  }
 
-  return Math.round((answeredQuestions / totalQuestions) * 100);
+  return totalRequired === 0 ? 0 : Math.round((filledRequired / totalRequired) * 100);
 }
 
-// ── Get Templates by Category ───────────────────────────────────────────────
+// ── Triage Calculation ───────────────────────────────────────────────────────
 
-export function getTemplatesByCategory(category: ScreeningCategory): ScreeningTemplate[] {
-  return SCREENING_TEMPLATES.filter((t) => t.category === category);
+export function calculateTriage(
+  moduleScores: Record<string, { score: number; riskCategory: 'rendah' | 'sedang' | 'tinggi'; label: string; recommendations: string[] }>,
+  moduleAnswers: Record<string, Record<string, string | number | string[]>>
+): TriageResult {
+  const now = new Date().toISOString();
+
+  // Check for red flags first
+  const redFlagAnswers = moduleAnswers['tanda_bahaya'] || {};
+  const redFlagScore = moduleScores['tanda_bahaya']?.score || 0;
+
+  // Any yes to critical red flags = MERAH
+  const criticalFlags = ['tb-sesak', 'tb-nyeridada', 'tb-kesadaran', 'tb-kejang', 'tb-perdarahan', 'tb-kelemahan'];
+  const hasCriticalFlag = criticalFlags.some(id => Number(redFlagAnswers[id]) === 1);
+
+  if (hasCriticalFlag || redFlagScore >= 5) {
+    return {
+      level: 'merah',
+      label: 'MERAH',
+      description: 'Disarankan pemeriksaan langsung atau rujukan ke IGD',
+      recommendation: 'Pasien menunjukkan tanda bahaya yang mengancam jiwa. Segera rujuk ke fasilitas kesehatan atau IGD.',
+      calculatedAt: now,
+    };
+  }
+
+  // Check for high-risk mental health (suicidal ideation)
+  const mentalAnswers = moduleAnswers['kesehatan_mental'] || {};
+  if (Number(mentalAnswers['km-pikiran']) === 1) {
+    return {
+      level: 'merah',
+      label: 'MERAH',
+      description: 'Risiko bunuh diri terdeteksi — rujuk segera',
+      recommendation: 'Pasien melaporkan pikiran menyakiti diri sendiri. Segera lakukan intervensi krisis dan rujuk ke psikiater/IGD.',
+      calculatedAt: now,
+    };
+  }
+
+  // Check for orange criteria (home care needed, moderate red flags)
+  const homeCareScore = moduleScores['home_care']?.riskCategory;
+  const palliativeScore = moduleScores['paliatif']?.riskCategory;
+  const functionalScore = moduleScores['status_fungsional']?.riskCategory;
+
+  if (redFlagScore >= 1 || homeCareScore === 'tinggi' || palliativeScore === 'tinggi' || functionalScore === 'tinggi') {
+    return {
+      level: 'oranye',
+      label: 'ORANYE',
+      description: 'Direkomendasikan kunjungan home care',
+      recommendation: 'Pasien memerlukan evaluasi lebih lanjut. Pertimbangkan kunjungan home care atau evaluasi di fasilitas kesehatan.',
+      calculatedAt: now,
+    };
+  }
+
+  // Check for yellow criteria (multiple moderate risks)
+  const moderateRisks = Object.values(moduleScores).filter(s => s.riskCategory === 'sedang').length;
+  const highRisks = Object.values(moduleScores).filter(s => s.riskCategory === 'tinggi').length;
+
+  if (moderateRisks >= 2 || highRisks >= 1) {
+    return {
+      level: 'kuning',
+      label: 'KUNING',
+      description: 'Perlu evaluasi dokter dalam 24 jam',
+      recommendation: 'Pasien memerlukan evaluasi dokter dalam 24 jam. Telekonsultasi dapat dilanjutkan dengan pengawasan ketat.',
+      calculatedAt: now,
+    };
+  }
+
+  if (moderateRisks >= 1) {
+    return {
+      level: 'kuning',
+      label: 'KUNING',
+      description: 'Perlu evaluasi dokter dalam 24 jam',
+      recommendation: 'Pasien memiliki beberapa faktor risiko sedang. Evaluasi dokter diperlukan dalam 24 jam.',
+      calculatedAt: now,
+    };
+  }
+
+  // Green — safe for teleconsultation
+  return {
+    level: 'hijau',
+    label: 'HIJAU',
+    description: 'Aman untuk telekonsultasi',
+    recommendation: 'Pasien aman untuk dilanjutkan melalui telekonsultasi. Tidak terdeteksi tanda bahaya atau risiko tinggi.',
+    calculatedAt: now,
+  };
 }
 
-export function getTemplateById(id: string): ScreeningTemplate | undefined {
-  return SCREENING_TEMPLATES.find((t) => t.id === id);
+// ── Clinical Summary Generation ──────────────────────────────────────────────
+
+export function generateClinicalSummary(
+  moduleAnswers: Record<string, Record<string, string | number | string[]>>,
+  moduleScores: Record<string, { score: number; riskCategory: 'rendah' | 'sedang' | 'tinggi'; label: string; recommendations: string[] }>
+): ClinicalSummary {
+  const ku = moduleAnswers['keluhan_utama'] || {};
+  const tv = moduleAnswers['tanda_vital'] || {};
+  const pk = moduleAnswers['penyakit_kronis'] || {};
+  const ny = moduleAnswers['nyeri'] || {};
+  const km = moduleAnswers['kesehatan_mental'] || {};
+  const sf = moduleAnswers['status_fungsional'] || {};
+  const hc = moduleAnswers['home_care'] || {};
+  const pal = moduleAnswers['paliatif'] || {};
+  const tb = moduleAnswers['tanda_bahaya'] || {};
+
+  // Chief complaint
+  const chiefComplaint = String(ku['ku-keluhan'] || 'Tidak disebutkan');
+
+  // Vital signs
+  const vitalSigns: ClinicalSummary['vitalSigns'] = {
+    weight: tv['tv-berat'] ? Number(tv['tv-berat']) : undefined,
+    height: tv['tv-tinggi'] ? Number(tv['tv-tinggi']) : undefined,
+    temperature: tv['tv-suhu'] ? Number(tv['tv-suhu']) : undefined,
+    bloodPressure: tv['tv-sistolik'] && tv['tv-diastolik']
+      ? `${tv['tv-sistolik']}/${tv['tv-diastolik']}` : undefined,
+    heartRate: tv['tv-nadi'] ? Number(tv['tv-nadi']) : undefined,
+    oxygenSat: tv['tv-spo2'] ? Number(tv['tv-spo2']) : undefined,
+    bloodSugar: tv['tv-gds'] ? Number(tv['tv-gds']) : undefined,
+  };
+
+  // Chronic diseases
+  const chronicList = (pk['pk-riwayat'] as string[]) || [];
+  const chronicDiseases = chronicList.filter(v => v !== 'tidak_ada').map(v => {
+    const map: Record<string, string> = { ht: 'Hipertensi', dm: 'Diabetes Mellitus', jantung: 'Penyakit Jantung', stroke: 'Stroke', ppok: 'PPOK', asma: 'Asma', gginjal: 'Gagal Ginjal', kanker: 'Kanker' };
+    return map[v] || v;
+  });
+
+  // Risk factors
+  const riskFactors: string[] = [];
+  if (moduleScores['penyakit_kronis']?.riskCategory !== 'rendah' && chronicDiseases.length > 0) riskFactors.push('Penyakit Kronis');
+  if (moduleScores['nutrisi']?.riskCategory !== 'rendah') riskFactors.push('Risiko Malnutrisi');
+  if (moduleScores['risiko_jatuh']?.riskCategory !== 'rendah') riskFactors.push('Risiko Jatuh');
+  if (moduleScores['kesehatan_mental']?.riskCategory !== 'rendah') riskFactors.push('Gangguan Mental');
+
+  // Red flags
+  const redFlags: string[] = [];
+  const flagMap: Record<string, string> = { 'tb-sesak': 'Sesak Napas Berat', 'tb-nyeridada': 'Nyeri Dada', 'tb-kesadaran': 'Penurunan Kesadaran', 'tb-kejang': 'Kejang', 'tb-perdarahan': 'Perdarahan Aktif', 'tb-kelemahan': 'Kelemahan Mendadak', 'tb-demam': 'Demam Tinggi', 'tb-dehidrasi': 'Dehidrasi Berat', 'tb-tidakmakan': 'Tidak Mampu Makan/Minum' };
+  for (const [key, label] of Object.entries(flagMap)) {
+    if (Number(tb[key]) === 1) redFlags.push(label);
+  }
+
+  // Pain score
+  const painScore = ny['ny-skala'] !== undefined ? Number(ny['ny-skala']) : null;
+
+  // Mental status
+  const mentalPhq2 = (Number(km['km-phq2a']) || 0) + (Number(km['km-phq2b']) || 0);
+  const mentalGad2 = (Number(km['km-gad2a']) || 0) + (Number(km['km-gad2b']) || 0);
+  let mentalStatus = 'Normal';
+  if (mentalPhq2 >= 3 || mentalGad2 >= 3) mentalStatus = 'Perlu Evaluasi Lanjutan';
+  if (Number(km['km-pikiran']) === 1) mentalStatus = 'KRISIS MENTAL';
+
+  // Functional status
+  const adlScore = moduleScores['status_fungsional']?.score || 0;
+  let functionalStatus = 'Mandiri';
+  if (adlScore >= 1 && adlScore <= 5) functionalStatus = 'Sebagian Bergantung';
+  if (adlScore >= 6) functionalStatus = 'Bergantung Total';
+
+  // Home care need
+  const homeCareRisk = moduleScores['home_care']?.riskCategory || 'rendah';
+  let homeCareNeed = 'Tidak diperlukan';
+  if (homeCareRisk === 'sedang') homeCareNeed = 'Direkomendasikan';
+  if (homeCareRisk === 'tinggi') homeCareNeed = 'Diperlukan Segera';
+
+  // Palliative status
+  const palliativeRisk = moduleScores['paliatif']?.riskCategory || 'rendah';
+  let palliativeStatus = 'Tidak diperlukan';
+  if (palliativeRisk === 'sedang') palliativeStatus = 'Pertimbangkan';
+  if (palliativeRisk === 'tinggi') palliativeStatus = 'Diperlukan Evaluasi';
+
+  return {
+    chiefComplaint,
+    riskFactors,
+    chronicDiseases,
+    painScore,
+    mentalStatus,
+    functionalStatus,
+    homeCareNeed,
+    palliativeStatus,
+    redFlags,
+    vitalSigns,
+  };
 }
+
+// ── Triage Colors for UI ─────────────────────────────────────────────────────
+
+export const TRIAGE_COLORS: Record<TriageLevel, { bg: string; text: string; border: string; ring: string }> = {
+  hijau: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', ring: 'ring-emerald-500' },
+  kuning: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', ring: 'ring-yellow-500' },
+  oranye: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', ring: 'ring-orange-500' },
+  merah: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', ring: 'ring-red-500' },
+};
+
+export const TRIAGE_LABELS: Record<TriageLevel, { label: string; description: string }> = {
+  hijau: { label: 'HIJAU — Aman Telekonsultasi', description: 'Aman untuk telekonsultasi' },
+  kuning: { label: 'KUNING — Evaluasi 24 Jam', description: 'Perlu evaluasi dokter dalam 24 jam' },
+  oranye: { label: 'ORANYE — Home Care', description: 'Direkomendasikan kunjungan home care' },
+  merah: { label: 'MERAH — Rujukan IGD', description: 'Disarankan pemeriksaan langsung atau rujukan ke IGD' },
+};

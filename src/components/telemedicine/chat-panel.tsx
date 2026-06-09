@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useStore } from '@/lib/store';
-import type { User, Consultation, Message, DoctorProfile, Prescription, PrescriptionItem, MedicalRecord, MedicalRecordStatus, ScreeningForm, ScreeningCategory } from '@/lib/types';
+import type { User, Consultation, Message, DoctorProfile, Prescription, PrescriptionItem, MedicalRecord, MedicalRecordStatus, ScreeningForm, ScreeningModuleId } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -28,11 +28,12 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
-  SCREENING_TEMPLATES,
-  SCREENING_CATEGORY_LABELS,
-  SCREENING_CATEGORY_ICONS,
-  getTemplateById,
-  calculateScreeningScore,
+  SCREENING_MODULES,
+  MODULE_LABELS,
+  MODULE_ICONS,
+  TRIAGE_COLORS,
+  TRIAGE_LABELS,
+  getModuleById,
   calculateProgress,
 } from '@/lib/screening-templates';
 import {
@@ -256,7 +257,7 @@ export function ChatPanel() {
 
   // Screening dialog state
   const [showScreeningDialog, setShowScreeningDialog] = useState(false);
-  const [selectedScreeningTemplates, setSelectedScreeningTemplates] = useState<string[]>([]);
+  const [selectedModules, setSelectedModules] = useState<ScreeningModuleId[]>(['keluhan_utama', 'tanda_bahaya', 'tanda_vital']);
   const [screeningInstructions, setScreeningInstructions] = useState('');
   const [screeningDeadline, setScreeningDeadline] = useState('');
 
@@ -807,62 +808,58 @@ export function ChatPanel() {
     setShowScreeningDialog(true);
   };
 
-  const handleToggleScreeningTemplate = (templateId: string) => {
-    setSelectedScreeningTemplates((prev) =>
-      prev.includes(templateId)
-        ? prev.filter((id) => id !== templateId)
-        : [...prev, templateId]
+  const handleToggleModule = (moduleId: ScreeningModuleId) => {
+    setSelectedModules((prev) =>
+      prev.includes(moduleId)
+        ? prev.filter((id) => id !== moduleId)
+        : [...prev, moduleId]
     );
   };
 
   const handleSendScreening = () => {
-    if (!activeConsultation || !currentUser || selectedScreeningTemplates.length === 0) return;
+    if (!activeConsultation || !currentUser || selectedModules.length === 0) return;
 
-    selectedScreeningTemplates.forEach((templateId) => {
-      const template = getTemplateById(templateId);
-      if (!template) return;
+    const formId = generateId();
+    const screeningForm: ScreeningForm = {
+      id: formId,
+      consultationId: activeConsultation.id,
+      doctorId: currentUser.id,
+      patientId: activeConsultation.patientId,
+      status: 'sent',
+      instructions: screeningInstructions || undefined,
+      deadline: screeningDeadline || undefined,
+      moduleAnswers: {} as Record<ScreeningModuleId, Record<string, string | number | string[]>>,
+      moduleScores: {} as Record<ScreeningModuleId, { score: number; riskCategory: 'rendah' | 'sedang' | 'tinggi'; label: string; recommendations: string[] }>,
+      clinicalFiles: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-      const formId = generateId();
-      const screeningForm: ScreeningForm = {
-        id: formId,
-        templateId,
-        consultationId: activeConsultation.id,
-        doctorId: currentUser.id,
-        patientId: activeConsultation.patientId,
-        status: 'sent',
-        instructions: screeningInstructions || undefined,
-        deadline: screeningDeadline || undefined,
-        answers: {},
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+    addScreeningForm(screeningForm);
 
-      addScreeningForm(screeningForm);
+    // Send screening message in chat
+    const screeningMessage: Message = {
+      id: generateId(),
+      consultationId: activeConsultation.id,
+      senderId: currentUser.id,
+      content: `__SCREENING__${formId}__`,
+      type: 'text',
+      status: 'delivered',
+      createdAt: new Date().toISOString(),
+    };
+    addMessage(screeningMessage);
+    updateConsultation(activeConsultation.id, {
+      messages: [...(activeConsultation.messages || []), screeningMessage],
+      updatedAt: new Date().toISOString(),
+    });
 
-      // Send screening message in chat
-      const screeningMessage: Message = {
-        id: generateId(),
-        consultationId: activeConsultation.id,
-        senderId: currentUser.id,
-        content: `__SCREENING__${formId}__`,
-        type: 'text',
-        status: 'delivered',
-        createdAt: new Date().toISOString(),
-      };
-      addMessage(screeningMessage);
-      updateConsultation(activeConsultation.id, {
-        messages: [...(activeConsultation.messages || []), screeningMessage],
-        updatedAt: new Date().toISOString(),
-      });
-
-      addAuditLog({
-        id: generateId(),
-        screeningId: formId,
-        action: 'sent',
-        performedBy: currentUser.id,
-        timestamp: new Date().toISOString(),
-        details: `Template: ${template.name}`,
-      });
+    addAuditLog({
+      id: generateId(),
+      screeningId: formId,
+      action: 'sent',
+      performedBy: currentUser.id,
+      timestamp: new Date().toISOString(),
+      details: `Modul: ${selectedModules.map(m => MODULE_LABELS[m]).join(', ')}`,
     });
 
     // System message
@@ -870,7 +867,7 @@ export function ChatPanel() {
       id: generateId(),
       consultationId: activeConsultation.id,
       senderId: 'system',
-      content: 'Formulir skrining kesehatan telah dikirim ke pasien.',
+      content: `Formulir Skrining Komprehensif Telemedicine telah dikirim. Modul: ${selectedModules.map(m => MODULE_LABELS[m]).join(', ')}`,
       type: 'text',
       status: 'read',
       createdAt: new Date().toISOString(),
@@ -878,8 +875,8 @@ export function ChatPanel() {
     addMessage(sysMessage);
 
     setShowScreeningDialog(false);
-    setSelectedScreeningTemplates([]);
-    toast({ title: 'Berhasil', description: 'Form skrining berhasil dikirim ke pasien.' });
+    setSelectedModules(['keluhan_utama', 'tanda_bahaya', 'tanda_vital']);
+    toast({ title: 'Berhasil', description: 'Form skrining komprehensif berhasil dikirim ke pasien.' });
   };
 
   // ── Handle typing ──────────────────────────────────────────────────────
@@ -1060,14 +1057,10 @@ export function ChatPanel() {
     const form = screeningForms.find((f) => f.id === formId);
     if (!form) return null;
 
-    const template = getTemplateById(form.templateId);
-    if (!template) return null;
-
     const isCompleted = form.status === 'completed' || form.status === 'reviewed';
     const isPending = form.status === 'sent' || form.status === 'opened' || form.status === 'in_progress' || form.status === 'draft';
-    const riskColor = form.riskCategory === 'tinggi' ? 'text-red-600 bg-red-50 border-red-200' :
-                      form.riskCategory === 'sedang' ? 'text-amber-600 bg-amber-50 border-amber-200' :
-                      form.riskCategory === 'rendah' ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : '';
+    const triage = form.triageResult;
+    const summary = form.clinicalSummary;
 
     return (
       <div className="border-2 border-teal-500 rounded-xl overflow-hidden bg-card max-w-sm my-2">
@@ -1075,7 +1068,7 @@ export function ChatPanel() {
         <div className="bg-teal-500/10 px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ClipboardCheck className="w-4 h-4 text-teal-600" />
-            <span className="font-semibold text-sm text-teal-700">Form Skrining Kesehatan</span>
+            <span className="font-semibold text-sm text-teal-700">Skrining Komprehensif Telemedicine</span>
           </div>
           <Badge className={cn('text-[10px]', isCompleted ? 'bg-emerald-600' : 'bg-amber-500')}>
             {isCompleted ? 'Selesai' : 'Menunggu Diisi'}
@@ -1084,31 +1077,27 @@ export function ChatPanel() {
 
         {/* Content */}
         <div className="px-4 py-3">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">{SCREENING_CATEGORY_ICONS[template.category]}</span>
-            <div>
-              <p className="font-medium text-sm text-foreground">{template.name}</p>
-              <p className="text-xs text-muted-foreground">Standar: {template.standard}</p>
-            </div>
-          </div>
+          <p className="font-medium text-sm text-foreground">Skrining Pra-Konsultasi</p>
+          <p className="text-xs text-muted-foreground">12 modul skrining komprehensif</p>
 
           {form.instructions && (
             <p className="text-xs text-primary mt-2 bg-primary/5 p-2 rounded">📋 {form.instructions}</p>
           )}
 
-          {/* Completed result */}
-          {isCompleted && form.score !== undefined && (
+          {/* Triage result */}
+          {isCompleted && triage && (
             <div className="mt-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Skor Risiko</span>
-                <span className="text-lg font-bold text-foreground">{form.score}</span>
+              <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg border', TRIAGE_COLORS[triage.level].bg, TRIAGE_COLORS[triage.level].border)}>
+                <span className="text-xl">{triage.level === 'hijau' ? '🟢' : triage.level === 'kuning' ? '🟡' : triage.level === 'oranye' ? '🟠' : '🔴'}</span>
+                <div>
+                  <p className={cn('text-sm font-bold', TRIAGE_COLORS[triage.level].text)}>{triage.label}</p>
+                  <p className="text-xs text-foreground">{triage.description}</p>
+                </div>
               </div>
-              {form.riskCategory && (
-                <div className={cn('text-xs font-medium px-2 py-1 rounded border', riskColor)}>
-                  {form.riskCategory === 'tinggi' && '🚨 '} 
-                  {form.riskCategory === 'sedang' && '⚠️ '}
-                  {form.riskCategory === 'rendah' && '✅ '}
-                  Risiko {form.riskCategory === 'tinggi' ? 'Tinggi' : form.riskCategory === 'sedang' ? 'Sedang' : 'Rendah'}
+              {summary && (
+                <div className="text-xs text-muted-foreground">
+                  <p>Keluhan: {summary.chiefComplaint}</p>
+                  {summary.painScore !== null && <p>Nyeri: {summary.painScore}/10</p>}
                 </div>
               )}
             </div>
@@ -1124,21 +1113,18 @@ export function ChatPanel() {
               onClick={() => setActivePanel('screening')}
             >
               <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
-              Isi Form Skrining
+              Isi Skrining Komprehensif
             </Button>
           </div>
         )}
 
         {/* Doctor view - completed summary */}
-        {isDoctor && isCompleted && form.score !== undefined && (
+        {isDoctor && isCompleted && triage && (
           <div className="px-4 pb-3">
             <div className="bg-muted/50 rounded-lg p-3 text-xs space-y-1">
-              <p className="font-semibold text-foreground">✅ Form Skrining Telah Diselesaikan</p>
-              <p className="text-muted-foreground">Jenis: {template.name}</p>
-              <p className="text-muted-foreground">Skor: {form.score} — Risiko: {form.riskCategory === 'tinggi' ? 'Tinggi' : form.riskCategory === 'sedang' ? 'Sedang' : 'Rendah'}</p>
-              {form.recommendations && form.recommendations.length > 0 && (
-                <p className="text-muted-foreground">Rekomendasi: {form.recommendations[0]}...</p>
-              )}
+              <p className="font-semibold text-foreground">✅ Skrining Komprehensif Telah Diselesaikan</p>
+              <p className={cn('font-medium', TRIAGE_COLORS[triage.level].text)}>Triase: {triage.label}</p>
+              {summary && <p className="text-muted-foreground">Keluhan: {summary.chiefComplaint}</p>}
             </div>
             <Button
               size="sm"
@@ -1753,66 +1739,53 @@ export function ChatPanel() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ClipboardCheck className="w-5 h-5 text-teal-600" />
-            Kirim Form Skrining Kesehatan
+            Kirim Skrining Komprehensif Telemedicine
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Pilih formulir skrining berdasarkan siklus hidup pasien. Anda dapat memilih lebih dari satu formulir.
+            Pilih modul skrining yang akan dikirim kepada pasien. Modul wajib sudah terpilih secara default.
           </p>
 
-          {/* Category Grouped Templates */}
-          {Object.entries(SCREENING_CATEGORY_LABELS).map(([catKey, catLabel]) => {
-            const categoryTemplates = SCREENING_TEMPLATES.filter((t) => t.category === catKey);
-            if (categoryTemplates.length === 0) return null;
-            return (
-              <div key={catKey}>
-                <h4 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                  <span>{SCREENING_CATEGORY_ICONS[catKey as ScreeningCategory]}</span>
-                  {catLabel}
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {categoryTemplates.map((template) => {
-                    const isSelected = selectedScreeningTemplates.includes(template.id);
-                    return (
-                      <button
-                        key={template.id}
-                        onClick={() => handleToggleScreeningTemplate(template.id)}
-                        className={cn(
-                          'p-3 rounded-lg border text-left transition-all',
-                          isSelected
-                            ? 'border-teal-500 bg-teal-50 ring-1 ring-teal-500'
-                            : 'border-border hover:border-teal-300 hover:bg-teal-50/50'
-                        )}
-                      >
-                        <div className="flex items-start gap-2">
-                          <div className={cn(
-                            'w-4 h-4 rounded border mt-0.5 flex items-center justify-center shrink-0',
-                            isSelected ? 'bg-teal-500 border-teal-500' : 'border-muted-foreground'
-                          )}>
-                            {isSelected && <Check className="w-3 h-3 text-white" />}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{template.name}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">{template.description}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Badge variant="secondary" className="text-[10px]">
-                                {template.standard}
-                              </Badge>
-                              <span className="text-[10px] text-muted-foreground">
-                                ~{template.estimatedMinutes} menit
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+          {/* Module Selection */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {SCREENING_MODULES.map((mod) => {
+              const isSelected = selectedModules.includes(mod.id);
+              const isRequired = mod.isRequired;
+              return (
+                <button
+                  key={mod.id}
+                  onClick={() => !isRequired && handleToggleModule(mod.id)}
+                  className={cn(
+                    'p-3 rounded-lg border text-left transition-all',
+                    isSelected
+                      ? 'border-teal-500 bg-teal-50 ring-1 ring-teal-500'
+                      : 'border-border hover:border-teal-300 hover:bg-teal-50/50',
+                    isRequired && 'cursor-default'
+                  )}
+                >
+                  <div className="flex items-start gap-2">
+                    <div className={cn(
+                      'w-4 h-4 rounded border mt-0.5 flex items-center justify-center shrink-0',
+                      isSelected ? 'bg-teal-500 border-teal-500' : 'border-muted-foreground'
+                    )}>
+                      {isSelected && <Check className="w-3 h-3 text-white" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        <span className="mr-1">{mod.icon}</span>
+                        {mod.name}
+                        {isRequired && <Badge variant="secondary" className="text-[9px] ml-1.5">Wajib</Badge>}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{mod.description}</p>
+                      <span className="text-[10px] text-muted-foreground">~{mod.estimatedMinutes} menit</span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
 
           {/* Instructions */}
           <div>
@@ -1844,10 +1817,10 @@ export function ChatPanel() {
           <Button
             className="bg-teal-600 hover:bg-teal-700"
             onClick={handleSendScreening}
-            disabled={selectedScreeningTemplates.length === 0}
+            disabled={selectedModules.length === 0}
           >
             <Send className="w-4 h-4 mr-1" />
-            Kirim ({selectedScreeningTemplates.length})
+            Kirim ({selectedModules.length} modul)
           </Button>
         </DialogFooter>
       </DialogContent>

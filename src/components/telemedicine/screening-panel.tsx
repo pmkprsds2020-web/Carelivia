@@ -1,22 +1,26 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store';
-import type { ScreeningForm, ScreeningCategory, RiskCategory, ScreeningAuditLog, Notification as AppNotification } from '@/lib/types';
+import type { ScreeningForm, ScreeningModuleId, RiskCategory, ScreeningAuditLog, Notification as AppNotification, ClinicalFile, TriageLevel } from '@/lib/types';
 import {
-  SCREENING_TEMPLATES,
-  SCREENING_CATEGORY_LABELS,
-  SCREENING_CATEGORY_ICONS,
-  calculateScreeningScore,
+  SCREENING_MODULES,
+  MODULE_LABELS,
+  MODULE_ICONS,
+  calculateModuleScore,
   calculateProgress,
-  getTemplateById,
+  getModuleById,
+  getModulesForPatient,
+  calculateTriage,
+  generateClinicalSummary,
+  TRIAGE_COLORS,
+  TRIAGE_LABELS,
 } from '@/lib/screening-templates';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -24,6 +28,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -45,18 +50,27 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
-  Filter,
   Search,
   Activity,
   ChevronRight,
+  ChevronLeft,
   Save,
   FileText,
   Brain,
   Sparkles,
-  TrendingUp,
-  Users,
   Shield,
-  Download,
+  Upload,
+  X,
+  Camera,
+  FileImage,
+  Film,
+  File,
+  Heart,
+  Stethoscope,
+  Thermometer,
+  TrendingUp,
+  ArrowRight,
+  AlertCircle,
 } from 'lucide-react';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -68,15 +82,10 @@ function generateId(): string {
 function formatDate(dateStr: string): string {
   try {
     return new Date(dateStr).toLocaleDateString('id-ID', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+      day: 'numeric', month: 'long', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
     });
-  } catch {
-    return '';
-  }
+  } catch { return ''; }
 }
 
 const RISK_COLORS: Record<RiskCategory, { bg: string; text: string; border: string }> = {
@@ -85,19 +94,23 @@ const RISK_COLORS: Record<RiskCategory, { bg: string; text: string; border: stri
   tinggi: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
 };
 
-const RISK_LABELS: Record<RiskCategory, string> = {
-  rendah: 'Rendah',
-  sedang: 'Sedang',
-  tinggi: 'Tinggi',
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  sent: { label: 'Terkirim', color: 'bg-blue-100 text-blue-700' },
+  opened: { label: 'Dibuka', color: 'bg-purple-100 text-purple-700' },
+  in_progress: { label: 'Sedang Diisi', color: 'bg-amber-100 text-amber-700' },
+  draft: { label: 'Draft', color: 'bg-gray-100 text-gray-700' },
+  completed: { label: 'Selesai', color: 'bg-emerald-100 text-emerald-700' },
+  reviewed: { label: 'Ditinjau', color: 'bg-teal-100 text-teal-700' },
 };
 
-const STATUS_LABELS: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  sent: { label: 'Terkirim', color: 'bg-blue-100 text-blue-700', icon: <Send className="w-3 h-3" /> },
-  opened: { label: 'Dibuka', color: 'bg-purple-100 text-purple-700', icon: <Eye className="w-3 h-3" /> },
-  in_progress: { label: 'Sedang Diisi', color: 'bg-amber-100 text-amber-700', icon: <Clock className="w-3 h-3" /> },
-  draft: { label: 'Draft', color: 'bg-gray-100 text-gray-700', icon: <Save className="w-3 h-3" /> },
-  completed: { label: 'Selesai', color: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle className="w-3 h-3" /> },
-  reviewed: { label: 'Ditinjau', color: 'bg-teal-100 text-teal-700', icon: <Shield className="w-3 h-3" /> },
+const CLINICAL_FILE_TYPE_LABELS: Record<ClinicalFile['type'], { label: string; icon: React.ReactNode }> = {
+  foto_luka: { label: 'Foto Luka', icon: <Camera className="w-4 h-4" /> },
+  foto_obat: { label: 'Foto Obat', icon: <FileImage className="w-4 h-4" /> },
+  foto_lab: { label: 'Foto Hasil Lab', icon: <FileText className="w-4 h-4" /> },
+  foto_radiologi: { label: 'Foto Radiologi', icon: <FileImage className="w-4 h-4" /> },
+  video_pernapasan: { label: 'Video Pernapasan', icon: <Film className="w-4 h-4" /> },
+  video_mobilisasi: { label: 'Video Mobilisasi', icon: <Film className="w-4 h-4" /> },
+  dokumen_medis: { label: 'Dokumen Medis', icon: <File className="w-4 h-4" /> },
 };
 
 // ── Main Component ─────────────────────────────────────────────────────────
@@ -110,7 +123,6 @@ export function ScreeningPanel() {
     updateScreeningForm,
     addAuditLog,
     addClinicalAlert,
-    doctors,
     consultations,
   } = useStore();
 
@@ -119,197 +131,190 @@ export function ScreeningPanel() {
   const isDoctor = currentUser?.role === 'doctor';
   const isPatient = currentUser?.role === 'patient';
 
-  // ── State ──────────────────────────────────────────────────────────────
-
-  // Doctor dashboard state
-  const [filterCategory, setFilterCategory] = useState<string>('all');
+  // ── Doctor State ──
+  const [filterTriage, setFilterTriage] = useState<string>('all');
   const [filterRisk, setFilterRisk] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Patient form filling state
-  const [activeFormId, setActiveFormId] = useState<string | null>(null);
-  const [currentAnswers, setCurrentAnswers] = useState<Record<string, string | number | string[]>>({});
-
-  // Doctor view screening result dialog
   const [viewingForm, setViewingForm] = useState<ScreeningForm | null>(null);
   const [doctorNotes, setDoctorNotes] = useState('');
   const [doctorFollowUp, setDoctorFollowUp] = useState('');
-
-  // AI analysis state
-  const [aiAnalysis, setAiAnalysis] = useState<string>('');
+  const [aiAnalysis, setAiAnalysis] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
 
-  // ── Computed Data ──────────────────────────────────────────────────────
+  // ── Patient State ──
+  const [activeFormId, setActiveFormId] = useState<string | null>(null);
+  const [activeModuleIdx, setActiveModuleIdx] = useState(0);
+  const [moduleAnswers, setModuleAnswers] = useState<Record<ScreeningModuleId, Record<string, string | number | string[]>>>({});
+  const [clinicalFiles, setClinicalFiles] = useState<ClinicalFile[]>([]);
 
+  // ── Computed Data ──
   const myScreeningForms = useMemo(() => {
     if (!currentUser) return [];
-    if (isDoctor) {
-      return screeningForms.filter((f) => f.doctorId === currentUser.id);
-    }
-    return screeningForms.filter((f) => f.patientId === currentUser.id);
+    if (isDoctor) return screeningForms.filter(f => f.doctorId === currentUser.id);
+    return screeningForms.filter(f => f.patientId === currentUser.id);
   }, [screeningForms, currentUser, isDoctor]);
 
   const filteredForms = useMemo(() => {
     let forms = myScreeningForms;
-    if (filterCategory !== 'all') {
-      forms = forms.filter((f) => {
-        const tmpl = getTemplateById(f.templateId);
-        return tmpl?.category === filterCategory;
+    if (filterTriage !== 'all') forms = forms.filter(f => f.triageResult?.level === filterTriage);
+    if (filterRisk !== 'all') {
+      forms = forms.filter(f => {
+        const scores = Object.values(f.moduleScores || {});
+        return scores.some(s => s.riskCategory === filterRisk);
       });
     }
-    if (filterRisk !== 'all') {
-      forms = forms.filter((f) => f.riskCategory === filterRisk);
-    }
-    if (filterStatus !== 'all') {
-      forms = forms.filter((f) => f.status === filterStatus);
-    }
+    if (filterStatus !== 'all') forms = forms.filter(f => f.status === filterStatus);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      forms = forms.filter((f) => {
-        const tmpl = getTemplateById(f.templateId);
-        return tmpl?.name.toLowerCase().includes(q) || f.id.includes(q);
-      });
+      forms = forms.filter(f => f.id.includes(q));
     }
     return forms.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [myScreeningForms, filterCategory, filterRisk, filterStatus, searchQuery]);
+  }, [myScreeningForms, filterTriage, filterRisk, filterStatus, searchQuery]);
 
   const dashboardStats = useMemo(() => {
     const total = myScreeningForms.length;
-    const completed = myScreeningForms.filter((f) => f.status === 'completed' || f.status === 'reviewed').length;
-    const pending = myScreeningForms.filter((f) => f.status === 'sent' || f.status === 'opened' || f.status === 'in_progress').length;
-    const riskRendah = myScreeningForms.filter((f) => f.riskCategory === 'rendah').length;
-    const riskSedang = myScreeningForms.filter((f) => f.riskCategory === 'sedang').length;
-    const riskTinggi = myScreeningForms.filter((f) => f.riskCategory === 'tinggi').length;
-    return { total, completed, pending, riskRendah, riskSedang, riskTinggi };
+    const completed = myScreeningForms.filter(f => f.status === 'completed' || f.status === 'reviewed').length;
+    const pending = myScreeningForms.filter(f => f.status === 'sent' || f.status === 'opened' || f.status === 'in_progress').length;
+    const triageCount = { hijau: 0, kuning: 0, oranye: 0, merah: 0 } as Record<TriageLevel, number>;
+    myScreeningForms.forEach(f => { if (f.triageResult) triageCount[f.triageResult.level]++; });
+    return { total, completed, pending, triageCount };
   }, [myScreeningForms]);
 
-  // ── Active Form for Patient ────────────────────────────────────────────
-
+  // ── Active form / modules for patient ──
   const activeForm = useMemo(() => {
     if (!activeFormId) return null;
-    return screeningForms.find((f) => f.id === activeFormId) || null;
+    return screeningForms.find(f => f.id === activeFormId) || null;
   }, [activeFormId, screeningForms]);
 
-  const activeTemplate = useMemo(() => {
-    if (!activeForm) return null;
-    return getTemplateById(activeForm.templateId);
-  }, [activeForm]);
+  const applicableModules = useMemo(() => {
+    return getModulesForPatient(undefined, true);
+  }, []);
 
-  const activeProgress = useMemo(() => {
-    if (!activeTemplate) return 0;
-    return calculateProgress(activeTemplate, currentAnswers);
-  }, [activeTemplate, currentAnswers]);
+  const activeModule = applicableModules[activeModuleIdx] || null;
 
-  // ── Handlers ───────────────────────────────────────────────────────────
+  const overallProgress = useMemo(() => {
+    return calculateProgress(applicableModules, moduleAnswers);
+  }, [applicableModules, moduleAnswers]);
 
+  // ── Handlers ──
   const handleOpenForm = (form: ScreeningForm) => {
     setActiveFormId(form.id);
-    setCurrentAnswers(form.answers || {});
+    setActiveModuleIdx(0);
+    setModuleAnswers(form.moduleAnswers || {} as Record<ScreeningModuleId, Record<string, string | number | string[]>>);
+    setClinicalFiles(form.clinicalFiles || []);
     if (form.status === 'sent') {
       updateScreeningForm(form.id, { status: 'opened' });
-      addAuditLog({
-        id: generateId(),
-        screeningId: form.id,
-        action: 'opened',
-        performedBy: currentUser?.id || '',
-        timestamp: new Date().toISOString(),
-      });
+      addAuditLog({ id: generateId(), screeningId: form.id, action: 'opened', performedBy: currentUser?.id || '', timestamp: new Date().toISOString() });
     }
   };
 
-  const handleAnswerChange = (questionId: string, value: string | number | string[]) => {
-    const newAnswers = { ...currentAnswers, [questionId]: value };
-    setCurrentAnswers(newAnswers);
-
+  const handleAnswerChange = (moduleId: ScreeningModuleId, questionId: string, value: string | number | string[]) => {
+    setModuleAnswers(prev => ({
+      ...prev,
+      [moduleId]: { ...(prev[moduleId] || {}), [questionId]: value },
+    }));
     // Auto-save as in_progress
     if (activeFormId) {
-      updateScreeningForm(activeFormId, {
-        answers: newAnswers,
-        status: 'in_progress',
-      });
+      const newAnswers = { ...moduleAnswers, [moduleId]: { ...(moduleAnswers[moduleId] || {}), [questionId]: value } };
+      updateScreeningForm(activeFormId, { moduleAnswers: newAnswers as Record<ScreeningModuleId, Record<string, string | number | string[]>>, status: 'in_progress' });
     }
+  };
+
+  const handleFileUpload = (questionId: string, type: ClinicalFile['type']) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,video/*,.pdf';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const newFile: ClinicalFile = {
+          id: generateId(),
+          type,
+          name: file.name,
+          url: reader.result as string,
+          uploadedAt: new Date().toISOString(),
+        };
+        setClinicalFiles(prev => [...prev, newFile]);
+        // Mark the question as answered
+        if (activeModule) {
+          handleAnswerChange(activeModule.id, questionId, 'uploaded');
+        }
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  };
+
+  const handleRemoveFile = (fileId: string) => {
+    setClinicalFiles(prev => prev.filter(f => f.id !== fileId));
   };
 
   const handleSaveDraft = () => {
     if (!activeFormId) return;
-    updateScreeningForm(activeFormId, {
-      answers: currentAnswers,
-      status: 'draft',
-    });
-    addAuditLog({
-      id: generateId(),
-      screeningId: activeFormId,
-      action: 'draft_saved',
-      performedBy: currentUser?.id || '',
-      timestamp: new Date().toISOString(),
-    });
+    updateScreeningForm(activeFormId, { moduleAnswers, clinicalFiles, status: 'draft' });
+    addAuditLog({ id: generateId(), screeningId: activeFormId, action: 'draft_saved', performedBy: currentUser?.id || '', timestamp: new Date().toISOString() });
     toast({ title: 'Draft Disimpan', description: 'Jawaban Anda telah disimpan sementara.' });
   };
 
   const handleSubmitForm = () => {
-    if (!activeFormId || !activeTemplate) return;
+    if (!activeFormId) return;
 
-    const result = calculateScreeningScore(activeTemplate, currentAnswers);
+    // Calculate scores for each module
+    const moduleScores: Record<string, { score: number; riskCategory: RiskCategory; label: string; recommendations: string[] }> = {};
+    for (const mod of applicableModules) {
+      const answers = moduleAnswers[mod.id] || {};
+      if (mod.scoringAlgorithm && Object.keys(answers).length > 0) {
+        moduleScores[mod.id] = calculateModuleScore(mod, answers);
+      }
+    }
+
+    // Calculate triage
+    const triageResult = calculateTriage(moduleScores, moduleAnswers);
+
+    // Generate clinical summary
+    const clinicalSummary = generateClinicalSummary(moduleAnswers, moduleScores as Record<string, { score: number; riskCategory: RiskCategory; label: string; recommendations: string[] }>);
 
     updateScreeningForm(activeFormId, {
-      answers: { ...currentAnswers },
+      moduleAnswers,
+      moduleScores: moduleScores as Record<ScreeningModuleId, { score: number; riskCategory: RiskCategory; label: string; recommendations: string[] }>,
+      clinicalFiles,
+      triageResult,
+      clinicalSummary,
       status: 'completed',
-      score: result.score,
-      riskCategory: result.riskCategory,
-      recommendations: result.recommendations,
       completedAt: new Date().toISOString(),
     });
 
     addAuditLog({
-      id: generateId(),
-      screeningId: activeFormId,
-      action: 'completed',
-      performedBy: currentUser?.id || '',
-      timestamp: new Date().toISOString(),
-      details: `Skor: ${result.score}, Risiko: ${result.riskCategory}`,
+      id: generateId(), screeningId: activeFormId, action: 'completed',
+      performedBy: currentUser?.id || '', timestamp: new Date().toISOString(),
+      details: `Triase: ${triageResult.level}, Skor modul: ${Object.entries(moduleScores).map(([k, v]) => `${k}=${v.score}`).join(', ')}`,
     });
 
-    // If high risk, create clinical alert for doctor
-    if (result.riskCategory === 'tinggi' && activeForm) {
+    // Clinical alerts for merah/oranye
+    if ((triageResult.level === 'merah' || triageResult.level === 'oranye') && activeForm) {
       const alert: AppNotification = {
-        id: generateId(),
-        userId: activeForm.doctorId,
-        title: '🚨 Pasien Risiko Tinggi Terdeteksi',
-        message: `Hasil skrining ${activeTemplate.name} menunjukkan risiko TINGGI (Skor: ${result.score}). Segera tinjau hasil skrining pasien.`,
-        type: 'clinical_alert',
-        isRead: false,
-        referenceId: activeFormId,
-        createdAt: new Date().toISOString(),
+        id: generateId(), userId: activeForm.doctorId,
+        title: `🚨 Pasien Triase ${triageResult.label}`,
+        message: `Hasil skrining menunjukkan triase ${triageResult.label}: ${triageResult.description}. Segera tinjau hasil skrining pasien.`,
+        type: 'clinical_alert', isRead: false, referenceId: activeFormId, createdAt: new Date().toISOString(),
       };
       addClinicalAlert(alert);
     }
 
-    toast({
-      title: 'Skrining Selesai',
-      description: `Skor: ${result.score} — ${result.label}`,
-    });
-
+    toast({ title: 'Skrining Selesai', description: `Triase: ${triageResult.label} — ${triageResult.description}` });
     setActiveFormId(null);
-    setCurrentAnswers({});
+    setModuleAnswers({} as Record<ScreeningModuleId, Record<string, string | number | string[]>>);
+    setClinicalFiles([]);
+    setActiveModuleIdx(0);
   };
 
   const handleReviewForm = () => {
     if (!viewingForm) return;
-    updateScreeningForm(viewingForm.id, {
-      status: 'reviewed',
-      doctorNotes,
-      followUp: doctorFollowUp,
-      reviewedAt: new Date().toISOString(),
-    });
-    addAuditLog({
-      id: generateId(),
-      screeningId: viewingForm.id,
-      action: 'reviewed',
-      performedBy: currentUser?.id || '',
-      timestamp: new Date().toISOString(),
-      details: `Catatan: ${doctorNotes}, Tindak lanjut: ${doctorFollowUp}`,
-    });
+    updateScreeningForm(viewingForm.id, { status: 'reviewed', doctorNotes, followUp: doctorFollowUp, reviewedAt: new Date().toISOString() });
+    addAuditLog({ id: generateId(), screeningId: viewingForm.id, action: 'reviewed', performedBy: currentUser?.id || '', timestamp: new Date().toISOString(), details: `Catatan: ${doctorNotes}, Tindak lanjut: ${doctorFollowUp}` });
     toast({ title: 'Skrining Ditinjau', description: 'Catatan dan tindak lanjut telah disimpan.' });
     setViewingForm(null);
   };
@@ -318,19 +323,20 @@ export function ScreeningPanel() {
     setAiLoading(true);
     setAiAnalysis('');
     try {
-      const template = getTemplateById(form.templateId);
-      if (!template) throw new Error('Template not found');
-
+      const summaryParts: string[] = [];
+      for (const [modId, scores] of Object.entries(form.moduleScores || {})) {
+        const mod = getModuleById(modId as ScreeningModuleId);
+        if (mod) summaryParts.push(`${mod.name}: Skor ${scores.score} (${scores.label})`);
+      }
       const res = await fetch('/api/screening-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          templateName: template.name,
-          standard: template.standard,
-          answers: form.answers,
-          questions: template.questions,
-          score: form.score,
-          riskCategory: form.riskCategory,
+          screeningType: 'Skrining Komprehensif Telemedicine',
+          triage: form.triageResult,
+          clinicalSummary: form.clinicalSummary,
+          moduleScores: form.moduleScores,
+          moduleAnswers: form.moduleAnswers,
         }),
       });
       const data = await res.json();
@@ -341,62 +347,91 @@ export function ScreeningPanel() {
     setAiLoading(false);
   };
 
-  const handleBackToList = () => {
-    setActiveFormId(null);
-    setCurrentAnswers({});
-  };
-
   // ── Render: Patient Form Filling ───────────────────────────────────────
 
   const renderPatientForm = () => {
-    if (!activeForm || !activeTemplate) return null;
+    if (!activeForm || !activeModule) return null;
 
-    const progressPercent = activeProgress;
-    let progressLabel = '';
-    if (progressPercent <= 25) progressLabel = '25%';
-    else if (progressPercent <= 50) progressLabel = '50%';
-    else if (progressPercent <= 75) progressLabel = '75%';
-    else progressLabel = '100%';
-
-    // Group questions by section
-    const sections: { title: string; questions: typeof activeTemplate.questions }[] = [];
-    let currentSection = '';
-    for (const q of activeTemplate.questions) {
-      const sectionTitle = q.section || currentSection || 'Pertanyaan';
-      if (q.section && q.section !== currentSection) {
-        currentSection = q.section;
-        sections.push({ title: sectionTitle, questions: [q] });
-      } else if (sections.length > 0 && sections[sections.length - 1].title === sectionTitle) {
-        sections[sections.length - 1].questions.push(q);
-      } else {
-        sections.push({ title: sectionTitle, questions: [q] });
-      }
-    }
+    const answers = moduleAnswers[activeModule.id] || {};
+    const modQuestions = activeModule.questions;
+    const filledCount = modQuestions.filter(q => {
+      const a = answers[q.id];
+      return a !== undefined && a !== '' && !(Array.isArray(a) && a.length === 0);
+    }).length;
 
     return (
-      <div className="max-w-2xl mx-auto p-4 space-y-6">
+      <div className="max-w-2xl mx-auto p-4 space-y-4">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={handleBackToList}>
+          <Button variant="ghost" size="icon" onClick={() => { setActiveFormId(null); setModuleAnswers({} as Record<ScreeningModuleId, Record<string, string | number | string[]>>); setActiveModuleIdx(0); }}>
             ←
           </Button>
           <div className="flex-1">
-            <h2 className="text-lg font-semibold text-foreground">{activeTemplate.name}</h2>
-            <p className="text-sm text-muted-foreground">{activeTemplate.description}</p>
+            <h2 className="text-lg font-semibold text-foreground">Skrining Komprehensif Telemedicine</h2>
+            <p className="text-sm text-muted-foreground">Modul {activeModuleIdx + 1} dari {applicableModules.length}</p>
           </div>
         </div>
 
-        {/* Progress */}
-        <div className="space-y-2">
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-medium text-foreground">Progress Pengisian</span>
-            <Badge variant="secondary">{progressLabel}</Badge>
-          </div>
-          <Progress value={progressPercent} className="h-2" />
-          <p className="text-xs text-muted-foreground">
-            {activeTemplate.questions.filter((q) => currentAnswers[q.id] !== undefined && currentAnswers[q.id] !== '').length} dari {activeTemplate.questions.length} pertanyaan
-          </p>
-        </div>
+        {/* Overall Progress */}
+        <Card className="border-primary/20">
+          <CardContent className="p-4">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium">Progress Keseluruhan</span>
+              <span className="text-sm font-bold text-primary">{overallProgress}%</span>
+            </div>
+            <Progress value={overallProgress} className="h-2" />
+            {/* Module indicators */}
+            <div className="flex gap-1 mt-3 flex-wrap">
+              {applicableModules.map((mod, idx) => {
+                const modAnswers = moduleAnswers[mod.id] || {};
+                const modProgress = mod.questions.filter(q => {
+                  const a = modAnswers[q.id];
+                  return a !== undefined && a !== '' && !(Array.isArray(a) && a.length === 0);
+                }).length;
+                const modTotal = mod.questions.length;
+                const pct = modTotal > 0 ? Math.round((modProgress / modTotal) * 100) : 0;
+                return (
+                  <button
+                    key={mod.id}
+                    className={cn(
+                      'w-8 h-8 rounded-lg text-xs font-bold flex items-center justify-center transition-all border-2',
+                      idx === activeModuleIdx
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : pct >= 100
+                        ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+                        : pct > 0
+                        ? 'border-amber-400 bg-amber-50 text-amber-700'
+                        : 'border-border bg-muted text-muted-foreground',
+                    )}
+                    onClick={() => setActiveModuleIdx(idx)}
+                    title={`${MODULE_LABELS[mod.id]} (${pct}%)`}
+                  >
+                    {pct >= 100 ? '✓' : idx + 1}
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Module Title */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">{activeModule.icon}</span>
+              <div>
+                <h3 className="text-base font-semibold text-foreground">{activeModule.name}</h3>
+                <p className="text-sm text-muted-foreground">{activeModule.description}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge variant="secondary" className="text-xs">
+                    {filledCount}/{modQuestions.length} diisi
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">~{activeModule.estimatedMinutes} menit</span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Instructions */}
         {activeForm.instructions && (
@@ -413,310 +448,380 @@ export function ScreeningPanel() {
           </Card>
         )}
 
-        {/* Deadline */}
-        {activeForm.deadline && (
-          <div className="flex items-center gap-2 text-sm text-amber-600">
-            <Clock className="w-4 h-4" />
-            <span>Batas waktu: {formatDate(activeForm.deadline)}</span>
-          </div>
-        )}
-
         {/* Questions */}
-        {sections.map((section) => (
-          <div key={section.title} className="space-y-4">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider pt-2">
-              {section.title}
-            </h3>
-            {section.questions.map((question, idx) => (
-              <Card key={question.id} className="border-border">
-                <CardContent className="p-4">
-                  <Label className="text-sm font-medium text-foreground">
-                    {idx + 1}. {question.text}
-                    {question.required && <span className="text-red-500 ml-1">*</span>}
-                  </Label>
+        {modQuestions.map((question, idx) => {
+          // Check conditional logic
+          if (question.conditionalLogic) {
+            const parentAnswer = answers[question.conditionalLogic.showIfQuestionId];
+            if (String(parentAnswer) !== String(question.conditionalLogic.showIfValue)) return null;
+          }
 
-                  {question.type === 'radio' && question.options && (
-                    <RadioGroup
-                      value={String(currentAnswers[question.id] ?? '')}
-                      onValueChange={(val) => handleAnswerChange(question.id, val)}
-                      className="mt-3 space-y-2"
-                    >
-                      {question.options.map((opt) => (
+          return (
+            <Card key={question.id} className="border-border">
+              <CardContent className="p-4">
+                <Label className="text-sm font-medium text-foreground">
+                  {idx + 1}. {question.text}
+                  {question.required && <span className="text-red-500 ml-1">*</span>}
+                  {question.unit && <span className="text-muted-foreground ml-1 text-xs">({question.unit})</span>}
+                </Label>
+
+                {question.type === 'radio' && question.options && (
+                  <RadioGroup
+                    value={String(answers[question.id] ?? '')}
+                    onValueChange={(val) => handleAnswerChange(activeModule.id, question.id, val)}
+                    className="mt-3 space-y-2"
+                  >
+                    {question.options.map((opt) => (
+                      <div key={String(opt.value)} className="flex items-center space-x-2">
+                        <RadioGroupItem value={String(opt.value)} id={`${question.id}-${opt.value}`} />
+                        <Label htmlFor={`${question.id}-${opt.value}`} className="text-sm font-normal cursor-pointer">
+                          {opt.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                )}
+
+                {question.type === 'checkbox' && question.options && (
+                  <div className="mt-3 space-y-2">
+                    {question.options.map((opt) => {
+                      const selected = (answers[question.id] as string[]) || [];
+                      const isChecked = selected.includes(String(opt.value));
+                      return (
                         <div key={String(opt.value)} className="flex items-center space-x-2">
-                          <RadioGroupItem value={String(opt.value)} id={`${question.id}-${opt.value}`} />
+                          <Checkbox
+                            id={`${question.id}-${opt.value}`}
+                            checked={isChecked}
+                            onCheckedChange={(checked) => {
+                              const current = (answers[question.id] as string[]) || [];
+                              const newSelected = checked
+                                ? [...current, String(opt.value)]
+                                : current.filter((v: string) => v !== String(opt.value));
+                              handleAnswerChange(activeModule.id, question.id, newSelected);
+                            }}
+                          />
                           <Label htmlFor={`${question.id}-${opt.value}`} className="text-sm font-normal cursor-pointer">
                             {opt.label}
                           </Label>
                         </div>
-                      ))}
-                    </RadioGroup>
-                  )}
+                      );
+                    })}
+                  </div>
+                )}
 
-                  {question.type === 'checkbox' && question.options && (
-                    <div className="mt-3 space-y-2">
-                      {question.options.map((opt) => {
-                        const selected = (currentAnswers[question.id] as string[]) || [];
-                        const isChecked = selected.includes(String(opt.value));
-                        return (
-                          <div key={String(opt.value)} className="flex items-center space-x-2">
-                            <Checkbox
-                              id={`${question.id}-${opt.value}`}
-                              checked={isChecked}
-                              onCheckedChange={(checked) => {
-                                const current = (currentAnswers[question.id] as string[]) || [];
-                                const newSelected = checked
-                                  ? [...current, String(opt.value)]
-                                  : current.filter((v: string) => v !== String(opt.value));
-                                handleAnswerChange(question.id, newSelected);
-                              }}
-                            />
-                            <Label htmlFor={`${question.id}-${opt.value}`} className="text-sm font-normal cursor-pointer">
-                              {opt.label}
-                            </Label>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {question.type === 'number' && (
+                {question.type === 'number' && (
+                  <div className="mt-3 flex items-center gap-2">
                     <Input
                       type="number"
-                      className="mt-3"
                       min={question.min}
                       max={question.max}
-                      placeholder={question.placeholder || 'Masukkan angka'}
-                      value={currentAnswers[question.id] ?? ''}
-                      onChange={(e) => handleAnswerChange(question.id, Number(e.target.value) || 0)}
+                      placeholder={question.placeholder || `Masukkan angka${question.unit ? ` (${question.unit})` : ''}`}
+                      value={answers[question.id] ?? ''}
+                      onChange={(e) => handleAnswerChange(activeModule.id, question.id, Number(e.target.value) || 0)}
+                      className="max-w-[200px]"
                     />
-                  )}
+                    {question.unit && <span className="text-sm text-muted-foreground">{question.unit}</span>}
+                  </div>
+                )}
 
-                  {question.type === 'text' && (
-                    <Textarea
-                      className="mt-3"
-                      placeholder={question.placeholder || 'Masukkan jawaban'}
-                      value={String(currentAnswers[question.id] ?? '')}
-                      onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-                    />
-                  )}
+                {question.type === 'text' && (
+                  <Textarea
+                    className="mt-3"
+                    placeholder={question.placeholder || 'Masukkan jawaban'}
+                    value={String(answers[question.id] ?? '')}
+                    onChange={(e) => handleAnswerChange(activeModule.id, question.id, e.target.value)}
+                  />
+                )}
 
-                  {question.type === 'scale' && (
-                    <div className="mt-3 flex gap-2">
-                      {Array.from({ length: (question.max || 10) - (question.min || 1) + 1 }, (_, i) => {
-                        const val = (question.min || 1) + i;
-                        return (
-                          <Button
-                            key={val}
-                            size="sm"
-                            variant={Number(currentAnswers[question.id]) === val ? 'default' : 'outline'}
-                            className="w-10 h-10"
-                            onClick={() => handleAnswerChange(question.id, val)}
-                          >
-                            {val}
-                          </Button>
-                        );
-                      })}
+                {question.type === 'scale' && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {Array.from({ length: (question.max || 10) - (question.min || 0) + 1 }, (_, i) => {
+                      const val = (question.min || 0) + i;
+                      return (
+                        <Button
+                          key={val}
+                          size="sm"
+                          variant={Number(answers[question.id]) === val ? 'default' : 'outline'}
+                          className={cn(
+                            'w-10 h-10 text-sm',
+                            Number(answers[question.id]) === val && 'ring-2 ring-primary ring-offset-1',
+                          )}
+                          onClick={() => handleAnswerChange(activeModule.id, question.id, val)}
+                        >
+                          {val}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {question.type === 'file_upload' && (
+                  <div className="mt-3">
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {clinicalFiles
+                        .filter(f => {
+                          const qIdToFileType: Record<string, ClinicalFile['type']> = {
+                            'bk-fotoluka': 'foto_luka', 'bk-fotoobat': 'foto_obat',
+                            'bk-fotolab': 'foto_lab', 'bk-fotoradio': 'foto_radiologi',
+                            'bk-videopernapasan': 'video_pernapasan', 'bk-videomobilisasi': 'video_mobilisasi',
+                            'bk-dokmedis': 'dokumen_medis',
+                          };
+                          return f.type === qIdToFileType[question.id];
+                        })
+                        .map(file => (
+                          <div key={file.id} className="relative group">
+                            {file.url.startsWith('data:image') ? (
+                              <img src={file.url} alt={file.name} className="w-16 h-16 object-cover rounded-lg border" />
+                            ) : (
+                              <div className="w-16 h-16 rounded-lg border bg-muted flex items-center justify-center">
+                                <File className="w-6 h-6 text-muted-foreground" />
+                              </div>
+                            )}
+                            <button
+                              className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => handleRemoveFile(file.id)}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const qIdToFileType: Record<string, ClinicalFile['type']> = {
+                          'bk-fotoluka': 'foto_luka', 'bk-fotoobat': 'foto_obat',
+                          'bk-fotolab': 'foto_lab', 'bk-fotoradio': 'foto_radiologi',
+                          'bk-videopernapasan': 'video_pernapasan', 'bk-videomobilisasi': 'video_mobilisasi',
+                          'bk-dokmedis': 'dokumen_medis',
+                        };
+                        handleFileUpload(question.id, qIdToFileType[question.id] || 'dokumen_medis');
+                      }}
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      Upload File
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
 
-        {/* Action Buttons */}
-        <div className="flex gap-3 pt-4">
-          <Button variant="outline" className="flex-1" onClick={handleSaveDraft}>
-            <Save className="w-4 h-4 mr-2" />
-            Simpan Draft
+        {/* Navigation Buttons */}
+        <div className="flex gap-3 pt-2">
+          <Button variant="outline" onClick={handleSaveDraft}>
+            <Save className="w-4 h-4 mr-2" /> Simpan Draft
           </Button>
-          <Button
-            className="flex-1"
-            onClick={handleSubmitForm}
-            disabled={activeProgress < 100}
-          >
-            <Send className="w-4 h-4 mr-2" />
-            Kirim Hasil
-          </Button>
+          <div className="flex-1" />
+          {activeModuleIdx > 0 && (
+            <Button variant="outline" onClick={() => setActiveModuleIdx(prev => prev - 1)}>
+              <ChevronLeft className="w-4 h-4 mr-1" /> Sebelumnya
+            </Button>
+          )}
+          {activeModuleIdx < applicableModules.length - 1 ? (
+            <Button onClick={() => setActiveModuleIdx(prev => prev + 1)}>
+              Selanjutnya <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          ) : (
+            <Button onClick={handleSubmitForm} disabled={overallProgress < 50}>
+              <Send className="w-4 h-4 mr-2" /> Kirim Hasil Skrining
+            </Button>
+          )}
         </div>
       </div>
     );
   };
 
-  // ── Render: Screening Result Detail ────────────────────────────────────
+  // ── Render: Clinical Summary for Doctor ──────────────────────────────────
 
-  const renderScreeningResult = (form: ScreeningForm, showDoctorActions: boolean = false) => {
-    const template = getTemplateById(form.templateId);
-    if (!template) return null;
-
-    const riskColor = form.riskCategory ? RISK_COLORS[form.riskCategory] : null;
+  const renderClinicalSummary = (form: ScreeningForm) => {
+    const summary = form.clinicalSummary;
+    const triage = form.triageResult;
+    if (!summary && !triage) return null;
 
     return (
       <div className="space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-semibold text-foreground">{template.name}</h3>
-            <p className="text-sm text-muted-foreground">Standar: {template.standard}</p>
-          </div>
-          {form.riskCategory && riskColor && (
-            <Badge className={cn('text-sm', riskColor.bg, riskColor.text, riskColor.border, 'border')}>
-              {RISK_LABELS[form.riskCategory]}
-            </Badge>
-          )}
-        </div>
-
-        {/* Score & Risk */}
-        {form.score !== undefined && (
-          <Card className={cn('border', riskColor?.border || 'border-border')}>
+        {/* Triage Badge */}
+        {triage && (
+          <Card className={cn('border-2', TRIAGE_COLORS[triage.level].border)}>
             <CardContent className="p-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground">Skor</p>
-                  <p className="text-2xl font-bold text-foreground">{form.score}</p>
+              <div className="flex items-center gap-3">
+                <div className={cn('w-14 h-14 rounded-xl flex items-center justify-center text-2xl font-black', TRIAGE_COLORS[triage.level].bg, TRIAGE_COLORS[triage.level].text)}>
+                  {triage.level === 'hijau' ? '🟢' : triage.level === 'kuning' ? '🟡' : triage.level === 'oranye' ? '🟠' : '🔴'}
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Kategori Risiko</p>
-                  <p className={cn('text-lg font-bold', riskColor?.text || 'text-foreground')}>
-                    {form.riskCategory ? RISK_LABELS[form.riskCategory] : '-'}
-                  </p>
+                  <p className={cn('text-lg font-bold', TRIAGE_COLORS[triage.level].text)}>{triage.label}</p>
+                  <p className="text-sm text-foreground">{triage.description}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{triage.recommendation}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Recommendations */}
-        {form.recommendations && form.recommendations.length > 0 && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Rekomendasi</CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <ul className="space-y-1">
-                {form.recommendations.map((rec, idx) => (
-                  <li key={idx} className="text-sm text-foreground flex items-start gap-2">
-                    <ChevronRight className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                    {rec}
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        )}
+        {summary && (
+          <>
+            {/* Chief Complaint */}
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Stethoscope className="w-4 h-4" /> Keluhan Utama</CardTitle></CardHeader>
+              <CardContent className="p-4 pt-0">
+                <p className="text-sm font-medium text-foreground">{summary.chiefComplaint}</p>
+              </CardContent>
+            </Card>
 
-        {/* Answers */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Detail Jawaban</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="space-y-3 max-h-64 overflow-y-auto custom-scrollbar">
-              {template.questions.map((q) => {
-                const answer = form.answers[q.id];
-                if (answer === undefined) return null;
-                let answerText = '';
-                if (Array.isArray(answer)) {
-                  answerText = answer
-                    .map((v) => q.options?.find((o) => String(o.value) === String(v))?.label || String(v))
-                    .join(', ');
-                } else if (q.type === 'radio' && q.options) {
-                  answerText = q.options.find((o) => String(o.value) === String(answer))?.label || String(answer);
-                } else {
-                  answerText = String(answer);
-                }
-                return (
-                  <div key={q.id}>
-                    <p className="text-xs text-muted-foreground">{q.text}</p>
-                    <p className="text-sm font-medium text-foreground">{answerText || '-'}</p>
+            {/* Red Flags */}
+            {summary.redFlags.length > 0 && (
+              <Card className="border-red-200 bg-red-50/50">
+                <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-red-700"><AlertTriangle className="w-4 h-4" /> Tanda Bahaya</CardTitle></CardHeader>
+                <CardContent className="p-4 pt-0">
+                  <div className="flex flex-wrap gap-2">
+                    {summary.redFlags.map((flag, i) => (
+                      <Badge key={i} variant="destructive" className="text-xs">{flag}</Badge>
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+                </CardContent>
+              </Card>
+            )}
 
-        {/* Doctor Notes & Follow-up */}
-        {form.doctorNotes && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Catatan Dokter</CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <p className="text-sm text-foreground">{form.doctorNotes}</p>
-            </CardContent>
-          </Card>
-        )}
-        {form.followUp && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Tindak Lanjut</CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <p className="text-sm text-foreground">{form.followUp}</p>
-            </CardContent>
-          </Card>
-        )}
+            {/* Vital Signs */}
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Thermometer className="w-4 h-4" /> Tanda Vital</CardTitle></CardHeader>
+              <CardContent className="p-4 pt-0">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {summary.vitalSigns.weight && <div><p className="text-xs text-muted-foreground">Berat Badan</p><p className="text-sm font-bold">{summary.vitalSigns.weight} kg</p></div>}
+                  {summary.vitalSigns.height && <div><p className="text-xs text-muted-foreground">Tinggi Badan</p><p className="text-sm font-bold">{summary.vitalSigns.height} cm</p></div>}
+                  {summary.vitalSigns.temperature && <div><p className="text-xs text-muted-foreground">Suhu</p><p className="text-sm font-bold">{summary.vitalSigns.temperature}°C</p></div>}
+                  {summary.vitalSigns.bloodPressure && <div><p className="text-xs text-muted-foreground">Tekanan Darah</p><p className="text-sm font-bold">{summary.vitalSigns.bloodPressure} mmHg</p></div>}
+                  {summary.vitalSigns.heartRate && <div><p className="text-xs text-muted-foreground">Denyut Nadi</p><p className="text-sm font-bold">{summary.vitalSigns.heartRate} bpm</p></div>}
+                  {summary.vitalSigns.oxygenSat && <div><p className="text-xs text-muted-foreground">SpO2</p><p className="text-sm font-bold">{summary.vitalSigns.oxygenSat}%</p></div>}
+                  {summary.vitalSigns.bloodSugar && <div><p className="text-xs text-muted-foreground">GDS</p><p className="text-sm font-bold">{summary.vitalSigns.bloodSugar} mg/dL</p></div>}
+                </div>
+              </CardContent>
+            </Card>
 
-        {/* Doctor Actions */}
-        {showDoctorActions && form.status === 'completed' && (
-          <div className="space-y-3 pt-2">
-            <Separator />
-            <div>
-              <Label className="text-sm font-medium">Catatan Dokter</Label>
-              <Textarea
-                className="mt-1"
-                placeholder="Tambahkan catatan klinis..."
-                value={doctorNotes}
-                onChange={(e) => setDoctorNotes(e.target.value)}
-              />
+            {/* Clinical Summary Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {summary.chronicDiseases.length > 0 && (
+                <Card>
+                  <CardContent className="p-3">
+                    <p className="text-xs text-muted-foreground">Penyakit Kronis</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {summary.chronicDiseases.map((d, i) => <Badge key={i} variant="secondary" className="text-xs">{d}</Badge>)}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              {summary.painScore !== null && (
+                <Card>
+                  <CardContent className="p-3">
+                    <p className="text-xs text-muted-foreground">Skor Nyeri (NRS)</p>
+                    <p className={cn('text-lg font-bold', summary.painScore >= 7 ? 'text-red-600' : summary.painScore >= 4 ? 'text-amber-600' : 'text-emerald-600')}>
+                      {summary.painScore}/10
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+              <Card>
+                <CardContent className="p-3">
+                  <p className="text-xs text-muted-foreground">Status Mental</p>
+                  <p className={cn('text-sm font-medium', summary.mentalStatus === 'KRISIS MENTAL' ? 'text-red-600' : summary.mentalStatus !== 'Normal' ? 'text-amber-600' : 'text-emerald-600')}>
+                    {summary.mentalStatus}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-3">
+                  <p className="text-xs text-muted-foreground">Status Fungsional</p>
+                  <p className="text-sm font-medium">{summary.functionalStatus}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-3">
+                  <p className="text-xs text-muted-foreground">Kebutuhan Home Care</p>
+                  <p className={cn('text-sm font-medium', summary.homeCareNeed === 'Diperlukan Segera' ? 'text-red-600' : summary.homeCareNeed === 'Direkomendasikan' ? 'text-amber-600' : 'text-emerald-600')}>
+                    {summary.homeCareNeed}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-3">
+                  <p className="text-xs text-muted-foreground">Status Paliatif</p>
+                  <p className="text-sm font-medium">{summary.palliativeStatus}</p>
+                </CardContent>
+              </Card>
             </div>
-            <div>
-              <Label className="text-sm font-medium">Tindak Lanjut</Label>
-              <Textarea
-                className="mt-1"
-                placeholder="Rencana tindak lanjut..."
-                value={doctorFollowUp}
-                onChange={(e) => setDoctorFollowUp(e.target.value)}
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={handleReviewForm} className="flex-1">
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Simpan & Tandai Ditinjau
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleAiAnalysis(form)}
-                disabled={aiLoading}
-              >
-                {aiLoading ? (
-                  <>
-                    <Activity className="w-4 h-4 mr-2 animate-spin" />
-                    Menganalisis...
-                  </>
-                ) : (
-                  <>
-                    <Brain className="w-4 h-4 mr-2" />
-                    AI Analysis
-                  </>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // ── Render: Module Results Detail ───────────────────────────────────────
+
+  const renderModuleResults = (form: ScreeningForm) => {
+    const scores = form.moduleScores || {};
+    const answers = form.moduleAnswers || {};
+
+    return (
+      <div className="space-y-3">
+        {SCREENING_MODULES.map(mod => {
+          const modAnswers = answers[mod.id];
+          const modScore = scores[mod.id];
+          if (!modAnswers || Object.keys(modAnswers).length === 0) return null;
+
+          return (
+            <Card key={mod.id}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{mod.icon}</span>
+                    <div>
+                      <h4 className="text-sm font-semibold">{mod.name}</h4>
+                      {modScore && (
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Badge className={cn('text-xs', RISK_COLORS[modScore.riskCategory].bg, RISK_COLORS[modScore.riskCategory].text, RISK_COLORS[modScore.riskCategory].border, 'border')}>
+                            {modScore.label}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">Skor: {modScore.score}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {modScore?.recommendations && modScore.recommendations.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-border">
+                    <ul className="space-y-1">
+                      {modScore.recommendations.map((rec, i) => (
+                        <li key={i} className="text-xs text-foreground flex items-start gap-1">
+                          <ChevronRight className="w-3 h-3 text-primary shrink-0 mt-0.5" />{rec}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
-              </Button>
-            </div>
-          </div>
-        )}
+              </CardContent>
+            </Card>
+          );
+        })}
 
-        {/* AI Analysis Result */}
-        {aiAnalysis && (
-          <Card className="border-primary/30 bg-primary/5">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-primary" />
-                AI Clinical Assistant
-              </CardTitle>
-            </CardHeader>
+        {/* Clinical Files */}
+        {form.clinicalFiles && form.clinicalFiles.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Upload className="w-4 h-4" /> Bukti Klinis ({form.clinicalFiles.length})</CardTitle></CardHeader>
             <CardContent className="p-4 pt-0">
-              <div className="text-sm text-foreground whitespace-pre-wrap">{aiAnalysis}</div>
+              <div className="flex flex-wrap gap-2">
+                {form.clinicalFiles.map(file => (
+                  <div key={file.id} className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
+                    {CLINICAL_FILE_TYPE_LABELS[file.type]?.icon}
+                    <div>
+                      <p className="text-xs font-medium">{CLINICAL_FILE_TYPE_LABELS[file.type]?.label}</p>
+                      <p className="text-[10px] text-muted-foreground">{file.name}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         )}
@@ -728,16 +833,20 @@ export function ScreeningPanel() {
 
   const renderDoctorDashboard = () => (
     <div className="space-y-6 p-4">
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* Triage Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           { label: 'Total Skrining', value: dashboardStats.total, icon: <ClipboardCheck className="w-5 h-5" />, color: 'text-primary' },
           { label: 'Selesai', value: dashboardStats.completed, icon: <CheckCircle className="w-5 h-5" />, color: 'text-emerald-600' },
           { label: 'Menunggu', value: dashboardStats.pending, icon: <Clock className="w-5 h-5" />, color: 'text-amber-600' },
-          { label: 'Risiko Rendah', value: dashboardStats.riskRendah, icon: <Shield className="w-5 h-5" />, color: 'text-emerald-600' },
-          { label: 'Risiko Sedang', value: dashboardStats.riskSedang, icon: <AlertTriangle className="w-5 h-5" />, color: 'text-amber-600' },
-          { label: 'Risiko Tinggi', value: dashboardStats.riskTinggi, icon: <AlertTriangle className="w-5 h-5" />, color: 'text-red-600' },
-        ].map((stat) => (
+          ...([
+            { level: 'merah' as TriageLevel, label: 'Triase Merah' },
+            { level: 'oranye' as TriageLevel, label: 'Triase Oranye' },
+          ].map(t => ({
+            label: t.label, value: dashboardStats.triageCount[t.level],
+            icon: <AlertTriangle className="w-5 h-5" />, color: TRIAGE_COLORS[t.level].text,
+          }))),
+        ].map(stat => (
           <Card key={stat.label}>
             <CardContent className="p-4 text-center">
               <div className={cn('flex justify-center mb-2', stat.color)}>{stat.icon}</div>
@@ -748,58 +857,24 @@ export function ScreeningPanel() {
         ))}
       </div>
 
-      {/* Completion Rate */}
-      {dashboardStats.total > 0 && (
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-medium">Persentase Penyelesaian</span>
-              <span className="text-sm font-bold text-primary">
-                {Math.round((dashboardStats.completed / dashboardStats.total) * 100)}%
-              </span>
-            </div>
-            <Progress value={(dashboardStats.completed / dashboardStats.total) * 100} className="h-2" />
-          </CardContent>
-        </Card>
-      )}
-
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Cari skrining..."
-            className="pl-9"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+          <Input placeholder="Cari skrining..." className="pl-9" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
         </div>
-        <Select value={filterCategory} onValueChange={setFilterCategory}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Kategori" />
-          </SelectTrigger>
+        <Select value={filterTriage} onValueChange={setFilterTriage}>
+          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Triase" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Semua Kategori</SelectItem>
-            {Object.entries(SCREENING_CATEGORY_LABELS).map(([key, label]) => (
-              <SelectItem key={key} value={key}>{label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={filterRisk} onValueChange={setFilterRisk}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Risiko" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Risiko</SelectItem>
-            <SelectItem value="rendah">Rendah</SelectItem>
-            <SelectItem value="sedang">Sedang</SelectItem>
-            <SelectItem value="tinggi">Tinggi</SelectItem>
+            <SelectItem value="all">Semua Triase</SelectItem>
+            <SelectItem value="hijau">🟢 Hijau</SelectItem>
+            <SelectItem value="kuning">🟡 Kuning</SelectItem>
+            <SelectItem value="oranye">🟠 Oranye</SelectItem>
+            <SelectItem value="merah">🔴 Merah</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
+          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Status</SelectItem>
             {Object.entries(STATUS_LABELS).map(([key, { label }]) => (
@@ -815,26 +890,21 @@ export function ScreeningPanel() {
           <CardContent className="p-8 text-center">
             <ClipboardCheck className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground">Belum ada data skrining</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Kirim form skrining melalui chat konsultasi
-            </p>
+            <p className="text-sm text-muted-foreground mt-1">Kirim form skrining melalui chat konsultasi</p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
-          {filteredForms.map((form) => {
-            const template = getTemplateById(form.templateId);
-            if (!template) return null;
+          {filteredForms.map(form => {
             const statusInfo = STATUS_LABELS[form.status] || STATUS_LABELS.sent;
-            const riskColor = form.riskCategory ? RISK_COLORS[form.riskCategory] : null;
-            const patient = useStore.getState().consultations.find(
-              (c) => c.id === form.consultationId
-            )?.patient;
-
+            const triage = form.triageResult;
+            const patientName = consultations.find(c => c.id === form.consultationId)?.patient?.name || 'Pasien';
             return (
               <Card
                 key={form.id}
-                className="hover:shadow-md transition-shadow cursor-pointer"
+                className={cn('hover:shadow-md transition-shadow cursor-pointer',
+                  triage?.level === 'merah' ? 'border-red-200 border-l-4 border-l-red-500' :
+                  triage?.level === 'oranye' ? 'border-orange-200 border-l-4 border-l-orange-500' : '')}
                 onClick={() => {
                   setViewingForm(form);
                   setDoctorNotes(form.doctorNotes || '');
@@ -845,60 +915,91 @@ export function ScreeningPanel() {
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{SCREENING_CATEGORY_ICONS[template.category]}</span>
-                        <h4 className="font-semibold text-sm text-foreground truncate">{template.name}</h4>
-                      </div>
+                      <h4 className="font-semibold text-sm text-foreground">Skrining Komprehensif</h4>
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                        {patient && (
-                          <span className="text-xs text-muted-foreground">
-                            👤 {patient.name}
-                          </span>
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          📅 {formatDate(form.createdAt)}
-                        </span>
+                        <span className="text-xs text-muted-foreground">👤 {patientName}</span>
+                        <span className="text-xs text-muted-foreground">📅 {formatDate(form.createdAt)}</span>
+                        {form.completedAt && <span className="text-xs text-muted-foreground">✅ {formatDate(form.completedAt)}</span>}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      {form.riskCategory && riskColor && (
-                        <Badge className={cn('text-xs', riskColor.bg, riskColor.text, riskColor.border, 'border')}>
-                          {RISK_LABELS[form.riskCategory]}
+                      {triage && (
+                        <Badge className={cn('text-xs', TRIAGE_COLORS[triage.level].bg, TRIAGE_COLORS[triage.level].text, TRIAGE_COLORS[triage.level].border, 'border')}>
+                          {triage.label}
                         </Badge>
                       )}
-                      <Badge className={cn('text-xs', statusInfo.color)}>
-                        {statusInfo.label}
-                      </Badge>
+                      <Badge className={cn('text-xs', statusInfo.color)}>{statusInfo.label}</Badge>
                     </div>
                   </div>
-                  {form.score !== undefined && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Skor:</span>
-                      <span className="text-sm font-bold text-foreground">{form.score}</span>
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             );
           })}
         </div>
       )}
+
+      {/* View Detail Dialog */}
+      <Dialog open={!!viewingForm} onOpenChange={(open) => { if (!open) setViewingForm(null); }}>
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardCheck className="w-5 h-5" />
+              Hasil Skrining Komprehensif Telemedicine
+            </DialogTitle>
+          </DialogHeader>
+          {viewingForm && (
+            <Tabs defaultValue="ringkasan">
+              <TabsList className="flex flex-wrap h-auto gap-1">
+                <TabsTrigger value="ringkasan" className="text-xs">Ringkasan Klinis</TabsTrigger>
+                <TabsTrigger value="modul" className="text-xs">Detail Modul</TabsTrigger>
+                <TabsTrigger value="catatan" className="text-xs">Catatan Dokter</TabsTrigger>
+              </TabsList>
+              <TabsContent value="ringkasan" className="mt-4">
+                {renderClinicalSummary(viewingForm)}
+              </TabsContent>
+              <TabsContent value="modul" className="mt-4">
+                {renderModuleResults(viewingForm)}
+              </TabsContent>
+              <TabsContent value="catatan" className="mt-4 space-y-4">
+                <div>
+                  <Label className="text-sm font-medium">Catatan Dokter</Label>
+                  <Textarea className="mt-1" placeholder="Tambahkan catatan klinis..." value={doctorNotes} onChange={e => setDoctorNotes(e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Tindak Lanjut</Label>
+                  <Textarea className="mt-1" placeholder="Rencana tindak lanjut..." value={doctorFollowUp} onChange={e => setDoctorFollowUp(e.target.value)} />
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={handleReviewForm} className="flex-1">
+                    <CheckCircle className="w-4 h-4 mr-2" /> Simpan & Tandai Ditinjau
+                  </Button>
+                  <Button variant="outline" onClick={() => handleAiAnalysis(viewingForm)} disabled={aiLoading}>
+                    {aiLoading ? <><Activity className="w-4 h-4 mr-2 animate-spin" /> Menganalisis...</> : <><Brain className="w-4 h-4 mr-2" /> AI Analysis</>}
+                  </Button>
+                </div>
+                {aiAnalysis && (
+                  <Card className="border-primary/30 bg-primary/5">
+                    <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" /> AI Clinical Assistant</CardTitle></CardHeader>
+                    <CardContent className="p-4 pt-0">
+                      <div className="text-sm text-foreground whitespace-pre-wrap">{aiAnalysis}</div>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+            </Tabs>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 
   // ── Render: Patient View ───────────────────────────────────────────────
 
   const renderPatientView = () => {
-    if (activeFormId && activeForm && activeTemplate) {
-      return renderPatientForm();
-    }
+    if (activeFormId && activeForm) return renderPatientForm();
 
-    const pendingForms = myScreeningForms.filter(
-      (f) => f.status === 'sent' || f.status === 'opened' || f.status === 'in_progress' || f.status === 'draft'
-    );
-    const completedForms = myScreeningForms.filter(
-      (f) => f.status === 'completed' || f.status === 'reviewed'
-    );
+    const pendingForms = myScreeningForms.filter(f => f.status === 'sent' || f.status === 'opened' || f.status === 'in_progress' || f.status === 'draft');
+    const completedForms = myScreeningForms.filter(f => f.status === 'completed' || f.status === 'reviewed');
 
     return (
       <div className="space-y-6 p-4">
@@ -906,45 +1007,33 @@ export function ScreeningPanel() {
         {pendingForms.length > 0 && (
           <div>
             <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-amber-600" />
-              Perlu Diisi
+              <Clock className="w-5 h-5 text-amber-600" /> Perlu Diisi
             </h2>
             <div className="space-y-3">
-              {pendingForms.map((form) => {
-                const template = getTemplateById(form.templateId);
-                if (!template) return null;
-                const progress = calculateProgress(template, form.answers || {});
-                return (
-                  <Card
-                    key={form.id}
-                    className="hover:shadow-md transition-shadow cursor-pointer border-amber-200"
-                    onClick={() => handleOpenForm(form)}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">{SCREENING_CATEGORY_ICONS[template.category]}</span>
-                            <h4 className="font-semibold text-sm text-foreground">{template.name}</h4>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1">{template.description}</p>
-                          {form.instructions && (
-                            <p className="text-xs text-primary mt-1">📋 {form.instructions}</p>
-                          )}
-                        </div>
-                        <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />
+              {pendingForms.map(form => (
+                <Card key={form.id} className="hover:shadow-md transition-shadow cursor-pointer border-amber-200" onClick={() => handleOpenForm(form)}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h4 className="font-semibold text-sm text-foreground">Skrining Komprehensif Telemedicine</h4>
+                        <p className="text-xs text-muted-foreground mt-1">Form skrining pra-konsultasi dari dokter</p>
+                        {form.instructions && <p className="text-xs text-primary mt-1">📋 {form.instructions}</p>}
+                        {form.deadline && <p className="text-xs text-amber-600 mt-1">⏰ Batas: {formatDate(form.deadline)}</p>}
                       </div>
+                      <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />
+                    </div>
+                    {form.moduleAnswers && Object.keys(form.moduleAnswers).length > 0 && (
                       <div className="mt-3">
                         <div className="flex justify-between text-xs mb-1">
                           <span className="text-muted-foreground">Progress</span>
-                          <span className="font-medium">{progress}%</span>
+                          <span className="font-medium">{calculateProgress(applicableModules, form.moduleAnswers)}%</span>
                         </div>
-                        <Progress value={progress} className="h-1.5" />
+                        <Progress value={calculateProgress(applicableModules, form.moduleAnswers)} className="h-1.5" />
                       </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           </div>
         )}
@@ -953,54 +1042,38 @@ export function ScreeningPanel() {
         {completedForms.length > 0 && (
           <div>
             <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-emerald-600" />
-              Riwayat Skrining
+              <CheckCircle className="w-5 h-5 text-emerald-600" /> Riwayat Skrining
             </h2>
             <div className="space-y-3">
-              {completedForms.map((form) => {
-                const template = getTemplateById(form.templateId);
-                if (!template) return null;
-                const riskColor = form.riskCategory ? RISK_COLORS[form.riskCategory] : null;
+              {completedForms.map(form => {
+                const triage = form.triageResult;
                 return (
                   <Card key={form.id} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between">
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">{SCREENING_CATEGORY_ICONS[template.category]}</span>
-                            <h4 className="font-semibold text-sm text-foreground">{template.name}</h4>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {formatDate(form.completedAt || form.createdAt)}
-                          </p>
+                          <h4 className="font-semibold text-sm text-foreground">Skrining Komprehensif</h4>
+                          <p className="text-xs text-muted-foreground mt-1">{formatDate(form.completedAt || form.createdAt)}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {form.riskCategory && riskColor && (
-                            <Badge className={cn('text-xs', riskColor.bg, riskColor.text, riskColor.border, 'border')}>
-                              {RISK_LABELS[form.riskCategory]}
+                          {triage && (
+                            <Badge className={cn('text-xs', TRIAGE_COLORS[triage.level].bg, TRIAGE_COLORS[triage.level].text, TRIAGE_COLORS[triage.level].border, 'border')}>
+                              {triage.label}
                             </Badge>
                           )}
                           <Badge variant="secondary" className="text-xs">
-                            Skor: {form.score}
+                            {form.status === 'reviewed' ? 'Ditinjau' : 'Selesai'}
                           </Badge>
                         </div>
                       </div>
-                      {form.recommendations && form.recommendations.length > 0 && (
-                        <div className="mt-2">
-                          <p className="text-xs text-muted-foreground">Rekomendasi:</p>
-                          <ul className="text-xs text-foreground mt-1">
-                            {form.recommendations.slice(0, 2).map((rec, idx) => (
-                              <li key={idx} className="flex items-start gap-1">
-                                <ChevronRight className="w-3 h-3 text-primary shrink-0 mt-0.5" />
-                                {rec}
-                              </li>
-                            ))}
-                            {form.recommendations.length > 2 && (
-                              <li className="text-muted-foreground">
-                                +{form.recommendations.length - 2} lainnya
-                              </li>
-                            )}
-                          </ul>
+                      {form.clinicalSummary && (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Keluhan: {form.clinicalSummary.chiefComplaint}
+                        </div>
+                      )}
+                      {form.doctorNotes && (
+                        <div className="mt-2 p-2 bg-primary/5 rounded text-xs">
+                          <span className="font-medium text-primary">Catatan Dokter:</span> {form.doctorNotes}
                         </div>
                       )}
                     </CardContent>
@@ -1011,15 +1084,12 @@ export function ScreeningPanel() {
           </div>
         )}
 
-        {/* Empty State */}
-        {myScreeningForms.length === 0 && (
+        {pendingForms.length === 0 && completedForms.length === 0 && (
           <Card>
             <CardContent className="p-8 text-center">
               <ClipboardCheck className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground">Belum ada formulir skrining</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Dokter akan mengirimkan form skrining melalui chat konsultasi
-              </p>
+              <p className="text-muted-foreground">Belum ada skrining</p>
+              <p className="text-sm text-muted-foreground mt-1">Dokter akan mengirim form skrining melalui chat</p>
             </CardContent>
           </Card>
         )}
@@ -1027,21 +1097,6 @@ export function ScreeningPanel() {
     );
   };
 
-  // ── Main Render ────────────────────────────────────────────────────────
-
-  return (
-    <div className="h-full">
-      {isDoctor ? renderDoctorDashboard() : renderPatientView()}
-
-      {/* Doctor View Dialog */}
-      <Dialog open={!!viewingForm} onOpenChange={(open) => { if (!open) setViewingForm(null); }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Detail Skrining</DialogTitle>
-          </DialogHeader>
-          {viewingForm && renderScreeningResult(viewingForm, isDoctor)}
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+  // ── Main Render ──
+  return isDoctor ? renderDoctorDashboard() : renderPatientView();
 }

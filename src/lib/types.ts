@@ -270,56 +270,94 @@ export interface DashboardStats {
   topDoctors: { doctorId: string; name: string; count: number }[];
 }
 
-// ── Screening Types ─────────────────────────────────────────────────────────
+// ── Screening Types (Skrining Komprehensif Telemedicine) ──────────────────
 
-export type ScreeningCategory = 
-  | 'bayi' | 'balita' | 'anak_sekolah' | 'remaja' | 'dewasa' | 'lansia'
-  | 'ibu_hamil' | 'nifas' | 'penyakit_kronis' | 'kesehatan_jiwa'
-  | 'haji_umroh' | 'gaya_hidup' | 'ptm';
+export type ScreeningModuleId =
+  | 'keluhan_utama' | 'tanda_bahaya' | 'tanda_vital' | 'penyakit_kronis'
+  | 'nyeri' | 'kesehatan_mental' | 'nutrisi' | 'risiko_jatuh'
+  | 'status_fungsional' | 'home_care' | 'paliatif' | 'bukti_klinis';
 
 export type ScreeningStatus = 'sent' | 'opened' | 'in_progress' | 'draft' | 'completed' | 'reviewed';
 
 export type RiskCategory = 'rendah' | 'sedang' | 'tinggi';
 
+export type TriageLevel = 'hijau' | 'kuning' | 'oranye' | 'merah';
+
 export interface ScreeningQuestion {
   id: string;
   text: string;
-  type: 'radio' | 'checkbox' | 'number' | 'text' | 'scale';
+  type: 'radio' | 'checkbox' | 'number' | 'text' | 'scale' | 'file_upload';
   options?: { label: string; value: string | number; score: number }[];
   required: boolean;
   section?: string;
   min?: number;
   max?: number;
   placeholder?: string;
+  unit?: string; // e.g. 'kg', 'cm', 'mmHg', 'bpm', '%', '°C'
+  conditionalLogic?: { showIfQuestionId: string; showIfValue: string | number };
 }
 
-export interface ScreeningTemplate {
-  id: string;
+export interface ScreeningModule {
+  id: ScreeningModuleId;
   name: string;
-  category: ScreeningCategory;
-  standard: string; // e.g. 'FINDRISC', 'PHQ-9', 'Framingham'
+  icon: string;
   description: string;
   estimatedMinutes: number;
+  isRequired: boolean; // whether this module is required in the screening
+  targetAudience: 'all' | 'lansia' | 'kronis' | 'paliatif'; // who should fill this
   questions: ScreeningQuestion[];
-  scoringAlgorithm: {
+  scoringAlgorithm?: {
     type: 'sum' | 'weighted' | 'custom';
     ranges: { min: number; max: number; category: RiskCategory; label: string; recommendations: string[] }[];
+  };
+  customOutput?: (answers: Record<string, string | number | string[]>) => { label: string; value: string; details?: string };
+}
+
+export interface ClinicalFile {
+  id: string;
+  type: 'foto_luka' | 'foto_obat' | 'foto_lab' | 'foto_radiologi' | 'video_pernapasan' | 'video_mobilisasi' | 'dokumen_medis';
+  name: string;
+  url: string; // base64 or blob URL
+  uploadedAt: string;
+}
+
+export interface TriageResult {
+  level: TriageLevel;
+  label: string;
+  description: string;
+  recommendation: string;
+  calculatedAt: string;
+}
+
+export interface ClinicalSummary {
+  chiefComplaint: string;
+  riskFactors: string[];
+  chronicDiseases: string[];
+  painScore: number | null;
+  mentalStatus: string;
+  functionalStatus: string;
+  homeCareNeed: string;
+  palliativeStatus: string;
+  redFlags: string[];
+  vitalSigns: {
+    weight?: number; height?: number; temperature?: number;
+    bloodPressure?: string; heartRate?: number; oxygenSat?: number; bloodSugar?: number;
   };
 }
 
 export interface ScreeningForm {
   id: string;
-  templateId: string;
   consultationId: string;
   doctorId: string;
   patientId: string;
   status: ScreeningStatus;
   instructions?: string;
   deadline?: string;
-  answers: Record<string, string | number | string[]>;
-  score?: number;
-  riskCategory?: RiskCategory;
-  recommendations?: string[];
+  moduleAnswers: Record<ScreeningModuleId, Record<string, string | number | string[]>>;
+  moduleScores: Record<ScreeningModuleId, { score: number; riskCategory: RiskCategory; label: string; recommendations: string[] }>;
+  clinicalFiles: ClinicalFile[];
+  triageResult?: TriageResult;
+  clinicalSummary?: ClinicalSummary;
   doctorNotes?: string;
   followUp?: string;
   completedAt?: string;

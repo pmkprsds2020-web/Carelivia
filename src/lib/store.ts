@@ -4,7 +4,7 @@ import type {
   HomeCareService, HomeCareBooking, Notification, Article,
   ActivePanel, DashboardStats, MedicalRecord, Payment,
   MedicineCategory, Prescription, MedicalRecordStatus,
-  ScreeningForm, ScreeningAuditLog
+  ScreeningForm, ScreeningAuditLog, ScreeningModuleId
 } from './types';
 
 interface TelemedicineStore {

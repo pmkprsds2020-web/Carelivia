@@ -11,7 +11,9 @@ import type {
   Payment,
   PaymentMethod,
   ScreeningForm,
+  ScreeningModuleId,
   RiskCategory,
+  TriageLevel,
 } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -81,9 +83,11 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
-  SCREENING_CATEGORY_LABELS,
-  SCREENING_CATEGORY_ICONS,
-  getTemplateById,
+  MODULE_LABELS,
+  MODULE_ICONS,
+  SCREENING_MODULES,
+  TRIAGE_COLORS,
+  TRIAGE_LABELS,
 } from '@/lib/screening-templates';
 
 // ---------------------------------------------------------------------------
@@ -2611,7 +2615,7 @@ function PatientMedicalRecordsView() {
 
 function PatientScreeningTimeline() {
   const { screeningForms, currentUser } = useStore();
-  
+
   const patientScreenings = useMemo(() => {
     if (!currentUser) return [];
     return screeningForms
@@ -2638,75 +2642,217 @@ function PatientScreeningTimeline() {
   }
 
   return (
-    <div className="max-h-[calc(100vh-320px)] overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+    <div className="max-h-[calc(100vh-320px)] overflow-y-auto space-y-4 pr-1 custom-scrollbar">
       {patientScreenings.map((form: ScreeningForm) => {
-        const template = getTemplateById(form.templateId);
-        if (!template) return null;
-        const riskColor = form.riskCategory ? riskColors[form.riskCategory] : null;
         const dateStr = form.completedAt || form.createdAt;
+        const triage = form.triageResult;
+        const summary = form.clinicalSummary;
+        const triageColor = triage ? TRIAGE_COLORS[triage.level as TriageLevel] : null;
+
+        // Collect modules with scores
+        const scoredModules = (Object.keys(form.moduleScores) as ScreeningModuleId[])
+          .map((modId) => ({
+            id: modId,
+            label: MODULE_LABELS[modId] || modId,
+            icon: MODULE_ICONS[modId] || '📋',
+            ...form.moduleScores[modId],
+          }))
+          .filter((m) => m.score > 0 || m.riskCategory !== 'rendah' || m.recommendations.length > 0);
+
         return (
           <Card key={form.id} className="border-0 hover:shadow-sm transition-shadow">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-teal-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-lg">{SCREENING_CATEGORY_ICONS[template.category]}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <h4 className="font-semibold text-sm text-foreground">{template.name}</h4>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {form.riskCategory && riskColor && (
-                        <Badge className={cn('text-[10px]', riskColor.bg, riskColor.text, riskColor.border, 'border')}>
-                          {form.riskCategory === 'tinggi' ? 'Risiko Tinggi' : form.riskCategory === 'sedang' ? 'Risiko Sedang' : 'Risiko Rendah'}
-                        </Badge>
-                      )}
-                      {form.score !== undefined && (
-                        <Badge variant="secondary" className="text-[10px]">Skor: {form.score}</Badge>
-                      )}
-                    </div>
+            <CardContent className="p-4 space-y-3">
+              {/* Header: Triage level + date */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-teal-500/10 flex items-center justify-center shrink-0">
+                    <ClipboardCheck className="w-5 h-5 text-teal-600" />
                   </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs text-muted-foreground">Standar: {template.standard}</span>
-                    <span className="text-xs text-muted-foreground">•</span>
-                    <span className="text-xs text-muted-foreground">
+                  <div>
+                    <h4 className="font-semibold text-sm text-foreground">Skrining Komprehensif Telemedicine</h4>
+                    <p className="text-xs text-muted-foreground">
                       {new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
-                    </span>
+                    </p>
                   </div>
-                  
-                  {/* Risk & Recommendations */}
-                  {form.recommendations && form.recommendations.length > 0 && (
-                    <div className="mt-2">
-                      <p className="text-xs font-medium text-foreground">Rekomendasi:</p>
-                      <ul className="mt-1 space-y-0.5">
-                        {form.recommendations.slice(0, 3).map((rec: string, idx: number) => (
-                          <li key={idx} className="text-xs text-muted-foreground flex items-start gap-1">
-                            <ChevronRight className="w-3 h-3 text-primary shrink-0 mt-0.5" />
-                            {rec}
-                          </li>
-                        ))}
-                        {form.recommendations.length > 3 && (
-                          <li className="text-xs text-muted-foreground">+{form.recommendations.length - 3} lainnya</li>
-                        )}
-                      </ul>
+                </div>
+                {triage && triageColor && (
+                  <Badge className={cn('text-[10px] font-bold shrink-0', triageColor.bg, triageColor.text, triageColor.border, 'border')}>
+                    {triage.label}
+                  </Badge>
+                )}
+              </div>
+
+              {/* Triage description */}
+              {triage && (
+                <div className={cn('rounded-lg p-2.5', triageColor?.bg || 'bg-gray-50')}>
+                  <p className={cn('text-xs font-medium', triageColor?.text || 'text-gray-700')}>
+                    {triage.description}
+                  </p>
+                  <p className={cn('text-xs mt-0.5', triageColor?.text || 'text-gray-600', 'opacity-80')}>
+                    {triage.recommendation}
+                  </p>
+                </div>
+              )}
+
+              {/* Clinical Summary */}
+              {summary && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-foreground">Ringkasan Klinis</p>
+
+                  {/* Chief Complaint */}
+                  {summary.chiefComplaint && summary.chiefComplaint !== 'Tidak disebutkan' && (
+                    <div className="flex items-start gap-2">
+                      <Stethoscope className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                      <p className="text-xs text-foreground"><span className="font-medium">Keluhan:</span> {summary.chiefComplaint}</p>
                     </div>
                   )}
 
-                  {/* Doctor Notes */}
-                  {form.doctorNotes && (
-                    <div className="mt-2 bg-primary/5 rounded-lg p-2">
-                      <p className="text-xs font-medium text-primary">Catatan Dokter:</p>
-                      <p className="text-xs text-foreground mt-0.5">{form.doctorNotes}</p>
+                  {/* Vital Signs */}
+                  {summary.vitalSigns && (
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      {summary.vitalSigns.bloodPressure && (
+                        <span className="text-xs text-muted-foreground">TD: {summary.vitalSigns.bloodPressure} mmHg</span>
+                      )}
+                      {summary.vitalSigns.heartRate && (
+                        <span className="text-xs text-muted-foreground">Nadi: {summary.vitalSigns.heartRate} bpm</span>
+                      )}
+                      {summary.vitalSigns.temperature && (
+                        <span className="text-xs text-muted-foreground">Suhu: {summary.vitalSigns.temperature}°C</span>
+                      )}
+                      {summary.vitalSigns.oxygenSat && (
+                        <span className="text-xs text-muted-foreground">SpO2: {summary.vitalSigns.oxygenSat}%</span>
+                      )}
+                      {summary.vitalSigns.weight && (
+                        <span className="text-xs text-muted-foreground">BB: {summary.vitalSigns.weight} kg</span>
+                      )}
+                      {summary.vitalSigns.bloodSugar && (
+                        <span className="text-xs text-muted-foreground">GDS: {summary.vitalSigns.bloodSugar} mg/dL</span>
+                      )}
                     </div>
                   )}
-                  
-                  {/* Follow Up */}
-                  {form.followUp && (
-                    <div className="mt-1">
-                      <p className="text-xs font-medium text-foreground">Tindak Lanjut: {form.followUp}</p>
+
+                  {/* Pain Score */}
+                  {summary.painScore !== null && summary.painScore > 0 && (
+                    <div className="flex items-center gap-2">
+                      <Activity className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                      <span className="text-xs text-foreground">Skala Nyeri: <span className={cn('font-bold', summary.painScore >= 7 ? 'text-red-600' : summary.painScore >= 4 ? 'text-amber-600' : 'text-emerald-600')}>{summary.painScore}/10</span></span>
+                    </div>
+                  )}
+
+                  {/* Mental Status */}
+                  {summary.mentalStatus && summary.mentalStatus !== 'Normal' && (
+                    <div className="flex items-center gap-2">
+                      <Heart className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                      <span className={cn('text-xs font-medium', summary.mentalStatus === 'KRISIS MENTAL' ? 'text-red-600' : 'text-foreground')}>
+                        Status Mental: {summary.mentalStatus}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Functional Status */}
+                  {summary.functionalStatus && summary.functionalStatus !== 'Mandiri' && (
+                    <div className="flex items-center gap-2">
+                      <Ruler className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                      <span className="text-xs text-foreground">Status Fungsional: {summary.functionalStatus}</span>
+                    </div>
+                  )}
+
+                  {/* Red Flags */}
+                  {summary.redFlags && summary.redFlags.length > 0 && (
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-medium text-red-600">Tanda Bahaya:</p>
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {summary.redFlags.map((flag, idx) => (
+                            <Badge key={idx} className="text-[10px] bg-red-50 text-red-700 border-red-200 border">
+                              {flag}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Chronic Diseases */}
+                  {summary.chronicDiseases && summary.chronicDiseases.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {summary.chronicDiseases.map((disease, idx) => (
+                        <Badge key={idx} variant="secondary" className="text-[10px]">
+                          {disease}
+                        </Badge>
+                      ))}
                     </div>
                   )}
                 </div>
-              </div>
+              )}
+
+              {/* Module Scores */}
+              {scoredModules.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-foreground">Hasil Modul Skrining</p>
+                  <div className="space-y-1.5">
+                    {scoredModules.map((mod) => {
+                      const modColor = riskColors[mod.riskCategory as RiskCategory];
+                      return (
+                        <div key={mod.id} className="flex items-center gap-2">
+                          <span className="text-sm shrink-0">{mod.icon}</span>
+                          <span className="text-xs text-foreground flex-1 min-w-0 truncate">{mod.label}</span>
+                          {modColor && (
+                            <Badge className={cn('text-[10px] shrink-0', modColor.bg, modColor.text, modColor.border, 'border')}>
+                              {mod.riskCategory === 'tinggi' ? 'Tinggi' : mod.riskCategory === 'sedang' ? 'Sedang' : 'Rendah'}
+                            </Badge>
+                          )}
+                          <Badge variant="secondary" className="text-[10px] shrink-0">{mod.score}</Badge>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Module Recommendations (show top ones) */}
+                  {scoredModules.some((m) => m.recommendations.length > 0) && (
+                    <div className="mt-2">
+                      <p className="text-xs font-medium text-foreground">Rekomendasi Utama:</p>
+                      <ul className="mt-1 space-y-0.5">
+                        {scoredModules
+                          .filter((m) => m.riskCategory !== 'rendah')
+                          .flatMap((m) => m.recommendations.slice(0, 2).map((rec) => ({ rec, modLabel: m.label })))
+                          .slice(0, 6)
+                          .map((item, idx) => (
+                            <li key={idx} className="text-xs text-muted-foreground flex items-start gap-1">
+                              <ChevronRight className="w-3 h-3 text-primary shrink-0 mt-0.5" />
+                              <span><span className="font-medium text-foreground">{item.modLabel}:</span> {item.rec}</span>
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Clinical Files Count */}
+              {form.clinicalFiles && form.clinicalFiles.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs text-muted-foreground">{form.clinicalFiles.length} bukti klinis terlampir</span>
+                </div>
+              )}
+
+              {/* Doctor Notes */}
+              {form.doctorNotes && (
+                <div className="bg-primary/5 rounded-lg p-2.5">
+                  <p className="text-xs font-medium text-primary">Catatan Dokter:</p>
+                  <p className="text-xs text-foreground mt-0.5">{form.doctorNotes}</p>
+                </div>
+              )}
+
+              {/* Follow Up */}
+              {form.followUp && (
+                <div className="flex items-center gap-2">
+                  <ArrowRight className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <p className="text-xs font-medium text-foreground">Tindak Lanjut: {form.followUp}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         );
