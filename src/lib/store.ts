@@ -166,6 +166,12 @@ interface TelemedicineStore {
   activeInlineScreeningType: PalliativeMonitoringFormType | null;
   setActiveInlineScreeningType: (type: PalliativeMonitoringFormType | null) => void;
 
+  // Screening Navigation (from Monitoring Paliatif to Skrining Paliatif)
+  screeningNavigationFrom: 'monitoring' | null;
+  setScreeningNavigationFrom: (from: 'monitoring' | null) => void;
+  screeningPreselectedPatientId: string | null;
+  setScreeningPreselectedPatientId: (id: string | null) => void;
+
   // RVSM (Remote Vital Sign Monitoring)
   rvsmDevices: WearableDevice[];
   addRvsmDevice: (device: WearableDevice) => void;
@@ -948,6 +954,12 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setActiveInlineScreeningFormId: (id) => set({ activeInlineScreeningFormId: id }),
   activeInlineScreeningType: null as PalliativeMonitoringFormType | null,
   setActiveInlineScreeningType: (type) => set({ activeInlineScreeningType: type }),
+
+  // Screening Navigation state
+  screeningNavigationFrom: null as 'monitoring' | null,
+  setScreeningNavigationFrom: (from) => set({ screeningNavigationFrom: from }),
+  screeningPreselectedPatientId: null as string | null,
+  setScreeningPreselectedPatientId: (id) => set({ screeningPreselectedPatientId: id }),
 
   // RVSM
   rvsmDevices: [

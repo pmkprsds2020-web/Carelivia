@@ -2,16 +2,17 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useStore } from '@/lib/store';
-import type { PalliativeScreeningForm, PalliativeToolType, ScreeningStatus } from '@/lib/types';
+import type { PalliativeScreeningForm, PalliativeToolType, ScreeningStatus, PalliativePatientInfo } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -27,6 +28,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   BarChart3,
   Thermometer,
   Heart,
@@ -40,7 +47,9 @@ import {
   AlertTriangle,
   CheckCircle,
   ArrowRight,
+  ArrowLeft,
   User,
+  ClipboardCheck,
 } from 'lucide-react';
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -354,6 +363,12 @@ export function PalliativeScreeningPanel() {
     currentUser, consultations, doctors,
     palliativeScreeningForms, addPalliativeScreeningForm, updatePalliativeScreeningForm,
     activePalliativeFormId, setActivePalliativeFormId,
+    palliativePatients,
+    palliativeScreeningRecords, addPalliativeScreeningRecord,
+    screeningNavigationFrom, setScreeningNavigationFrom,
+    screeningPreselectedPatientId, setScreeningPreselectedPatientId,
+    setActivePanel,
+    addPalliativeAuditEntry,
   } = useStore();
   const { toast } = useToast();
 
@@ -370,11 +385,40 @@ export function PalliativeScreeningPanel() {
   const [detailResult, setDetailResult] = useState<ScreeningResult | null>(null);
   const [activeFormId, setActiveFormId] = useState<string | null>(null);
 
-  // ── Effective patient ID (auto-select for patients) ──
+  // ── Navigation from Monitoring Paliatif ──
+  const isNavigatedFromMonitoring = screeningNavigationFrom === 'monitoring';
+
+  // Compute effective patient ID from navigation state
+  const navigatedPatientId = useMemo((): string => {
+    if (!isNavigatedFromMonitoring || !screeningPreselectedPatientId) return '';
+    const palliativePatient = palliativePatients.find(p => p.id === screeningPreselectedPatientId);
+    if (!palliativePatient) return screeningPreselectedPatientId;
+    // Try to find matching consultation patient
+    const consultationPatient = consultations.find(c =>
+      c.patient && (c.patient.name === palliativePatient.patientName || c.patientId === palliativePatient.patientId)
+    );
+    if (consultationPatient?.patient) {
+      return consultationPatient.patient.id;
+    }
+    // Use palliative patient's own ID or fallback
+    return palliativePatient.id;
+  }, [isNavigatedFromMonitoring, screeningPreselectedPatientId, palliativePatients, consultations]);
+
+  // Get the palliative patient info for auto-fill when navigated from monitoring
+  const navigatedPalliativePatient = useMemo((): PalliativePatientInfo | null => {
+    if (!isNavigatedFromMonitoring || !screeningPreselectedPatientId) return null;
+    return palliativePatients.find(p => p.id === screeningPreselectedPatientId) || null;
+  }, [isNavigatedFromMonitoring, screeningPreselectedPatientId, palliativePatients]);
+
+  // ── Effective patient ID (auto-select for patients, or from navigation) ──
   const effectivePatientId = useMemo(() => {
     if (isPatient && currentUser) return currentUser.id;
+    // If navigated from monitoring, use the computed patient ID
+    if (isNavigatedFromMonitoring && navigatedPatientId) {
+      return selectedPatientId || navigatedPatientId;
+    }
     return selectedPatientId;
-  }, [isPatient, currentUser, selectedPatientId]);
+  }, [isPatient, currentUser, isNavigatedFromMonitoring, navigatedPatientId, selectedPatientId]);
 
   // ── Effective active form ID (auto-open from store) ──
   const effectiveActiveFormId = useMemo(() => {
@@ -401,8 +445,26 @@ export function PalliativeScreeningPanel() {
 
   const selectedPatient = useMemo(() => {
     if (!effectivePatientId) return null;
-    return patients.find(p => p.id === effectivePatientId) || null;
-  }, [effectivePatientId, patients]);
+    // First check consultation patients
+    const consultationPatient = patients.find(p => p.id === effectivePatientId);
+    if (consultationPatient) return consultationPatient;
+    // When navigated from monitoring, check palliative patients too
+    if (isNavigatedFromMonitoring) {
+      const palliativePatient = palliativePatients.find(p => p.id === effectivePatientId);
+      if (palliativePatient) {
+        // Create a pseudo-user object from palliative patient info
+        return {
+          id: palliativePatient.id,
+          name: palliativePatient.patientName || 'Pasien Paliatif',
+          email: '',
+          role: 'patient' as const,
+          phone: palliativePatient.familyContactPhone || '',
+          avatarUrl: '',
+        };
+      }
+    }
+    return null;
+  }, [effectivePatientId, patients, isNavigatedFromMonitoring, palliativePatients]);
 
   // ── Mark form as opened when it becomes active ──
   useEffect(() => {
@@ -807,8 +869,41 @@ export function PalliativeScreeningPanel() {
     }
 
     toast({ title: 'Hasil Disimpan', description: `Hasil ${TOOL_DEFS[activeTool].name} berhasil disimpan ke RME.` });
+
+    // Also save to PalliativeScreeningRecords for integration with Monitoring Paliatif
+    if (navigatedPalliativePatient) {
+      const record = {
+        id: `psr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        palliativePatientId: navigatedPalliativePatient.id,
+        screeningType: activeTool,
+        score,
+        scoreLabel,
+        interpretation,
+        ewsLevel,
+        details: JSON.stringify(details),
+        performedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      };
+      addPalliativeScreeningRecord(record);
+
+      // Add audit entry
+      if (addPalliativeAuditEntry) {
+        addPalliativeAuditEntry({
+          id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          patientId: navigatedPalliativePatient.id,
+          action: 'clinical_action',
+          performedBy: currentUser?.name || 'Dokter',
+          performedByRole: 'doctor',
+          details: `Skrining ${TOOL_DEFS[activeTool].name} selesai. Skor: ${scoreLabel}. ${interpretation}`,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      toast({ title: 'Tersimpan di Monitoring Paliatif', description: `Hasil skrining juga tersimpan di Riwayat Skrining pasien pada Modul Monitoring Paliatif.` });
+    }
+
     handleCloseModal();
-  }, [activeTool, effectivePatientId, selectedPatient, effectiveActiveFormId, palliativeScreeningForms, isDoctor, currentUser, consultations, answers, calcESAS, calcDistress, calcSPICT, calcPPS, calcZarit, calcEORTC, getEwsLevel, handleCloseModal, toast, updatePalliativeScreeningForm, addPalliativeScreeningForm]);
+  }, [activeTool, effectivePatientId, selectedPatient, effectiveActiveFormId, palliativeScreeningForms, isDoctor, currentUser, consultations, answers, calcESAS, calcDistress, calcSPICT, calcPPS, calcZarit, calcEORTC, getEwsLevel, handleCloseModal, toast, updatePalliativeScreeningForm, addPalliativeScreeningForm, navigatedPalliativePatient, addPalliativeScreeningRecord, addPalliativeAuditEntry]);
 
   // ── VAS Slider Component ──
   const renderVasSlider = (id: string, label: string) => {
@@ -1924,29 +2019,167 @@ export function PalliativeScreeningPanel() {
           {/* Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <div className="flex-1">
-              <h2 className="text-xl font-bold text-foreground">Modul Skrining Paliatif</h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-bold text-foreground">Modul Skrining Paliatif</h2>
+                {isNavigatedFromMonitoring && (
+                  <Badge variant="outline" className="border-primary/30 text-primary bg-primary/5">
+                    <ClipboardCheck className="w-3 h-3 mr-1" />
+                    Dari Monitoring Paliatif
+                  </Badge>
+                )}
+              </div>
               <p className="text-sm text-muted-foreground mt-1">
                 6 alat skrining klinis paliatif dengan modal interaktif step-by-step
               </p>
             </div>
-            {/* Patient Selector */}
-            <div className="w-full sm:w-72">
-              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Pilih Pasien</Label>
-              <Select value={selectedPatientId} onValueChange={setSelectedPatientId}>
-                <SelectTrigger>
-                  <User className="w-4 h-4 mr-2 text-muted-foreground" />
-                  <SelectValue placeholder="Pilih pasien..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {patients.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              {isNavigatedFromMonitoring && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => {
+                    setScreeningNavigationFrom(null);
+                    setScreeningPreselectedPatientId(null);
+                    setActivePanel('palliative-monitoring');
+                  }}
+                >
+                  <ArrowLeft className="w-4 h-4 mr-1" />
+                  Kembali ke Monitoring Paliatif
+                </Button>
+              )}
+              {/* Patient Selector */}
+              <div className="w-full sm:w-72">
+                <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Pilih Pasien</Label>
+                <Select value={effectivePatientId || ''} onValueChange={setSelectedPatientId}>
+                  <SelectTrigger>
+                    <User className="w-4 h-4 mr-2 text-muted-foreground" />
+                    <SelectValue placeholder={isNavigatedFromMonitoring && navigatedPalliativePatient ? navigatedPalliativePatient.patientName || 'Pilih pasien...' : 'Pilih pasien...'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {patients.map(p => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                    {/* Add palliative patients to the list when navigated from monitoring */}
+                    {isNavigatedFromMonitoring && navigatedPalliativePatient && !patients.find(p => p.id === effectivePatientId) && (
+                      <SelectItem value={effectivePatientId}>
+                        {navigatedPalliativePatient.patientName || 'Pasien Paliatif'}
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
           <Separator />
+
+          {/* Patient Identity Card (auto-filled from Monitoring Paliatif) */}
+          {isNavigatedFromMonitoring && navigatedPalliativePatient && (
+            <Card className="border-primary/20 bg-primary/5">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <ClipboardCheck className="w-4 h-4 text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground">Identitas Pasien</h3>
+                  <Badge variant="secondary" className="text-[10px]">Auto-isi dari Monitoring Paliatif</Badge>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-2 text-sm">
+                  <div>
+                    <span className="text-muted-foreground text-xs">Nama</span>
+                    <p className="font-medium text-foreground">{navigatedPalliativePatient.patientName || '-'}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">No. Rekam Medis</span>
+                    <p className="font-medium text-foreground">{navigatedPalliativePatient.rmNumber || '-'}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">Tanggal Lahir</span>
+                    <p className="font-medium text-foreground">
+                      {navigatedPalliativePatient.dateOfBirth
+                        ? new Date(navigatedPalliativePatient.dateOfBirth).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+                        : '-'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">Jenis Kelamin</span>
+                    <p className="font-medium text-foreground">{navigatedPalliativePatient.gender || '-'}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">Diagnosa Utama</span>
+                    <p className="font-medium text-foreground">{navigatedPalliativePatient.primaryDiagnosis || '-'}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">Stadium</span>
+                    <p className="font-medium text-foreground">{navigatedPalliativePatient.diseaseStage || '-'}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">Status Perawatan</span>
+                    <p className="font-medium text-foreground">
+                      {navigatedPalliativePatient.careStatus === 'rawat_jalan' ? 'Rawat Jalan' :
+                       navigatedPalliativePatient.careStatus === 'home_care' ? 'Home Care' :
+                       navigatedPalliativePatient.careStatus === 'hospice' ? 'Hospice' :
+                       navigatedPalliativePatient.careStatus === 'rawat_inap' ? 'Rawat Inap' : '-'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">Tingkat Risiko</span>
+                    <p className="font-medium">
+                      <Badge variant="outline" className={
+                        navigatedPalliativePatient.riskLevel === 'merah' ? 'bg-red-100 text-red-800 border-red-300' :
+                        navigatedPalliativePatient.riskLevel === 'kuning' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                        'bg-green-100 text-green-800 border-green-300'
+                      }>
+                        {navigatedPalliativePatient.riskLevel === 'merah' ? 'Risiko Tinggi' :
+                         navigatedPalliativePatient.riskLevel === 'kuning' ? 'Risiko Sedang' : 'Risiko Rendah'}
+                      </Badge>
+                    </p>
+                  </div>
+                </div>
+                {navigatedPalliativePatient.attendingDoctorName && (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Dokter PJ: {navigatedPalliativePatient.attendingDoctorName}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Screening History for navigated patient */}
+          {isNavigatedFromMonitoring && navigatedPalliativePatient && (() => {
+            const patientRecords = palliativeScreeningRecords
+              .filter(r => r.palliativePatientId === navigatedPalliativePatient.id)
+              .sort((a, b) => new Date(b.performedAt).getTime() - new Date(a.performedAt).getTime());
+            if (patientRecords.length === 0) return null;
+            return (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Riwayat Skrining Pasien</CardTitle>
+                  <CardDescription className="text-xs">
+                    {patientRecords.length} skrining tercatat di Monitoring Paliatif
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {patientRecords.map(record => {
+                      const ewsBadge = getEwsBadge(record.ewsLevel || 'hijau');
+                      return (
+                        <div key={record.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/50 text-xs">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className={cn('text-[10px] font-bold border', ewsBadge.bg, ewsBadge.color)}>
+                              {ewsBadge.label}
+                            </Badge>
+                            <span className="font-medium">{TOOL_DEFS[record.screeningType as ToolType]?.name || record.screeningType}</span>
+                            <span className="text-muted-foreground">{record.scoreLabel || '-'}</span>
+                          </div>
+                          <span className="text-muted-foreground">{formatDate(record.performedAt)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {/* Tool Cards Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2132,11 +2365,16 @@ export function PalliativeScreeningPanel() {
             <DialogTitle className="flex items-center gap-2">
               {activeTool && TOOL_DEFS[activeTool].icon}
               <span>{activeTool ? TOOL_DEFS[activeTool].name : ''}</span>
-              {selectedPatient && (
+              {isNavigatedFromMonitoring && navigatedPalliativePatient ? (
+                <span className="text-sm font-normal text-muted-foreground">
+                  — {navigatedPalliativePatient.patientName || 'Pasien'}
+                  {navigatedPalliativePatient.rmNumber && ` (${navigatedPalliativePatient.rmNumber})`}
+                </span>
+              ) : selectedPatient ? (
                 <span className="text-sm font-normal text-muted-foreground">
                   — {selectedPatient.name}
                 </span>
-              )}
+              ) : null}
             </DialogTitle>
           </DialogHeader>
 
@@ -2173,6 +2411,18 @@ export function PalliativeScreeningPanel() {
                   <Button size="sm" onClick={handleSaveResult}>
                     <Save className="w-4 h-4 mr-1" /> Simpan ke RME
                   </Button>
+                  {isNavigatedFromMonitoring && (
+                    <Button variant="secondary" size="sm" onClick={() => {
+                      handleSaveResult();
+                      setTimeout(() => {
+                        setScreeningNavigationFrom(null);
+                        setScreeningPreselectedPatientId(null);
+                        setActivePanel('palliative-monitoring');
+                      }, 300);
+                    }}>
+                      <ArrowLeft className="w-4 h-4 mr-1" /> Simpan & Kembali ke Monitoring
+                    </Button>
+                  )}
                   {activeTool === 'esas' && (
                     <Button variant="secondary" size="sm" onClick={() => toast({ title: 'SOAP', description: 'Navigasi ke panel SOAP (dalam pengembangan)' })}>
                       <FileText className="w-4 h-4 mr-1" /> Buat SOAP
@@ -2196,6 +2446,28 @@ export function PalliativeScreeningPanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Back to Monitoring Paliatif (bottom) ── */}
+      {isDoctor && isNavigatedFromMonitoring && (
+        <div className="mt-6 pt-4 border-t">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Hasil skrining akan otomatis tersimpan di Riwayat Skrining pasien pada Modul Monitoring Paliatif.
+            </p>
+            <Button
+              variant="default"
+              onClick={() => {
+                setScreeningNavigationFrom(null);
+                setScreeningPreselectedPatientId(null);
+                setActivePanel('palliative-monitoring');
+              }}
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Kembali ke Monitoring Paliatif
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ── Detail Result Modal ── */}
       <Dialog open={!!detailResult} onOpenChange={(open) => { if (!open) setDetailResult(null); }}>

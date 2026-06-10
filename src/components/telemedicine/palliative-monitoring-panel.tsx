@@ -314,6 +314,9 @@ export function PalliativeMonitoringPanel() {
     palliativeMonitoringNotifications,
     addPalliativeMonitoringNotification,
     markPalliativeNotificationRead,
+    setActivePanel,
+    setScreeningNavigationFrom,
+    setScreeningPreselectedPatientId,
   } = useStore();
 
   const { toast } = useToast();
@@ -711,6 +714,15 @@ export function PalliativeMonitoringPanel() {
   }, [updatePalliativeMonitoringStatus, palliativePatients, currentUser, addPalliativeAuditEntry, addPalliativeMonitoringNotification, getMonitoringStatusLabel, toast]);
 
   // ── Handlers ──
+
+  const handleNavigateToScreening = useCallback(
+    (patientId: string) => {
+      setScreeningNavigationFrom('monitoring');
+      setScreeningPreselectedPatientId(patientId);
+      setActivePanel('palliative-screening');
+    },
+    [setScreeningNavigationFrom, setScreeningPreselectedPatientId, setActivePanel]
+  );
 
   const handleSelectPatient = useCallback(
     (id: string) => {
@@ -1368,6 +1380,14 @@ export function PalliativeMonitoringPanel() {
                 </div>
                 <div className="flex sm:flex-col gap-2 shrink-0">
                   <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => handleNavigateToScreening(detailPatient.id)}
+                  >
+                    <ClipboardCheck className="w-4 h-4 mr-1" />
+                    Skrining
+                  </Button>
+                  <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setEditingPatient(detailPatient)}
@@ -1491,6 +1511,15 @@ export function PalliativeMonitoringPanel() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs border-primary/30 text-primary hover:bg-primary hover:text-primary-foreground"
+                                onClick={() => handleNavigateToScreening(p.id)}
+                              >
+                                <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
+                                Skrining
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -1825,11 +1854,15 @@ export function PalliativeMonitoringPanel() {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Riwayat Skrining Paliatif</h2>
         <Button
-          onClick={() => useStore.getState().setActivePanel('palliative-screening')}
+          onClick={() => {
+            if (selectedPalliativePatientId) {
+              handleNavigateToScreening(selectedPalliativePatientId);
+            }
+          }}
           disabled={!selectedPatient}
         >
           <ClipboardCheck className="w-4 h-4 mr-2" />
-          Kirim Skrining
+          Lakukan Skrining
         </Button>
       </div>
 
@@ -1844,7 +1877,11 @@ export function PalliativeMonitoringPanel() {
           <p>Belum ada riwayat skrining untuk pasien ini.</p>
           <Button
             className="mt-4"
-            onClick={() => useStore.getState().setActivePanel('palliative-screening')}
+            onClick={() => {
+              if (selectedPalliativePatientId) {
+                handleNavigateToScreening(selectedPalliativePatientId);
+              }
+            }}
           >
             Mulai Skrining
           </Button>
@@ -2101,7 +2138,7 @@ export function PalliativeMonitoringPanel() {
 
       {/* Medication Monitoring Dashboard */}
       {selectedPatient && (
-        <MedicationMonitoringDashboard patientId={selectedPatient} />
+        <MedicationMonitoringDashboard patientId={selectedPatient.id} />
       )}
     </div>
   );
