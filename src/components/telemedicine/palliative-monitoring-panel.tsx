@@ -1605,6 +1605,34 @@ export function PalliativeMonitoringPanel() {
                   <Button
                     variant="default"
                     size="sm"
+                    className="bg-primary hover:bg-primary/90 gap-1"
+                    onClick={() => { handleSelectPatient(detailPatient.id); setActiveTab('dokumen'); }}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Generate Resume AI
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-primary/20 text-primary hover:bg-primary hover:text-primary-foreground gap-1"
+                    onClick={() => { handleSelectPatient(detailPatient.id); setActiveTab('dokumen'); }}
+                  >
+                    <Building2 className="w-4 h-4" />
+                    Surat Rujukan AI
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-primary/20 text-primary hover:bg-primary hover:text-primary-foreground gap-1"
+                    onClick={() => { handleSelectPatient(detailPatient.id); setActiveTab('dokumen'); }}
+                  >
+                    <FileText className="w-4 h-4" />
+                    Lihat Dokumen
+                  </Button>
+                  <Separator className="hidden sm:block" />
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => handleNavigateToScreening(detailPatient.id)}
                   >
                     <ClipboardCheck className="w-4 h-4 mr-1" />
@@ -1625,15 +1653,6 @@ export function PalliativeMonitoringPanel() {
                   >
                     <Trash2 className="w-4 h-4 mr-1" />
                     Hapus
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-primary/20 text-primary hover:bg-primary hover:text-primary-foreground"
-                    onClick={() => { handleSelectPatient(detailPatient.id); setActiveTab('dokumen'); }}
-                  >
-                    <FileText className="w-4 h-4 mr-1" />
-                    Resume & Rujukan
                   </Button>
                   <Button
                     variant="outline"
@@ -1690,21 +1709,52 @@ export function PalliativeMonitoringPanel() {
                   }
                 </p>
               </Card>
-              <Card className="p-4 text-center">
-                <p className="text-xs text-muted-foreground">Resume Medis</p>
+              <Card className="p-4">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <FileText className="w-3.5 h-3.5 text-primary" />
+                  <p className="text-xs text-muted-foreground">Resume Medis</p>
+                </div>
                 <p className="text-xl font-bold text-primary">
-                  {
-                    palliativeResumes.filter((r) => r.palliativePatientId === detailPatient.id).length
-                  }
+                  {palliativeResumes.filter((r) => r.palliativePatientId === detailPatient.id).length}
                 </p>
+                {(() => {
+                  const pr = palliativeResumes
+                    .filter((r) => r.palliativePatientId === detailPatient.id)
+                    .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+                  return pr.length > 0 ? (
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Terakhir: {new Date(pr[0].generatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {pr[0].isSigned ? ' (Signed)' : ''}
+                    </p>
+                  ) : null;
+                })()}
               </Card>
-              <Card className="p-4 text-center">
-                <p className="text-xs text-muted-foreground">Surat Rujukan</p>
+              <Card className="p-4">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Building2 className="w-3.5 h-3.5 text-teal-600" />
+                  <p className="text-xs text-muted-foreground">Surat Rujukan</p>
+                </div>
                 <p className="text-xl font-bold text-teal-600">
-                  {
-                    palliativeReferralLetters.filter((l) => l.palliativePatientId === detailPatient.id).length
-                  }
+                  {palliativeReferralLetters.filter((l) => l.palliativePatientId === detailPatient.id).length}
                 </p>
+                {(() => {
+                  const lr = palliativeReferralLetters
+                    .filter((l) => l.palliativePatientId === detailPatient.id)
+                    .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+                  if (lr.length === 0) return null;
+                  const statusMap: Record<string, { label: string; cls: string }> = {
+                    belum_dirujuk: { label: 'Belum Dirujuk', cls: 'text-slate-500' },
+                    menunggu: { label: 'Menunggu', cls: 'text-amber-600' },
+                    sudah_dirujuk: { label: 'Sudah Dirujuk', cls: 'text-blue-600' },
+                    selesai: { label: 'Selesai', cls: 'text-green-600' },
+                  };
+                  const st = statusMap[lr[0].referralStatus] || statusMap.belum_dirujuk;
+                  return (
+                    <p className={`text-[10px] mt-1 ${st.cls}`}>
+                      {st.label} - {new Date(lr[0].generatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </p>
+                  );
+                })()}
               </Card>
             </div>
           </div>

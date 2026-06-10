@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import type {
@@ -73,6 +73,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import QRCode from 'qrcode';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -168,6 +169,11 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
   const [showSignDialog, setShowSignDialog] = useState(false);
   const [signDocType, setSignDocType] = useState<'resume' | 'referral'>('resume');
   const [signDocId, setSignDocId] = useState('');
+  const [resumeQrDataUrl, setResumeQrDataUrl] = useState<string | null>(null);
+  const [referralQrDataUrl, setReferralQrDataUrl] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const resumeContentRef = useRef<HTMLDivElement>(null);
+  const referralContentRef = useRef<HTMLDivElement>(null);
 
   const {
     palliativeResumes,
@@ -203,6 +209,45 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
 
   const latestResume = patientResumes[0] || null;
   const latestReferral = patientReferrals[0] || null;
+
+  // ── QR Code Generation ──
+  useEffect(() => {
+    if (selectedResume?.isSigned) {
+      const qrData = JSON.stringify({
+        docId: selectedResume.id,
+        docNumber: selectedResume.documentNumber,
+        timestamp: selectedResume.signedAt || selectedResume.generatedAt,
+        doctor: selectedResume.doctorName || '-',
+        sip: selectedResume.doctorSip || '-',
+        signed: true,
+        type: 'resume_medis',
+      });
+      QRCode.toDataURL(qrData, { width: 120, margin: 1, color: { dark: '#1a1a2e', light: '#ffffff' } })
+        .then((url) => setResumeQrDataUrl(url))
+        .catch(() => setResumeQrDataUrl(null));
+    } else {
+      setResumeQrDataUrl(null);
+    }
+  }, [selectedResume?.isSigned, selectedResume?.id, selectedResume?.documentNumber, selectedResume?.signedAt, selectedResume?.generatedAt, selectedResume?.doctorName, selectedResume?.doctorSip]);
+
+  useEffect(() => {
+    if (selectedReferral?.isSigned) {
+      const qrData = JSON.stringify({
+        docId: selectedReferral.id,
+        docNumber: selectedReferral.documentNumber,
+        timestamp: selectedReferral.signedAt || selectedReferral.generatedAt,
+        doctor: selectedReferral.doctorName || '-',
+        sip: selectedReferral.doctorSip || '-',
+        signed: true,
+        type: 'surat_rujukan',
+      });
+      QRCode.toDataURL(qrData, { width: 120, margin: 1, color: { dark: '#1a1a2e', light: '#ffffff' } })
+        .then((url) => setReferralQrDataUrl(url))
+        .catch(() => setReferralQrDataUrl(null));
+    } else {
+      setReferralQrDataUrl(null);
+    }
+  }, [selectedReferral?.isSigned, selectedReferral?.id, selectedReferral?.documentNumber, selectedReferral?.signedAt, selectedReferral?.generatedAt, selectedReferral?.doctorName, selectedReferral?.doctorSip]);
 
   // ── Handlers ──
   const handleGenerateResume = useCallback(async () => {
@@ -500,49 +545,190 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
     toast({ title: 'Dokumen Terkirim', description: `${docLabel} berhasil dikirim ke chat pasien.` });
   }, [patient, currentUser, palliativeResumes, palliativeReferralLetters, addPalliativeChatMessage, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry, toast]);
 
-  const handleDownload = useCallback((docType: 'resume' | 'referral', docId: string) => {
+  const handleSendToWhatsApp = useCallback((docType: 'resume' | 'referral', docId: string) => {
+    if (!patient) return;
     const doc = docType === 'resume'
       ? palliativeResumes.find((r) => r.id === docId)
       : palliativeReferralLetters.find((l) => l.id === docId);
     if (!doc) return;
 
-    // Create a downloadable text file
-    const content = doc.fullContent;
-    const header = docType === 'resume'
-      ? `RESUME MEDIS PALIATIF\nNo. Dokumen: ${doc.documentNumber}\nPasien: ${doc.patientName || '-'}\nRM: ${doc.rmNumber || '-'}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}${doc.isSigned ? `\nSIP: ${doc.doctorSip || '-'}` : ''}\n${'='.repeat(60)}\n\n`
-      : `SURAT RUJUKAN RUMAH SAKIT\nNo. Dokumen: ${doc.documentNumber}\nPasien: ${doc.patientName || '-'}\nRM: ${doc.rmNumber || '-'}\nTujuan: ${getDeptLabel((doc as PalliativeReferralLetter).targetDepartment)}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}${doc.isSigned ? `\nSIP: ${doc.doctorSip || '-'}` : ''}\n${'='.repeat(60)}\n\n`;
+    const docLabel = docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan';
+    const phone = patient.familyContactPhone?.replace(/\D/g, '') || '';
+    if (!phone) {
+      toast({ title: 'Nomor WhatsApp Tidak Tersedia', description: 'Nomor telepon keluarga pasien belum diisi.', variant: 'destructive' });
+      return;
+    }
 
-    const footer = `\n\n${'='.repeat(60)}\nDokter: ${doc.doctorName || '-'}\n${doc.doctorSip ? `SIP: ${doc.doctorSip}` : ''}\n${doc.isSigned ? 'Tanda Tangan Elektronik: ✓ Verified' : 'Belum ditandatangani'}\nTanggal: ${formatDate(doc.generatedAt)}`;
-
-    const blob = new Blob([header + content + footer], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${docType === 'resume' ? 'Resume_Medis' : 'Surat_Rujukan'}_${doc.patientName || 'Pasien'}_${new Date().toISOString().split('T')[0]}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const message = `${docLabel} - ${doc.patientName || 'Pasien'}\n\nNo. Dokumen: ${doc.documentNumber}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}\nStatus: ${doc.isSigned ? 'Ditandatangani secara elektronik' : 'Belum ditandatangani'}\n\nDokumen ini dihasilkan oleh MedikaLink`;
+    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(waUrl, '_blank');
 
     if (docType === 'resume') {
-      updatePalliativeResume(docId, {
-        downloadCount: (doc.downloadCount || 0) + 1,
-        lastDownloadAt: new Date().toISOString(),
-      });
+      updatePalliativeResume(docId, { sentToWhatsAppAt: new Date().toISOString() });
     } else {
-      updatePalliativeReferralLetter(docId, {
-        downloadCount: (doc.downloadCount || 0) + 1,
-        lastDownloadAt: new Date().toISOString(),
-      });
+      updatePalliativeReferralLetter(docId, { sentToWhatsAppAt: new Date().toISOString() });
     }
 
     addPalliativeDocumentAuditEntry({
       id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
-      documentId: docId, patientId: patient?.id || '',
-      action: 'downloaded', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
-      details: `${docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'} diunduh`, createdAt: new Date().toISOString(),
+      documentId: docId, patientId: patient.id,
+      action: 'sent_to_whatsapp', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+      details: `${docLabel} dikirim ke WhatsApp keluarga pasien`, createdAt: new Date().toISOString(),
     });
-  }, [palliativeResumes, palliativeReferralLetters, patient, currentUser, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry]);
+
+    setShowSendDialog(false);
+    toast({ title: 'WhatsApp Terbuka', description: `${docLabel} akan dikirim melalui WhatsApp.` });
+  }, [patient, currentUser, palliativeResumes, palliativeReferralLetters, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry, toast]);
+
+  const handleSendToEmail = useCallback((docType: 'resume' | 'referral', docId: string) => {
+    if (!patient) return;
+    const doc = docType === 'resume'
+      ? palliativeResumes.find((r) => r.id === docId)
+      : palliativeReferralLetters.find((l) => l.id === docId);
+    if (!doc) return;
+
+    const docLabel = docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan';
+    const subject = encodeURIComponent(`[MedikaLink] ${docLabel} - ${doc.patientName || 'Pasien'} - ${doc.documentNumber}`);
+    const body = encodeURIComponent(`Kepada Yth.,\n\nBerikut kami sampaikan ${docLabel} untuk pasien ${doc.patientName || '-'} (RM: ${doc.rmNumber || '-'}).\n\nDetail Dokumen:\n- No. Dokumen: ${doc.documentNumber}\n- Tanggal: ${formatDate(doc.generatedAt)}\n- Dokter: ${doc.doctorName || '-'}\n- SIP: ${doc.doctorSip || '-'}\n- Status Tanda Tangan: ${doc.isSigned ? 'Ditandatangani secara elektronik' : 'Belum ditandatangani'}\n- Versi: ${doc.version}\n\nDokumen ini dihasilkan oleh MedikaLink.\nHormat kami,\n${currentUser?.name || 'Dokter'}`);
+    window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
+
+    if (docType === 'resume') {
+      updatePalliativeResume(docId, { sentToEmailAt: new Date().toISOString() });
+    } else {
+      updatePalliativeReferralLetter(docId, { sentToEmailAt: new Date().toISOString() });
+    }
+
+    addPalliativeDocumentAuditEntry({
+      id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+      documentId: docId, patientId: patient.id,
+      action: 'sent_to_email', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+      details: `${docLabel} dikirim via email`, createdAt: new Date().toISOString(),
+    });
+
+    setShowSendDialog(false);
+    toast({ title: 'Email Terbuka', description: `Klien email akan terbuka dengan ${docLabel}.` });
+  }, [patient, currentUser, palliativeResumes, palliativeReferralLetters, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry, toast]);
+
+  const handleDownloadPdf = useCallback(async (docType: 'resume' | 'referral', docId: string) => {
+    const doc = docType === 'resume'
+      ? palliativeResumes.find((r) => r.id === docId)
+      : palliativeReferralLetters.find((l) => l.id === docId);
+    if (!doc || !patient) return;
+
+    setDownloading(true);
+    const docLabel = docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan';
+    const fileName = `${docType === 'resume' ? 'Resume_Medis' : 'Surat_Rujukan'}_${doc.patientName || 'Pasien'}_${new Date().toISOString().split('T')[0]}.pdf`;
+
+    try {
+      // Try PDF API first
+      const referralDoc = docType === 'referral' ? doc as PalliativeReferralLetter : undefined;
+      const response = await fetch('/api/palliative-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          documentType: docType,
+          documentId: doc.id,
+          patientData: {
+            patientName: doc.patientName || patient.patientName || '-',
+            rmNumber: doc.rmNumber || patient.rmNumber || '-',
+            nik: patient.nik,
+            bpjsNumber: patient.bpjsNumber,
+            primaryDiagnosis: patient.primaryDiagnosis || '-',
+            secondaryDiagnosis: patient.secondaryDiagnosis,
+            diseaseStage: patient.diseaseStage,
+            careStatus: patient.careStatus,
+            riskLevel: patient.riskLevel,
+          },
+          documentData: {
+            documentNumber: doc.documentNumber,
+            generatedAt: doc.generatedAt,
+            doctorName: doc.doctorName || '-',
+            doctorSip: doc.doctorSip || '',
+            isSigned: doc.isSigned,
+            signedAt: doc.signedAt,
+            fullContent: doc.fullContent,
+            targetDepartment: referralDoc?.targetDepartment,
+            referralStatus: referralDoc?.referralStatus,
+            version: doc.version,
+          },
+        }),
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        if (docType === 'resume') {
+          updatePalliativeResume(docId, {
+            downloadCount: (doc.downloadCount || 0) + 1,
+            lastDownloadAt: new Date().toISOString(),
+          });
+        } else {
+          updatePalliativeReferralLetter(docId, {
+            downloadCount: (doc.downloadCount || 0) + 1,
+            lastDownloadAt: new Date().toISOString(),
+          });
+        }
+
+        addPalliativeDocumentAuditEntry({
+          id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+          documentId: docId, patientId: patient.id,
+          action: 'downloaded', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+          details: `${docLabel} diunduh (PDF)`, createdAt: new Date().toISOString(),
+        });
+
+        toast({ title: 'PDF Berhasil Diunduh', description: `${docLabel} telah diunduh dalam format PDF.` });
+      } else {
+        throw new Error('PDF API failed');
+      }
+    } catch {
+      // Fallback to text file download
+      const content = doc.fullContent;
+      const header = docType === 'resume'
+        ? `RESUME MEDIS PALIATIF\nNo. Dokumen: ${doc.documentNumber}\nPasien: ${doc.patientName || '-'}\nRM: ${doc.rmNumber || '-'}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}${doc.isSigned ? `\nSIP: ${doc.doctorSip || '-'}` : ''}\n${'='.repeat(60)}\n\n`
+        : `SURAT RUJUKAN RUMAH SAKIT\nNo. Dokumen: ${doc.documentNumber}\nPasien: ${doc.patientName || '-'}\nRM: ${doc.rmNumber || '-'}\nTujuan: ${getDeptLabel((doc as PalliativeReferralLetter).targetDepartment)}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}${doc.isSigned ? `\nSIP: ${doc.doctorSip || '-'}` : ''}\n${'='.repeat(60)}\n\n`;
+      const footer = `\n\n${'='.repeat(60)}\nDokter: ${doc.doctorName || '-'}\n${doc.doctorSip ? `SIP: ${doc.doctorSip}` : ''}\n${doc.isSigned ? 'Tanda Tangan Elektronik: ✓ Verified' : 'Belum ditandatangani'}\nTanggal: ${formatDate(doc.generatedAt)}`;
+
+      const blob = new Blob([header + content + footer], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${docType === 'resume' ? 'Resume_Medis' : 'Surat_Rujukan'}_${doc.patientName || 'Pasien'}_${new Date().toISOString().split('T')[0]}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      if (docType === 'resume') {
+        updatePalliativeResume(docId, {
+          downloadCount: (doc.downloadCount || 0) + 1,
+          lastDownloadAt: new Date().toISOString(),
+        });
+      } else {
+        updatePalliativeReferralLetter(docId, {
+          downloadCount: (doc.downloadCount || 0) + 1,
+          lastDownloadAt: new Date().toISOString(),
+        });
+      }
+
+      addPalliativeDocumentAuditEntry({
+        id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+        documentId: docId, patientId: patient.id,
+        action: 'downloaded', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+        details: `${docLabel} diunduh (TXT fallback)`, createdAt: new Date().toISOString(),
+      });
+
+      toast({ title: 'Dokumen Diunduh (TXT)', description: 'PDF API tidak tersedia, diunduh sebagai file teks.' });
+    }
+    setDownloading(false);
+  }, [palliativeResumes, palliativeReferralLetters, patient, currentUser, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry, toast]);
 
   const handlePrint = useCallback((docType: 'resume' | 'referral', docId: string) => {
     const doc = docType === 'resume'
@@ -726,6 +912,29 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
             )}
             Generate Resume AI
           </Button>
+          {latestResume && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setSelectedResume(latestResume); setDocTab('resume'); setTimeout(() => resumeContentRef.current?.scrollIntoView({ behavior: 'smooth' }), 100); }}
+                className="gap-1.5"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                Lihat Resume Medis
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleDownloadPdf('resume', latestResume.id)}
+                disabled={downloading}
+                className="gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download PDF
+              </Button>
+            </>
+          )}
           <Button
             variant="outline"
             onClick={() => setShowReferralDeptDialog(true)}
@@ -739,6 +948,18 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
             )}
             Generate Surat Rujukan AI
           </Button>
+          {latestReferral && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleDownloadPdf('referral', latestReferral.id)}
+              disabled={downloading}
+              className="gap-1.5"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download Surat Rujukan PDF
+            </Button>
+          )}
         </div>
       </div>
 
@@ -827,16 +1048,17 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
         {/* Resume Medis Tab */}
         <TabsContent value="resume" className="mt-4">
           {selectedResume ? (
-            <div className="space-y-4">
+            <div className="space-y-4" ref={resumeContentRef}>
               {/* Resume Actions */}
               <div className="flex items-center gap-2 flex-wrap">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleDownload('resume', selectedResume.id)}
+                  onClick={() => handleDownloadPdf('resume', selectedResume.id)}
+                  disabled={downloading}
                 >
-                  <Download className="w-3.5 h-3.5 mr-1.5" />
-                  Download
+                  {downloading ? <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Download className="w-3.5 h-3.5 mr-1.5" />}
+                  Download PDF
                 </Button>
                 <Button
                   variant="outline"
@@ -844,7 +1066,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
                   onClick={() => handlePrint('resume', selectedResume.id)}
                 >
                   <Printer className="w-3.5 h-3.5 mr-1.5" />
-                  Cetak
+                  Cetak Resume
                 </Button>
                 <Button
                   variant="outline"
@@ -856,19 +1078,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
                   }}
                 >
                   <Send className="w-3.5 h-3.5 mr-1.5" />
-                  Kirim ke Chat
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSendDocType('resume');
-                    setSendDocId(selectedResume.id);
-                    setShowSendDialog(true);
-                  }}
-                >
-                  <Mail className="w-3.5 h-3.5 mr-1.5" />
-                  Kirim Email
+                  Kirim Dokumen
                 </Button>
                 {!selectedResume.isSigned && (
                   <Button
@@ -990,15 +1200,25 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
                 <div className="mt-6 border-t pt-4 text-right">
                   {selectedResume.isSigned ? (
                     <div className="space-y-1">
-                      <p className="text-sm font-medium">{selectedResume.doctorName || '-'}</p>
-                      <p className="text-xs text-muted-foreground">SIP: {selectedResume.doctorSip || '-'}</p>
-                      <div className="flex items-center justify-end gap-1">
-                        <QrCode className="w-3 h-3 text-green-600" />
-                        <span className="text-xs text-green-600">Tanda Tangan Elektronik Terverifikasi</span>
+                      <div className="flex items-end justify-end gap-3">
+                        <div className="text-right">
+                          <p className="text-sm font-medium">{selectedResume.doctorName || '-'}</p>
+                          <p className="text-xs text-muted-foreground">SIP: {selectedResume.doctorSip || '-'}</p>
+                          <div className="flex items-center justify-end gap-1 mt-1">
+                            <QrCode className="w-3 h-3 text-green-600" />
+                            <span className="text-xs text-green-600">Tanda Tangan Elektronik Terverifikasi</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Ditandatangani: {selectedResume.signedAt ? formatDateTime(selectedResume.signedAt) : '-'}
+                          </p>
+                        </div>
+                        {resumeQrDataUrl && (
+                          <div className="flex flex-col items-center">
+                            <img src={resumeQrDataUrl} alt="QR Verifikasi" className="w-[60px] h-[60px]" />
+                            <span className="text-[9px] text-muted-foreground mt-0.5">Scan untuk verifikasi</span>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        Ditandatangani: {selectedResume.signedAt ? formatDateTime(selectedResume.signedAt) : '-'}
-                      </p>
                     </div>
                   ) : (
                     <p className="text-xs text-amber-600">Belum ditandatangani</p>
@@ -1033,16 +1253,17 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
         {/* Surat Rujukan Tab */}
         <TabsContent value="referral" className="mt-4">
           {selectedReferral ? (
-            <div className="space-y-4">
+            <div className="space-y-4" ref={referralContentRef}>
               {/* Referral Actions */}
               <div className="flex items-center gap-2 flex-wrap">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleDownload('referral', selectedReferral.id)}
+                  onClick={() => handleDownloadPdf('referral', selectedReferral.id)}
+                  disabled={downloading}
                 >
-                  <Download className="w-3.5 h-3.5 mr-1.5" />
-                  Download
+                  {downloading ? <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Download className="w-3.5 h-3.5 mr-1.5" />}
+                  Download PDF
                 </Button>
                 <Button
                   variant="outline"
@@ -1050,7 +1271,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
                   onClick={() => handlePrint('referral', selectedReferral.id)}
                 >
                   <Printer className="w-3.5 h-3.5 mr-1.5" />
-                  Cetak
+                  Cetak Surat Rujukan
                 </Button>
                 <Button
                   variant="outline"
@@ -1062,19 +1283,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
                   }}
                 >
                   <Send className="w-3.5 h-3.5 mr-1.5" />
-                  Kirim ke Chat
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSendDocType('referral');
-                    setSendDocId(selectedReferral.id);
-                    setShowSendDialog(true);
-                  }}
-                >
-                  <Mail className="w-3.5 h-3.5 mr-1.5" />
-                  Kirim Email
+                  Kirim Dokumen
                 </Button>
                 {!selectedReferral.isSigned && (
                   <Button
@@ -1184,11 +1393,21 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
                 <div className="mt-6 border-t pt-4 text-right">
                   {selectedReferral.isSigned ? (
                     <div className="space-y-1">
-                      <p className="text-sm font-medium">{selectedReferral.doctorName || '-'}</p>
-                      <p className="text-xs text-muted-foreground">SIP: {selectedReferral.doctorSip || '-'}</p>
-                      <div className="flex items-center justify-end gap-1">
-                        <QrCode className="w-3 h-3 text-green-600" />
-                        <span className="text-xs text-green-600">Tanda Tangan Elektronik Terverifikasi</span>
+                      <div className="flex items-end justify-end gap-3">
+                        <div className="text-right">
+                          <p className="text-sm font-medium">{selectedReferral.doctorName || '-'}</p>
+                          <p className="text-xs text-muted-foreground">SIP: {selectedReferral.doctorSip || '-'}</p>
+                          <div className="flex items-center justify-end gap-1 mt-1">
+                            <QrCode className="w-3 h-3 text-green-600" />
+                            <span className="text-xs text-green-600">Tanda Tangan Elektronik Terverifikasi</span>
+                          </div>
+                        </div>
+                        {referralQrDataUrl && (
+                          <div className="flex flex-col items-center">
+                            <img src={referralQrDataUrl} alt="QR Verifikasi" className="w-[60px] h-[60px]" />
+                            <span className="text-[9px] text-muted-foreground mt-0.5">Scan untuk verifikasi</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -1415,38 +1634,92 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
               Pilih metode pengiriman {sendDocType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'}.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+
+          {/* Document Info */}
+          {(() => {
+            const doc = sendDocType === 'resume'
+              ? palliativeResumes.find((r) => r.id === sendDocId)
+              : palliativeReferralLetters.find((l) => l.id === sendDocId);
+            if (!doc) return null;
+            return (
+              <div className="p-3 bg-muted/50 rounded-lg text-sm space-y-1">
+                <div className="font-medium">{sendDocType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'}</div>
+                <div className="text-muted-foreground">No. {doc.documentNumber} | {formatDate(doc.generatedAt)}</div>
+                <div className="text-muted-foreground">Dokter: {doc.doctorName || '-'} | {doc.isSigned ? '✓ Ditandatangani' : 'Belum ditandatangani'}</div>
+              </div>
+            );
+          })()}
+
+          <div className="space-y-2">
+            {/* Chat Option */}
             <Button
-              className="w-full justify-start"
               variant="outline"
+              className="w-full justify-start gap-3 h-auto py-3"
               onClick={() => handleSendToChat(sendDocType, sendDocId)}
             >
-              <MessageCircle className="w-4 h-4 mr-2" />
-              Kirim ke Chat Pasien
+              <div className="flex items-center gap-2">
+                <MessageCircle className="w-4 h-4 text-primary" />
+                <div className="text-left">
+                  <div className="font-medium">Kirim ke Chat</div>
+                  <div className="text-xs text-muted-foreground">Kirim notifikasi dokumen ke chat pasien {patient?.patientName || ''}</div>
+                </div>
+              </div>
+              {(() => {
+                const doc = sendDocType === 'resume'
+                  ? palliativeResumes.find((r) => r.id === sendDocId)
+                  : palliativeReferralLetters.find((l) => l.id === sendDocId);
+                return doc?.sentToChatAt ? <CheckCircle2 className="w-4 h-4 text-green-500 ml-auto" /> : null;
+              })()}
             </Button>
+
+            {/* WhatsApp Option */}
             <Button
-              className="w-full justify-start"
               variant="outline"
-              onClick={() => {
-                toast({ title: 'Fitur Email', description: 'Fitur pengiriman email akan segera tersedia.' });
-                setShowSendDialog(false);
-              }}
+              className="w-full justify-start gap-3 h-auto py-3"
+              onClick={() => handleSendToWhatsApp(sendDocType, sendDocId)}
             >
-              <Mail className="w-4 h-4 mr-2" />
-              Kirim ke Email Pasien
+              <div className="flex items-center gap-2">
+                <MessageCircle className="w-4 h-4 text-green-600" />
+                <div className="text-left">
+                  <div className="font-medium">Kirim ke WhatsApp</div>
+                  <div className="text-xs text-muted-foreground">
+                    {patient?.familyContactPhone ? `Ke: ${patient.familyContactPhone} (${patient.familyContactRelation || 'Keluarga'})` : 'Nomor telepon keluarga belum tersedia'}
+                  </div>
+                </div>
+              </div>
+              {(() => {
+                const doc = sendDocType === 'resume'
+                  ? palliativeResumes.find((r) => r.id === sendDocId)
+                  : palliativeReferralLetters.find((l) => l.id === sendDocId);
+                return doc?.sentToWhatsAppAt ? <CheckCircle2 className="w-4 h-4 text-green-500 ml-auto" /> : null;
+              })()}
             </Button>
+
+            {/* Email Option */}
             <Button
-              className="w-full justify-start"
               variant="outline"
-              onClick={() => {
-                toast({ title: 'Fitur WhatsApp', description: 'Fitur pengiriman WhatsApp akan segera tersedia.' });
-                setShowSendDialog(false);
-              }}
+              className="w-full justify-start gap-3 h-auto py-3"
+              onClick={() => handleSendToEmail(sendDocType, sendDocId)}
             >
-              <Send className="w-4 h-4 mr-2" />
-              Kirim ke WhatsApp Pasien
+              <div className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-blue-600" />
+                <div className="text-left">
+                  <div className="font-medium">Kirim via Email</div>
+                  <div className="text-xs text-muted-foreground">Buka klien email dengan subjek dan isi dokumen</div>
+                </div>
+              </div>
+              {(() => {
+                const doc = sendDocType === 'resume'
+                  ? palliativeResumes.find((r) => r.id === sendDocId)
+                  : palliativeReferralLetters.find((l) => l.id === sendDocId);
+                return doc?.sentToEmailAt ? <CheckCircle2 className="w-4 h-4 text-green-500 ml-auto" /> : null;
+              })()}
             </Button>
           </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowSendDialog(false)}>Tutup</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
