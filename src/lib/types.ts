@@ -428,4 +428,138 @@ export type ActivePanel =
   | 'reports'
   | 'profile'
   | 'screening'
-  | 'palliative-screening';
+  | 'palliative-screening'
+  | 'palliative-monitoring';
+
+// ── Palliative Monitoring Types ──────────────────────────────────────────
+
+export type PalliativeCareStatus = 'rawat_jalan' | 'home_care' | 'hospice' | 'rawat_inap';
+export type PalliativePatientStatus = 'aktif' | 'meninggal' | 'lost_follow_up' | 'pindah_faskes';
+export type PalliativeRiskLevel = 'hijau' | 'kuning' | 'merah';
+
+export interface PalliativePatientInfo {
+  id: string;
+  patientId: string;
+  patientName?: string;
+  rmNumber?: string;
+  bpjsNumber?: string;
+  nik?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  primaryDiagnosis?: string;
+  secondaryDiagnosis?: string;
+  diseaseStage?: string;
+  attendingDoctorId?: string;
+  attendingDoctorName?: string;
+  familyContactName?: string;
+  familyContactRelation?: string;
+  familyContactPhone?: string;
+  address?: string;
+  careStatus: PalliativeCareStatus;
+  patientStatus: PalliativePatientStatus;
+  riskLevel: PalliativeRiskLevel;
+  notes?: string;
+  vitalSigns?: VitalSignRecordInfo[];
+  medications?: PalliativeMedicationInfo[];
+  acpDocuments?: AdvanceCarePlanInfo[];
+  screeningRecords?: PalliativeScreeningRecordInfo[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VitalSignRecordInfo {
+  id: string;
+  palliativePatientId: string;
+  recordedBy?: string;
+  systolicBP?: number;
+  diastolicBP?: number;
+  heartRate?: number;
+  respiratoryRate?: number;
+  temperature?: number;
+  oxygenSat?: number;
+  weight?: number;
+  height?: number;
+  bmi?: number;
+  notes?: string;
+  recordedAt: string;
+  createdAt: string;
+}
+
+export interface PalliativeMedicationInfo {
+  id: string;
+  palliativePatientId: string;
+  medicineName: string;
+  dosage: string;
+  frequency: string;
+  route?: string;
+  startDate?: string;
+  endDate?: string;
+  indication?: string;
+  isActive: boolean;
+  notes?: string;
+  adherences?: MedicationAdherenceInfo[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MedicationAdherenceInfo {
+  id: string;
+  medicationId: string;
+  palliativePatientId: string;
+  date: string;
+  takenOnTime: boolean;
+  missedDose: boolean;
+  sideEffects?: string;
+  complaints?: string;
+  createdAt: string;
+}
+
+export interface AdvanceCarePlanInfo {
+  id: string;
+  palliativePatientId: string;
+  decisionMakerName?: string;
+  decisionMakerRelation?: string;
+  decisionMakerPhone?: string;
+  preferredCareLocation?: string;
+  careGoal?: string;
+  resuscitationPref?: string;
+  ventilatorPref?: string;
+  icuPref?: string;
+  artificialNutrition?: string;
+  dialysisPref?: string;
+  organDonation?: string;
+  patientHopes?: string;
+  patientWorries?: string;
+  lifeValues?: string;
+  endOfLifePrefs?: string;
+  patientSigned: boolean;
+  familySigned: boolean;
+  doctorSigned: boolean;
+  signedAt?: string;
+  isActive: boolean;
+  revisions?: ACPRevisionInfo[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ACPRevisionInfo {
+  id: string;
+  acpId: string;
+  revisedBy?: string;
+  changes?: string;
+  reason?: string;
+  createdAt: string;
+}
+
+export interface PalliativeScreeningRecordInfo {
+  id: string;
+  palliativePatientId: string;
+  screeningType: PalliativeToolType;
+  score?: number;
+  scoreLabel?: string;
+  interpretation?: string;
+  ewsLevel?: PalliativeEwsLevel;
+  details?: string;
+  performedAt: string;
+  createdAt: string;
+}

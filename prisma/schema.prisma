@@ -348,3 +348,143 @@ model AuditLog {
   ipAddress String?
   createdAt DateTime @default(now())
 }
+
+// ── Palliative Monitoring Models ──────────────────────────────────────────
+
+model PalliativePatient {
+  id                    String   @id @default(cuid())
+  patientId             String   @unique
+  rmNumber              String?  // Nomor Rekam Medis
+  bpjsNumber            String?
+  nik                   String?
+  primaryDiagnosis      String?  // Diagnosa utama
+  secondaryDiagnosis    String?  // Diagnosa penyerta
+  diseaseStage          String?  // Stadium penyakit
+  attendingDoctorId     String?  // Dokter penanggung jawab
+  familyContactName     String?  // Kontak keluarga utama
+  familyContactRelation String?  // Hubungan keluarga
+  familyContactPhone    String?
+  address               String?
+  careStatus            String   @default("rawat_jalan") // rawat_jalan, home_care, hospice, rawat_inap
+  patientStatus         String   @default("aktif") // aktif, meninggal, lost_follow_up, pindah_faskes
+  riskLevel             String   @default("hijau") // hijau, kuning, merah
+  notes                 String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  vitalSigns      VitalSignRecord[]
+  medications     PalliativeMedication[]
+  adherences      MedicationAdherence[]
+  acpDocuments    AdvanceCarePlan[]
+  screeningRecords PalliativeScreeningRecord[]
+}
+
+model VitalSignRecord {
+  id              String   @id @default(cuid())
+  palliativePatientId String
+  recordedBy      String?  // doctor, nurse, patient, family
+  systolicBP      Int?     // mmHg
+  diastolicBP     Int?     // mmHg
+  heartRate       Int?     // bpm
+  respiratoryRate Int?     // per menit
+  temperature     Float?   // Celsius
+  oxygenSat       Int?     // %
+  weight          Float?   // kg
+  height          Float?   // cm
+  bmi             Float?
+  notes           String?
+  recordedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  patient PalliativePatient @relation(fields: [palliativePatientId], references: [id], onDelete: Cascade)
+}
+
+model PalliativeMedication {
+  id                  String   @id @default(cuid())
+  palliativePatientId String
+  medicineName        String
+  dosage              String
+  frequency           String
+  route               String?  // oral, iv, sc, im, rectal, topical
+  startDate           String?
+  endDate             String?
+  indication          String?
+  isActive            Boolean  @default(true)
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  patient     PalliativePatient     @relation(fields: [palliativePatientId], references: [id], onDelete: Cascade)
+  adherences  MedicationAdherence[]
+}
+
+model MedicationAdherence {
+  id                String   @id @default(cuid())
+  medicationId      String
+  palliativePatientId String
+  date              String
+  takenOnTime       Boolean  @default(true)
+  missedDose        Boolean  @default(false)
+  sideEffects       String?
+  complaints        String?
+  createdAt         DateTime @default(now())
+
+  medication PalliativeMedication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  patient    PalliativePatient    @relation(fields: [palliativePatientId], references: [id], onDelete: Cascade)
+}
+
+model AdvanceCarePlan {
+  id                    String   @id @default(cuid())
+  palliativePatientId   String
+  decisionMakerName     String?
+  decisionMakerRelation String?
+  decisionMakerPhone    String?
+  preferredCareLocation String?  // rumah, rumah_sakit, hospice, fasilitas_khusus
+  careGoal              String?  // memperpanjang_hidup, mengurangi_gejala, fokus_kenyamanan, akhir_hayat
+  resuscitationPref     String?  // cpr, dnr
+  ventilatorPref        String?  // bersedia, tidak_bersedia
+  icuPref               String?  // bersedia, tidak_bersedia
+  artificialNutrition   String?  // bersedia, tidak_bersedia
+  dialysisPref          String?  // bersedia, tidak_bersedia
+  organDonation         String?  // ya, tidak
+  patientHopes          String?  // Harapan pasien
+  patientWorries        String?  // Kekhawatiran pasien
+  lifeValues            String?  // Nilai hidup penting
+  endOfLifePrefs        String?  // Preferensi menjelang akhir hayat
+  patientSigned         Boolean  @default(false)
+  familySigned          Boolean  @default(false)
+  doctorSigned          Boolean  @default(false)
+  signedAt              String?
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  patient   PalliativePatient @relation(fields: [palliativePatientId], references: [id], onDelete: Cascade)
+  revisions ACPRevision[]
+}
+
+model ACPRevision {
+  id        String   @id @default(cuid())
+  acpId     String
+  revisedBy String?
+  changes   String?  // JSON string of changes
+  reason    String?
+  createdAt DateTime @default(now())
+
+  acp AdvanceCarePlan @relation(fields: [acpId], references: [id], onDelete: Cascade)
+}
+
+model PalliativeScreeningRecord {
+  id                    String   @id @default(cuid())
+  palliativePatientId   String
+  screeningType         String   // esas, distress, spict, pps, zarit, eortc
+  score                 Int?
+  scoreLabel            String?
+  interpretation        String?
+  ewsLevel              String?  // merah, kuning, hijau
+  details               String?  // JSON string
+  performedAt           DateTime @default(now())
+  createdAt             DateTime @default(now())
+
+  patient PalliativePatient @relation(fields: [palliativePatientId], references: [id], onDelete: Cascade)
+}

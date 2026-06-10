@@ -5,7 +5,9 @@ import type {
   ActivePanel, DashboardStats, MedicalRecord, Payment,
   MedicineCategory, Prescription, MedicalRecordStatus,
   ScreeningForm, ScreeningAuditLog, ScreeningModuleId,
-  PalliativeScreeningForm, PalliativeToolType
+  PalliativeScreeningForm, PalliativeToolType,
+  PalliativePatientInfo, VitalSignRecordInfo, PalliativeMedicationInfo,
+  AdvanceCarePlanInfo, PalliativeScreeningRecordInfo
 } from './types';
 
 interface TelemedicineStore {
@@ -109,6 +111,31 @@ interface TelemedicineStore {
   updatePalliativeScreeningForm: (formId: string, data: Partial<PalliativeScreeningForm>) => void;
   activePalliativeFormId: string | null;
   setActivePalliativeFormId: (id: string | null) => void;
+
+  // Palliative Monitoring
+  palliativePatients: PalliativePatientInfo[];
+  setPalliativePatients: (patients: PalliativePatientInfo[]) => void;
+  addPalliativePatient: (patient: PalliativePatientInfo) => void;
+  updatePalliativePatient: (patientId: string, data: Partial<PalliativePatientInfo>) => void;
+  removePalliativePatient: (patientId: string) => void;
+  selectedPalliativePatientId: string | null;
+  setSelectedPalliativePatientId: (id: string | null) => void;
+  vitalSignRecords: VitalSignRecordInfo[];
+  setVitalSignRecords: (records: VitalSignRecordInfo[]) => void;
+  addVitalSignRecord: (record: VitalSignRecordInfo) => void;
+  palliativeMedications: PalliativeMedicationInfo[];
+  setPalliativeMedications: (meds: PalliativeMedicationInfo[]) => void;
+  addPalliativeMedication: (med: PalliativeMedicationInfo) => void;
+  updatePalliativeMedication: (medId: string, data: Partial<PalliativeMedicationInfo>) => void;
+  advanceCarePlans: AdvanceCarePlanInfo[];
+  setAdvanceCarePlans: (plans: AdvanceCarePlanInfo[]) => void;
+  addAdvanceCarePlan: (plan: AdvanceCarePlanInfo) => void;
+  updateAdvanceCarePlan: (planId: string, data: Partial<AdvanceCarePlanInfo>) => void;
+  palliativeScreeningRecords: PalliativeScreeningRecordInfo[];
+  setPalliativeScreeningRecords: (records: PalliativeScreeningRecordInfo[]) => void;
+  addPalliativeScreeningRecord: (record: PalliativeScreeningRecordInfo) => void;
+  palliativeAiSummary: string;
+  setPalliativeAiSummary: (summary: string) => void;
 }
 
 export const useStore = create<TelemedicineStore>((set) => ({
@@ -384,4 +411,199 @@ export const useStore = create<TelemedicineStore>((set) => ({
   })),
   activePalliativeFormId: null,
   setActivePalliativeFormId: (id) => set({ activePalliativeFormId: id }),
+
+  // Palliative Monitoring
+  palliativePatients: [
+    {
+      id: 'pp-1',
+      patientId: 'patient-1',
+      patientName: 'Siti Rahayu',
+      rmNumber: 'RM-2025-001',
+      bpjsNumber: '0001234567890',
+      nik: '3201014505870001',
+      dateOfBirth: '1945-05-08',
+      gender: 'Perempuan',
+      primaryDiagnosis: 'Kanker Payudara Stadium IV',
+      secondaryDiagnosis: 'Diabetes Melitus Tipe 2, Hipertensi',
+      diseaseStage: 'Stadium IV',
+      attendingDoctorId: 'doc-sarah',
+      attendingDoctorName: 'dr. Sarah Wijaya',
+      familyContactName: 'Budi Rahayu',
+      familyContactRelation: 'Anak',
+      familyContactPhone: '081234567890',
+      address: 'Jl. Melati No. 12, Bandung',
+      careStatus: 'home_care',
+      patientStatus: 'aktif',
+      riskLevel: 'merah',
+      notes: 'Pasien memerlukan perawatan paliatif intensif',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'pp-2',
+      patientId: 'patient-2',
+      patientName: 'Ahmad Sudrajat',
+      rmNumber: 'RM-2025-002',
+      bpjsNumber: '0009876543210',
+      nik: '3201015003790002',
+      dateOfBirth: '1950-03-15',
+      gender: 'Laki-laki',
+      primaryDiagnosis: 'PPOK Stadium Berat',
+      secondaryDiagnosis: 'Gagal Jantung Kongestif',
+      diseaseStage: 'Stadium Berat',
+      attendingDoctorId: 'doc-lisa',
+      attendingDoctorName: 'dr. Lisa Permata',
+      familyContactName: 'Dewi Sudrajat',
+      familyContactRelation: 'Istri',
+      familyContactPhone: '082345678901',
+      address: 'Jl. Kenanga No. 5, Jakarta',
+      careStatus: 'rawat_jalan',
+      patientStatus: 'aktif',
+      riskLevel: 'kuning',
+      notes: 'Kondisi stabil namun perlu monitoring rutin',
+      createdAt: new Date(Date.now() - 86400000).toISOString(),
+      updatedAt: new Date(Date.now() - 86400000).toISOString(),
+    },
+    {
+      id: 'pp-3',
+      patientId: 'patient-3',
+      patientName: 'Maria Susanti',
+      rmNumber: 'RM-2025-003',
+      primaryDiagnosis: 'Stroke Berat',
+      secondaryDiagnosis: 'Hipertensi',
+      diseaseStage: 'Kronis',
+      attendingDoctorId: 'doc-sarah',
+      attendingDoctorName: 'dr. Sarah Wijaya',
+      familyContactName: 'Yohanes Susanti',
+      familyContactRelation: 'Suami',
+      familyContactPhone: '083456789012',
+      address: 'Jl. Anggrek No. 8, Surabaya',
+      careStatus: 'hospice',
+      patientStatus: 'aktif',
+      riskLevel: 'merah',
+      notes: 'Pasien bed rest total, perlu perawatan paliatif penuh',
+      createdAt: new Date(Date.now() - 172800000).toISOString(),
+      updatedAt: new Date(Date.now() - 172800000).toISOString(),
+    },
+  ] as PalliativePatientInfo[],
+  setPalliativePatients: (patients) => set({ palliativePatients: patients }),
+  addPalliativePatient: (patient) => set((state) => ({ palliativePatients: [...state.palliativePatients, patient] })),
+  updatePalliativePatient: (patientId, data) => set((state) => ({
+    palliativePatients: state.palliativePatients.map(p =>
+      p.id === patientId ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
+    ),
+  })),
+  removePalliativePatient: (patientId) => set((state) => ({
+    palliativePatients: state.palliativePatients.filter(p => p.id !== patientId),
+  })),
+  selectedPalliativePatientId: null,
+  setSelectedPalliativePatientId: (id) => set({ selectedPalliativePatientId: id }),
+  vitalSignRecords: [
+    {
+      id: 'vs-1', palliativePatientId: 'pp-1', recordedBy: 'doctor',
+      systolicBP: 110, diastolicBP: 70, heartRate: 88, respiratoryRate: 22,
+      temperature: 36.8, oxygenSat: 93, weight: 52, height: 155, bmi: 21.6,
+      notes: 'Saturasi perlu dimonitor', recordedAt: new Date(Date.now() - 3600000).toISOString(), createdAt: new Date(Date.now() - 3600000).toISOString(),
+    },
+    {
+      id: 'vs-2', palliativePatientId: 'pp-1', recordedBy: 'family',
+      systolicBP: 105, diastolicBP: 65, heartRate: 92, respiratoryRate: 24,
+      temperature: 37.1, oxygenSat: 91, weight: 51.5, height: 155, bmi: 21.4,
+      notes: 'Pasien sesak ringan', recordedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString(),
+    },
+    {
+      id: 'vs-3', palliativePatientId: 'pp-1', recordedBy: 'nurse',
+      systolicBP: 115, diastolicBP: 72, heartRate: 85, respiratoryRate: 20,
+      temperature: 36.5, oxygenSat: 95, weight: 52.5, height: 155, bmi: 21.8,
+      recordedAt: new Date(Date.now() - 172800000).toISOString(), createdAt: new Date(Date.now() - 172800000).toISOString(),
+    },
+    {
+      id: 'vs-4', palliativePatientId: 'pp-2', recordedBy: 'doctor',
+      systolicBP: 135, diastolicBP: 85, heartRate: 78, respiratoryRate: 18,
+      temperature: 36.6, oxygenSat: 96, weight: 68, height: 170, bmi: 23.5,
+      recordedAt: new Date(Date.now() - 7200000).toISOString(), createdAt: new Date(Date.now() - 7200000).toISOString(),
+    },
+    {
+      id: 'vs-5', palliativePatientId: 'pp-2', recordedBy: 'patient',
+      systolicBP: 130, diastolicBP: 82, heartRate: 80, respiratoryRate: 20,
+      temperature: 36.7, oxygenSat: 94, weight: 67.5, height: 170, bmi: 23.4,
+      recordedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString(),
+    },
+    {
+      id: 'vs-6', palliativePatientId: 'pp-3', recordedBy: 'nurse',
+      systolicBP: 90, diastolicBP: 60, heartRate: 95, respiratoryRate: 26,
+      temperature: 37.5, oxygenSat: 88, weight: 45, height: 160, bmi: 17.6,
+      notes: 'Tekanan darah rendah, saturasi kritis', recordedAt: new Date(Date.now() - 1800000).toISOString(), createdAt: new Date(Date.now() - 1800000).toISOString(),
+    },
+  ] as VitalSignRecordInfo[],
+  setVitalSignRecords: (records) => set({ vitalSignRecords: records }),
+  addVitalSignRecord: (record) => set((state) => ({ vitalSignRecords: [...state.vitalSignRecords, record] })),
+  palliativeMedications: [
+    { id: 'pm-1', palliativePatientId: 'pp-1', medicineName: 'Morfine 10mg', dosage: '10mg', frequency: '3x1', route: 'oral', startDate: '2025-01-15', indication: 'Nyeri kronis', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'pm-2', palliativePatientId: 'pp-1', medicineName: 'Ondansetron 4mg', dosage: '4mg', frequency: '2x1', route: 'oral', startDate: '2025-01-15', indication: 'Mual', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'pm-3', palliativePatientId: 'pp-1', medicineName: 'Metformin 500mg', dosage: '500mg', frequency: '2x1', route: 'oral', startDate: '2024-06-01', indication: 'Diabetes', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'pm-4', palliativePatientId: 'pp-2', medicineName: 'Salbutamol Inhaler', dosage: '2 puff', frequency: '4x1', route: 'inhalasi', startDate: '2025-02-01', indication: 'Sesak napas PPOK', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'pm-5', palliativePatientId: 'pp-2', medicineName: 'Amlodipine 5mg', dosage: '5mg', frequency: '1x1', route: 'oral', startDate: '2024-03-15', indication: 'Hipertensi', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'pm-6', palliativePatientId: 'pp-3', medicineName: 'Morfine 20mg', dosage: '20mg', frequency: '2x1', route: 'oral', startDate: '2025-01-01', indication: 'Nyeri berat', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'pm-7', palliativePatientId: 'pp-3', medicineName: 'Diazepam 5mg', dosage: '5mg', frequency: '1x1', route: 'oral', startDate: '2025-01-10', indication: 'Kecemasan, insomnia', isActive: true, notes: 'Diberikan malam hari', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  ] as PalliativeMedicationInfo[],
+  setPalliativeMedications: (meds) => set({ palliativeMedications: meds }),
+  addPalliativeMedication: (med) => set((state) => ({ palliativeMedications: [...state.palliativeMedications, med] })),
+  updatePalliativeMedication: (medId, data) => set((state) => ({
+    palliativeMedications: state.palliativeMedications.map(m =>
+      m.id === medId ? { ...m, ...data, updatedAt: new Date().toISOString() } : m
+    ),
+  })),
+  advanceCarePlans: [
+    {
+      id: 'acp-1', palliativePatientId: 'pp-1',
+      decisionMakerName: 'Budi Rahayu', decisionMakerRelation: 'Anak', decisionMakerPhone: '081234567890',
+      preferredCareLocation: 'rumah', careGoal: 'fokus_kenyamanan',
+      resuscitationPref: 'dnr', ventilatorPref: 'tidak_bersedia',
+      icuPref: 'tidak_bersedia', artificialNutrition: 'bersedia',
+      dialysisPref: 'tidak_bersedia', organDonation: 'tidak',
+      patientHopes: 'Ingin menghabiskan waktu bersama keluarga di rumah',
+      patientWorries: 'Khawatir menjadi beban keluarga dan rasa sakit yang tidak terkontrol',
+      lifeValues: 'Keluarga adalah segalanya, ingin meninggal dengan tenang',
+      endOfLifePrefs: 'Ingin dirawat di rumah dengan keluarga di sekitar',
+      patientSigned: true, familySigned: true, doctorSigned: true,
+      signedAt: new Date(Date.now() - 259200000).toISOString(),
+      isActive: true,
+      createdAt: new Date(Date.now() - 259200000).toISOString(),
+      updatedAt: new Date(Date.now() - 259200000).toISOString(),
+    },
+    {
+      id: 'acp-2', palliativePatientId: 'pp-3',
+      decisionMakerName: 'Yohanes Susanti', decisionMakerRelation: 'Suami', decisionMakerPhone: '083456789012',
+      preferredCareLocation: 'hospice', careGoal: 'mengurangi_gejala',
+      resuscitationPref: 'dnr', ventilatorPref: 'tidak_bersedia',
+      icuPref: 'tidak_bersedia', artificialNutrition: 'tidak_bersedia',
+      dialysisPref: 'tidak_bersedia', organDonation: 'ya',
+      patientHopes: 'Tidak ingin menderita lama',
+      patientWorries: 'Takut kesakitan saat menjelang wafat',
+      lifeValues: 'Ingin damai dan dikelilingi keluarga',
+      endOfLifePrefs: 'Dirawat di hospice, didoakan bersama',
+      patientSigned: true, familySigned: true, doctorSigned: false,
+      isActive: true,
+      createdAt: new Date(Date.now() - 432000000).toISOString(),
+      updatedAt: new Date(Date.now() - 432000000).toISOString(),
+    },
+  ] as AdvanceCarePlanInfo[],
+  setAdvanceCarePlans: (plans) => set({ advanceCarePlans: plans }),
+  addAdvanceCarePlan: (plan) => set((state) => ({ advanceCarePlans: [...state.advanceCarePlans, plan] })),
+  updateAdvanceCarePlan: (planId, data) => set((state) => ({
+    advanceCarePlans: state.advanceCarePlans.map(p =>
+      p.id === planId ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
+    ),
+  })),
+  palliativeScreeningRecords: [
+    { id: 'psr-1', palliativePatientId: 'pp-1', screeningType: 'esas', score: 45, scoreLabel: 'Gejala Berat', interpretation: 'Skor ESAS 45/90 menunjukkan beban gejala berat', ewsLevel: 'merah', performedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString() },
+    { id: 'psr-2', palliativePatientId: 'pp-1', screeningType: 'pps', score: 40, scoreLabel: 'Ketergantungan', interpretation: 'PPS 40% - Pasien memerlukan bantuan substantial', ewsLevel: 'merah', performedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString() },
+    { id: 'psr-3', palliativePatientId: 'pp-2', screeningType: 'esas', score: 25, scoreLabel: 'Gejala Sedang', interpretation: 'Skor ESAS 25/90 menunjukkan beban gejala sedang', ewsLevel: 'kuning', performedAt: new Date(Date.now() - 172800000).toISOString(), createdAt: new Date(Date.now() - 172800000).toISOString() },
+    { id: 'psr-4', palliativePatientId: 'pp-3', screeningType: 'distress', score: 8, scoreLabel: 'Distress Berat', interpretation: 'Skor 8/10 menunjukkan distress berat', ewsLevel: 'merah', performedAt: new Date(Date.now() - 43200000).toISOString(), createdAt: new Date(Date.now() - 43200000).toISOString() },
+  ] as PalliativeScreeningRecordInfo[],
+  setPalliativeScreeningRecords: (records) => set({ palliativeScreeningRecords: records }),
+  addPalliativeScreeningRecord: (record) => set((state) => ({ palliativeScreeningRecords: [...state.palliativeScreeningRecords, record] })),
+  palliativeAiSummary: '',
+  setPalliativeAiSummary: (summary) => set({ palliativeAiSummary: summary }),
 }));
