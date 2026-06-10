@@ -1,30 +1,44 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, Suspense } from 'react';
+import dynamic from 'next/dynamic';
 import { useStore } from '@/lib/store';
 import { Sidebar } from '@/components/telemedicine/sidebar';
-import { HomeDashboard } from '@/components/telemedicine/home-dashboard';
-import { ChatPanel } from '@/components/telemedicine/chat-panel';
-import { VideoCallPanel } from '@/components/telemedicine/video-call-panel';
-import { PharmacyPanel } from '@/components/telemedicine/pharmacy-panel';
-import { HomeCarePanel } from '@/components/telemedicine/homecare-panel';
-import { MedicalRecordsPanel } from '@/components/telemedicine/medical-records';
-import { DoctorPanel } from '@/components/telemedicine/doctor-panel';
-import { AdminDashboard } from '@/components/telemedicine/admin-dashboard';
-import { AdminPricingPanel } from '@/components/telemedicine/admin-pricing-panel';
-import { NotificationsPanel } from '@/components/telemedicine/notifications-panel';
-import { PaymentsPanel } from '@/components/telemedicine/payments-panel';
-import { ReportsPanel } from '@/components/telemedicine/reports-panel';
-import { ProfilePanel } from '@/components/telemedicine/profile-panel';
-import { PharmacistPanel } from '@/components/telemedicine/pharmacist-panel';
-import { HomeCareStaffPanel } from '@/components/telemedicine/homecare-staff-panel';
 import { LoginPage } from '@/components/telemedicine/login-page';
-import { ScreeningPanel } from '@/components/telemedicine/screening-panel';
-import { PalliativeScreeningPanel } from '@/components/telemedicine/palliative-screening-panel';
-import { PalliativeMonitoringPanel } from '@/components/telemedicine/palliative-monitoring-panel';
-import { RvsmPanel } from '@/components/telemedicine/rvsm-panel';
 import { Button } from '@/components/ui/button';
 import { Menu, X } from 'lucide-react';
+
+// Dynamic imports to reduce initial bundle size and memory usage
+const HomeDashboard = dynamic(() => import('@/components/telemedicine/home-dashboard').then(m => ({ default: m.HomeDashboard })), { ssr: false });
+const ChatPanel = dynamic(() => import('@/components/telemedicine/chat-panel').then(m => ({ default: m.ChatPanel })), { ssr: false });
+const VideoCallPanel = dynamic(() => import('@/components/telemedicine/video-call-panel').then(m => ({ default: m.VideoCallPanel })), { ssr: false });
+const PharmacyPanel = dynamic(() => import('@/components/telemedicine/pharmacy-panel').then(m => ({ default: m.PharmacyPanel })), { ssr: false });
+const HomeCarePanel = dynamic(() => import('@/components/telemedicine/homecare-panel').then(m => ({ default: m.HomeCarePanel })), { ssr: false });
+const MedicalRecordsPanel = dynamic(() => import('@/components/telemedicine/medical-records').then(m => ({ default: m.MedicalRecordsPanel })), { ssr: false });
+const DoctorPanel = dynamic(() => import('@/components/telemedicine/doctor-panel').then(m => ({ default: m.DoctorPanel })), { ssr: false });
+const AdminDashboard = dynamic(() => import('@/components/telemedicine/admin-dashboard').then(m => ({ default: m.AdminDashboard })), { ssr: false });
+const AdminPricingPanel = dynamic(() => import('@/components/telemedicine/admin-pricing-panel').then(m => ({ default: m.AdminPricingPanel })), { ssr: false });
+const NotificationsPanel = dynamic(() => import('@/components/telemedicine/notifications-panel').then(m => ({ default: m.NotificationsPanel })), { ssr: false });
+const PaymentsPanel = dynamic(() => import('@/components/telemedicine/payments-panel').then(m => ({ default: m.PaymentsPanel })), { ssr: false });
+const ReportsPanel = dynamic(() => import('@/components/telemedicine/reports-panel').then(m => ({ default: m.ReportsPanel })), { ssr: false });
+const ProfilePanel = dynamic(() => import('@/components/telemedicine/profile-panel').then(m => ({ default: m.ProfilePanel })), { ssr: false });
+const PharmacistPanel = dynamic(() => import('@/components/telemedicine/pharmacist-panel').then(m => ({ default: m.PharmacistPanel })), { ssr: false });
+const HomeCareStaffPanel = dynamic(() => import('@/components/telemedicine/homecare-staff-panel').then(m => ({ default: m.HomeCareStaffPanel })), { ssr: false });
+const ScreeningPanel = dynamic(() => import('@/components/telemedicine/screening-panel').then(m => ({ default: m.ScreeningPanel })), { ssr: false });
+const PalliativeScreeningPanel = dynamic(() => import('@/components/telemedicine/palliative-screening-panel').then(m => ({ default: m.PalliativeScreeningPanel })), { ssr: false });
+const PalliativeMonitoringPanel = dynamic(() => import('@/components/telemedicine/palliative-monitoring-panel').then(m => ({ default: m.PalliativeMonitoringPanel })), { ssr: false });
+const RvsmPanel = dynamic(() => import('@/components/telemedicine/rvsm-panel').then(m => ({ default: m.RvsmPanel })), { ssr: false });
+
+function PanelLoader() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-2 border-t-transparent border-primary rounded-full animate-spin" />
+        <span className="text-sm text-muted-foreground">Memuat...</span>
+      </div>
+    </div>
+  );
+}
 
 export default function TelemedicineApp() {
   const { 
@@ -88,26 +102,26 @@ export default function TelemedicineApp() {
 
   const renderPanel = () => {
     switch (activePanel) {
-      case 'home': return <HomeDashboard />;
-      case 'chat': return <ChatPanel />;
-      case 'video': return <VideoCallPanel />;
-      case 'pharmacy': return <PharmacyPanel />;
-      case 'homecare': return <HomeCarePanel />;
-      case 'medical-records': return <MedicalRecordsPanel />;
-      case 'screening': return <ScreeningPanel />;
-      case 'palliative-screening': return <PalliativeScreeningPanel />;
-      case 'palliative-monitoring': return <PalliativeMonitoringPanel />;
-      case 'rvsm': return <RvsmPanel />;
-      case 'doctor-panel': return <DoctorPanel />;
-      case 'pharmacist-panel': return <PharmacistPanel />;
-      case 'homecare-staff-panel': return <HomeCareStaffPanel />;
-      case 'admin': return <AdminDashboard />;
-      case 'admin-pricing': return <AdminPricingPanel />;
-      case 'notifications': return <NotificationsPanel />;
-      case 'payments': return <PaymentsPanel />;
-      case 'reports': return <ReportsPanel />;
-      case 'profile': return <ProfilePanel />;
-      default: return <HomeDashboard />;
+      case 'home': return <Suspense fallback={<PanelLoader />}><HomeDashboard /></Suspense>;
+      case 'chat': return <Suspense fallback={<PanelLoader />}><ChatPanel /></Suspense>;
+      case 'video': return <Suspense fallback={<PanelLoader />}><VideoCallPanel /></Suspense>;
+      case 'pharmacy': return <Suspense fallback={<PanelLoader />}><PharmacyPanel /></Suspense>;
+      case 'homecare': return <Suspense fallback={<PanelLoader />}><HomeCarePanel /></Suspense>;
+      case 'medical-records': return <Suspense fallback={<PanelLoader />}><MedicalRecordsPanel /></Suspense>;
+      case 'screening': return <Suspense fallback={<PanelLoader />}><ScreeningPanel /></Suspense>;
+      case 'palliative-screening': return <Suspense fallback={<PanelLoader />}><PalliativeScreeningPanel /></Suspense>;
+      case 'palliative-monitoring': return <Suspense fallback={<PanelLoader />}><PalliativeMonitoringPanel /></Suspense>;
+      case 'rvsm': return <Suspense fallback={<PanelLoader />}><RvsmPanel /></Suspense>;
+      case 'doctor-panel': return <Suspense fallback={<PanelLoader />}><DoctorPanel /></Suspense>;
+      case 'pharmacist-panel': return <Suspense fallback={<PanelLoader />}><PharmacistPanel /></Suspense>;
+      case 'homecare-staff-panel': return <Suspense fallback={<PanelLoader />}><HomeCareStaffPanel /></Suspense>;
+      case 'admin': return <Suspense fallback={<PanelLoader />}><AdminDashboard /></Suspense>;
+      case 'admin-pricing': return <Suspense fallback={<PanelLoader />}><AdminPricingPanel /></Suspense>;
+      case 'notifications': return <Suspense fallback={<PanelLoader />}><NotificationsPanel /></Suspense>;
+      case 'payments': return <Suspense fallback={<PanelLoader />}><PaymentsPanel /></Suspense>;
+      case 'reports': return <Suspense fallback={<PanelLoader />}><ReportsPanel /></Suspense>;
+      case 'profile': return <Suspense fallback={<PanelLoader />}><ProfilePanel /></Suspense>;
+      default: return <Suspense fallback={<PanelLoader />}><HomeDashboard /></Suspense>;
     }
   };
 

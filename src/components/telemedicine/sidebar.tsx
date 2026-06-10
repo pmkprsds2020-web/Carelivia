@@ -123,8 +123,6 @@ export function Sidebar({ collapsed }: SidebarProps) {
     setPanel('home');
   };
 
-  let currentSection = '';
-
   return (
     <aside
       className={cn(
@@ -170,23 +168,17 @@ export function Sidebar({ collapsed }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto custom-scrollbar py-2 px-2">
-        {navItems.map((item) => {
-          // Show section header
-          let sectionHeader = null;
-          if (item.section && item.section !== currentSection) {
-            currentSection = item.section;
-            if (!collapsed) {
-              sectionHeader = (
-                <div key={`section-${item.section}`} className="px-3 pt-4 pb-1">
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                    {item.section}
-                  </span>
-                </div>
-              );
-            }
-          } else if (!item.section) {
-            currentSection = '';
-          }
+        {navItems.map((item, index) => {
+          // Show section header if this is the first item with this section
+          const prevItem = index > 0 ? navItems[index - 1] : null;
+          const isNewSection = item.section && item.section !== (prevItem?.section ?? null);
+          const sectionHeader = isNewSection && !collapsed ? (
+            <div key={`section-${item.section}`} className="px-3 pt-4 pb-1">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                {item.section}
+              </span>
+            </div>
+          ) : null;
 
           const isActive = activePanel === item.id;
           
