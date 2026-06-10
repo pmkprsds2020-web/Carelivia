@@ -15,6 +15,11 @@ import type {
   PalliativeToolType,
   PalliativeEwsLevel,
   MedicationAdherenceInfo,
+  PalliativeMonitoringStatus,
+  PalliativeMonitoringFormType,
+  PalliativeMonitoringNotification,
+  PalliativeChatMessage,
+  PalliativeAuditEntry,
 } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -42,6 +47,14 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -108,10 +121,11 @@ import {
   History,
 } from 'lucide-react';
 import { PalliativeChatPanel } from './palliative-chat-panel';
+import { useToast } from '@/hooks/use-toast';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'acp' | 'ai' | 'chat' | 'audit';
+type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'acp' | 'komunikasi' | 'ai' | 'chat' | 'audit';
 
 // ── Helper Functions ─────────────────────────────────────────────────────
 
@@ -261,6 +275,13 @@ export function PalliativeMonitoringPanel() {
   // Form states for adherence
   const [newAdherence, setNewAdherence] = useState<Partial<MedicationAdherenceInfo>>({});
 
+  // Komunikasi tab states
+  const [komunikasiSearch, setKomunikasiSearch] = useState('');
+  const [komunikasiFilter, setKomunikasiFilter] = useState<string>('all');
+  const [showSendFormDialog, setShowSendFormDialog] = useState(false);
+  const [sendFormPatientId, setSendFormPatientId] = useState<string | null>(null);
+  const [selectedFormTypes, setSelectedFormTypes] = useState<PalliativeMonitoringFormType[]>([]);
+
   // ── Store ──
   const {
     palliativePatients,
@@ -286,7 +307,15 @@ export function PalliativeMonitoringPanel() {
     palliativeClinicalAlerts,
     palliativeAuditLog,
     markPalliativeAlertRead,
+    addPalliativeChatMessage,
+    addPalliativeAuditEntry,
+    updatePalliativeMonitoringStatus,
+    palliativeMonitoringNotifications,
+    addPalliativeMonitoringNotification,
+    markPalliativeNotificationRead,
   } = useStore();
+
+  const { toast } = useToast();
 
   // ── Selected patient data ──
   const selectedPatient = useMemo(
@@ -446,6 +475,239 @@ export function PalliativeMonitoringPanel() {
     },
     []
   );
+
+  // ── Komunikasi: monitoring status badge helper ──
+  const getMonitoringStatusBadge = useCallback((status?: PalliativeMonitoringStatus) => {
+    switch (status) {
+      case 'monitoring_aktif':
+        return { label: 'Monitoring Aktif', className: 'bg-green-100 text-green-800 border-green-300' };
+      case 'stabil':
+        return { label: 'Stabil', className: 'bg-teal-100 text-teal-800 border-teal-300' };
+      case 'membutuhkan_home_visit':
+        return { label: 'Home Visit', className: 'bg-amber-100 text-amber-800 border-amber-300' };
+      case 'membutuhkan_telekonsultasi':
+        return { label: 'Telekonsultasi', className: 'bg-blue-100 text-blue-800 border-blue-300' };
+      case 'membutuhkan_rujukan':
+        return { label: 'Perlu Rujukan', className: 'bg-orange-100 text-orange-800 border-orange-300' };
+      case 'terminal':
+        return { label: 'Terminal', className: 'bg-red-100 text-red-800 border-red-300' };
+      case 'meninggal_dunia':
+        return { label: 'Meninggal Dunia', className: 'bg-gray-200 text-gray-800 border-gray-400' };
+      case 'program_selesai':
+        return { label: 'Program Selesai', className: 'bg-slate-100 text-slate-700 border-slate-300' };
+      default:
+        return { label: 'Belum ditentukan', className: 'bg-gray-100 text-gray-600 border-gray-300' };
+    }
+  }, []);
+
+  const getMonitoringStatusLabel = useCallback((status: PalliativeMonitoringStatus): string => {
+    switch (status) {
+      case 'monitoring_aktif': return 'Monitoring Aktif';
+      case 'stabil': return 'Stabil';
+      case 'membutuhkan_home_visit': return 'Membutuhkan Home Visit';
+      case 'membutuhkan_telekonsultasi': return 'Membutuhkan Telekonsultasi';
+      case 'membutuhkan_rujukan': return 'Membutuhkan Rujukan';
+      case 'terminal': return 'Terminal';
+      case 'meninggal_dunia': return 'Meninggal Dunia';
+      case 'program_selesai': return 'Program Selesai';
+    }
+  }, []);
+
+  const getFormTypeLabel = useCallback((type: PalliativeMonitoringFormType): string => {
+    switch (type) {
+      case 'ttv': return 'Tanda-tanda Vital (TTV)';
+      case 'pps': return 'PPS';
+      case 'spict': return 'SPICT';
+      case 'esas': return 'ESAS-r';
+      case 'eortc': return 'EORTC QLQ-C15-PAL';
+      case 'penilaian_nyeri': return 'Penilaian Nyeri';
+      case 'penilaian_sesak': return 'Penilaian Sesak';
+      case 'penilaian_nutrisi': return 'Penilaian Nutrisi';
+      case 'acp': return 'Advance Care Planning (ACP)';
+    }
+  }, []);
+
+  const getFormChatType = useCallback((type: PalliativeMonitoringFormType): string => {
+    switch (type) {
+      case 'ttv': return 'form_ttv';
+      case 'pps':
+      case 'spict':
+      case 'esas':
+      case 'eortc':
+      case 'penilaian_nyeri':
+      case 'penilaian_sesak':
+      case 'penilaian_nutrisi':
+        return 'form_screening';
+      case 'acp':
+        return 'instruction';
+      default:
+        return 'form_screening';
+    }
+  }, []);
+
+  // ── Komunikasi: computed data ──
+  const getLastPPS = useCallback((patientId: string): number | undefined => {
+    const ppsScreenings = palliativeScreeningRecords
+      .filter((s) => s.palliativePatientId === patientId && s.screeningType === 'pps')
+      .sort((a, b) => new Date(b.performedAt).getTime() - new Date(a.performedAt).getTime());
+    return ppsScreenings[0]?.score ?? undefined;
+  }, [palliativeScreeningRecords]);
+
+  const getUnreadCount = useCallback((patientId: string): number => {
+    const roomId = `room-${patientId}`;
+    return palliativeChatMessages.filter(
+      (m) => m.roomId === roomId && m.senderRole !== 'doctor' && !m.readAt
+    ).length;
+  }, [palliativeChatMessages]);
+
+  const getLastChatDate = useCallback((patientId: string): string | undefined => {
+    const roomId = `room-${patientId}`;
+    const msgs = palliativeChatMessages
+      .filter((m) => m.roomId === roomId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return msgs[0]?.createdAt;
+  }, [palliativeChatMessages]);
+
+  const filteredKomunikasiPatients = useMemo(() => {
+    let result = palliativePatients.filter((p) => p.patientStatus === 'aktif');
+    if (komunikasiFilter !== 'all') {
+      result = result.filter((p) => (p.monitoringStatus || 'monitoring_aktif') === komunikasiFilter);
+    }
+    if (komunikasiSearch.trim()) {
+      const q = komunikasiSearch.toLowerCase();
+      result = result.filter(
+        (p) =>
+          (p.patientName && p.patientName.toLowerCase().includes(q)) ||
+          (p.rmNumber && p.rmNumber.toLowerCase().includes(q)) ||
+          (p.primaryDiagnosis && p.primaryDiagnosis.toLowerCase().includes(q)) ||
+          (p.monitoringStatus && getMonitoringStatusLabel(p.monitoringStatus).toLowerCase().includes(q))
+      );
+    }
+    return result;
+  }, [palliativePatients, komunikasiFilter, komunikasiSearch, getMonitoringStatusLabel]);
+
+  const komunikasiStats = useMemo(() => {
+    const active = palliativePatients.filter((p) => p.patientStatus === 'aktif');
+    const monitoringAktif = active.filter((p) => (!p.monitoringStatus || p.monitoringStatus === 'monitoring_aktif')).length;
+    const stabil = active.filter((p) => p.monitoringStatus === 'stabil').length;
+    const homeVisit = active.filter((p) => p.monitoringStatus === 'membutuhkan_home_visit').length;
+    const telekonsultasi = active.filter((p) => p.monitoringStatus === 'membutuhkan_telekonsultasi').length;
+    const terminal = active.filter((p) => p.monitoringStatus === 'terminal').length;
+    const totalUnread = active.reduce((sum, p) => sum + getUnreadCount(p.id), 0);
+    return { total: active.length, monitoringAktif, stabil, homeVisit, telekonsultasi, terminal, totalUnread };
+  }, [palliativePatients, getUnreadCount]);
+
+  // ── Komunikasi: handlers ──
+  const handleSendForms = useCallback(() => {
+    if (!sendFormPatientId || selectedFormTypes.length === 0) return;
+    const patient = palliativePatients.find((p) => p.id === sendFormPatientId);
+    if (!patient) return;
+
+    const roomId = `room-${sendFormPatientId}`;
+    const doctorName = currentUser?.name || 'Dokter';
+    const doctorId = currentUser?.id || 'doctor';
+
+    selectedFormTypes.forEach((formType) => {
+      const chatMsg: PalliativeChatMessage = {
+        id: genId('msg'),
+        roomId,
+        senderId: doctorId,
+        senderName: doctorName,
+        senderRole: 'doctor',
+        type: getFormChatType(formType) as PalliativeChatMessage['type'],
+        content: `Form ${getFormTypeLabel(formType)} telah dikirim kepada pasien. Silakan isi form berikut.`,
+        status: 'sent',
+        formType: formType === 'ttv' ? 'ttv' : formType === 'acp' ? 'keluhan' : 'screening',
+        formData: {
+          id: genId('form'),
+          formType: formType === 'ttv' ? 'ttv' : formType === 'acp' ? 'keluhan' : 'screening',
+          screeningType: ['pps', 'spict', 'esas', 'eortc', 'penilaian_nyeri', 'penilaian_sesak', 'penilaian_nutrisi'].includes(formType)
+            ? (formType === 'pps' ? 'pps' : formType === 'spict' ? 'spict' : formType === 'esas' ? 'esas' : formType === 'eortc' ? 'eortc' : 'esas')
+            : undefined,
+          status: 'sent',
+          progress: 0,
+        },
+        createdAt: new Date().toISOString(),
+      };
+      addPalliativeChatMessage(chatMsg);
+
+      const auditEntry: PalliativeAuditEntry = {
+        id: genId('audit'),
+        patientId: sendFormPatientId,
+        action: 'form_sent',
+        performedBy: doctorName,
+        performedByRole: 'doctor',
+        details: `Form ${getFormTypeLabel(formType)} dikirim ke ${patient.patientName || 'Pasien'}`,
+        createdAt: new Date().toISOString(),
+      };
+      addPalliativeAuditEntry(auditEntry);
+    });
+
+    const notification: PalliativeMonitoringNotification = {
+      id: genId('notif'),
+      patientId: sendFormPatientId,
+      patientName: patient.patientName,
+      type: 'status_change',
+      title: 'Form Monitoring Dikirim',
+      description: `${selectedFormTypes.length} form monitoring telah dikirim ke ${patient.patientName || 'Pasien'}`,
+      severity: 'info',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    };
+    addPalliativeMonitoringNotification(notification);
+
+    toast({
+      title: 'Form Terkirim',
+      description: `${selectedFormTypes.length} form monitoring berhasil dikirim ke ${patient.patientName || 'Pasien'}.`,
+    });
+
+    setShowSendFormDialog(false);
+    setSendFormPatientId(null);
+    setSelectedFormTypes([]);
+  }, [sendFormPatientId, selectedFormTypes, palliativePatients, currentUser, addPalliativeChatMessage, addPalliativeAuditEntry, addPalliativeMonitoringNotification, getFormChatType, getFormTypeLabel, toast]);
+
+  const toggleFormType = useCallback((type: PalliativeMonitoringFormType) => {
+    setSelectedFormTypes((prev) =>
+      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+    );
+  }, []);
+
+  const handleOpenSendForm = useCallback((patientId: string) => {
+    setSendFormPatientId(patientId);
+    setSelectedFormTypes([]);
+    setShowSendFormDialog(true);
+  }, []);
+
+  const handleMonitoringStatusChange = useCallback((patientId: string, status: PalliativeMonitoringStatus) => {
+    updatePalliativeMonitoringStatus(patientId, status);
+    const patient = palliativePatients.find((p) => p.id === patientId);
+    const auditEntry: PalliativeAuditEntry = {
+      id: genId('audit'),
+      patientId,
+      action: 'clinical_action',
+      performedBy: currentUser?.name || 'Dokter',
+      performedByRole: 'doctor',
+      details: `Status monitoring diubah ke "${getMonitoringStatusLabel(status)}" untuk ${patient?.patientName || 'Pasien'}`,
+      createdAt: new Date().toISOString(),
+    };
+    addPalliativeAuditEntry(auditEntry);
+    const notification: PalliativeMonitoringNotification = {
+      id: genId('notif'),
+      patientId,
+      patientName: patient?.patientName,
+      type: 'status_change',
+      title: 'Status Monitoring Berubah',
+      description: `Status monitoring ${patient?.patientName || 'Pasien'} diubah ke "${getMonitoringStatusLabel(status)}"`,
+      severity: status === 'terminal' || status === 'meninggal_dunia' ? 'critical' : status === 'membutuhkan_home_visit' || status === 'membutuhkan_rujukan' ? 'warning' : 'info',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    };
+    addPalliativeMonitoringNotification(notification);
+    toast({
+      title: 'Status Diperbarui',
+      description: `Status monitoring ${patient?.patientName || 'Pasien'} diubah ke "${getMonitoringStatusLabel(status)}".`,
+    });
+  }, [updatePalliativeMonitoringStatus, palliativePatients, currentUser, addPalliativeAuditEntry, addPalliativeMonitoringNotification, getMonitoringStatusLabel, toast]);
 
   // ── Handlers ──
 
@@ -2299,6 +2561,379 @@ export function PalliativeMonitoringPanel() {
     </div>
   );
 
+  // ── Render: Komunikasi Pasien ──
+  const renderKomunikasi = () => {
+    const allFormTypes: PalliativeMonitoringFormType[] = [
+      'ttv', 'pps', 'spict', 'esas', 'eortc', 'penilaian_nyeri', 'penilaian_sesak', 'penilaian_nutrisi', 'acp',
+    ];
+
+    const monitoringStatusOptions: PalliativeMonitoringStatus[] = [
+      'monitoring_aktif', 'stabil', 'membutuhkan_home_visit', 'membutuhkan_telekonsultasi',
+      'membutuhkan_rujukan', 'terminal', 'meninggal_dunia', 'program_selesai',
+    ];
+
+    return (
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <MessageCircle className="w-5 h-5 text-primary" />
+            Komunikasi Pasien
+          </h2>
+          <div className="flex items-center gap-2">
+            {palliativeMonitoringNotifications.filter((n) => !n.isRead).length > 0 && (
+              <Badge variant="destructive" className="text-xs">
+                <Bell className="w-3 h-3 mr-1" />
+                {palliativeMonitoringNotifications.filter((n) => !n.isRead).length} Notifikasi
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* Summary Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
+          <Card className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Users className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-[10px] text-muted-foreground">Total Aktif</span>
+            </div>
+            <p className="text-xl font-bold">{komunikasiStats.total}</p>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Activity className="w-3.5 h-3.5 text-green-600" />
+              <span className="text-[10px] text-muted-foreground">Monitoring</span>
+            </div>
+            <p className="text-xl font-bold text-green-600">{komunikasiStats.monitoringAktif}</p>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
+              <span className="text-[10px] text-muted-foreground">Stabil</span>
+            </div>
+            <p className="text-xl font-bold text-teal-600">{komunikasiStats.stabil}</p>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Home className="w-3.5 h-3.5 text-amber-600" />
+              <span className="text-[10px] text-muted-foreground">Home Visit</span>
+            </div>
+            <p className="text-xl font-bold text-amber-600">{komunikasiStats.homeVisit}</p>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Stethoscope className="w-3.5 h-3.5 text-blue-600" />
+              <span className="text-[10px] text-muted-foreground">Telekonsultasi</span>
+            </div>
+            <p className="text-xl font-bold text-blue-600">{komunikasiStats.telekonsultasi}</p>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+              <span className="text-[10px] text-muted-foreground">Terminal</span>
+            </div>
+            <p className="text-xl font-bold text-red-600">{komunikasiStats.terminal}</p>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <MessageCircle className="w-3.5 h-3.5 text-primary" />
+              <span className="text-[10px] text-muted-foreground">Belum Dibaca</span>
+            </div>
+            <p className="text-xl font-bold text-primary">{komunikasiStats.totalUnread}</p>
+          </Card>
+        </div>
+
+        {/* Search and Filter */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Cari nama pasien, RM, diagnosa, status..."
+              value={komunikasiSearch}
+              onChange={(e) => setKomunikasiSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Select value={komunikasiFilter} onValueChange={setKomunikasiFilter}>
+            <SelectTrigger className="w-full sm:w-52">
+              <Filter className="w-4 h-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Status</SelectItem>
+              <SelectItem value="monitoring_aktif">Monitoring Aktif</SelectItem>
+              <SelectItem value="stabil">Stabil</SelectItem>
+              <SelectItem value="membutuhkan_home_visit">Home Visit</SelectItem>
+              <SelectItem value="membutuhkan_telekonsultasi">Telekonsultasi</SelectItem>
+              <SelectItem value="membutuhkan_rujukan">Perlu Rujukan</SelectItem>
+              <SelectItem value="terminal">Terminal</SelectItem>
+              <SelectItem value="meninggal_dunia">Meninggal Dunia</SelectItem>
+              <SelectItem value="program_selesai">Program Selesai</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Notifications */}
+        {palliativeMonitoringNotifications.filter((n) => !n.isRead).length > 0 && (
+          <Card className="p-4 border-amber-200 bg-amber-50">
+            <CardHeader className="p-0 pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-amber-600" />
+                  <CardTitle className="text-sm font-medium text-amber-800">Notifikasi Terbaru</CardTitle>
+                </div>
+                <Badge variant="outline" className="text-[10px] bg-amber-100 text-amber-800 border-amber-300">
+                  {palliativeMonitoringNotifications.filter((n) => !n.isRead).length} baru
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar">
+                {palliativeMonitoringNotifications
+                  .filter((n) => !n.isRead)
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                  .slice(0, 5)
+                  .map((notif) => (
+                    <div
+                      key={notif.id}
+                      className="flex items-start gap-2 p-2 rounded-md hover:bg-amber-100/50 cursor-pointer"
+                      onClick={() => markPalliativeNotificationRead(notif.id)}
+                    >
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'text-[9px] shrink-0',
+                          notif.severity === 'critical'
+                            ? 'bg-red-100 text-red-800 border-red-300'
+                            : notif.severity === 'warning'
+                              ? 'bg-amber-100 text-amber-800 border-amber-300'
+                              : 'bg-blue-100 text-blue-800 border-blue-300'
+                        )}
+                      >
+                        {notif.severity === 'critical' ? 'Kritis' : notif.severity === 'warning' ? 'Perhatian' : 'Info'}
+                      </Badge>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-amber-900 truncate">{notif.title}</p>
+                        <p className="text-[10px] text-amber-700 truncate">{notif.description}</p>
+                      </div>
+                      <span className="text-[9px] text-amber-600 shrink-0">
+                        {formatDateTime(notif.createdAt)}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Patient Communication List */}
+        <div className="space-y-3 max-h-[calc(100vh-480px)] overflow-y-auto custom-scrollbar">
+          {filteredKomunikasiPatients.length === 0 ? (
+            <Card className="p-6 text-center text-muted-foreground">
+              <MessageCircle className="w-10 h-10 mx-auto mb-2 text-muted-foreground/50" />
+              <p>Tidak ada pasien ditemukan.</p>
+              <p className="text-xs mt-1">Coba ubah filter atau kata kunci pencarian.</p>
+            </Card>
+          ) : (
+            filteredKomunikasiPatients.map((patient) => {
+              const statusBadge = getMonitoringStatusBadge(patient.monitoringStatus);
+              const riskBadge = getRiskBadge(patient.riskLevel);
+              const lastPPS = getLastPPS(patient.id);
+              const unread = getUnreadCount(patient.id);
+              const lastChat = getLastChatDate(patient.id);
+
+              return (
+                <Card
+                  key={patient.id}
+                  className={cn(
+                    'p-4 hover:shadow-md transition-shadow border-l-4',
+                    patient.riskLevel === 'merah'
+                      ? 'border-l-red-500'
+                      : patient.riskLevel === 'kuning'
+                        ? 'border-l-amber-500'
+                        : 'border-l-green-500'
+                  )}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    {/* Patient Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-foreground truncate">
+                          {patient.patientName || '-'}
+                        </h3>
+                        <Badge variant="outline" className={cn('text-[10px]', riskBadge.className)}>
+                          {riskBadge.label}
+                        </Badge>
+                        <Badge variant="outline" className={cn('text-[10px]', statusBadge.className)}>
+                          {statusBadge.label}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-0.5">
+                        RM: {patient.rmNumber || '-'} | {patient.primaryDiagnosis || '-'}
+                        {patient.diseaseStage ? ` (${patient.diseaseStage})` : ''}
+                      </p>
+                      <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground flex-wrap">
+                        <span className="flex items-center gap-1">
+                          <Activity className="w-3 h-3" />
+                          PPS: {lastPPS ?? '-'}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          Chat terakhir: {lastChat ? formatDateTime(lastChat) : 'Belum ada'}
+                        </span>
+                        {unread > 0 && (
+                          <Badge variant="destructive" className="text-[10px] h-5 px-1.5">
+                            {unread} belum dibaca
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Status Dropdown */}
+                    <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-7 text-[11px]">
+                            <RefreshCw className="w-3 h-3 mr-1" /> Ubah Status
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                          <DropdownMenuLabel className="text-xs">Status Monitoring</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {monitoringStatusOptions.map((status) => {
+                            const badge = getMonitoringStatusBadge(status);
+                            return (
+                              <DropdownMenuItem
+                                key={status}
+                                className="text-xs"
+                                onClick={() => handleMonitoringStatusChange(patient.id, status)}
+                              >
+                                <span className={cn('w-2 h-2 rounded-full mr-2', badge.className.split(' ')[0])} />
+                                {badge.label}
+                              </DropdownMenuItem>
+                            );
+                          })}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-7 text-[11px]"
+                      onClick={() => {
+                        handleSelectPatient(patient.id);
+                        setActiveTab('chat');
+                      }}
+                    >
+                      <MessageCircle className="w-3 h-3 mr-1" /> Chat
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[11px]"
+                      onClick={() => handleOpenSendForm(patient.id)}
+                    >
+                      <FileText className="w-3 h-3 mr-1" /> Kirim Form
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[11px]"
+                      onClick={() => {
+                        handleSelectPatient(patient.id);
+                        setActiveTab('patients');
+                      }}
+                    >
+                      <Eye className="w-3 h-3 mr-1" /> Lihat Profil
+                    </Button>
+                  </div>
+                </Card>
+              );
+            })
+          )}
+        </div>
+
+        {/* Send Form Dialog */}
+        <Dialog open={showSendFormDialog} onOpenChange={(open) => {
+          setShowSendFormDialog(open);
+          if (!open) {
+            setSendFormPatientId(null);
+            setSelectedFormTypes([]);
+          }
+        }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Kirim Form Monitoring</DialogTitle>
+              <DialogDescription>
+                Pilih form monitoring yang akan dikirim ke{' '}
+                <span className="font-medium">
+                  {palliativePatients.find((p) => p.id === sendFormPatientId)?.patientName || 'Pasien'}
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-2">
+                {allFormTypes.map((formType) => (
+                  <label
+                    key={formType}
+                    className={cn(
+                      'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
+                      selectedFormTypes.includes(formType)
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:bg-muted/30'
+                    )}
+                  >
+                    <Checkbox
+                      checked={selectedFormTypes.includes(formType)}
+                      onCheckedChange={() => toggleFormType(formType)}
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{getFormTypeLabel(formType)}</p>
+                    </div>
+                    {selectedFormTypes.includes(formType) && (
+                      <CheckCircle2 className="w-4 h-4 text-primary" />
+                    )}
+                  </label>
+                ))}
+              </div>
+              {selectedFormTypes.length > 0 && (
+                <div className="p-3 bg-muted/30 rounded-lg">
+                  <p className="text-xs text-muted-foreground">
+                    {selectedFormTypes.length} form akan dikirim:{' '}
+                    {selectedFormTypes.map((t) => getFormTypeLabel(t)).join(', ')}
+                  </p>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowSendFormDialog(false);
+                  setSendFormPatientId(null);
+                  setSelectedFormTypes([]);
+                }}
+              >
+                Batal
+              </Button>
+              <Button
+                onClick={handleSendForms}
+                disabled={selectedFormTypes.length === 0}
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Kirim {selectedFormTypes.length > 0 ? `(${selectedFormTypes.length})` : ''}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  };
+
   // ── Render: Audit Trail Tab ──
   const renderAudit = () => (
     <div className="space-y-4">
@@ -2477,6 +3112,9 @@ export function PalliativeMonitoringPanel() {
             <Shield className="w-4 h-4 mr-1" />
             ACP
           </TabsTrigger>
+          <TabsTrigger value="komunikasi" className="text-xs gap-1">
+            <MessageCircle className="w-3.5 h-3.5" /> Komunikasi
+          </TabsTrigger>
           <TabsTrigger value="ai" className="text-xs sm:text-sm">
             <Brain className="w-4 h-4 mr-1" />
             AI
@@ -2500,6 +3138,9 @@ export function PalliativeMonitoringPanel() {
         <TabsContent value="screening">{renderScreening()}</TabsContent>
         <TabsContent value="medication">{renderMedication()}</TabsContent>
         <TabsContent value="acp">{renderACP()}</TabsContent>
+        <TabsContent value="komunikasi" className="mt-4">
+          {renderKomunikasi()}
+        </TabsContent>
         <TabsContent value="ai">{renderAI()}</TabsContent>
         <TabsContent value="chat">
           <div className="h-[calc(100vh-280px)]">

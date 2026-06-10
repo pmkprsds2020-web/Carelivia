@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useStore } from '@/lib/store';
-import type { User, Consultation, Message, DoctorProfile, Prescription, PrescriptionItem, MedicalRecord, MedicalRecordStatus, ScreeningForm, ScreeningModuleId, PalliativeToolType, PalliativeScreeningForm } from '@/lib/types';
+import type { User, Consultation, Message, DoctorProfile, Prescription, PrescriptionItem, MedicalRecord, MedicalRecordStatus, ScreeningForm, ScreeningModuleId, PalliativeToolType, PalliativeScreeningForm, PalliativeMonitoringStatus } from '@/lib/types';
+import { InlineScreeningForm } from '@/components/telemedicine/inline-screening-form';
+import type { ScreeningScoreResult } from '@/lib/palliative-screening-data';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -69,6 +71,7 @@ import {
   Heart,
   HeartPulse,
   Users,
+  Shield,
 } from 'lucide-react';
 
 // ── Module Icon Map (Lucide icons replacing emojis) ──
@@ -281,6 +284,10 @@ export function ChatPanel() {
     addPalliativeScreeningForm,
     updatePalliativeScreeningForm,
     setActivePalliativeFormId,
+    markPatientAsPalliative,
+    palliativePatients,
+    addPalliativeScreeningRecord,
+    addPalliativeMonitoringNotification,
   } = useStore();
 
   const { toast } = useToast();
@@ -321,6 +328,21 @@ export function ChatPanel() {
     duration: string;
     quantity: number;
   }>>([]);
+
+  // Inline screening state
+  const [inlineScreeningFormId, setInlineScreeningFormId] = useState<string | null>(null);
+  const [inlineScreeningType, setInlineScreeningType] = useState<PalliativeToolType | null>(null);
+
+  // Palliative marking dialog state
+  const [showPalliativeMarkingDialog, setShowPalliativeMarkingDialog] = useState(false);
+  const [markingData, setMarkingData] = useState({
+    primaryDiagnosis: '',
+    secondaryDiagnosis: '',
+    initialPPS: 60,
+    diseaseCategory: '',
+    reasonForPalliative: '',
+    doctorNotes: '',
+  });
 
   // Medical record form state
   const [mrDiagnosis, setMrDiagnosis] = useState('');
@@ -999,6 +1021,119 @@ export function ChatPanel() {
     toast({ title: 'Berhasil', description: 'Form skrining paliatif berhasil dikirim ke pasien.' });
   };
 
+  // ── Inline Screening Submit Handler ─────────────────────────────────────
+
+  const handleInlineScreeningSubmit = useCallback((result: ScreeningScoreResult, answers: Record<string, number | string | string[]>) => {
+    if (!inlineScreeningFormId || !inlineScreeningType || !activeConsultation) return;
+
+    // Update the palliative screening form in store
+    const currentForm = palliativeScreeningForms.find(f => f.id === inlineScreeningFormId);
+    updatePalliativeScreeningForm(inlineScreeningFormId, {
+      toolAnswers: { ...currentForm?.toolAnswers, [inlineScreeningType]: answers },
+      toolResults: {
+        ...currentForm?.toolResults,
+        [inlineScreeningType]: {
+          score: result.score,
+          scoreLabel: result.scoreLabel,
+          interpretation: result.interpretation,
+          ewsLevel: result.ewsLevel,
+          details: result.details,
+        }
+      },
+      status: 'in_progress',
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Also add to screening records if patient is a palliative patient
+    const palliativePatient = palliativePatients.find(p => p.patientId === activeConsultation.patientId);
+    if (palliativePatient) {
+      addPalliativeScreeningRecord({
+        id: `sr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        palliativePatientId: palliativePatient.id,
+        screeningType: inlineScreeningType,
+        score: result.score,
+        scoreLabel: result.scoreLabel,
+        interpretation: result.interpretation,
+        ewsLevel: result.ewsLevel,
+        details: JSON.stringify(result.details),
+        performedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // Add a response message in chat
+    const responseMsg: Message = {
+      id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      consultationId: activeConsultation.id,
+      senderId: currentUser?.id || '',
+      content: `Hasil skrining ${inlineScreeningType.toUpperCase()}: ${result.scoreLabel} (${result.ewsLevel === 'merah' ? 'Kritis' : result.ewsLevel === 'kuning' ? 'Perhatian' : 'Normal'})`,
+      type: 'text',
+      status: 'delivered',
+      createdAt: new Date().toISOString(),
+    };
+    addMessage(responseMsg);
+
+    // Send notification to doctor
+    addPalliativeMonitoringNotification({
+      id: `pn-${Date.now()}`,
+      patientId: activeConsultation.patientId,
+      patientName: activeConsultation.patient?.name || '',
+      type: 'screening_completed',
+      title: 'Skrining Paliatif Selesai',
+      description: `Pasien telah mengisi skrining ${inlineScreeningType.toUpperCase()}: ${result.scoreLabel}`,
+      severity: result.ewsLevel === 'merah' ? 'critical' : result.ewsLevel === 'kuning' ? 'warning' : 'info',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+
+    // Reset inline screening state
+    setInlineScreeningFormId(null);
+    setInlineScreeningType(null);
+
+    toast({ title: 'Skrining Terkirim', description: `Hasil skrining ${inlineScreeningType.toUpperCase()} berhasil dikirim.` });
+  }, [inlineScreeningFormId, inlineScreeningType, activeConsultation, currentUser, palliativeScreeningForms, palliativePatients, updatePalliativeScreeningForm, addPalliativeScreeningRecord, addPalliativeMonitoringNotification, addMessage, toast]);
+
+  // ── Palliative Marking Handler ──────────────────────────────────────────
+
+  const handleConfirmPalliativeMarking = () => {
+    if (!activeConsultation || !currentUser || !markingData.primaryDiagnosis) {
+      toast({ title: 'Error', description: 'Diagnosis utama wajib diisi.' });
+      return;
+    }
+
+    markPatientAsPalliative(
+      activeConsultation.id,
+      currentUser.id,
+      activeConsultation.patientId,
+      activeConsultation.patient?.name || 'Pasien',
+      markingData
+    );
+
+    // Send system message
+    const sysMessage: Message = {
+      id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      consultationId: activeConsultation.id,
+      senderId: 'system',
+      content: 'Pasien telah ditandai sebagai Pasien Monitoring Paliatif. Data pasien otomatis tersinkronisasi dengan Modul Monitoring Paliatif.',
+      type: 'text',
+      status: 'read',
+      createdAt: new Date().toISOString(),
+    };
+    addMessage(sysMessage);
+
+    setShowPalliativeMarkingDialog(false);
+    setMarkingData({
+      primaryDiagnosis: '',
+      secondaryDiagnosis: '',
+      initialPPS: 60,
+      diseaseCategory: '',
+      reasonForPalliative: '',
+      doctorNotes: '',
+    });
+
+    toast({ title: 'Berhasil', description: 'Pasien berhasil ditandai sebagai Pasien Monitoring Paliatif.' });
+  };
+
   // ── Handle typing ──────────────────────────────────────────────────────
 
   const handleTyping = (value: string) => {
@@ -1335,17 +1470,99 @@ export function ChatPanel() {
         {/* Patient Actions */}
         {isPatient && isPending && (
           <div className="px-4 pb-3">
-            <Button
-              size="sm"
-              className="w-full h-8 text-xs bg-rose-600 hover:bg-rose-700"
-              onClick={() => {
-                setActivePalliativeFormId(formId);
-                setActivePanel('palliative-screening');
-              }}
-            >
-              <HeartPulse className="w-3.5 h-3.5 mr-1" />
-              Isi Skrining Paliatif
-            </Button>
+            {inlineScreeningFormId === formId && inlineScreeningType ? (
+              /* Inline screening form is active for this form */
+              <div className="border border-rose-200 rounded-lg p-3 bg-rose-50/50">
+                <InlineScreeningForm
+                  screeningType={inlineScreeningType}
+                  onSubmit={handleInlineScreeningSubmit}
+                  onSaveDraft={(answers) => {
+                    // Save draft back to form
+                    const currentForm = palliativeScreeningForms.find(f => f.id === formId);
+                    if (currentForm) {
+                      updatePalliativeScreeningForm(formId, {
+                        toolAnswers: { ...currentForm.toolAnswers, [inlineScreeningType]: answers },
+                        status: 'in_progress',
+                        updatedAt: new Date().toISOString(),
+                      });
+                    }
+                    toast({ title: 'Draft Disimpan', description: `Draft skrining ${inlineScreeningType.toUpperCase()} tersimpan.` });
+                  }}
+                  initialAnswers={form.toolAnswers[inlineScreeningType] as Record<string, number | string | string[]> | undefined}
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full mt-2 text-xs text-muted-foreground"
+                  onClick={() => {
+                    setInlineScreeningFormId(null);
+                    setInlineScreeningType(null);
+                  }}
+                >
+                  Batal
+                </Button>
+              </div>
+            ) : inlineScreeningFormId === formId && !inlineScreeningType ? (
+              /* Tool selection for this form */
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-rose-700">Pilih alat skrining yang ingin diisi:</p>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {form.selectedTools.map(tool => {
+                    const toolInfo = PALLIATIVE_TOOL_LABELS[tool];
+                    const alreadyFilled = !!form.toolResults[tool];
+                    return (
+                      <Button
+                        key={tool}
+                        size="sm"
+                        variant={alreadyFilled ? 'ghost' : 'outline'}
+                        className={cn(
+                          'h-auto py-2 px-3 text-xs justify-start gap-2',
+                          alreadyFilled && 'opacity-60'
+                        )}
+                        disabled={alreadyFilled}
+                        onClick={() => setInlineScreeningType(tool)}
+                      >
+                        {toolInfo.icon}
+                        <span className="font-medium">{toolInfo.name}</span>
+                        {alreadyFilled && <Badge className="ml-auto text-[9px] bg-emerald-600">Selesai</Badge>}
+                      </Button>
+                    );
+                  })}
+                </div>
+                <Button
+                  size="sm"
+                  className="w-full h-8 text-xs bg-rose-600 hover:bg-rose-700"
+                  onClick={() => {
+                    // Fill all remaining tools one by one — start with the first unfilled
+                    const nextTool = form.selectedTools.find(t => !form.toolResults[t]);
+                    if (nextTool) {
+                      setInlineScreeningType(nextTool);
+                    }
+                  }}
+                >
+                  <HeartPulse className="w-3.5 h-3.5 mr-1" />
+                  Isi Semua
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs text-muted-foreground"
+                  onClick={() => setInlineScreeningFormId(null)}
+                >
+                  Batal
+                </Button>
+              </div>
+            ) : (
+              /* Default: Show button to start inline screening */
+              <Button
+                size="sm"
+                className="w-full h-8 text-xs bg-rose-600 hover:bg-rose-700"
+                onClick={() => setInlineScreeningFormId(formId)}
+              >
+                <HeartPulse className="w-3.5 h-3.5 mr-1" />
+                Isi Skrining Paliatif
+              </Button>
+            )}
           </div>
         )}
 
@@ -1567,7 +1784,15 @@ export function ChatPanel() {
         </div>
 
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-sm text-foreground truncate">{otherUser?.name || 'User'}</h3>
+          <div className="flex items-center gap-1.5">
+            <h3 className="font-semibold text-sm text-foreground truncate">{otherUser?.name || 'User'}</h3>
+            {activeConsultation && palliativePatients.some(p => p.patientId === activeConsultation.patientId) && (
+              <Badge className="text-[9px] bg-rose-100 text-rose-700 border border-rose-300 gap-1 shrink-0">
+                <HeartPulse className="w-2.5 h-2.5" />
+                Monitoring Paliatif
+              </Badge>
+            )}
+          </div>
           <div className="flex items-center gap-1.5">
             {!isDoctor && (
               <>
@@ -1583,7 +1808,38 @@ export function ChatPanel() {
               </>
             )}
             {isDoctor && (
-              <span className="text-[11px] text-muted-foreground">Pasien</span>
+              <>
+                <span className="text-[11px] text-muted-foreground">Pasien</span>
+                {activeConsultation && palliativePatients.some(p => p.patientId === activeConsultation.patientId) && (
+                  <>
+                    <span className="text-[10px] text-muted-foreground">·</span>
+                    <Select
+                      value={palliativePatients.find(p => p.patientId === activeConsultation.patientId)?.monitoringStatus || 'monitoring_aktif'}
+                      onValueChange={(val) => {
+                        const patient = palliativePatients.find(p => p.patientId === activeConsultation.patientId);
+                        if (patient) {
+                          useStore.getState().updatePalliativePatient(patient.id, {
+                            monitoringStatus: val as PalliativeMonitoringStatus,
+                            updatedAt: new Date().toISOString(),
+                          });
+                          toast({ title: 'Status Diperbarui', description: `Status monitoring diubah ke ${val.replace(/_/g, ' ')}.` });
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-5 text-[10px] w-auto border-0 p-0 gap-0.5 bg-transparent hover:bg-muted/50 rounded px-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="monitoring_aktif">Monitoring Aktif</SelectItem>
+                        <SelectItem value="stabil">Stabil</SelectItem>
+                        <SelectItem value="membutuhkan_home_visit">Membutuhkan Home Visit</SelectItem>
+                        <SelectItem value="membutuhkan_telekonsultasi">Membutuhkan Telekonsultasi</SelectItem>
+                        <SelectItem value="membutuhkan_rujukan">Membutuhkan Rujukan</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -1609,6 +1865,28 @@ export function ChatPanel() {
               <span className="hidden sm:inline">Skrining Paliatif</span>
               <span className="sm:hidden">Paliatif</span>
             </Button>
+            {!palliativePatients.some(p => p.patientId === activeConsultation.patientId) && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs gap-1 border-rose-300 text-rose-600 hover:bg-rose-50"
+                onClick={() => {
+                  setMarkingData({
+                    primaryDiagnosis: '',
+                    secondaryDiagnosis: '',
+                    initialPPS: 60,
+                    diseaseCategory: '',
+                    reasonForPalliative: '',
+                    doctorNotes: '',
+                  });
+                  setShowPalliativeMarkingDialog(true);
+                }}
+              >
+                <Shield className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Jadikan Pasien Monitoring Paliatif</span>
+                <span className="sm:hidden">Monitoring</span>
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -2263,6 +2541,123 @@ export function ChatPanel() {
     </div>
   );
 
+  // ── Palliative Marking Dialog (Doctor View) ─────────────────────────────
+
+  const renderPalliativeMarkingDialog = () => (
+    <Dialog open={showPalliativeMarkingDialog} onOpenChange={setShowPalliativeMarkingDialog}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-rose-600" />
+            Jadikan Pasien Monitoring Paliatif
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="p-3 rounded-lg bg-rose-50 border border-rose-200">
+            <p className="text-xs text-rose-700">
+              Dengan menandai pasien ini sebagai pasien monitoring paliatif, data pasien akan otomatis tersinkronisasi dengan Modul Monitoring Paliatif. Pasien akan menerima pemantauan berkala dan skrining rutin.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">
+              Diagnosis Utama <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              value={markingData.primaryDiagnosis}
+              onChange={(e) => setMarkingData({ ...markingData, primaryDiagnosis: e.target.value })}
+              placeholder="Masukkan diagnosis utama..."
+              className="text-sm"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Diagnosis Penyerta</Label>
+            <Input
+              value={markingData.secondaryDiagnosis}
+              onChange={(e) => setMarkingData({ ...markingData, secondaryDiagnosis: e.target.value })}
+              placeholder="Diagnosis penyerta (opsional)..."
+              className="text-sm"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Tingkat PPS Awal</Label>
+            <Select
+              value={String(markingData.initialPPS)}
+              onValueChange={(val) => setMarkingData({ ...markingData, initialPPS: Number(val) })}
+            >
+              <SelectTrigger className="text-sm">
+                <SelectValue placeholder="Pilih tingkat PPS..." />
+              </SelectTrigger>
+              <SelectContent>
+                {[100, 90, 80, 70, 60, 50, 40, 30, 20, 10].map(val => (
+                  <SelectItem key={val} value={String(val)}>{val}%</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Kategori Penyakit</Label>
+            <Select
+              value={markingData.diseaseCategory}
+              onValueChange={(val) => setMarkingData({ ...markingData, diseaseCategory: val })}
+            >
+              <SelectTrigger className="text-sm">
+                <SelectValue placeholder="Pilih kategori penyakit..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Kanker">Kanker</SelectItem>
+                <SelectItem value="Gagal Jantung">Gagal Jantung</SelectItem>
+                <SelectItem value="PPOK">PPOK</SelectItem>
+                <SelectItem value="Stroke">Stroke</SelectItem>
+                <SelectItem value="Sirosis Hepatis">Sirosis Hepatis</SelectItem>
+                <SelectItem value="Gagal Ginjal">Gagal Ginjal</SelectItem>
+                <SelectItem value="Lainnya">Lainnya</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Alasan Masuk Program Paliatif</Label>
+            <Textarea
+              value={markingData.reasonForPalliative}
+              onChange={(e) => setMarkingData({ ...markingData, reasonForPalliative: e.target.value })}
+              placeholder="Jelaskan alasan pasien memerlukan monitoring paliatif..."
+              className="min-h-[60px] text-sm"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Catatan Dokter</Label>
+            <Textarea
+              value={markingData.doctorNotes}
+              onChange={(e) => setMarkingData({ ...markingData, doctorNotes: e.target.value })}
+              placeholder="Catatan tambahan..."
+              className="min-h-[60px] text-sm"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowPalliativeMarkingDialog(false)}>
+            Batal
+          </Button>
+          <Button
+            onClick={handleConfirmPalliativeMarking}
+            disabled={!markingData.primaryDiagnosis.trim()}
+            className="bg-rose-600 hover:bg-rose-700"
+          >
+            <Shield className="w-4 h-4 mr-1" />
+            Tandai sebagai Pasien Paliatif
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   // ── Main Render ────────────────────────────────────────────────────────
 
   return (
@@ -2282,6 +2677,7 @@ export function ChatPanel() {
       {isDoctor && renderMedicalRecordDialog()}
       {isDoctor && renderScreeningDialogUI()}
       {isDoctor && renderPalliativeDialogUI()}
+      {isDoctor && renderPalliativeMarkingDialog()}
     </div>
   );
 }

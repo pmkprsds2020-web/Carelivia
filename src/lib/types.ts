@@ -457,8 +457,11 @@ export interface PalliativePatientInfo {
   address?: string;
   careStatus: PalliativeCareStatus;
   patientStatus: PalliativePatientStatus;
+  monitoringStatus?: PalliativeMonitoringStatus;
   riskLevel: PalliativeRiskLevel;
   notes?: string;
+  markingData?: PalliativeMarkingData;
+  consultationId?: string;
   vitalSigns?: VitalSignRecordInfo[];
   medications?: PalliativeMedicationInfo[];
   acpDocuments?: AdvanceCarePlanInfo[];
@@ -675,4 +678,87 @@ export interface PalliativeAuditEntry {
   ipAddress?: string;
   device?: string;
   createdAt: string;
+}
+
+// ── TelePalliative Care Integration Types ──────────────────────────────────
+
+export type PalliativeMonitoringStatus =
+  | 'monitoring_aktif'
+  | 'stabil'
+  | 'membutuhkan_home_visit'
+  | 'membutuhkan_telekonsultasi'
+  | 'membutuhkan_rujukan'
+  | 'terminal'
+  | 'meninggal_dunia'
+  | 'program_selesai';
+
+export type PalliativeMonitoringFormType =
+  | 'ttv'
+  | 'pps'
+  | 'spict'
+  | 'esas'
+  | 'eortc'
+  | 'penilaian_nyeri'
+  | 'penilaian_sesak'
+  | 'penilaian_nutrisi'
+  | 'acp';
+
+export interface PalliativeMarkingData {
+  primaryDiagnosis: string;
+  secondaryDiagnosis?: string;
+  initialPPS?: number;
+  diseaseCategory?: string;
+  reasonForPalliative?: string;
+  doctorNotes?: string;
+}
+
+export interface PalliativeCommunicationPatient {
+  patientId: string;
+  palliativePatientId: string;
+  patientName: string;
+  rmNumber?: string;
+  primaryDiagnosis?: string;
+  lastPPS?: number;
+  monitoringStatus: PalliativeMonitoringStatus;
+  lastChatAt?: string;
+  unreadCount: number;
+  riskLevel: PalliativeRiskLevel;
+}
+
+export interface PalliativeMonitoringNotification {
+  id: string;
+  patientId: string;
+  patientName?: string;
+  type: 'new_message' | 'screening_completed' | 'pps_decline' | 'pain_increase' | 'dyspnea_worsen' | 'ttv_abnormal' | 'monitoring_overdue' | 'status_change';
+  title: string;
+  description: string;
+  severity: 'info' | 'warning' | 'critical';
+  isRead: boolean;
+  referenceId?: string;
+  createdAt: string;
+}
+
+export interface PalliativeClinicalSummary {
+  primaryDiagnosis?: string;
+  latestPPS?: number;
+  latestScreeningResult?: {
+    toolType: PalliativeToolType;
+    scoreLabel: string;
+    ewsLevel: PalliativeEwsLevel;
+    performedAt: string;
+  };
+  activeMedications: number;
+  latestACP?: {
+    status: string;
+    createdAt: string;
+  };
+  latestTTV?: {
+    systolicBP?: number;
+    diastolicBP?: number;
+    heartRate?: number;
+    respiratoryRate?: number;
+    temperature?: number;
+    oxygenSat?: number;
+    recordedAt: string;
+  };
 }

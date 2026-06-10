@@ -8,7 +8,9 @@ import type {
   PalliativeScreeningForm, PalliativeToolType,
   PalliativePatientInfo, VitalSignRecordInfo, PalliativeMedicationInfo,
   AdvanceCarePlanInfo, PalliativeScreeningRecordInfo,
-  PalliativeChatMessage, PalliativeClinicalAlert, PalliativeAuditEntry
+  PalliativeChatMessage, PalliativeClinicalAlert, PalliativeAuditEntry,
+  PalliativeMonitoringStatus, PalliativeMarkingData, PalliativeMonitoringNotification,
+  PalliativeClinicalSummary, PalliativeCommunicationPatient, PalliativeMonitoringFormType
 } from './types';
 
 interface TelemedicineStore {
@@ -148,6 +150,17 @@ interface TelemedicineStore {
   markPalliativeAlertRead: (alertId: string) => void;
   palliativeAuditLog: PalliativeAuditEntry[];
   addPalliativeAuditEntry: (entry: PalliativeAuditEntry) => void;
+
+  // Palliative Monitoring Integration
+  palliativeMonitoringNotifications: PalliativeMonitoringNotification[];
+  addPalliativeMonitoringNotification: (notification: PalliativeMonitoringNotification) => void;
+  markPalliativeNotificationRead: (notificationId: string) => void;
+  markPatientAsPalliative: (consultationId: string, doctorId: string, patientId: string, patientName: string, markingData: PalliativeMarkingData) => void;
+  updatePalliativeMonitoringStatus: (patientId: string, status: PalliativeMonitoringStatus) => void;
+  activeInlineScreeningFormId: string | null;
+  setActiveInlineScreeningFormId: (id: string | null) => void;
+  activeInlineScreeningType: PalliativeMonitoringFormType | null;
+  setActiveInlineScreeningType: (type: PalliativeMonitoringFormType | null) => void;
 }
 
 export const useStore = create<TelemedicineStore>((set) => ({
@@ -835,4 +848,65 @@ export const useStore = create<TelemedicineStore>((set) => ({
     },
   ] as PalliativeAuditEntry[],
   addPalliativeAuditEntry: (entry) => set((state) => ({ palliativeAuditLog: [...state.palliativeAuditLog, entry] })),
+
+  // Palliative Monitoring Integration
+  palliativeMonitoringNotifications: [] as PalliativeMonitoringNotification[],
+  addPalliativeMonitoringNotification: (notification) => set((state) => ({
+    palliativeMonitoringNotifications: [notification, ...state.palliativeMonitoringNotifications],
+  })),
+  markPalliativeNotificationRead: (notificationId) => set((state) => ({
+    palliativeMonitoringNotifications: state.palliativeMonitoringNotifications.map(n =>
+      n.id === notificationId ? { ...n, isRead: true } : n
+    ),
+  })),
+  markPatientAsPalliative: (consultationId, doctorId, patientId, patientName, markingData) => set((state) => {
+    // Check if patient already exists in palliative patients
+    const exists = state.palliativePatients.some(p => p.patientId === patientId);
+    if (exists) return state;
+
+    const newPatient: PalliativePatientInfo = {
+      id: `pp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      patientId,
+      patientName,
+      primaryDiagnosis: markingData.primaryDiagnosis,
+      secondaryDiagnosis: markingData.secondaryDiagnosis,
+      attendingDoctorId: doctorId,
+      attendingDoctorName: state.doctors.find(d => d.id === doctorId)?.name,
+      careStatus: 'rawat_jalan',
+      patientStatus: 'aktif',
+      monitoringStatus: 'monitoring_aktif',
+      riskLevel: 'kuning',
+      markingData,
+      consultationId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Create notification
+    const notification: PalliativeMonitoringNotification = {
+      id: `pn-${Date.now()}`,
+      patientId,
+      patientName,
+      type: 'status_change',
+      title: 'Pasien Baru Monitoring Paliatif',
+      description: `${patientName} telah ditambahkan ke program monitoring paliatif`,
+      severity: 'info',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    return {
+      palliativePatients: [...state.palliativePatients, newPatient],
+      palliativeMonitoringNotifications: [notification, ...state.palliativeMonitoringNotifications],
+    };
+  }),
+  updatePalliativeMonitoringStatus: (patientId, status) => set((state) => ({
+    palliativePatients: state.palliativePatients.map(p =>
+      p.id === patientId ? { ...p, monitoringStatus: status, updatedAt: new Date().toISOString() } : p
+    ),
+  })),
+  activeInlineScreeningFormId: null as string | null,
+  setActiveInlineScreeningFormId: (id) => set({ activeInlineScreeningFormId: id }),
+  activeInlineScreeningType: null as PalliativeMonitoringFormType | null,
+  setActiveInlineScreeningType: (type) => set({ activeInlineScreeningType: type }),
 }));
