@@ -28,3 +28,47 @@ Stage Summary:
   8. Audit Trail - All actions logged via AuditLog model and ACP revisions
 - Feature accessible from sidebar under "Kesehatan" section for doctor role
 - Demo data pre-populated for 3 palliative patients with realistic Indonesian clinical data
+
+---
+Task ID: 2
+Agent: Main
+Task: Add integrated Chat, TTV/Keluhan/Skrining Forms, Clinical Alerts, AI Summary, and Audit Trail to Monitoring Paliatif module
+
+Work Log:
+- Updated src/lib/types.ts with new chat types: PalliativeFormType, PalliativeChatMsgType, PalliativeChatMessage, PalliativeFormData, TTVFormAnswers, KeluhanFormAnswers, PalliativeFormResponse, PalliativeClinicalAlert, PalliativeAuditEntry
+- Updated src/lib/store.ts with new state: palliativeChatMessages (8 demo messages), palliativeClinicalAlerts (2 demo alerts), palliativeAuditLog (4 demo entries), plus mutation functions
+- Created src/components/telemedicine/palliative-chat-panel.tsx (~900 lines) with:
+  - Real-time chat interface for doctor-patient communication
+  - TTV Form component (2-step: vital signs + symptoms, with progress indicator)
+  - Keluhan Harian Form component (7 severity questions + notes, with progress indicator)
+  - Kirim Form dialog (3 options: Form TTV, Form Keluhan, Skrining Paliatif)
+  - Skrining Paliatif picker (6 tools: PPS, ESAS-r, EORTC, SPICT, Distress Thermometer, Caregiver Burden)
+  - Clinical alert panel (expandable from bell icon, with severity badges)
+  - AI Clinical Summary auto-generation (SOAP note format) after TTV form submission
+  - Abnormal TTV detection (TD<90, TD>180, Nadi>120, RR>30, SpO2<90%, Suhu>38, Nyeri>=7)
+  - Simulasi Pasien button for demo/testing
+  - Message types: text, form_ttv, form_keluhan, form_screening, form_response, clinical_alert, ai_summary
+  - Audit trail logging for all actions
+- Updated src/components/telemedicine/palliative-monitoring-panel.tsx:
+  - Added Chat tab (renders PalliativeChatPanel component)
+  - Added Audit tab (clinical alerts, audit log, chat activity summary)
+  - Added quick action buttons to dashboard patient cards (Profil, TTV, Skrining, Obat, ACP, Chat)
+  - Updated dashboard summary cards (added Alert Aktif and Chat Aktif cards)
+  - Added imports for MessageCircle, Bell, History icons and PalliativeChatPanel
+- Fixed lint error: moved generateAISummary before handleTTVSubmit to resolve variable access before declaration
+- Verified with agent-browser: all features working correctly
+
+Stage Summary:
+- Complete Patient Communication & Remote Assessment integration added to Monitoring Paliatif
+- 9 new features implemented as specified:
+  1. Dashboard Pasien - Quick action buttons per patient (Profil, TTV, Skrining, Obat, ACP, Chat)
+  2. Chat Dokter-Pasien - Real-time chat with message status indicators
+  3. Kirim Form TTV - 2-step form (vital signs + symptoms) with progress and draft save
+  4. Kirim Form Keluhan - 7-question severity form with progress indicator
+  5. Kirim Skrining Paliatif - Picker for 6 screening tools (PPS, ESAS-r, EORTC, SPICT, DT, Zarit)
+  6. Patient Form Filling - Simulasi Pasien demo, progress indicator, save draft, submit
+  7. Auto-Save to Medical Records - TTV results auto-saved as VitalSignRecord, screening results stored
+  8. Clinical Notifications - TTV abnormal alerts (severity badges: hijau/kuning/merah)
+  9. AI Clinical Summary - Auto-generated SOAP notes after form submission
+  10. Audit Trail - Full activity logging with timestamp, user role, and details
+- All 9 tabs now functional: Dashboard, Pasien, TTV, Skrining, Obat, ACP, AI, Chat, Audit

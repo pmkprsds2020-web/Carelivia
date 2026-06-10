@@ -563,3 +563,116 @@ export interface PalliativeScreeningRecordInfo {
   performedAt: string;
   createdAt: string;
 }
+
+// ── Palliative Chat Types ──────────────────────────────────────────────────
+
+export type PalliativeFormType = 'ttv' | 'keluhan' | 'screening';
+export type PalliativeChatMsgType = 'text' | 'education' | 'instruction' | 'form_ttv' | 'form_keluhan' | 'form_screening' | 'form_response' | 'reminder' | 'image' | 'ai_summary' | 'clinical_alert';
+
+export interface PalliativeChatMessage {
+  id: string;
+  roomId: string;
+  senderId: string;
+  senderName: string;
+  senderRole: 'doctor' | 'patient' | 'family' | 'system';
+  type: PalliativeChatMsgType;
+  content: string;
+  status: MessageStatus;
+  formType?: PalliativeFormType;
+  formData?: PalliativeFormData;
+  formResponse?: PalliativeFormResponse;
+  screeningType?: PalliativeToolType;
+  aiSummary?: string;
+  clinicalAlert?: PalliativeClinicalAlert;
+  imageUrl?: string;
+  createdAt: string;
+  readAt?: string;
+}
+
+export interface PalliativeFormData {
+  id: string;
+  formType: PalliativeFormType;
+  screeningType?: PalliativeToolType;
+  status: 'sent' | 'opened' | 'in_progress' | 'draft' | 'submitted';
+  progress: number; // 0-100
+  submittedAt?: string;
+  submittedBy?: string;
+}
+
+export interface TTVFormAnswers {
+  systolicBP?: number;
+  diastolicBP?: number;
+  heartRate?: number;
+  respiratoryRate?: number;
+  temperature?: number;
+  oxygenSat?: number;
+  weight?: number;
+  bloodSugar?: number;
+  symptoms: {
+    nyeri: boolean;
+    sesak: boolean;
+    batuk: boolean;
+    mual: boolean;
+    muntah: boolean;
+    sulit_menelan: boolean;
+    sulit_tidur: boolean;
+    lemas: boolean;
+    nafsu_makan_menurun: boolean;
+    konstipasi: boolean;
+    diare: boolean;
+    lainnya: string;
+  };
+  painScore?: number;
+  notes?: string;
+}
+
+export interface KeluhanFormAnswers {
+  kondisiHariIni: 'baik' | 'cukup' | 'kurang' | 'buruk';
+  keluhanBaru: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  nyeriBertambah: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  sesakBertambah: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  makanMinum: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  tidur: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  masalahObat: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  catatanTambahan?: string;
+}
+
+export interface PalliativeFormResponse {
+  formId: string;
+  formType: PalliativeFormType;
+  screeningType?: PalliativeToolType;
+  ttvAnswers?: TTVFormAnswers;
+  keluhanAnswers?: KeluhanFormAnswers;
+  screeningAnswers?: Record<string, number | string | string[]>;
+  screeningResult?: {
+    score: number;
+    scoreLabel: string;
+    interpretation: string;
+    ewsLevel: PalliativeEwsLevel;
+  };
+  submittedAt: string;
+}
+
+export interface PalliativeClinicalAlert {
+  id: string;
+  patientId: string;
+  alertType: 'ttv_abnormal' | 'gejala_berat' | 'distres_tinggi' | 'pps_penurunan' | 'perburukan';
+  severity: 'hijau' | 'kuning' | 'merah';
+  title: string;
+  description: string;
+  values?: Record<string, string | number>;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface PalliativeAuditEntry {
+  id: string;
+  patientId: string;
+  action: 'chat_sent' | 'form_sent' | 'form_opened' | 'form_filled' | 'form_submitted' | 'result_read' | 'ai_generated' | 'alert_triggered' | 'clinical_action';
+  performedBy: string;
+  performedByRole: 'doctor' | 'patient' | 'family' | 'system';
+  details?: string;
+  ipAddress?: string;
+  device?: string;
+  createdAt: string;
+}

@@ -7,7 +7,8 @@ import type {
   ScreeningForm, ScreeningAuditLog, ScreeningModuleId,
   PalliativeScreeningForm, PalliativeToolType,
   PalliativePatientInfo, VitalSignRecordInfo, PalliativeMedicationInfo,
-  AdvanceCarePlanInfo, PalliativeScreeningRecordInfo
+  AdvanceCarePlanInfo, PalliativeScreeningRecordInfo,
+  PalliativeChatMessage, PalliativeClinicalAlert, PalliativeAuditEntry
 } from './types';
 
 interface TelemedicineStore {
@@ -136,6 +137,17 @@ interface TelemedicineStore {
   addPalliativeScreeningRecord: (record: PalliativeScreeningRecordInfo) => void;
   palliativeAiSummary: string;
   setPalliativeAiSummary: (summary: string) => void;
+
+  // Palliative Chat
+  palliativeChatMessages: PalliativeChatMessage[];
+  setPalliativeChatMessages: (messages: PalliativeChatMessage[]) => void;
+  addPalliativeChatMessage: (message: PalliativeChatMessage) => void;
+  updatePalliativeChatMessage: (msgId: string, data: Partial<PalliativeChatMessage>) => void;
+  palliativeClinicalAlerts: PalliativeClinicalAlert[];
+  addPalliativeClinicalAlert: (alert: PalliativeClinicalAlert) => void;
+  markPalliativeAlertRead: (alertId: string) => void;
+  palliativeAuditLog: PalliativeAuditEntry[];
+  addPalliativeAuditEntry: (entry: PalliativeAuditEntry) => void;
 }
 
 export const useStore = create<TelemedicineStore>((set) => ({
@@ -606,4 +618,221 @@ export const useStore = create<TelemedicineStore>((set) => ({
   addPalliativeScreeningRecord: (record) => set((state) => ({ palliativeScreeningRecords: [...state.palliativeScreeningRecords, record] })),
   palliativeAiSummary: '',
   setPalliativeAiSummary: (summary) => set({ palliativeAiSummary: summary }),
+
+  // Palliative Chat
+  palliativeChatMessages: [
+    {
+      id: 'pcm-1',
+      roomId: 'pp-1_doc-sarah',
+      senderId: 'doc-sarah',
+      senderName: 'dr. Sarah Wijaya',
+      senderRole: 'doctor',
+      type: 'text',
+      content: 'Selamat pagi Bu Siti, bagaimana kondisi Anda hari ini?',
+      status: 'read',
+      createdAt: new Date(Date.now() - 7200000).toISOString(),
+      readAt: new Date(Date.now() - 7000000).toISOString(),
+    },
+    {
+      id: 'pcm-2',
+      roomId: 'pp-1_doc-sarah',
+      senderId: 'patient-1',
+      senderName: 'Siti Rahayu',
+      senderRole: 'patient',
+      type: 'text',
+      content: 'Selamat pagi Dok, agak sesak hari ini dan nafsu makan berkurang.',
+      status: 'read',
+      createdAt: new Date(Date.now() - 6800000).toISOString(),
+    },
+    {
+      id: 'pcm-3',
+      roomId: 'pp-1_doc-sarah',
+      senderId: 'doc-sarah',
+      senderName: 'dr. Sarah Wijaya',
+      senderRole: 'doctor',
+      type: 'form_ttv',
+      content: 'Silakan isi formulir TTV untuk memantau kondisi Anda hari ini.',
+      status: 'delivered',
+      formType: 'ttv',
+      formData: {
+        id: 'form-ttv-1',
+        formType: 'ttv',
+        status: 'sent',
+        progress: 0,
+      },
+      createdAt: new Date(Date.now() - 6000000).toISOString(),
+    },
+    {
+      id: 'pcm-4',
+      roomId: 'pp-1_doc-sarah',
+      senderId: 'doc-sarah',
+      senderName: 'dr. Sarah Wijaya',
+      senderRole: 'doctor',
+      type: 'form_keluhan',
+      content: 'Mohon isi form keluhan harian untuk evaluasi gejala Anda.',
+      status: 'delivered',
+      formType: 'keluhan',
+      formData: {
+        id: 'form-keluhan-1',
+        formType: 'keluhan',
+        status: 'sent',
+        progress: 0,
+      },
+      createdAt: new Date(Date.now() - 5800000).toISOString(),
+    },
+    {
+      id: 'pcm-5',
+      roomId: 'pp-1_doc-sarah',
+      senderId: 'patient-1',
+      senderName: 'Siti Rahayu',
+      senderRole: 'patient',
+      type: 'form_response',
+      content: 'Form TTV telah diisi.',
+      formType: 'ttv',
+      formResponse: {
+        formId: 'form-ttv-1',
+        formType: 'ttv',
+        ttvAnswers: {
+          systolicBP: 105,
+          diastolicBP: 65,
+          heartRate: 92,
+          respiratoryRate: 24,
+          temperature: 37.1,
+          oxygenSat: 91,
+          weight: 51.5,
+          symptoms: {
+            nyeri: true, sesak: true, batuk: false, mual: true, muntah: false,
+            sulit_menelan: false, sulit_tidur: true, lemas: true, nafsu_makan_menurun: true,
+            konstipasi: false, diare: false, lainnya: '',
+          },
+          painScore: 5,
+          notes: 'Sesak terasa saat berbaring',
+        },
+        submittedAt: new Date(Date.now() - 5000000).toISOString(),
+      },
+      status: 'read',
+      createdAt: new Date(Date.now() - 5000000).toISOString(),
+    },
+    {
+      id: 'pcm-6',
+      roomId: 'pp-1_doc-sarah',
+      senderId: 'system',
+      senderName: 'Sistem',
+      senderRole: 'system',
+      type: 'clinical_alert',
+      content: 'Peringatan: SpO2 rendah (91%) dan frekuensi napas meningkat (24/menit).',
+      clinicalAlert: {
+        id: 'alert-1',
+        patientId: 'pp-1',
+        alertType: 'ttv_abnormal',
+        severity: 'kuning',
+        title: 'TTV Abnormal',
+        description: 'SpO2 rendah (91%) dan frekuensi napas meningkat (24/menit)',
+        values: { oxygenSat: 91, respiratoryRate: 24 },
+        isRead: false,
+        createdAt: new Date(Date.now() - 4900000).toISOString(),
+      },
+      status: 'delivered',
+      createdAt: new Date(Date.now() - 4900000).toISOString(),
+    },
+    {
+      id: 'pcm-7',
+      roomId: 'pp-1_doc-sarah',
+      senderId: 'system',
+      senderName: 'AI Clinical Assistant',
+      senderRole: 'system',
+      type: 'ai_summary',
+      content: 'Ringkasan AI: Pasien menunjukkan penurunan SpO2 dan peningkatan frekuensi napas. Nyeri terkontrol dengan skor 5/10. Gejala utama: sesak, mual, lemas.',
+      aiSummary: 'S: Pasien Siti Rahayu mengeluhkan sesak napas terutama saat berbaring, nafsu makan menurun, dan lemas.\nO: TD 105/65 mmHg, Nadi 92 x/menit, RR 24/menit, Suhu 37.1°C, SpO2 91%, BB 51.5 kg. Nyeri 5/10.\nA: Penurunan saturasi oksigen dengan peningkatan frekuensi napas. Gejala sesak dan mual perlu pemantauan.\nP: Evaluasi oksigen tambahan, optimasi manajemen sesak, monitoring ulang 6 jam.',
+      status: 'delivered',
+      createdAt: new Date(Date.now() - 4800000).toISOString(),
+    },
+    {
+      id: 'pcm-8',
+      roomId: 'pp-3_doc-sarah',
+      senderId: 'doc-sarah',
+      senderName: 'dr. Sarah Wijaya',
+      senderRole: 'doctor',
+      type: 'text',
+      content: 'Ibu Maria, hari ini saya akan kirimkan form skrining untuk evaluasi kondisi Anda.',
+      status: 'sent',
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+    },
+  ] as PalliativeChatMessage[],
+  setPalliativeChatMessages: (messages) => set({ palliativeChatMessages: messages }),
+  addPalliativeChatMessage: (message) => set((state) => ({ palliativeChatMessages: [...state.palliativeChatMessages, message] })),
+  updatePalliativeChatMessage: (msgId, data) => set((state) => ({
+    palliativeChatMessages: state.palliativeChatMessages.map(m =>
+      m.id === msgId ? { ...m, ...data } : m
+    ),
+  })),
+  palliativeClinicalAlerts: [
+    {
+      id: 'alert-1',
+      patientId: 'pp-1',
+      alertType: 'ttv_abnormal',
+      severity: 'kuning',
+      title: 'TTV Abnormal',
+      description: 'SpO2 rendah (91%) dan frekuensi napas meningkat (24/menit)',
+      values: { oxygenSat: 91, respiratoryRate: 24 },
+      isRead: false,
+      createdAt: new Date(Date.now() - 4900000).toISOString(),
+    },
+    {
+      id: 'alert-2',
+      patientId: 'pp-3',
+      alertType: 'ttv_abnormal',
+      severity: 'merah',
+      title: 'TTV Kritis',
+      description: 'SpO2 sangat rendah (88%), hipotensi (90/60), dan takipnea (26/menit)',
+      values: { oxygenSat: 88, systolicBP: 90, diastolicBP: 60, respiratoryRate: 26 },
+      isRead: false,
+      createdAt: new Date(Date.now() - 1800000).toISOString(),
+    },
+  ] as PalliativeClinicalAlert[],
+  addPalliativeClinicalAlert: (alert) => set((state) => ({ palliativeClinicalAlerts: [...state.palliativeClinicalAlerts, alert] })),
+  markPalliativeAlertRead: (alertId) => set((state) => ({
+    palliativeClinicalAlerts: state.palliativeClinicalAlerts.map(a =>
+      a.id === alertId ? { ...a, isRead: true } : a
+    ),
+  })),
+  palliativeAuditLog: [
+    {
+      id: 'audit-1',
+      patientId: 'pp-1',
+      action: 'form_sent',
+      performedBy: 'doc-sarah',
+      performedByRole: 'doctor',
+      details: 'Dokter mengirim Form TTV kepada pasien Siti Rahayu',
+      createdAt: new Date(Date.now() - 6000000).toISOString(),
+    },
+    {
+      id: 'audit-2',
+      patientId: 'pp-1',
+      action: 'form_submitted',
+      performedBy: 'patient-1',
+      performedByRole: 'patient',
+      details: 'Pasien mengirimkan hasil Form TTV',
+      createdAt: new Date(Date.now() - 5000000).toISOString(),
+    },
+    {
+      id: 'audit-3',
+      patientId: 'pp-1',
+      action: 'alert_triggered',
+      performedBy: 'system',
+      performedByRole: 'system',
+      details: 'Alert: SpO2 rendah (91%) dan RR tinggi (24/menit)',
+      createdAt: new Date(Date.now() - 4900000).toISOString(),
+    },
+    {
+      id: 'audit-4',
+      patientId: 'pp-1',
+      action: 'ai_generated',
+      performedBy: 'system',
+      performedByRole: 'system',
+      details: 'AI menghasilkan ringkasan klinis otomatis',
+      createdAt: new Date(Date.now() - 4800000).toISOString(),
+    },
+  ] as PalliativeAuditEntry[],
+  addPalliativeAuditEntry: (entry) => set((state) => ({ palliativeAuditLog: [...state.palliativeAuditLog, entry] })),
 }));

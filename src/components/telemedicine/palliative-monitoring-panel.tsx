@@ -103,11 +103,15 @@ import {
   Info,
   Sparkles,
   RefreshCw,
+  MessageCircle,
+  Bell,
+  History,
 } from 'lucide-react';
+import { PalliativeChatPanel } from './palliative-chat-panel';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'acp' | 'ai';
+type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'acp' | 'ai' | 'chat' | 'audit';
 
 // ── Helper Functions ─────────────────────────────────────────────────────
 
@@ -278,6 +282,10 @@ export function PalliativeMonitoringPanel() {
     setPalliativeAiSummary,
     currentUser,
     doctors,
+    palliativeChatMessages,
+    palliativeClinicalAlerts,
+    palliativeAuditLog,
+    markPalliativeAlertRead,
   } = useStore();
 
   // ── Selected patient data ──
@@ -774,7 +782,7 @@ export function PalliativeMonitoringPanel() {
   const renderDashboard = () => (
     <div className="space-y-4">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-1">
             <Users className="w-4 h-4 text-muted-foreground" />
@@ -805,10 +813,17 @@ export function PalliativeMonitoringPanel() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-1">
-            <CheckCircle2 className="w-4 h-4 text-green-600" />
-            <span className="text-xs text-muted-foreground">Risiko Hijau</span>
+            <Bell className="w-4 h-4 text-red-600" />
+            <span className="text-xs text-muted-foreground">Alert Aktif</span>
           </div>
-          <p className="text-2xl font-bold text-green-700">{dashboardStats.hijau}</p>
+          <p className="text-2xl font-bold text-red-600">{palliativeClinicalAlerts.filter(a => !a.isRead).length}</p>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <MessageCircle className="w-4 h-4 text-primary" />
+            <span className="text-xs text-muted-foreground">Chat Aktif</span>
+          </div>
+          <p className="text-2xl font-bold text-primary">{new Set(palliativeChatMessages.map(m => m.roomId)).size}</p>
         </Card>
       </div>
 
@@ -954,6 +969,27 @@ export function PalliativeMonitoringPanel() {
                     )}
                   </div>
                   <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />
+                </div>
+                {/* Quick Action Buttons */}
+                <div className="flex items-center gap-1.5 mt-3 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                  <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('patients'); }}>
+                    <Eye className="w-3 h-3 mr-1" /> Profil
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('ttv'); }}>
+                    <Thermometer className="w-3 h-3 mr-1" /> TTV
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('screening'); }}>
+                    <ClipboardCheck className="w-3 h-3 mr-1" /> Skrining
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('medication'); }}>
+                    <Pill className="w-3 h-3 mr-1" /> Obat
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('acp'); }}>
+                    <Shield className="w-3 h-3 mr-1" /> ACP
+                  </Button>
+                  <Button variant="default" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('chat'); }}>
+                    <MessageCircle className="w-3 h-3 mr-1" /> Chat
+                  </Button>
                 </div>
               </Card>
             );
@@ -2263,8 +2299,146 @@ export function PalliativeMonitoringPanel() {
     </div>
   );
 
+  // ── Render: Audit Trail Tab ──
+  const renderAudit = () => (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Audit Trail dan Keamanan</h2>
+      </div>
+
+      {/* Clinical Alerts Summary */}
+      <Card className="p-4">
+        <CardHeader className="p-0 pb-3">
+          <div className="flex items-center gap-2">
+            <Bell className="w-5 h-5 text-red-600" />
+            <CardTitle className="text-base">Notifikasi Klinis</CardTitle>
+            <Badge variant="destructive" className="text-xs">{palliativeClinicalAlerts.filter(a => !a.isRead).length} belum dibaca</Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {palliativeClinicalAlerts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Tidak ada notifikasi klinis</p>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {palliativeClinicalAlerts.map(alert => {
+                const pPatient = palliativePatients.find(p => p.id === alert.patientId);
+                return (
+                  <div key={alert.id} className={cn(
+                    'flex items-start gap-3 p-3 rounded-lg border cursor-pointer',
+                    !alert.isRead ? 'bg-red-50 border-red-200' : 'bg-muted/30'
+                  )} onClick={() => markPalliativeAlertRead(alert.id)}>
+                    <Badge variant="outline" className={cn('text-[10px] shrink-0', alert.severity === 'merah' ? 'bg-red-100 text-red-800 border-red-300' : alert.severity === 'kuning' ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-green-100 text-green-800 border-green-300')}>
+                      {alert.severity === 'merah' ? 'Gawat' : alert.severity === 'kuning' ? 'Waspada' : 'Stabil'}
+                    </Badge>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{alert.title}</span>
+                        <span className="text-xs text-muted-foreground">- {pPatient?.patientName || '-'}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{alert.description}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">{formatDateTime(alert.createdAt)}</p>
+                    </div>
+                    {!alert.isRead && <div className="w-2 h-2 rounded-full bg-red-500 shrink-0 mt-1" />}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Audit Log */}
+      <Card className="p-4">
+        <CardHeader className="p-0 pb-3">
+          <div className="flex items-center gap-2">
+            <History className="w-5 h-5 text-primary" />
+            <CardTitle className="text-base">Log Aktivitas</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {palliativeAuditLog.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Belum ada aktivitas tercatat</p>
+          ) : (
+            <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
+              {[...palliativeAuditLog].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(entry => {
+                const pPatient = palliativePatients.find(p => p.id === entry.patientId);
+                const actionLabel: Record<string, string> = {
+                  chat_sent: 'Pesan Terkirim',
+                  form_sent: 'Form Dikirim',
+                  form_opened: 'Form Dibuka',
+                  form_filled: 'Form Diisi',
+                  form_submitted: 'Form Terkirim',
+                  result_read: 'Hasil Dibaca',
+                  ai_generated: 'AI Ringkasan',
+                  alert_triggered: 'Notifikasi Klinis',
+                  clinical_action: 'Tindakan Klinis',
+                };
+                const actionColor: Record<string, string> = {
+                  chat_sent: 'bg-blue-100 text-blue-800',
+                  form_sent: 'bg-teal-100 text-teal-800',
+                  form_opened: 'bg-sky-100 text-sky-800',
+                  form_filled: 'bg-amber-100 text-amber-800',
+                  form_submitted: 'bg-green-100 text-green-800',
+                  result_read: 'bg-gray-100 text-gray-800',
+                  ai_generated: 'bg-purple-100 text-purple-800',
+                  alert_triggered: 'bg-red-100 text-red-800',
+                  clinical_action: 'bg-orange-100 text-orange-800',
+                };
+                return (
+                  <div key={entry.id} className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted/30 text-sm">
+                    <Badge variant="outline" className={cn('text-[10px] shrink-0', actionColor[entry.action] || 'bg-gray-100 text-gray-800')}>
+                      {actionLabel[entry.action] || entry.action}
+                    </Badge>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs">{entry.details || '-'}</p>
+                      <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground">
+                        <span>{pPatient?.patientName || '-'}</span>
+                        <span>Oleh: {entry.performedByRole === 'doctor' ? 'Dokter' : entry.performedByRole === 'patient' ? 'Pasien' : entry.performedByRole === 'family' ? 'Keluarga' : 'Sistem'}</span>
+                        <span>{formatDateTime(entry.createdAt)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Chat Activity Summary */}
+      <Card className="p-4">
+        <CardHeader className="p-0 pb-3">
+          <div className="flex items-center gap-2">
+            <MessageCircle className="w-5 h-5 text-primary" />
+            <CardTitle className="text-base">Ringkasan Aktivitas Chat</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 rounded-lg bg-muted/30 text-center">
+              <p className="text-lg font-bold">{palliativeChatMessages.filter(m => m.type === 'text').length}</p>
+              <p className="text-xs text-muted-foreground">Pesan Teks</p>
+            </div>
+            <div className="p-3 rounded-lg bg-muted/30 text-center">
+              <p className="text-lg font-bold">{palliativeChatMessages.filter(m => m.type.startsWith('form_')).length}</p>
+              <p className="text-xs text-muted-foreground">Form Dikirim</p>
+            </div>
+            <div className="p-3 rounded-lg bg-muted/30 text-center">
+              <p className="text-lg font-bold">{palliativeChatMessages.filter(m => m.type === 'form_response').length}</p>
+              <p className="text-xs text-muted-foreground">Form Dijawab</p>
+            </div>
+            <div className="p-3 rounded-lg bg-muted/30 text-center">
+              <p className="text-lg font-bold">{palliativeChatMessages.filter(m => m.type === 'ai_summary').length}</p>
+              <p className="text-xs text-muted-foreground">AI Ringkasan</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   // ── Main Render ──
-  const needsPatientSelection = ['ttv', 'screening', 'medication', 'acp', 'ai'].includes(
+  const needsPatientSelection = ['ttv', 'screening', 'medication', 'acp', 'ai', 'chat'].includes(
     activeTab
   );
 
@@ -2307,6 +2481,14 @@ export function PalliativeMonitoringPanel() {
             <Brain className="w-4 h-4 mr-1" />
             AI
           </TabsTrigger>
+          <TabsTrigger value="chat" className="text-xs sm:text-sm">
+            <MessageCircle className="w-4 h-4 mr-1" />
+            Chat
+          </TabsTrigger>
+          <TabsTrigger value="audit" className="text-xs sm:text-sm">
+            <History className="w-4 h-4 mr-1" />
+            Audit
+          </TabsTrigger>
         </TabsList>
 
         {/* Patient selector for tabs that need it */}
@@ -2319,6 +2501,12 @@ export function PalliativeMonitoringPanel() {
         <TabsContent value="medication">{renderMedication()}</TabsContent>
         <TabsContent value="acp">{renderACP()}</TabsContent>
         <TabsContent value="ai">{renderAI()}</TabsContent>
+        <TabsContent value="chat">
+          <div className="h-[calc(100vh-280px)]">
+            <PalliativeChatPanel patient={selectedPatient} />
+          </div>
+        </TabsContent>
+        <TabsContent value="audit">{renderAudit()}</TabsContent>
       </Tabs>
 
       {/* ── Dialog: Add Patient ── */}
