@@ -400,3 +400,37 @@ Stage Summary:
 - Alert triggers when ≥3 risk indicators are positive
 - Updated across: palliative-screening-panel.tsx, chat-panel.tsx, screening-templates.ts
 - Browser verified: PPS dialog opens with new card UI, step navigation works, result view displays correctly
+
+---
+Task ID: 4
+Agent: Main
+Task: Replace SPICT screening with patient-friendly version
+
+Work Log:
+- Replaced SPICT_GENERAL (6 clinical indicators) with SPICT_QUESTIONS (15 patient-friendly Ya/Tidak questions with help text)
+- Replaced SPICT_DISEASE (6 category disease-specific indicators) with SPICT_DISEASES (9 simple chronic disease checkboxes)
+- Added Surprise Question ("Apakah Anda akan terkejut jika pasien meninggal dalam 12 bulan ke depan?")
+- Updated TOOL_DEFS.spict: name, description, items, scale, totalSteps (7→3)
+- Rewrote calcSPICT(): counts Ya answers, determines risk category (Rendah/Sedang/Tinggi/Sangat Tinggi), tracks diseases and surprise answer
+- Updated SPICT EWS level: ≥8 or surprise=no → merah, ≥6 → merah, ≥3 → kuning, else hijau
+- Updated SPICT save result: 4-category risk interpretation with clinical advice
+- Replaced renderSPICT() with 3-step UI:
+  - Step 0: 15 Ya/Tidak questions with help text (underlined hints)
+  - Step 1: 9 chronic disease checkboxes in 2-column grid
+  - Step 2: Surprise Question with 2 radio-card options (green/red)
+- Replaced renderSPICTResult() with new result view:
+  - Score in points (0-15) with EWS badge
+  - Risk category with colored status card and clinical advice
+  - Indikator Terdeteksi list (only "Ya" answers)
+  - Penyakit Kronis badges
+  - Surprise Question result with red/green interpretation
+- Updated PALLIATIVE_TOOL_LABELS.spict in chat-panel.tsx
+- Updated step info labels for 3 new steps
+
+Stage Summary:
+- SPICT completely redesigned from clinical indicator tool to patient-friendly screening questionnaire
+- 15 questions with help text guide patients through the assessment
+- 9 disease checkboxes replace 6 complex disease-specific categories
+- Surprise Question adds critical prognostic indicator
+- 4 risk categories with clear advice: Rendah/Sedang/Tinggi/Sangat Tinggi
+- Browser verified: all 3 steps work, result view displays correctly with score, risk category, indicators, diseases, and surprise question

@@ -88,12 +88,12 @@ const TOOL_DEFS: Record<ToolType, {
     totalSteps: 6,
   },
   spict: {
-    name: 'SPICT',
+    name: 'Skrining Kebutuhan Perawatan Paliatif (SPICT)',
     icon: <ClipboardList className="w-6 h-6" />,
-    description: 'Supportive and Palliative Care Indicators Tool — Indikator kebutuhan paliatif',
-    items: '6 umum + 6x penyakit spesifik',
-    scale: 'Positif/Negatif',
-    totalSteps: 7,
+    description: 'Alat bantu identifikasi pasien yang mungkin memerlukan penilaian paliatif',
+    items: '15 pertanyaan + penyakit kronis + surprise question',
+    scale: '0-15 poin (4 kategori risiko)',
+    totalSteps: 3,
   },
   pps: {
     name: 'Skrining Kondisi Pasien (PPS)',
@@ -147,22 +147,34 @@ const DT_PROBLEMS: { category: string; step: number; items: string[] }[] = [
 
 // ── SPICT Data ───────────────────────────────────────────────────────────
 
-const SPICT_GENERAL = [
-  'Performa fungsional menurun secara progresif (PPS rendah)',
-  'Bergantung pada orang lain untuk perawatan diri',
-  'Kebutuhan perawatan meningkat di rumah atau fasilitas',
-  'Penurunan berat badan progresif tanpa upaya diet',
-  'Gejala fisik yang bertambah berat meskipun pengobatan optimal',
-  'Dua atau lebih episode tidak terduga ke IGD/rawat inap dalam 6 bulan',
+const SPICT_QUESTIONS = [
+  { id: 'spict-q1', text: 'Apakah kondisi kesehatan pasien semakin menurun dalam beberapa bulan terakhir?', help: 'Apakah tampak lebih sering sakit atau kondisi fisiknya terlihat tidak sebugar dulu?' },
+  { id: 'spict-q2', text: 'Apakah pasien lebih sering dirawat di rumah sakit atau IGD dibanding sebelumnya?', help: 'Apakah dalam 6 bulan terakhir frekuensi masuk RS lebih sering dari biasanya?' },
+  { id: 'spict-q3', text: 'Apakah pasien semakin sulit melakukan aktivitas sehari-hari?', help: 'Contoh: kesulitan mandi, berpakaian, makan, atau berjalan tanpa dibantu.' },
+  { id: 'spict-q4', text: 'Apakah pasien lebih sering berada di tempat tidur atau duduk dibanding sebelumnya?', help: 'Apakah pasien lebih banyak menghabiskan waktu berbaring daripada beraktivitas?' },
+  { id: 'spict-q5', text: 'Apakah berat badan pasien menurun tanpa disengaja?', help: 'Apakah pakaian terasa lebih longgar atau timbangan menunjukkan penurunan berat yang signifikan?' },
+  { id: 'spict-q6', text: 'Apakah nafsu makan pasien berkurang?', help: 'Apakah porsi makan pasien jauh berkurang dari porsi biasanya?' },
+  { id: 'spict-q7', text: 'Apakah pasien merasa lebih lemah atau cepat lelah?', help: 'Apakah pasien tampak kehabisan tenaga bahkan saat melakukan kegiatan ringan?' },
+  { id: 'spict-q8', text: 'Apakah pasien sering mengalami nyeri yang mengganggu?', help: 'Nyeri yang dirasakan cukup kuat untuk membuat pasien sulit fokus atau sulit istirahat.' },
+  { id: 'spict-q9', text: 'Apakah pasien sering sesak napas?', help: 'Apakah napas terasa berat, pendek-pendek, atau terengah-engah?' },
+  { id: 'spict-q10', text: 'Apakah pasien sering mual atau muntah?', help: 'Perasaan ingin muntah yang mengganggu kenyamanan sehari-hari.' },
+  { id: 'spict-q11', text: 'Apakah pasien sering sulit tidur karena keluhan penyakitnya?', help: 'Keluhan nyeri, sesak, atau cemas membuat pasien tidak bisa tidur nyenyak.' },
+  { id: 'spict-q12', text: 'Apakah pasien sering merasa cemas, sedih, atau putus asa?', help: 'Dukungan emosional sangat diperlukan jika pasien sering merasa murung.' },
+  { id: 'spict-q13', text: 'Apakah keluarga semakin sering membantu kebutuhan sehari-hari pasien?', help: 'Apakah Anda/keluarga harus lebih sering turun tangan untuk aktivitas pribadi pasien?' },
+  { id: 'spict-q14', text: 'Apakah keluarga merasa beban merawat pasien semakin berat?', help: 'Apakah Anda merasa kelelahan baik fisik maupun mental dalam merawat pasien?' },
+  { id: 'spict-q15', text: 'Apakah butuh bantuan untuk perencanaan pengobatan ke depan?', help: 'Apakah Anda bingung mengenai langkah medis selanjutnya?' },
 ];
 
-const SPICT_DISEASE: { category: string; step: number; items: string[] }[] = [
-  { category: 'Kanker', step: 2, items: ['Kanker stadium lanjut (stadium IV atau metastasis)', 'Kanker yang tidak lagi merespons pengobatan antikanker', 'ECOG 3 atau 4 pada pasien kanker'] },
-  { category: 'Penyakit Jantung', step: 3, items: ['Gagal jantung berat (NYHA III/IV) meskipun terapi optimal', 'Nyeri dada istirahat berulang', 'Gagal jantung dengan fraksi ejeksi <20%'] },
-  { category: 'Paru/PPOK', step: 4, items: ['PPOK berat (FEV1 <30% prediksi) dengan eksaserbasi berulang', 'Hipoksemia berat meskipun oksigen supplemental', 'Kor pulmonale atau gagal jantung kanan akibat penyakit paru'] },
-  { category: 'Neurologi', step: 5, items: ['Stroke berat dengan defisit neurologis persisten', 'Penyakit Parkinson stadium lanjut (Hoehn & Yahr 4-5)', 'Demensia berat (tidak mampu ADL) atau komplikasi serius'] },
-  { category: 'Ginjal', step: 6, items: ['Gagal ginjal stadium 5 (eGFR <15) yang tidak memenuhi dialisis', 'Pasien dialisis yang memilih menghentikan dialisis', 'Gagal ginjal dengan komorbiditas berat'] },
-  { category: 'Hati', step: 7, items: ['Sirosis dekompensasi dengan Child-Pugh C', 'Ensefalopati hepatik berulang', 'Asites refrakter meskipun terapi optimal'] },
+const SPICT_DISEASES = [
+  'Kanker stadium lanjut',
+  'Gagal jantung',
+  'Penyakit paru kronis (PPOK)',
+  'Stroke berat',
+  'Demensia',
+  'Penyakit saraf progresif',
+  'Gagal ginjal kronis',
+  'Penyakit hati kronis',
+  'Kondisi kronis berat lainnya',
 ];
 
 // ── PPS Data ─────────────────────────────────────────────────────────────
@@ -547,18 +559,23 @@ export function PalliativeScreeningPanel() {
     return { score, problems };
   }, [answers]);
 
-  const calcSPICT = useCallback((): { generalCount: number; specificCount: number; isPositive: boolean; checkedGeneral: string[]; checkedSpecific: Record<string, string[]> } => {
-    const checkedGeneral = (answers['spict-general'] as string[]) || [];
-    const generalCount = checkedGeneral.length;
-    const checkedSpecific: Record<string, string[]> = {};
-    let specificCount = 0;
-    for (const cat of SPICT_DISEASE) {
-      const checked = (answers[`spict-${cat.category}`] as string[]) || [];
-      if (checked.length > 0) checkedSpecific[cat.category] = checked;
-      specificCount += checked.length;
+  const calcSPICT = useCallback((): { yesCount: number; riskCategory: string; isHighRisk: boolean; yesItems: { id: string; text: string }[]; checkedDiseases: string[]; surpriseAnswer: string } => {
+    let yesCount = 0;
+    const yesItems: { id: string; text: string }[] = [];
+    for (const q of SPICT_QUESTIONS) {
+      if (Number(answers[q.id]) === 1) {
+        yesCount++;
+        yesItems.push({ id: q.id, text: q.text });
+      }
     }
-    const isPositive = generalCount >= 2 || specificCount >= 1;
-    return { generalCount, specificCount, isPositive, checkedGeneral, checkedSpecific };
+    const checkedDiseases = (answers['spict-diseases'] as string[]) || [];
+    const surpriseAnswer = (answers['spict-surprise'] as string) || '';
+    const isHighRisk = yesCount >= 8 || surpriseAnswer === 'no';
+    let riskCategory = 'Risiko Rendah';
+    if (yesCount >= 8 || surpriseAnswer === 'no') riskCategory = 'Risiko Sangat Tinggi';
+    else if (yesCount >= 6) riskCategory = 'Risiko Tinggi';
+    else if (yesCount >= 3) riskCategory = 'Risiko Sedang';
+    return { yesCount, riskCategory, isHighRisk, yesItems, checkedDiseases, surpriseAnswer };
   }, [answers]);
 
   const calcPPS = useCallback((): { pps: number; categoryAnswers: Record<string, number>; extraYesCount: number; dimensionDetails: { id: string; title: string; score: number; label: string }[] } => {
@@ -636,10 +653,10 @@ export function PalliativeScreeningPanel() {
         return 'hijau';
       }
       case 'spict': {
-        const { generalCount, specificCount } = calcSPICT();
-        const total = generalCount + specificCount;
-        if (generalCount >= 2 || total >= 3) return 'merah';
-        if (generalCount >= 1 || specificCount >= 1) return 'kuning';
+        const { yesCount, surpriseAnswer } = calcSPICT();
+        if (yesCount >= 8 || surpriseAnswer === 'no') return 'merah';
+        if (yesCount >= 6) return 'merah';
+        if (yesCount >= 3) return 'kuning';
         return 'hijau';
       }
       case 'pps': {
@@ -702,13 +719,15 @@ export function PalliativeScreeningPanel() {
       }
       case 'spict': {
         const r = calcSPICT();
-        const totalIndicators = r.generalCount + r.specificCount;
-        score = totalIndicators;
-        scoreLabel = r.isPositive ? 'Positif' : 'Negatif';
-        interpretation = r.isPositive
-          ? `SPICT Positif (${r.generalCount} indikator umum, ${r.specificCount} indikator spesifik). Pasien memenuhi kriteria kebutuhan perawatan paliatif.`
-          : `SPICT Negatif (${totalIndicators} indikator). Belum memenuhi kriteria perawatan paliatif berdasarkan SPICT.`;
-        details = { checkedGeneral: r.checkedGeneral, checkedSpecific: r.checkedSpecific, isPositive: r.isPositive };
+        score = r.yesCount;
+        scoreLabel = `${r.yesCount} poin — ${r.riskCategory}`;
+        interpretation = `SPICT: ${r.yesCount} indikator terdeteksi (${r.riskCategory}). `;
+        if (r.yesCount >= 8 || r.surpriseAnswer === 'no') interpretation += 'Sangat disarankan evaluasi paliatif komprehensif, home care, dan diskusi Advance Care Planning (ACP).';
+        else if (r.yesCount >= 6) interpretation += 'Pasien berpotensi membutuhkan layanan paliatif. Disarankan penilaian oleh dokter atau tim paliatif.';
+        else if (r.yesCount >= 3) interpretation += 'Pertimbangkan konsultasi paliatif. Lakukan evaluasi gejala lebih lanjut.';
+        else interpretation += 'Belum menunjukkan kebutuhan paliatif yang jelas. Lanjutkan kontrol rutin.';
+        if (r.surpriseAnswer === 'no') interpretation += ' Surprise Question negatif — disarankan segera diskusi Advance Care Planning.';
+        details = { yesCount: r.yesCount, riskCategory: r.riskCategory, yesItems: r.yesItems, checkedDiseases: r.checkedDiseases, surpriseAnswer: r.surpriseAnswer };
         break;
       }
       case 'pps': {
@@ -921,52 +940,140 @@ export function PalliativeScreeningPanel() {
   // ── SPICT Steps ──
   const renderSPICT = () => {
     if (currentStep === 0) {
+      // Step 1: 15 Yes/No questions
       return (
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground mb-2">
-            Centang indikator umum yang berlaku pada pasien:
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground italic mb-2">
+            Alat bantu ini digunakan untuk mengidentifikasi pasien yang mungkin memerlukan penilaian paliatif. Ini bukan diagnosis medis.
           </p>
-          {SPICT_GENERAL.map((item, idx) => (
-            <div key={idx} className="flex items-start space-x-3 py-1.5">
-              <Checkbox
-                id={`spict-general-${idx}`}
-                checked={isChecked('spict-general', item)}
-                onCheckedChange={() => toggleCheck('spict-general', item)}
-                className="mt-0.5"
-              />
-              <Label htmlFor={`spict-general-${idx}`} className="text-sm font-normal cursor-pointer leading-relaxed">
-                {item}
-              </Label>
-            </div>
-          ))}
+          {SPICT_QUESTIONS.map((q, idx) => {
+            const currentVal = answers[q.id] as number | undefined;
+            const questionNum = idx + 1;
+            return (
+              <div key={q.id} className="border-b border-border pb-4 last:border-b-0">
+                <p className="text-sm font-semibold text-foreground mb-1">
+                  {questionNum}. {q.text}
+                </p>
+                <p className="text-xs text-muted-foreground italic mb-3 underline decoration-primary/20 decoration-1">
+                  {q.help}
+                </p>
+                <div className="flex gap-4">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setAnswer(q.id, 1); }}
+                    className={cn(
+                      'px-4 py-2 rounded-lg text-sm font-medium transition-all border',
+                      currentVal === 1
+                        ? 'bg-red-100 text-red-700 border-red-300'
+                        : 'bg-card text-foreground border-border hover:border-red-300',
+                    )}
+                  >
+                    Ya
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setAnswer(q.id, 0); }}
+                    className={cn(
+                      'px-4 py-2 rounded-lg text-sm font-medium transition-all border',
+                      currentVal === 0
+                        ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                        : 'bg-card text-foreground border-border hover:border-emerald-300',
+                    )}
+                  >
+                    Tidak
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       );
     }
 
-    const catIdx = currentStep - 1;
-    const cat = SPICT_DISEASE[catIdx];
-    if (!cat) return null;
-
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-muted-foreground mb-2">
-          Centang indikator spesifik untuk <strong>{cat.category}</strong>:
-        </p>
-        {cat.items.map((item, idx) => (
-          <div key={idx} className="flex items-start space-x-3 py-1.5">
-            <Checkbox
-              id={`spict-${cat.category}-${idx}`}
-              checked={isChecked(`spict-${cat.category}`, item)}
-              onCheckedChange={() => toggleCheck(`spict-${cat.category}`, item)}
-              className="mt-0.5"
-            />
-            <Label htmlFor={`spict-${cat.category}-${idx}`} className="text-sm font-normal cursor-pointer leading-relaxed">
-              {item}
-            </Label>
+    if (currentStep === 1) {
+      // Step 2: Chronic diseases checkboxes
+      return (
+        <div className="space-y-4">
+          <div className="p-4 bg-primary/5 rounded-lg">
+            <h3 className="font-semibold text-foreground mb-2">C. Penyakit Kronis atau Berat</h3>
+            <p className="text-xs text-muted-foreground mb-3">Pilih salah satu atau lebih jika ada:</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {SPICT_DISEASES.map((disease) => (
+                <div key={disease} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`spict-disease-${disease}`}
+                    checked={isChecked('spict-diseases', disease)}
+                    onCheckedChange={() => toggleCheck('spict-diseases', disease)}
+                  />
+                  <Label htmlFor={`spict-disease-${disease}`} className="text-sm font-normal cursor-pointer">
+                    {disease}
+                  </Label>
+                </div>
+              ))}
+            </div>
           </div>
-        ))}
-      </div>
-    );
+        </div>
+      );
+    }
+
+    if (currentStep === 2) {
+      // Step 3: Surprise Question
+      const surpriseVal = (answers['spict-surprise'] as string) || '';
+      return (
+        <div className="space-y-4">
+          <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+            <h3 className="font-semibold text-foreground mb-2">Pertanyaan Kejutan (Surprise Question)</h3>
+            <p className="text-sm text-foreground mb-4">
+              &quot;Apakah Anda akan terkejut jika pasien meninggal dalam 12 bulan ke depan?&quot;
+            </p>
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setAnswer('spict-surprise', 'yes'); }}
+                className={cn(
+                  'w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all border-2',
+                  surpriseVal === 'yes'
+                    ? 'border-emerald-400 bg-emerald-50 text-emerald-800'
+                    : 'border-border bg-card text-foreground hover:border-emerald-300',
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    'w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0',
+                    surpriseVal === 'yes' ? 'border-emerald-500 bg-emerald-500' : 'border-muted-foreground/40',
+                  )}>
+                    {surpriseVal === 'yes' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  </div>
+                  <span>Ya, saya akan terkejut</span>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setAnswer('spict-surprise', 'no'); }}
+                className={cn(
+                  'w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all border-2',
+                  surpriseVal === 'no'
+                    ? 'border-red-400 bg-red-50 text-red-800'
+                    : 'border-border bg-card text-foreground hover:border-red-300',
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    'w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0',
+                    surpriseVal === 'no' ? 'border-red-500 bg-red-500' : 'border-muted-foreground/40',
+                  )}>
+                    {surpriseVal === 'no' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  </div>
+                  <span>Tidak, saya tidak akan terkejut</span>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
   };
 
   // ── PPS Steps ──
@@ -1276,52 +1383,83 @@ export function PalliativeScreeningPanel() {
     };
 
     const renderSPICTResult = () => {
-      const { generalCount, specificCount, isPositive, checkedGeneral, checkedSpecific } = calcSPICT();
+      const { yesCount, riskCategory, yesItems, checkedDiseases, surpriseAnswer } = calcSPICT();
+
+      let statusLabel = '';
+      let statusColor = '';
+      let statusBg = '';
+      let advice = '';
+      if (yesCount >= 8 || surpriseAnswer === 'no') {
+        statusLabel = 'Risiko Sangat Tinggi';
+        statusColor = 'text-red-700';
+        statusBg = 'bg-red-50 border-red-200';
+        advice = 'Sangat disarankan evaluasi paliatif komprehensif, home care, dan diskusi Advance Care Planning (ACP).';
+      } else if (yesCount >= 6) {
+        statusLabel = 'Risiko Tinggi';
+        statusColor = 'text-orange-700';
+        statusBg = 'bg-orange-50 border-orange-200';
+        advice = 'Pasien berpotensi membutuhkan layanan paliatif. Disarankan penilaian oleh dokter atau tim paliatif.';
+      } else if (yesCount >= 3) {
+        statusLabel = 'Risiko Sedang';
+        statusColor = 'text-amber-700';
+        statusBg = 'bg-amber-50 border-amber-200';
+        advice = 'Pertimbangkan konsultasi paliatif. Lakukan evaluasi gejala lebih lanjut.';
+      } else {
+        statusLabel = 'Risiko Rendah';
+        statusColor = 'text-emerald-700';
+        statusBg = 'bg-emerald-50 border-emerald-200';
+        advice = 'Belum menunjukkan kebutuhan paliatif yang jelas. Lanjutkan kontrol rutin.';
+      }
+
       return (
         <div className="space-y-4">
           <div className="text-center">
-            <p className={cn('text-4xl font-black', isPositive ? 'text-red-600' : 'text-emerald-600')}>
-              {isPositive ? 'POSITIF' : 'NEGATIF'}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {generalCount} indikator umum, {specificCount} indikator spesifik
-            </p>
+            <p className="text-5xl font-black text-primary">{yesCount}</p>
+            <p className="text-sm text-muted-foreground">poin dari 15 indikator</p>
           </div>
           <div className={cn('rounded-lg border-2 px-4 py-2 text-center', ews.bg)}>
             <span className={cn('text-sm font-bold', ews.color)}>{ews.label}</span>
           </div>
-          {checkedGeneral.length > 0 && (
-            <div className="p-3 rounded-lg border border-border">
-              <p className="text-xs font-semibold text-primary mb-1">Indikator Umum Terpilih:</p>
-              <ul className="space-y-0.5">
-                {checkedGeneral.map((item, idx) => (
-                  <li key={idx} className="text-xs text-foreground flex items-start gap-1">
-                    <CheckCircle className="w-3 h-3 text-primary shrink-0 mt-0.5" /> {item}
-                  </li>
-                ))}
-              </ul>
+          <div className={cn('rounded-xl border-2 p-4', statusBg)}>
+            <p className={cn('text-lg font-bold mb-2', statusColor)}>{statusLabel} ({yesCount} poin)</p>
+            <p className={cn('text-sm', statusColor)}>{advice}</p>
+          </div>
+          {yesItems.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Indikator Terdeteksi</p>
+              {yesItems.map((item) => (
+                <div key={item.id} className="flex items-start gap-2 p-2.5 rounded-lg bg-muted/30 border border-border">
+                  <CheckCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                  <p className="text-sm text-foreground">{item.text}</p>
+                </div>
+              ))}
             </div>
           )}
-          {Object.entries(checkedSpecific).map(([cat, items]) => (
-            <div key={cat} className="p-3 rounded-lg border border-border">
-              <p className="text-xs font-semibold text-primary mb-1">Indikator {cat}:</p>
-              <ul className="space-y-0.5">
-                {items.map((item, idx) => (
-                  <li key={idx} className="text-xs text-foreground flex items-start gap-1">
-                    <CheckCircle className="w-3 h-3 text-primary shrink-0 mt-0.5" /> {item}
-                  </li>
+          {checkedDiseases.length > 0 && (
+            <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
+              <p className="text-xs font-semibold text-primary mb-2">Penyakit Kronis Teridentifikasi:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {checkedDiseases.map((d) => (
+                  <span key={d} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary">
+                    {d}
+                  </span>
                 ))}
-              </ul>
+              </div>
             </div>
-          ))}
-          <div className="p-3 rounded-lg bg-muted/50">
-            <p className="text-sm text-foreground">
-              {isPositive
-                ? 'Pasien memenuhi kriteria SPICT untuk kebutuhan perawatan paliatif. Disarankan evaluasi tim paliatif dan diskusi tujuan perawatan.'
-                : 'Pasien belum memenuhi kriteria SPICT untuk perawatan paliatif. Lanjutkan monitoring dan evaluasi berkala.'
-              }
-            </p>
-          </div>
+          )}
+          {surpriseAnswer && (
+            <div className={cn(
+              'p-3 rounded-lg border-2',
+              surpriseAnswer === 'no' ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50',
+            )}>
+              <p className="text-xs font-semibold text-muted-foreground mb-1">Surprise Question</p>
+              <p className={cn('text-sm font-medium', surpriseAnswer === 'no' ? 'text-red-700' : 'text-emerald-700')}>
+                {surpriseAnswer === 'no'
+                  ? 'Tidak akan terkejut — Disarankan segera diskusi Advance Care Planning.'
+                  : 'Akan terkejut — Tidak ada indikasi mendesak saat ini.'}
+              </p>
+            </div>
+          )}
         </div>
       );
     };
@@ -1492,9 +1630,9 @@ export function PalliativeScreeningPanel() {
         return cat ? `Masalah: ${cat.category}` : '';
       }
       case 'spict': {
-        if (currentStep === 0) return 'Indikator Umum';
-        const cat = SPICT_DISEASE[currentStep - 1];
-        return cat ? `Indikator: ${cat.category}` : '';
+        if (currentStep === 0) return 'Pertanyaan Indikator (1-15)';
+        if (currentStep === 1) return 'Penyakit Kronis atau Berat';
+        return 'Pertanyaan Kejutan (Surprise Question)';
       }
       case 'pps': return 'Palliative Performance Scale';
       case 'zarit': return `Pertanyaan ${currentStep * 6 + 1}-${Math.min((currentStep + 1) * 6, 22)}`;
