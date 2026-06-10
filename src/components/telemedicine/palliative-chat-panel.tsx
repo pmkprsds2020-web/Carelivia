@@ -16,9 +16,13 @@ import type {
   PalliativeEwsLevel,
   VitalSignRecordInfo,
   PalliativeScreeningRecordInfo,
+  MedicationMonitoringFormAnswers,
+  MedicationFormSchedule,
+  MedicationMonitoringFormInfo,
 } from '@/lib/types';
 import { calculateScreeningResult, type ScreeningScoreResult } from '@/lib/palliative-screening-data';
 import { InlineScreeningForm } from '@/components/telemedicine/inline-screening-form';
+import { MedicationMonitoringForm } from '@/components/telemedicine/medication-monitoring-form';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -416,6 +420,11 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
   const [activeFormMsgId, setActiveFormMsgId] = useState<string | null>(null);
   const [activeScreeningType, setActiveScreeningType] = useState<PalliativeToolType | null>(null);
   const [showAlertsPanel, setShowAlertsPanel] = useState(false);
+  const [showMedMonitoringDialog, setShowMedMonitoringDialog] = useState(false);
+  const [selectedMedIds, setSelectedMedIds] = useState<string[]>([]);
+  const [medSchedule, setMedSchedule] = useState<MedicationFormSchedule>('harian');
+  const [medDeadline, setMedDeadline] = useState('');
+  const [showMedFormFill, setShowMedFormFill] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -429,6 +438,10 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
     addPalliativeAuditEntry,
     addVitalSignRecord,
     addPalliativeScreeningRecord,
+    palliativeMedications,
+    addMedicationMonitoringForm,
+    addMedicationMonitoringAlert,
+    addMedicationMonitoringAuditEntry,
   } = useStore();
 
   // Get room messages for current patient
@@ -484,11 +497,12 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
   const handleSendForm = useCallback((type: PalliativeFormType, screeningType?: PalliativeToolType) => {
     if (!patient || !currentUser) return;
     const formId = genId('form');
-    const msgType: PalliativeChatMsgType = type === 'ttv' ? 'form_ttv' : type === 'keluhan' ? 'form_keluhan' : 'form_screening';
+    const msgType: PalliativeChatMsgType = type === 'ttv' ? 'form_ttv' : type === 'keluhan' ? 'form_keluhan' : type === 'monitoring_obat' ? 'form_monitoring_obat' : 'form_screening';
     const contentMap: Record<PalliativeFormType, string> = {
       ttv: 'Silakan isi formulir TTV untuk memantau kondisi Anda hari ini.',
       keluhan: 'Mohon isi form keluhan harian untuk evaluasi gejala Anda.',
       screening: `Mohon isi skrining ${screeningType ? getToolLabel(screeningType) : ''} untuk evaluasi kebutuhan Anda.`,
+      monitoring_obat: 'Silakan isi form monitoring obat paliatif.',
     };
     const msg: PalliativeChatMessage = {
       id: genId('pcm'),
@@ -783,8 +797,225 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
       if (msg.formType === 'screening' && msg.screeningType) {
         setActiveScreeningType(msg.screeningType);
       }
+      if (msg.formType === 'monitoring_obat') {
+        setShowMedFormFill(true);
+      }
     }
   }, []);
+
+  // Send medication monitoring form
+  const handleSendMedMonitoringForm = useCallback(() => {
+    if (!patient || !currentUser || selectedMedIds.length === 0) return;
+    const formId = genId('medform');
+    const selectedMeds = palliativeMedications.filter(m => selectedMedIds.includes(m.id));
+    const medNames = selectedMeds.map(m => m.medicineName).join(', ');
+    const msg: PalliativeChatMessage = {
+      id: genId('pcm'),
+      roomId,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderRole: 'doctor',
+      type: 'form_monitoring_obat',
+      content: `Silakan isi form monitoring obat paliatif untuk: ${medNames}`,
+      status: 'sent',
+      formType: 'monitoring_obat',
+      formData: {
+        id: formId,
+        formType: 'monitoring_obat',
+        status: 'sent',
+        progress: 0,
+      },
+      createdAt: new Date().toISOString(),
+    };
+    addPalliativeChatMessage(msg);
+
+    // Save to medication monitoring forms store
+    const medForm: MedicationMonitoringFormInfo = {
+      id: formId,
+      palliativePatientId: patient.id,
+      doctorId: currentUser.id,
+      patientId: patient.patientId || patient.id,
+      selectedMedicationIds: selectedMedIds,
+      schedule: medSchedule,
+      deadline: medDeadline || undefined,
+      status: 'sent',
+      responses: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    addMedicationMonitoringForm(medForm);
+
+    addPalliativeAuditEntry({
+      id: genId('audit'),
+      patientId: patient.id,
+      action: 'form_sent',
+      performedBy: currentUser.id,
+      performedByRole: 'doctor',
+      details: `Dokter mengirim Form Monitoring Obat Paliatif (${selectedMeds.length} obat)`,
+      createdAt: new Date().toISOString(),
+    });
+    addMedicationMonitoringAuditEntry({
+      id: genId('mmaudit'),
+      patientId: patient.id,
+      action: 'form_sent',
+      performedBy: currentUser.id,
+      performedByRole: 'doctor',
+      details: `Form Monitoring Obat dikirim: ${medNames}`,
+      createdAt: new Date().toISOString(),
+    });
+
+    setShowMedMonitoringDialog(false);
+    setSelectedMedIds([]);
+    setMedSchedule('harian');
+    setMedDeadline('');
+    setShowFormDialog(false);
+  }, [patient, currentUser, selectedMedIds, medSchedule, medDeadline, palliativeMedications, roomId, addPalliativeChatMessage, addMedicationMonitoringForm, addPalliativeAuditEntry, addMedicationMonitoringAuditEntry]);
+
+  // Handle medication monitoring form submission from patient
+  const handleMedMonitoringSubmit = useCallback((answers: MedicationMonitoringFormAnswers) => {
+    if (!patient || !currentUser) return;
+    const responseMsg: PalliativeChatMessage = {
+      id: genId('pcm'),
+      roomId,
+      senderId: patient.patientId || patient.id,
+      senderName: patient.patientName || 'Pasien',
+      senderRole: 'patient',
+      type: 'form_response',
+      content: 'Form Monitoring Obat Paliatif telah diisi.',
+      formType: 'monitoring_obat',
+      formResponse: {
+        formId: activeFormMsgId || genId('form'),
+        formType: 'monitoring_obat',
+        medicationMonitoringAnswers: answers,
+        submittedAt: new Date().toISOString(),
+      },
+      status: 'delivered',
+      createdAt: new Date().toISOString(),
+    };
+    addPalliativeChatMessage(responseMsg);
+
+    // Check for alerts
+    const notConsumedMeds = answers.medications.filter(m => m.consumptionStatus === 'tidak_diminum');
+    const severeSideEffects = answers.medications.filter(m =>
+      m.hasComplaints && ((m.complaintSeverity !== undefined && m.complaintSeverity >= 7) ||
+        m.sideEffects?.includes('reaksi_alergi') ||
+        m.sideEffects?.includes('sesak_napas'))
+    );
+
+    // Alert for not consumed medications
+    for (const med of notConsumedMeds) {
+      addMedicationMonitoringAlert({
+        id: genId('mmalert'),
+        patientId: patient.id,
+        alertType: 'obat_tidak_diminum',
+        severity: 'warning',
+        title: `Obat Tidak Diminum: ${med.medicineName}`,
+        description: `Pasien tidak meminum ${med.medicineName}. Alasan: ${med.notConsumedReason || 'tidak disebutkan'}. ${med.notConsumedExplanation || ''}`,
+        medicationName: med.medicineName,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // Alert for severe side effects
+    for (const med of severeSideEffects) {
+      addMedicationMonitoringAlert({
+        id: genId('mmalert'),
+        patientId: patient.id,
+        alertType: 'efek_samping_berat',
+        severity: 'critical',
+        title: `Efek Samping Berat: ${med.medicineName}`,
+        description: `Pasien melaporkan efek samping berat setelah minum ${med.medicineName}. Keparahan: ${med.complaintSeverity}/10. Efek samping: ${(med.sideEffects || []).join(', ')}`,
+        medicationName: med.medicineName,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
+
+      // Also add palliative clinical alert
+      const alert: PalliativeClinicalAlert = {
+        id: genId('alert'),
+        patientId: patient.id,
+        alertType: 'obat_tidak_diminum',
+        severity: 'merah',
+        title: `Efek Samping Obat Berat: ${med.medicineName}`,
+        description: `Keparahan ${med.complaintSeverity}/10. Efek: ${(med.sideEffects || []).join(', ')}. ${med.complaintNotes || ''}`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
+      addPalliativeClinicalAlert(alert);
+
+      const alertMsg: PalliativeChatMessage = {
+        id: genId('pcm'),
+        roomId,
+        senderId: 'system',
+        senderName: 'Sistem',
+        senderRole: 'system',
+        type: 'clinical_alert',
+        content: `Peringatan: Efek samping berat dilaporkan untuk ${med.medicineName} (keparahan ${med.complaintSeverity}/10)`,
+        clinicalAlert: alert,
+        status: 'delivered',
+        createdAt: new Date().toISOString(),
+      };
+      addPalliativeChatMessage(alertMsg);
+    }
+
+    // Generate AI summary for medication monitoring
+    const takenCount = answers.medications.filter(m => m.consumptionStatus === 'sudah_diminum').length;
+    const missedCount = answers.medications.filter(m => m.consumptionStatus === 'belum_diminum').length;
+    const notConsumedCount = notConsumedMeds.length;
+    const totalMeds = answers.medications.length;
+    const compliancePercent = totalMeds > 0 ? Math.round((takenCount / totalMeds) * 100) : 0;
+    const allSideEffects = answers.medications.filter(m => m.hasComplaints).flatMap(m => m.sideEffects || []);
+    const sideEffectSummary = allSideEffects.length > 0 ? `Efek samping dilaporkan: ${[...new Set(allSideEffects)].join(', ')}.` : 'Tidak ada efek samping dilaporkan.';
+
+    const aiSummaryNote = `Monitoring Obat Paliatif - ${patient.patientName || '-'}
+Obat dimonitor: ${totalMeds}
+Sudah diminum: ${takenCount} (${compliancePercent}% kepatuhan)
+Belum diminum: ${missedCount}
+Tidak diminum: ${notConsumedCount}
+${sideEffectSummary}
+${notConsumedMeds.length > 0 ? `Obat tidak diminum: ${notConsumedMeds.map(m => m.medicineName).join(', ')}.` : ''}
+${severeSideEffects.length > 0 ? `PERINGATAN: Efek samping berat pada ${severeSideEffects.map(m => m.medicineName).join(', ')}.` : ''}
+${answers.overallNotes ? `Catatan pasien: ${answers.overallNotes}` : ''}
+Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.' : compliancePercent >= 50 ? 'Kepatuhan perlu ditingkatkan, evaluasi hambatan.' : 'Kepatuhan rendah, perlu intervensi segera.'}`;
+
+    const aiMsg: PalliativeChatMessage = {
+      id: genId('pcm'),
+      roomId,
+      senderId: 'system',
+      senderName: 'AI Clinical Assistant',
+      senderRole: 'system',
+      type: 'ai_summary',
+      content: 'Ringkasan AI otomatis telah dibuat berdasarkan data monitoring obat.',
+      aiSummary: aiSummaryNote,
+      status: 'delivered',
+      createdAt: new Date().toISOString(),
+    };
+    addPalliativeChatMessage(aiMsg);
+
+    addMedicationMonitoringAuditEntry({
+      id: genId('mmaudit'),
+      patientId: patient.id,
+      action: 'form_submitted',
+      performedBy: patient.patientId || patient.id,
+      performedByRole: 'patient',
+      details: `Form Monitoring Obat disubmit: ${takenCount} diminum, ${missedCount} belum, ${notConsumedCount} tidak`,
+      createdAt: new Date().toISOString(),
+    });
+
+    addPalliativeAuditEntry({
+      id: genId('audit'),
+      patientId: patient.id,
+      action: 'form_submitted',
+      performedBy: patient.patientId || patient.id,
+      performedByRole: 'patient',
+      details: 'Pasien mengirimkan hasil Form Monitoring Obat Paliatif',
+      createdAt: new Date().toISOString(),
+    });
+
+    setShowMedFormFill(false);
+    setActiveFormMsgId(null);
+  }, [patient, currentUser, roomId, activeFormMsgId, addPalliativeChatMessage, addMedicationMonitoringAlert, addPalliativeClinicalAlert, addMedicationMonitoringAuditEntry, addPalliativeAuditEntry]);
 
   // Render message bubble
   const renderMessage = (msg: PalliativeChatMessage) => {
@@ -916,13 +1147,44 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
             </div>
           )}
 
+          {/* Form Monitoring Obat */}
+          {msg.type === 'form_monitoring_obat' && (
+            <div
+              className={cn(
+                'space-y-2',
+                (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && 'cursor-pointer hover:opacity-90'
+              )}
+              onClick={() => {
+                if (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') {
+                  handleOpenForm(msg);
+                }
+              }}
+            >
+              <div className="flex items-center gap-1.5">
+                <Pill className="w-4 h-4" />
+                <span className="font-semibold">Form Monitoring Obat Paliatif</span>
+              </div>
+              <p className="text-xs opacity-80">{msg.content}</p>
+              {(msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && (
+                <Button variant="outline" size="sm" className="text-xs h-7 w-full mt-1">
+                  <FileText className="w-3 h-3 mr-1" /> Klik untuk mengisi form monitoring obat
+                </Button>
+              )}
+              {msg.formData?.status === 'submitted' && (
+                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                  <CheckCircle2 className="w-3 h-3 mr-1" /> Sudah diisi
+                </Badge>
+              )}
+            </div>
+          )}
+
           {/* Form Response */}
           {msg.type === 'form_response' && msg.formResponse && (
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-green-600" />
                 <span className="font-semibold">
-                  {msg.formResponse.formType === 'ttv' ? 'Hasil Form TTV' : msg.formResponse.formType === 'keluhan' ? 'Hasil Form Keluhan' : 'Hasil Skrining'}
+                  {msg.formResponse.formType === 'ttv' ? 'Hasil Form TTV' : msg.formResponse.formType === 'keluhan' ? 'Hasil Form Keluhan' : msg.formResponse.formType === 'monitoring_obat' ? 'Hasil Monitoring Obat' : 'Hasil Skrining'}
                 </span>
               </div>
 
@@ -970,6 +1232,39 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
                 <div className="space-y-1 text-xs">
                   <div>Skor: <Badge variant="outline" className={getSeverityColor(msg.formResponse.screeningResult.ewsLevel)}>{msg.formResponse.screeningResult.score} - {msg.formResponse.screeningResult.scoreLabel}</Badge></div>
                   <div className="italic">{msg.formResponse.screeningResult.interpretation}</div>
+                </div>
+              )}
+
+              {msg.formResponse.medicationMonitoringAnswers && (
+                <div className="space-y-1 text-xs">
+                  {msg.formResponse.medicationMonitoringAnswers.medications.map(med => (
+                    <div key={med.medicationId} className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          'w-2 h-2 rounded-full shrink-0',
+                          med.consumptionStatus === 'sudah_diminum' && 'bg-green-500',
+                          med.consumptionStatus === 'belum_diminum' && 'bg-amber-500',
+                          med.consumptionStatus === 'tidak_diminum' && 'bg-red-500',
+                        )}
+                      />
+                      <span className="truncate">{med.medicineName}</span>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'text-[9px] shrink-0',
+                          med.consumptionStatus === 'sudah_diminum' && 'bg-green-50 text-green-700 border-green-200',
+                          med.consumptionStatus === 'belum_diminum' && 'bg-amber-50 text-amber-700 border-amber-200',
+                          med.consumptionStatus === 'tidak_diminum' && 'bg-red-50 text-red-700 border-red-200',
+                        )}
+                      >
+                        {med.consumptionStatus === 'sudah_diminum' ? 'Diminum' : med.consumptionStatus === 'belum_diminum' ? 'Belum' : 'Tidak'}
+                      </Badge>
+                      {med.hasComplaints && <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />}
+                    </div>
+                  ))}
+                  {msg.formResponse.medicationMonitoringAnswers.overallNotes && (
+                    <div className="italic mt-1">&quot;{msg.formResponse.medicationMonitoringAnswers.overallNotes}&quot;</div>
+                  )}
                 </div>
               )}
 
@@ -1139,6 +1434,13 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
                 onSaveDraft={() => {}}
               />
             )}
+            {formType === 'monitoring_obat' && showMedFormFill && (
+              <MedicationMonitoringForm
+                medications={palliativeMedications.filter(m => m.palliativePatientId === patient?.id && m.isActive)}
+                onSubmit={handleMedMonitoringSubmit}
+                onSaveDraft={() => {}}
+              />
+            )}
           </DialogContent>
         </Dialog>
       )}
@@ -1184,6 +1486,17 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
                 </div>
               </div>
             </Card>
+            <Card className="p-3 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => { setShowFormDialog(false); setShowMedMonitoringDialog(true); setSelectedMedIds(palliativeMedications.filter(m => m.palliativePatientId === patient?.id && m.isActive).map(m => m.id)); }}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Pill className="w-5 h-5 text-purple-600" />
+                </div>
+                <div>
+                  <p className="font-medium text-sm">Monitoring Obat Paliatif</p>
+                  <p className="text-xs text-muted-foreground">Kepatuhan minum obat, efek samping, alasan tidak minum</p>
+                </div>
+              </div>
+            </Card>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowFormDialog(false)}>Batal</Button>
@@ -1217,6 +1530,83 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
         </DialogContent>
       </Dialog>
 
+      {/* Medication Monitoring Selection Dialog */}
+      <Dialog open={showMedMonitoringDialog} onOpenChange={setShowMedMonitoringDialog}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Kirim Form Monitoring Obat Paliatif</DialogTitle>
+            <DialogDescription>Pilih obat dan jadwal monitoring untuk {patient?.patientName}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-sm font-medium">Pilih Obat</Label>
+                <Button variant="ghost" size="sm" className="text-xs h-6" onClick={() => {
+                  const allIds = palliativeMedications.filter(m => m.palliativePatientId === patient?.id && m.isActive).map(m => m.id);
+                  setSelectedMedIds(selectedMedIds.length === allIds.length ? [] : allIds);
+                }}>
+                  {selectedMedIds.length === palliativeMedications.filter(m => m.palliativePatientId === patient?.id && m.isActive).length ? 'Batal Semua' : 'Pilih Semua'}
+                </Button>
+              </div>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {palliativeMedications.filter(m => m.palliativePatientId === patient?.id && m.isActive).map(med => (
+                  <label key={med.id} className="flex items-center gap-2 text-sm cursor-pointer p-1.5 rounded hover:bg-muted/50">
+                    <Checkbox
+                      checked={selectedMedIds.includes(med.id)}
+                      onCheckedChange={checked => {
+                        setSelectedMedIds(prev =>
+                          checked ? [...prev, med.id] : prev.filter(id => id !== med.id)
+                        );
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium">{med.medicineName}</span>
+                      <span className="text-xs text-muted-foreground ml-2">{med.dosage} - {med.frequency}</span>
+                    </div>
+                  </label>
+                ))}
+                {palliativeMedications.filter(m => m.palliativePatientId === patient?.id && m.isActive).length === 0 && (
+                  <p className="text-xs text-muted-foreground">Tidak ada obat aktif untuk pasien ini</p>
+                )}
+              </div>
+            </div>
+            <Separator />
+            <div>
+              <Label className="text-sm font-medium">Jadwal Monitoring</Label>
+              <Select value={medSchedule} onValueChange={v => setMedSchedule(v as MedicationFormSchedule)}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sekali">Sekali</SelectItem>
+                  <SelectItem value="harian">Harian</SelectItem>
+                  <SelectItem value="mingguan">Mingguan</SelectItem>
+                  <SelectItem value="sesuai_jadwal_obat">Sesuai Jadwal Obat</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Deadline (opsional)</Label>
+              <Input
+                type="datetime-local"
+                value={medDeadline}
+                onChange={e => setMedDeadline(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowMedMonitoringDialog(false); setSelectedMedIds([]); }}>Batal</Button>
+            <Button
+              onClick={handleSendMedMonitoringForm}
+              disabled={selectedMedIds.length === 0}
+            >
+              <Send className="w-4 h-4 mr-1" /> Kirim Form Monitoring
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Input Area */}
       <div className="p-3 border-t bg-background">
         <div className="flex items-center gap-2 mb-2">
@@ -1228,7 +1618,7 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
                   <span className="hidden sm:inline">Kirim Form</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Kirim Form TTV / Keluhan / Skrining</TooltipContent>
+              <TooltipContent>Kirim Form TTV / Keluhan / Skrining / Monitoring Obat</TooltipContent>
             </Tooltip>
           </TooltipProvider>
           <TooltipProvider>
@@ -1261,10 +1651,13 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
                 <Button variant="ghost" size="sm" className="ml-auto text-teal-600" onClick={() => {
                   const lastForm = [...roomMessages].reverse().find(m => m.formData?.status === 'sent');
                   if (lastForm?.formType) {
-                    setActiveFormMsgId(lastForm.formData.id);
+                    setActiveFormMsgId(lastForm.formData!.id);
                     setFormType(lastForm.formType);
                     if (lastForm.formType === 'screening' && lastForm.screeningType) {
                       setActiveScreeningType(lastForm.screeningType);
+                    }
+                    if (lastForm.formType === 'monitoring_obat') {
+                      setShowMedFormFill(true);
                     }
                   }
                 }}>

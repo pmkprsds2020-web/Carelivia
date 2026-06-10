@@ -121,6 +121,7 @@ import {
   History,
 } from 'lucide-react';
 import { PalliativeChatPanel } from './palliative-chat-panel';
+import { MedicationMonitoringDashboard } from './medication-monitoring-dashboard';
 import { useToast } from '@/hooks/use-toast';
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -2096,6 +2097,11 @@ export function PalliativeMonitoringPanel() {
             </details>
           )}
         </>
+      )}
+
+      {/* Medication Monitoring Dashboard */}
+      {selectedPatient && (
+        <MedicationMonitoringDashboard patientId={selectedPatient} />
       )}
     </div>
   );

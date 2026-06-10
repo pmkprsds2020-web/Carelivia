@@ -12,7 +12,9 @@ import type {
   PalliativeMonitoringStatus, PalliativeMarkingData, PalliativeMonitoringNotification,
   PalliativeClinicalSummary, PalliativeCommunicationPatient, PalliativeMonitoringFormType,
   WearableDevice, WearableVitalData, RVSMAlert, RVSMDailyReport,
-  RVSMFamilyAccess, RVSMAuditEntry, RVSMPalliativeScoreEstimate
+  RVSMFamilyAccess, RVSMAuditEntry, RVSMPalliativeScoreEstimate,
+  MedicationMonitoringFormInfo, MedicationMonitoringAlert, MedicationMonitoringAuditEntry,
+  MedicationComplianceSummary
 } from './types';
 
 interface TelemedicineStore {
@@ -186,6 +188,18 @@ interface TelemedicineStore {
   addRvsmPalliativeEstimate: (estimate: RVSMPalliativeScoreEstimate) => void;
   rvsmAiSummary: string;
   setRvsmAiSummary: (summary: string) => void;
+
+  // Medication Monitoring
+  medicationMonitoringForms: MedicationMonitoringFormInfo[];
+  addMedicationMonitoringForm: (form: MedicationMonitoringFormInfo) => void;
+  updateMedicationMonitoringForm: (formId: string, data: Partial<MedicationMonitoringFormInfo>) => void;
+  medicationMonitoringAlerts: MedicationMonitoringAlert[];
+  addMedicationMonitoringAlert: (alert: MedicationMonitoringAlert) => void;
+  markMedicationMonitoringAlertRead: (alertId: string) => void;
+  medicationMonitoringAuditLog: MedicationMonitoringAuditEntry[];
+  addMedicationMonitoringAuditEntry: (entry: MedicationMonitoringAuditEntry) => void;
+  medicationComplianceSummaries: MedicationComplianceSummary[];
+  addMedicationComplianceSummary: (summary: MedicationComplianceSummary) => void;
 }
 
 export const useStore = create<TelemedicineStore>((set) => ({
@@ -1136,4 +1150,24 @@ export const useStore = create<TelemedicineStore>((set) => ({
 
   rvsmAiSummary: '',
   setRvsmAiSummary: (summary) => set({ rvsmAiSummary: summary }),
+
+  // Medication Monitoring
+  medicationMonitoringForms: [] as MedicationMonitoringFormInfo[],
+  addMedicationMonitoringForm: (form) => set((state) => ({ medicationMonitoringForms: [...state.medicationMonitoringForms, form] })),
+  updateMedicationMonitoringForm: (formId, data) => set((state) => ({
+    medicationMonitoringForms: state.medicationMonitoringForms.map(f =>
+      f.id === formId ? { ...f, ...data, updatedAt: new Date().toISOString() } : f
+    ),
+  })),
+  medicationMonitoringAlerts: [] as MedicationMonitoringAlert[],
+  addMedicationMonitoringAlert: (alert) => set((state) => ({ medicationMonitoringAlerts: [...state.medicationMonitoringAlerts, alert] })),
+  markMedicationMonitoringAlertRead: (alertId) => set((state) => ({
+    medicationMonitoringAlerts: state.medicationMonitoringAlerts.map(a =>
+      a.id === alertId ? { ...a, isRead: true } : a
+    ),
+  })),
+  medicationMonitoringAuditLog: [] as MedicationMonitoringAuditEntry[],
+  addMedicationMonitoringAuditEntry: (entry) => set((state) => ({ medicationMonitoringAuditLog: [...state.medicationMonitoringAuditLog, entry] })),
+  medicationComplianceSummaries: [] as MedicationComplianceSummary[],
+  addMedicationComplianceSummary: (summary) => set((state) => ({ medicationComplianceSummaries: [...state.medicationComplianceSummaries, summary] })),
 }));

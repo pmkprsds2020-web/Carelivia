@@ -570,8 +570,8 @@ export interface PalliativeScreeningRecordInfo {
 
 // ── Palliative Chat Types ──────────────────────────────────────────────────
 
-export type PalliativeFormType = 'ttv' | 'keluhan' | 'screening';
-export type PalliativeChatMsgType = 'text' | 'education' | 'instruction' | 'form_ttv' | 'form_keluhan' | 'form_screening' | 'form_response' | 'reminder' | 'image' | 'ai_summary' | 'clinical_alert';
+export type PalliativeFormType = 'ttv' | 'keluhan' | 'screening' | 'monitoring_obat';
+export type PalliativeChatMsgType = 'text' | 'education' | 'instruction' | 'form_ttv' | 'form_keluhan' | 'form_screening' | 'form_monitoring_obat' | 'form_response' | 'reminder' | 'image' | 'ai_summary' | 'clinical_alert';
 
 export interface PalliativeChatMessage {
   id: string;
@@ -654,13 +654,14 @@ export interface PalliativeFormResponse {
     interpretation: string;
     ewsLevel: PalliativeEwsLevel;
   };
+  medicationMonitoringAnswers?: MedicationMonitoringFormAnswers;
   submittedAt: string;
 }
 
 export interface PalliativeClinicalAlert {
   id: string;
   patientId: string;
-  alertType: 'ttv_abnormal' | 'gejala_berat' | 'distres_tinggi' | 'pps_penurunan' | 'perburukan';
+  alertType: 'ttv_abnormal' | 'gejala_berat' | 'distres_tinggi' | 'pps_penurunan' | 'perburukan' | 'obat_tidak_diminum' | 'efek_samping_berat' | 'nyeri_meningkat' | 'sesak_napas' | 'kepatuhan_menurun' | 'form_tidak_diisi';
   severity: 'hijau' | 'kuning' | 'merah';
   title: string;
   description: string;
@@ -672,7 +673,7 @@ export interface PalliativeClinicalAlert {
 export interface PalliativeAuditEntry {
   id: string;
   patientId: string;
-  action: 'chat_sent' | 'form_sent' | 'form_opened' | 'form_filled' | 'form_submitted' | 'result_read' | 'ai_generated' | 'alert_triggered' | 'clinical_action';
+  action: 'chat_sent' | 'form_sent' | 'form_opened' | 'form_filled' | 'form_submitted' | 'result_read' | 'ai_generated' | 'alert_triggered' | 'clinical_action' | 'medication_not_taken' | 'side_effect_reported' | 'alert_followed_up' | 'ai_analysis_generated';
   performedBy: string;
   performedByRole: 'doctor' | 'patient' | 'family' | 'system';
   details?: string;
@@ -931,4 +932,103 @@ export interface RVSMAuditEntry {
   ipAddress?: string;
   deviceId?: string;
   createdAt: string;
+}
+
+// ── Medication Monitoring Form Types ──────────────────────────────────────
+
+export type MedicationConsumptionStatus = 'sudah_diminum' | 'belum_diminum' | 'tidak_diminum';
+
+export type NotTakenReason =
+  | 'lupa' | 'belum_waktunya' | 'sedang_tidur' | 'obat_tidak_tersedia' | 'alasan_lain';
+
+export type NotConsumedReason =
+  | 'efek_samping' | 'merasa_sudah_membaik' | 'tidak_ada_obat'
+  | 'tidak_mampu_membeli' | 'tidak_ingin_minum' | 'sulit_menelan'
+  | 'mual_muntah' | 'instruksi_keluarga' | 'alasan_lainnya';
+
+export type SideEffectType =
+  | 'mual' | 'muntah' | 'pusing' | 'mengantuk_berlebihan'
+  | 'sulit_tidur' | 'konstipasi' | 'diare' | 'nyeri_bertambah'
+  | 'sesak_napas' | 'nafsu_makan_menurun' | 'reaksi_alergi' | 'lainnya';
+
+export type MedicationFormSchedule = 'sekali' | 'harian' | 'mingguan' | 'sesuai_jadwal_obat';
+
+export interface MedicationMonitoringFormItem {
+  medicationId: string;
+  medicineName: string;
+  dosage: string;
+  frequency: string;
+  route?: string;
+  indication?: string;
+  consumptionStatus: MedicationConsumptionStatus | null;
+  // If "sudah_diminum"
+  consumptionDate?: string;
+  consumptionTime?: string;
+  hasComplaints?: boolean;
+  sideEffects?: SideEffectType[];
+  otherComplaint?: string;
+  complaintSeverity?: number; // 0-10
+  complaintNotes?: string;
+  // If "belum_diminum"
+  notTakenReason?: NotTakenReason;
+  notTakenOtherReason?: string;
+  // If "tidak_diminum"
+  notConsumedReason?: NotConsumedReason;
+  notConsumedOtherReason?: string;
+  notConsumedExplanation?: string; // required
+}
+
+export interface MedicationMonitoringFormAnswers {
+  medications: MedicationMonitoringFormItem[];
+  overallNotes?: string;
+}
+
+export interface MedicationMonitoringFormInfo {
+  id: string;
+  palliativePatientId: string;
+  doctorId: string;
+  patientId: string;
+  selectedMedicationIds: string[];
+  schedule: MedicationFormSchedule;
+  deadline?: string;
+  status: 'sent' | 'opened' | 'in_progress' | 'submitted' | 'expired';
+  responses: MedicationMonitoringFormAnswers[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MedicationMonitoringAlert {
+  id: string;
+  patientId: string;
+  patientName?: string;
+  alertType: 'obat_tidak_diminum' | 'efek_samping_berat' | 'nyeri_meningkat' | 'sesak_napas' | 'form_tidak_diisi' | 'kepatuhan_menurun';
+  severity: 'info' | 'warning' | 'critical';
+  title: string;
+  description: string;
+  medicationName?: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface MedicationMonitoringAuditEntry {
+  id: string;
+  patientId: string;
+  action: 'form_sent' | 'form_opened' | 'form_filled' | 'form_submitted' | 'side_effect_reported' | 'medication_not_taken' | 'alert_generated' | 'alert_followed_up' | 'ai_analysis_generated';
+  performedBy: string;
+  performedByRole: 'doctor' | 'patient' | 'family' | 'system';
+  details?: string;
+  createdAt: string;
+}
+
+export interface MedicationComplianceSummary {
+  patientId: string;
+  period: 'daily' | 'weekly' | 'monthly';
+  totalDoses: number;
+  takenDoses: number;
+  missedDoses: number;
+  notConsumedDoses: number;
+  complianceRate: number; // percentage 0-100
+  sideEffectCount: number;
+  topSideEffects: { type: SideEffectType; count: number }[];
+  topNotConsumedReasons: { reason: NotConsumedReason; count: number }[];
 }
