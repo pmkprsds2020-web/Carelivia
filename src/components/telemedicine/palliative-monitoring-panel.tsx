@@ -127,11 +127,12 @@ import {
 } from 'lucide-react';
 import { PalliativeChatPanel } from './palliative-chat-panel';
 import { MedicationMonitoringDashboard } from './medication-monitoring-dashboard';
+import { PalliativeResumeReferralPanel } from './palliative-resume-referral-panel';
 import { useToast } from '@/hooks/use-toast';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'acp' | 'komunikasi' | 'ai' | 'chat' | 'audit';
+type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'acp' | 'komunikasi' | 'ai' | 'chat' | 'audit' | 'dokumen';
 
 // ── Helper Functions ─────────────────────────────────────────────────────
 
@@ -330,6 +331,8 @@ export function PalliativeMonitoringPanel() {
     setScreeningPreselectedPatientId,
     completePalliativeProgram,
     palliativeProgramCompletions,
+    palliativeResumes,
+    palliativeReferralLetters,
   } = useStore();
 
   const { toast } = useToast();
@@ -1158,7 +1161,7 @@ export function PalliativeMonitoringPanel() {
   const renderDashboard = () => (
     <div className="space-y-4">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-9 gap-3">
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-1">
             <Users className="w-4 h-4 text-muted-foreground" />
@@ -1207,6 +1210,20 @@ export function PalliativeMonitoringPanel() {
             <span className="text-xs text-muted-foreground">Chat Aktif</span>
           </div>
           <p className="text-2xl font-bold text-primary">{new Set(palliativeChatMessages.map(m => m.roomId)).size}</p>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <FileText className="w-4 h-4 text-teal-600" />
+            <span className="text-xs text-muted-foreground">Resume AI</span>
+          </div>
+          <p className="text-2xl font-bold text-teal-600">{palliativeResumes.length}</p>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Building2 className="w-4 h-4 text-purple-600" />
+            <span className="text-xs text-muted-foreground">Surat Rujukan</span>
+          </div>
+          <p className="text-2xl font-bold text-purple-600">{palliativeReferralLetters.length}</p>
         </Card>
       </div>
 
@@ -1451,6 +1468,9 @@ export function PalliativeMonitoringPanel() {
                       <Button variant="default" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('chat'); }}>
                         <MessageCircle className="w-3 h-3 mr-1" /> Chat
                       </Button>
+                      <Button variant="outline" size="sm" className="h-7 text-[11px] border-primary/20 text-primary hover:bg-primary hover:text-primary-foreground" onClick={() => { handleSelectPatient(patient.id); setActiveTab('dokumen'); }}>
+                        <FileText className="w-3 h-3 mr-1" /> Resume & Rujukan
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -1609,6 +1629,15 @@ export function PalliativeMonitoringPanel() {
                   <Button
                     variant="outline"
                     size="sm"
+                    className="border-primary/20 text-primary hover:bg-primary hover:text-primary-foreground"
+                    onClick={() => { handleSelectPatient(detailPatient.id); setActiveTab('dokumen'); }}
+                  >
+                    <FileText className="w-4 h-4 mr-1" />
+                    Resume & Rujukan
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className="border-slate-300 text-slate-600 hover:bg-slate-50 hover:text-slate-700"
                     onClick={() => {
                       setShowProgramCompleteConfirm(detailPatient.id);
@@ -1658,6 +1687,22 @@ export function PalliativeMonitoringPanel() {
                 <p className="text-xl font-bold">
                   {
                     advanceCarePlans.filter((a) => a.palliativePatientId === detailPatient.id).length
+                  }
+                </p>
+              </Card>
+              <Card className="p-4 text-center">
+                <p className="text-xs text-muted-foreground">Resume Medis</p>
+                <p className="text-xl font-bold text-primary">
+                  {
+                    palliativeResumes.filter((r) => r.palliativePatientId === detailPatient.id).length
+                  }
+                </p>
+              </Card>
+              <Card className="p-4 text-center">
+                <p className="text-xs text-muted-foreground">Surat Rujukan</p>
+                <p className="text-xl font-bold text-teal-600">
+                  {
+                    palliativeReferralLetters.filter((l) => l.palliativePatientId === detailPatient.id).length
                   }
                 </p>
               </Card>
@@ -3446,6 +3491,10 @@ export function PalliativeMonitoringPanel() {
             <History className="w-4 h-4 mr-1" />
             Audit
           </TabsTrigger>
+          <TabsTrigger value="dokumen" className="text-xs sm:text-sm">
+            <FileText className="w-4 h-4 mr-1" />
+            Dokumen
+          </TabsTrigger>
         </TabsList>
 
         {/* Patient selector for tabs that need it */}
@@ -3467,6 +3516,9 @@ export function PalliativeMonitoringPanel() {
           </div>
         </TabsContent>
         <TabsContent value="audit">{renderAudit()}</TabsContent>
+        <TabsContent value="dokumen">
+          <PalliativeResumeReferralPanel patient={selectedPatient} />
+        </TabsContent>
       </Tabs>
 
       {/* ── Dialog: Add Patient ── */}

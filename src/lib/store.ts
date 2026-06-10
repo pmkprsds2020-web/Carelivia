@@ -15,7 +15,9 @@ import type {
   WearableDevice, WearableVitalData, RVSMAlert, RVSMDailyReport,
   RVSMFamilyAccess, RVSMAuditEntry, RVSMPalliativeScoreEstimate,
   MedicationMonitoringFormInfo, MedicationMonitoringAlert, MedicationMonitoringAuditEntry,
-  MedicationComplianceSummary
+  MedicationComplianceSummary,
+  PalliativeResumeMedis, PalliativeReferralLetter, PalliativeDocumentAuditEntry,
+  ReferralTargetDepartment, ReferralStatus
 } from './types';
 
 interface TelemedicineStore {
@@ -211,6 +213,16 @@ interface TelemedicineStore {
   addMedicationMonitoringAuditEntry: (entry: MedicationMonitoringAuditEntry) => void;
   medicationComplianceSummaries: MedicationComplianceSummary[];
   addMedicationComplianceSummary: (summary: MedicationComplianceSummary) => void;
+
+  // Palliative Resume Medis & Surat Rujukan
+  palliativeResumes: PalliativeResumeMedis[];
+  addPalliativeResume: (resume: PalliativeResumeMedis) => void;
+  updatePalliativeResume: (resumeId: string, data: Partial<PalliativeResumeMedis>) => void;
+  palliativeReferralLetters: PalliativeReferralLetter[];
+  addPalliativeReferralLetter: (letter: PalliativeReferralLetter) => void;
+  updatePalliativeReferralLetter: (letterId: string, data: Partial<PalliativeReferralLetter>) => void;
+  palliativeDocumentAuditLog: PalliativeDocumentAuditEntry[];
+  addPalliativeDocumentAuditEntry: (entry: PalliativeDocumentAuditEntry) => void;
 }
 
 export const useStore = create<TelemedicineStore>((set) => ({
@@ -1207,4 +1219,22 @@ export const useStore = create<TelemedicineStore>((set) => ({
   addMedicationMonitoringAuditEntry: (entry) => set((state) => ({ medicationMonitoringAuditLog: [...state.medicationMonitoringAuditLog, entry] })),
   medicationComplianceSummaries: [] as MedicationComplianceSummary[],
   addMedicationComplianceSummary: (summary) => set((state) => ({ medicationComplianceSummaries: [...state.medicationComplianceSummaries, summary] })),
+
+  // Palliative Resume Medis & Surat Rujukan
+  palliativeResumes: [] as PalliativeResumeMedis[],
+  addPalliativeResume: (resume) => set((state) => ({ palliativeResumes: [...state.palliativeResumes, resume] })),
+  updatePalliativeResume: (resumeId, data) => set((state) => ({
+    palliativeResumes: state.palliativeResumes.map(r =>
+      r.id === resumeId ? { ...r, ...data, updatedAt: new Date().toISOString() } : r
+    ),
+  })),
+  palliativeReferralLetters: [] as PalliativeReferralLetter[],
+  addPalliativeReferralLetter: (letter) => set((state) => ({ palliativeReferralLetters: [...state.palliativeReferralLetters, letter] })),
+  updatePalliativeReferralLetter: (letterId, data) => set((state) => ({
+    palliativeReferralLetters: state.palliativeReferralLetters.map(l =>
+      l.id === letterId ? { ...l, ...data, updatedAt: new Date().toISOString() } : l
+    ),
+  })),
+  palliativeDocumentAuditLog: [] as PalliativeDocumentAuditEntry[],
+  addPalliativeDocumentAuditEntry: (entry) => set((state) => ({ palliativeDocumentAuditLog: [...state.palliativeDocumentAuditLog, entry] })),
 }));

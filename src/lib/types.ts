@@ -698,7 +698,7 @@ export interface PalliativeClinicalAlert {
 export interface PalliativeAuditEntry {
   id: string;
   patientId: string;
-  action: 'chat_sent' | 'form_sent' | 'form_opened' | 'form_filled' | 'form_submitted' | 'result_read' | 'ai_generated' | 'alert_triggered' | 'clinical_action' | 'medication_not_taken' | 'side_effect_reported' | 'alert_followed_up' | 'ai_analysis_generated' | 'program_completed';
+  action: 'chat_sent' | 'form_sent' | 'form_opened' | 'form_filled' | 'form_submitted' | 'result_read' | 'ai_generated' | 'alert_triggered' | 'clinical_action' | 'medication_not_taken' | 'side_effect_reported' | 'alert_followed_up' | 'ai_analysis_generated' | 'program_completed' | 'resume_generated' | 'resume_viewed' | 'resume_downloaded' | 'resume_printed' | 'resume_signed' | 'resume_sent' | 'referral_generated' | 'referral_viewed' | 'referral_downloaded' | 'referral_sent' | 'referral_signed';
   performedBy: string;
   performedByRole: 'doctor' | 'patient' | 'family' | 'system';
   details?: string;
@@ -1056,4 +1056,116 @@ export interface MedicationComplianceSummary {
   sideEffectCount: number;
   topSideEffects: { type: SideEffectType; count: number }[];
   topNotConsumedReasons: { reason: NotConsumedReason; count: number }[];
+}
+
+// ── Palliative Resume Medis & Surat Rujukan Types ────────────────────────
+
+export type ReferralTargetDepartment =
+  | 'penyakit_dalam'
+  | 'onkologi'
+  | 'neurologi'
+  | 'jantung'
+  | 'pulmonologi'
+  | 'geriatri'
+  | 'kedokteran_paliatif'
+  | 'rehabilitasi_medik'
+  | 'rumah_sakit_rujukan_lanjutan';
+
+export type ReferralStatus = 'belum_dirujuk' | 'menunggu' | 'sudah_dirujuk' | 'selesai';
+
+export interface PalliativeResumeMedis {
+  id: string;
+  palliativePatientId: string;
+  patientName?: string;
+  rmNumber?: string;
+  documentNumber: string;
+  generatedAt: string;
+  generatedBy: string;
+  generatedByRole: 'doctor' | 'admin';
+  doctorSip?: string;
+  doctorName?: string;
+  // AI-generated content sections
+  ringkasanKondisi: string;
+  ringkasanPemeriksaan: string;
+  ringkasanTerapi: string;
+  ringkasanACP: string;
+  kesimpulanKlinis: string;
+  rekomendasiAI: string[];
+  // Full content as markdown
+  fullContent: string;
+  // Version tracking
+  version: number;
+  previousVersionId?: string;
+  // Status
+  isSigned: boolean;
+  signedAt?: string;
+  qrCode?: string;
+  // Delivery tracking
+  sentToChatAt?: string;
+  sentToEmailAt?: string;
+  sentToWhatsAppAt?: string;
+  downloadCount: number;
+  printCount: number;
+  lastDownloadAt?: string;
+  lastPrintAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PalliativeReferralLetter {
+  id: string;
+  palliativePatientId: string;
+  patientName?: string;
+  rmNumber?: string;
+  documentNumber: string;
+  generatedAt: string;
+  generatedBy: string;
+  generatedByRole: 'doctor' | 'admin';
+  doctorSip?: string;
+  doctorName?: string;
+  // Referral content
+  nik?: string;
+  bpjsNumber?: string;
+  primaryDiagnosis: string;
+  secondaryDiagnosis?: string;
+  referralReason: string;
+  clinicalSummary: string;
+  targetDepartment: ReferralTargetDepartment;
+  consultationRequest: string;
+  // AI-generated content
+  fullContent: string;
+  // Status
+  referralStatus: ReferralStatus;
+  referredAt?: string;
+  referredTo?: string;
+  completedAt?: string;
+  // Version tracking
+  version: number;
+  previousVersionId?: string;
+  // Signing
+  isSigned: boolean;
+  signedAt?: string;
+  qrCode?: string;
+  // Delivery tracking
+  sentToChatAt?: string;
+  sentToEmailAt?: string;
+  sentToWhatsAppAt?: string;
+  downloadCount: number;
+  printCount: number;
+  lastDownloadAt?: string;
+  lastPrintAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PalliativeDocumentAuditEntry {
+  id: string;
+  documentType: 'resume_medis' | 'surat_rujukan';
+  documentId: string;
+  patientId: string;
+  action: 'generated' | 'viewed' | 'revised' | 'signed' | 'downloaded' | 'printed' | 'sent_to_chat' | 'sent_to_email' | 'sent_to_whatsapp';
+  performedBy: string;
+  performedByRole: 'doctor' | 'admin';
+  details?: string;
+  createdAt: string;
 }
