@@ -20,6 +20,7 @@ import type {
   PalliativeMonitoringNotification,
   PalliativeChatMessage,
   PalliativeAuditEntry,
+  PalliativeProgramCompletionReason,
 } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -119,6 +120,10 @@ import {
   MessageCircle,
   Bell,
   History,
+  CircleOff,
+  CalendarCheck,
+  FileCheck,
+  Archive,
 } from 'lucide-react';
 import { PalliativeChatPanel } from './palliative-chat-panel';
 import { MedicationMonitoringDashboard } from './medication-monitoring-dashboard';
@@ -260,6 +265,12 @@ export function PalliativeMonitoringPanel() {
   const [aiLoading, setAiLoading] = useState(false);
   const [editingPatient, setEditingPatient] = useState<PalliativePatientInfo | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [showProgramCompleteConfirm, setShowProgramCompleteConfirm] = useState<string | null>(null);
+  const [programCompletionDate, setProgramCompletionDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [programCompletionReason, setProgramCompletionReason] = useState<PalliativeProgramCompletionReason>('sembuh_stabil');
+  const [programCompletionOtherReason, setProgramCompletionOtherReason] = useState('');
+  const [programCompletionNotes, setProgramCompletionNotes] = useState('');
+  const [patientListFilter, setPatientListFilter] = useState<'aktif' | 'program_selesai'>('aktif');
   const [showPatientDetail, setShowPatientDetail] = useState<string | null>(null);
   const [vitalPeriod, setVitalPeriod] = useState<'harian' | 'mingguan' | 'bulanan'>('harian');
   const [acpStep, setAcpStep] = useState(0);
@@ -317,6 +328,8 @@ export function PalliativeMonitoringPanel() {
     setActivePanel,
     setScreeningNavigationFrom,
     setScreeningPreselectedPatientId,
+    completePalliativeProgram,
+    palliativeProgramCompletions,
   } = useStore();
 
   const { toast } = useToast();
@@ -361,16 +374,23 @@ export function PalliativeMonitoringPanel() {
   // ── Dashboard stats ──
   const dashboardStats = useMemo(() => {
     const total = palliativePatients.length;
-    const active = palliativePatients.filter((p) => p.patientStatus === 'aktif').length;
-    const merah = palliativePatients.filter((p) => p.riskLevel === 'merah').length;
-    const kuning = palliativePatients.filter((p) => p.riskLevel === 'kuning').length;
-    const hijau = palliativePatients.filter((p) => p.riskLevel === 'hijau').length;
-    return { total, active, merah, kuning, hijau };
+    const active = palliativePatients.filter((p) => p.patientStatus !== 'program_selesai').length;
+    const completed = palliativePatients.filter((p) => p.patientStatus === 'program_selesai').length;
+    const merah = palliativePatients.filter((p) => p.patientStatus !== 'program_selesai' && p.riskLevel === 'merah').length;
+    const kuning = palliativePatients.filter((p) => p.patientStatus !== 'program_selesai' && p.riskLevel === 'kuning').length;
+    const hijau = palliativePatients.filter((p) => p.patientStatus !== 'program_selesai' && p.riskLevel === 'hijau').length;
+    return { total, active, completed, merah, kuning, hijau };
   }, [palliativePatients]);
 
   // ── Filtered patients ──
   const filteredPatients = useMemo(() => {
     let result = palliativePatients;
+    // Filter by program status
+    if (patientListFilter === 'aktif') {
+      result = result.filter((p) => p.patientStatus !== 'program_selesai');
+    } else {
+      result = result.filter((p) => p.patientStatus === 'program_selesai');
+    }
     if (filterRisk !== 'all') {
       result = result.filter((p) => p.riskLevel === filterRisk);
     }
@@ -384,7 +404,7 @@ export function PalliativeMonitoringPanel() {
       );
     }
     return result;
-  }, [palliativePatients, filterRisk, searchQuery]);
+  }, [palliativePatients, filterRisk, searchQuery, patientListFilter]);
 
   // ── Alert detection for vitals ──
   const vitalAlerts = useMemo(() => {
@@ -573,7 +593,7 @@ export function PalliativeMonitoringPanel() {
   }, [palliativeChatMessages]);
 
   const filteredKomunikasiPatients = useMemo(() => {
-    let result = palliativePatients.filter((p) => p.patientStatus === 'aktif');
+    let result = palliativePatients.filter((p) => p.patientStatus !== 'program_selesai');
     if (komunikasiFilter !== 'all') {
       result = result.filter((p) => (p.monitoringStatus || 'monitoring_aktif') === komunikasiFilter);
     }
@@ -591,7 +611,7 @@ export function PalliativeMonitoringPanel() {
   }, [palliativePatients, komunikasiFilter, komunikasiSearch, getMonitoringStatusLabel]);
 
   const komunikasiStats = useMemo(() => {
-    const active = palliativePatients.filter((p) => p.patientStatus === 'aktif');
+    const active = palliativePatients.filter((p) => p.patientStatus !== 'program_selesai');
     const monitoringAktif = active.filter((p) => (!p.monitoringStatus || p.monitoringStatus === 'monitoring_aktif')).length;
     const stabil = active.filter((p) => p.monitoringStatus === 'stabil').length;
     const homeVisit = active.filter((p) => p.monitoringStatus === 'membutuhkan_home_visit').length;
@@ -779,6 +799,87 @@ export function PalliativeMonitoringPanel() {
       setShowDeleteConfirm(null);
     },
     [removePalliativePatient, selectedPalliativePatientId, setSelectedPalliativePatientId]
+  );
+
+  const handleProgramComplete = useCallback(
+    (id: string) => {
+      const patient = palliativePatients.find((p) => p.id === id);
+      if (!patient) return;
+
+      const completionDate = programCompletionDate;
+      const startDate = patient.createdAt;
+      const endDate = completionDate;
+      const durationMs = new Date(endDate).getTime() - new Date(startDate).getTime();
+      const durationDays = Math.max(1, Math.round(durationMs / (1000 * 60 * 60 * 24)));
+
+      const doctorName = currentUser?.name || 'Dokter';
+
+      // Complete the program in store
+      completePalliativeProgram(id, {
+        palliativePatientId: id,
+        patientName: patient.patientName,
+        rmNumber: patient.rmNumber,
+        completionDate,
+        reason: programCompletionReason,
+        otherReason: programCompletionReason === 'lainnya' ? programCompletionOtherReason : undefined,
+        closingNotes: programCompletionNotes || undefined,
+        programStartDate: startDate,
+        programEndDate: endDate,
+        monitoringDurationDays: durationDays,
+        performedBy: doctorName,
+        performedByRole: 'doctor',
+      });
+
+      // Add audit entry
+      const reasonLabel = programCompletionReason === 'sembuh_stabil' ? 'Sembuh/Stabil'
+        : programCompletionReason === 'meninggal_dunia' ? 'Meninggal Dunia'
+        : programCompletionReason === 'dirujuk' ? 'Dirujuk'
+        : programCompletionReason === 'pindah_faskes' ? 'Pindah Fasilitas Kesehatan'
+        : programCompletionReason === 'permintaan_pasien_keluarga' ? 'Permintaan Pasien/Keluarga'
+        : programCompletionOtherReason || 'Lainnya';
+
+      addPalliativeAuditEntry({
+        id: genId('audit'),
+        patientId: id,
+        action: 'program_completed',
+        performedBy: doctorName,
+        performedByRole: 'doctor',
+        details: `Program Monitoring Paliatif diselesaikan. Alasan: ${reasonLabel}. Durasi: ${durationDays} hari.${programCompletionNotes ? ` Catatan: ${programCompletionNotes}` : ''}`,
+        createdAt: new Date().toISOString(),
+      });
+
+      // Add notification
+      addPalliativeMonitoringNotification({
+        id: genId('notif'),
+        patientId: id,
+        patientName: patient.patientName,
+        type: 'status_change',
+        title: 'Program Monitoring Selesai',
+        description: `Program Monitoring Paliatif untuk ${patient.patientName || 'Pasien'} telah diselesaikan. Alasan: ${reasonLabel}`,
+        severity: 'info',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
+
+      toast({
+        title: 'Program Selesai',
+        description: `Program Monitoring Paliatif untuk ${patient.patientName || 'Pasien'} telah berhasil diselesaikan. Seluruh data riwayat tetap tersimpan.`,
+      });
+
+      // Reset form state
+      setShowProgramCompleteConfirm(null);
+      setProgramCompletionDate(new Date().toISOString().split('T')[0]);
+      setProgramCompletionReason('sembuh_stabil');
+      setProgramCompletionOtherReason('');
+      setProgramCompletionNotes('');
+
+      // Deselect if selected
+      if (selectedPalliativePatientId === id) {
+        setSelectedPalliativePatientId(null);
+        setShowPatientDetail(null);
+      }
+    },
+    [palliativePatients, programCompletionDate, programCompletionReason, programCompletionOtherReason, programCompletionNotes, currentUser, completePalliativeProgram, addPalliativeAuditEntry, addPalliativeMonitoringNotification, selectedPalliativePatientId, setSelectedPalliativePatientId, toast]
   );
 
   const handleAddVital = useCallback(() => {
@@ -1057,7 +1158,7 @@ export function PalliativeMonitoringPanel() {
   const renderDashboard = () => (
     <div className="space-y-4">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-1">
             <Users className="w-4 h-4 text-muted-foreground" />
@@ -1071,6 +1172,13 @@ export function PalliativeMonitoringPanel() {
             <span className="text-xs text-muted-foreground">Aktif</span>
           </div>
           <p className="text-2xl font-bold text-green-600">{dashboardStats.active}</p>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Archive className="w-4 h-4 text-slate-600" />
+            <span className="text-xs text-muted-foreground">Program Selesai</span>
+          </div>
+          <p className="text-2xl font-bold text-slate-600">{dashboardStats.completed}</p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-1">
@@ -1103,28 +1211,57 @@ export function PalliativeMonitoringPanel() {
       </div>
 
       {/* Search and Filter */}
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Cari pasien, RM, diagnosa..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Cari pasien, RM, diagnosa..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Select value={filterRisk} onValueChange={setFilterRisk}>
+            <SelectTrigger className="w-full sm:w-44">
+              <Filter className="w-4 h-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Risiko</SelectItem>
+              <SelectItem value="merah">Risiko Merah</SelectItem>
+              <SelectItem value="kuning">Risiko Kuning</SelectItem>
+              <SelectItem value="hijau">Risiko Hijau</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={filterRisk} onValueChange={setFilterRisk}>
-          <SelectTrigger className="w-full sm:w-44">
-            <Filter className="w-4 h-4 mr-2" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Risiko</SelectItem>
-            <SelectItem value="merah">Risiko Merah</SelectItem>
-            <SelectItem value="kuning">Risiko Kuning</SelectItem>
-            <SelectItem value="hijau">Risiko Hijau</SelectItem>
-          </SelectContent>
-        </Select>
+        {/* Patient Status Filter Tabs */}
+        <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+          <button
+            className={cn(
+              'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+              patientListFilter === 'aktif'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+            onClick={() => setPatientListFilter('aktif')}
+          >
+            <Activity className="w-3.5 h-3.5 inline mr-1.5" />
+            Pasien Aktif ({dashboardStats.active})
+          </button>
+          <button
+            className={cn(
+              'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+              patientListFilter === 'program_selesai'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+            onClick={() => setPatientListFilter('program_selesai')}
+          >
+            <Archive className="w-3.5 h-3.5 inline mr-1.5" />
+            Program Selesai ({dashboardStats.completed})
+          </button>
+        </div>
       </div>
 
       {/* Patient Cards */}
@@ -1137,6 +1274,8 @@ export function PalliativeMonitoringPanel() {
           filteredPatients.map((patient) => {
             const riskBadge = getRiskBadge(patient.riskLevel);
             const careBadge = getCareStatusBadge(patient.careStatus);
+            const isCompleted = patient.patientStatus === 'program_selesai';
+            const completionData = palliativeProgramCompletions.find(c => c.palliativePatientId === patient.id);
             const pVitals = vitalSignRecords.filter(
               (v) => v.palliativePatientId === patient.id
             );
@@ -1177,11 +1316,13 @@ export function PalliativeMonitoringPanel() {
                 key={patient.id}
                 className={cn(
                   'p-4 cursor-pointer hover:shadow-md transition-shadow border-l-4',
-                  patient.riskLevel === 'merah'
-                    ? 'border-l-red-500'
-                    : patient.riskLevel === 'kuning'
-                      ? 'border-l-amber-500'
-                      : 'border-l-green-500'
+                  isCompleted
+                    ? 'border-l-slate-400 opacity-80'
+                    : patient.riskLevel === 'merah'
+                      ? 'border-l-red-500'
+                      : patient.riskLevel === 'kuning'
+                        ? 'border-l-amber-500'
+                        : 'border-l-green-500'
                 )}
                 onClick={() => {
                   handleSelectPatient(patient.id);
@@ -1191,44 +1332,75 @@ export function PalliativeMonitoringPanel() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-foreground truncate">
+                      <h3 className={cn('font-semibold truncate', isCompleted ? 'text-muted-foreground line-through decoration-slate-400' : 'text-foreground')}>
                         {patient.patientName || '-'}
                       </h3>
-                      <Badge variant="outline" className={riskBadge.className}>
-                        {riskBadge.label}
-                      </Badge>
-                      <Badge className={careBadge.className}>{careBadge.label}</Badge>
+                      {isCompleted ? (
+                        <Badge className="bg-slate-100 text-slate-700 border-slate-300 border">
+                          <CircleOff className="w-3 h-3 mr-1" />
+                          Program Selesai
+                        </Badge>
+                      ) : (
+                        <>
+                          <Badge variant="outline" className={riskBadge.className}>
+                            {riskBadge.label}
+                          </Badge>
+                          <Badge className={careBadge.className}>{careBadge.label}</Badge>
+                        </>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
                       RM: {patient.rmNumber || '-'} | {patient.primaryDiagnosis || '-'}
                       {patient.diseaseStage ? ` (${patient.diseaseStage})` : ''}
                     </p>
-                    <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
-                      <span className="flex items-center gap-1">
-                        <Thermometer className="w-3 h-3" />
-                        TTV terakhir:{' '}
-                        {latestVital ? formatDateTime(latestVital.recordedAt) : 'Belum ada'}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <ClipboardCheck className="w-3 h-3" />
-                        Skrining:{' '}
-                        {latestScreening
-                          ? `${getToolTypeName(latestScreening.screeningType)} (${formatDate(latestScreening.performedAt)})`
-                          : 'Belum ada'}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <FileText className="w-3 h-3" />
-                        ACP:{' '}
-                        {acpStatus ? (
-                          <Badge variant="outline" className={cn('text-[10px] px-1', acpStatus.className)}>
-                            {acpStatus.label}
-                          </Badge>
-                        ) : (
-                          'Belum ada'
-                        )}
-                      </span>
-                    </div>
-                    {riskIndicators.length > 0 && (
+                    {isCompleted && completionData ? (
+                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
+                        <span className="flex items-center gap-1">
+                          <CalendarCheck className="w-3 h-3" />
+                          Tgl Selesai: {formatDate(completionData.completionDate)}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          Durasi: {completionData.monitoringDurationDays} hari
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <FileCheck className="w-3 h-3" />
+                          Alasan: {completionData.reason === 'sembuh_stabil' ? 'Sembuh/Stabil'
+                            : completionData.reason === 'meninggal_dunia' ? 'Meninggal Dunia'
+                            : completionData.reason === 'dirujuk' ? 'Dirujuk'
+                            : completionData.reason === 'pindah_faskes' ? 'Pindah Faskes'
+                            : completionData.reason === 'permintaan_pasien_keluarga' ? 'Permintaan Pasien/Keluarga'
+                            : completionData.otherReason || 'Lainnya'}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
+                        <span className="flex items-center gap-1">
+                          <Thermometer className="w-3 h-3" />
+                          TTV terakhir:{' '}
+                          {latestVital ? formatDateTime(latestVital.recordedAt) : 'Belum ada'}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <ClipboardCheck className="w-3 h-3" />
+                          Skrining:{' '}
+                          {latestScreening
+                            ? `${getToolTypeName(latestScreening.screeningType)} (${formatDate(latestScreening.performedAt)})`
+                            : 'Belum ada'}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <FileText className="w-3 h-3" />
+                          ACP:{' '}
+                          {acpStatus ? (
+                            <Badge variant="outline" className={cn('text-[10px] px-1', acpStatus.className)}>
+                              {acpStatus.label}
+                            </Badge>
+                          ) : (
+                            'Belum ada'
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    {!isCompleted && riskIndicators.length > 0 && (
                       <div className="flex items-center gap-1 mt-2 flex-wrap">
                         <AlertTriangle className="w-3 h-3 text-red-500 shrink-0" />
                         {riskIndicators.map((ind, i) => (
@@ -1247,24 +1419,55 @@ export function PalliativeMonitoringPanel() {
                 </div>
                 {/* Quick Action Buttons */}
                 <div className="flex items-center gap-1.5 mt-3 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                  <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('patients'); }}>
-                    <Eye className="w-3 h-3 mr-1" /> Profil
-                  </Button>
-                  <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('ttv'); }}>
-                    <Thermometer className="w-3 h-3 mr-1" /> TTV
-                  </Button>
-                  <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('screening'); }}>
-                    <ClipboardCheck className="w-3 h-3 mr-1" /> Skrining
-                  </Button>
-                  <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('medication'); }}>
-                    <Pill className="w-3 h-3 mr-1" /> Obat
-                  </Button>
-                  <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('acp'); }}>
-                    <Shield className="w-3 h-3 mr-1" /> ACP
-                  </Button>
-                  <Button variant="default" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('chat'); }}>
-                    <MessageCircle className="w-3 h-3 mr-1" /> Chat
-                  </Button>
+                  {isCompleted ? (
+                    <>
+                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('patients'); }}>
+                        <Eye className="w-3 h-3 mr-1" /> Profil
+                      </Button>
+                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('ttv'); }}>
+                        <Thermometer className="w-3 h-3 mr-1" /> Riwayat TTV
+                      </Button>
+                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('screening'); }}>
+                        <ClipboardCheck className="w-3 h-3 mr-1" /> Riwayat Skrining
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('patients'); }}>
+                        <Eye className="w-3 h-3 mr-1" /> Profil
+                      </Button>
+                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('ttv'); }}>
+                        <Thermometer className="w-3 h-3 mr-1" /> TTV
+                      </Button>
+                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('screening'); }}>
+                        <ClipboardCheck className="w-3 h-3 mr-1" /> Skrining
+                      </Button>
+                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('medication'); }}>
+                        <Pill className="w-3 h-3 mr-1" /> Obat
+                      </Button>
+                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('acp'); }}>
+                        <Shield className="w-3 h-3 mr-1" /> ACP
+                      </Button>
+                      <Button variant="default" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('chat'); }}>
+                        <MessageCircle className="w-3 h-3 mr-1" /> Chat
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-[11px] border-slate-300 text-slate-600 hover:bg-slate-50 hover:text-slate-700"
+                        onClick={() => {
+                          setShowProgramCompleteConfirm(patient.id);
+                          setProgramCompletionDate(new Date().toISOString().split('T')[0]);
+                          setProgramCompletionReason('sembuh_stabil');
+                          setProgramCompletionOtherReason('');
+                          setProgramCompletionNotes('');
+                        }}
+                      >
+                        <CircleOff className="w-3 h-3 mr-1" />
+                        Program Selesai
+                      </Button>
+                    </>
+                  )}
                 </div>
               </Card>
             );
@@ -1403,6 +1606,21 @@ export function PalliativeMonitoringPanel() {
                     <Trash2 className="w-4 h-4 mr-1" />
                     Hapus
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-slate-300 text-slate-600 hover:bg-slate-50 hover:text-slate-700"
+                    onClick={() => {
+                      setShowProgramCompleteConfirm(detailPatient.id);
+                      setProgramCompletionDate(new Date().toISOString().split('T')[0]);
+                      setProgramCompletionReason('sembuh_stabil');
+                      setProgramCompletionOtherReason('');
+                      setProgramCompletionNotes('');
+                    }}
+                  >
+                    <CircleOff className="w-4 h-4 mr-1" />
+                    Program Selesai
+                  </Button>
                 </div>
               </div>
             </Card>
@@ -1448,27 +1666,55 @@ export function PalliativeMonitoringPanel() {
         ) : (
           <>
             {/* Patient Table */}
-            <div className="flex flex-col sm:flex-row gap-2 mb-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Cari pasien..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
+            <div className="flex flex-col gap-2 mb-3">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Cari pasien..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <Select value={filterRisk} onValueChange={setFilterRisk}>
+                  <SelectTrigger className="w-full sm:w-40">
+                    <SelectValue placeholder="Filter Risiko" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua</SelectItem>
+                    <SelectItem value="merah">Merah</SelectItem>
+                    <SelectItem value="kuning">Kuning</SelectItem>
+                    <SelectItem value="hijau">Hijau</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <Select value={filterRisk} onValueChange={setFilterRisk}>
-                <SelectTrigger className="w-full sm:w-40">
-                  <SelectValue placeholder="Filter Risiko" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua</SelectItem>
-                  <SelectItem value="merah">Merah</SelectItem>
-                  <SelectItem value="kuning">Kuning</SelectItem>
-                  <SelectItem value="hijau">Hijau</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+                <button
+                  className={cn(
+                    'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+                    patientListFilter === 'aktif'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                  onClick={() => setPatientListFilter('aktif')}
+                >
+                  <Activity className="w-3.5 h-3.5 inline mr-1.5" />
+                  Aktif ({dashboardStats.active})
+                </button>
+                <button
+                  className={cn(
+                    'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+                    patientListFilter === 'program_selesai'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                  onClick={() => setPatientListFilter('program_selesai')}
+                >
+                  <Archive className="w-3.5 h-3.5 inline mr-1.5" />
+                  Program Selesai ({dashboardStats.completed})
+                </button>
+              </div>
             </div>
 
             <div className="border rounded-lg overflow-hidden">
@@ -1494,15 +1740,22 @@ export function PalliativeMonitoringPanel() {
                     filteredPatients.map((p) => {
                       const riskBadge = getRiskBadge(p.riskLevel);
                       const careBadge = getCareStatusBadge(p.careStatus);
+                      const isCompleted = p.patientStatus === 'program_selesai';
                       return (
-                        <TableRow key={p.id}>
-                          <TableCell className="font-medium">{p.patientName || '-'}</TableCell>
+                        <TableRow key={p.id} className={isCompleted ? 'opacity-70' : ''}>
+                          <TableCell className={cn('font-medium', isCompleted && 'line-through decoration-slate-400')}>
+                            {p.patientName || '-'}
+                          </TableCell>
                           <TableCell className="hidden sm:table-cell">{p.rmNumber || '-'}</TableCell>
                           <TableCell className="hidden md:table-cell max-w-[200px] truncate">
                             {p.primaryDiagnosis || '-'}
                           </TableCell>
                           <TableCell>
-                            <Badge className={careBadge.className}>{careBadge.label}</Badge>
+                            {isCompleted ? (
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-300 border">Program Selesai</Badge>
+                            ) : (
+                              <Badge className={careBadge.className}>{careBadge.label}</Badge>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={riskBadge.className}>
@@ -1511,15 +1764,17 @@ export function PalliativeMonitoringPanel() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs border-primary/30 text-primary hover:bg-primary hover:text-primary-foreground"
-                                onClick={() => handleNavigateToScreening(p.id)}
-                              >
-                                <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
-                                Skrining
-                              </Button>
+                              {!isCompleted && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs border-primary/30 text-primary hover:bg-primary hover:text-primary-foreground"
+                                  onClick={() => handleNavigateToScreening(p.id)}
+                                >
+                                  <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
+                                  Skrining
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -1530,13 +1785,15 @@ export function PalliativeMonitoringPanel() {
                               >
                                 <Eye className="w-4 h-4" />
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setEditingPatient(p)}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
+                              {!isCompleted && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setEditingPatient(p)}
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -1544,6 +1801,23 @@ export function PalliativeMonitoringPanel() {
                               >
                                 <Trash2 className="w-4 h-4 text-destructive" />
                               </Button>
+                              {!isCompleted && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-slate-600 hover:text-slate-700 hover:bg-slate-50"
+                                  onClick={() => {
+                                    setShowProgramCompleteConfirm(p.id);
+                                    setProgramCompletionDate(new Date().toISOString().split('T')[0]);
+                                    setProgramCompletionReason('sembuh_stabil');
+                                    setProgramCompletionOtherReason('');
+                                    setProgramCompletionNotes('');
+                                  }}
+                                  title="Program Selesai"
+                                >
+                                  <CircleOff className="w-4 h-4" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -3050,6 +3324,7 @@ export function PalliativeMonitoringPanel() {
                   ai_generated: 'AI Ringkasan',
                   alert_triggered: 'Notifikasi Klinis',
                   clinical_action: 'Tindakan Klinis',
+                  program_completed: 'Program Selesai',
                 };
                 const actionColor: Record<string, string> = {
                   chat_sent: 'bg-blue-100 text-blue-800',
@@ -3061,6 +3336,7 @@ export function PalliativeMonitoringPanel() {
                   ai_generated: 'bg-purple-100 text-purple-800',
                   alert_triggered: 'bg-red-100 text-red-800',
                   clinical_action: 'bg-orange-100 text-orange-800',
+                  program_completed: 'bg-slate-200 text-slate-800',
                 };
                 return (
                   <div key={entry.id} className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted/30 text-sm">
@@ -3402,6 +3678,7 @@ export function PalliativeMonitoringPanel() {
                     <SelectItem value="meninggal">Meninggal</SelectItem>
                     <SelectItem value="lost_follow_up">Lost to Follow-up</SelectItem>
                     <SelectItem value="pindah_faskes">Pindah Faskes</SelectItem>
+                    <SelectItem value="program_selesai">Program Selesai</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -3696,6 +3973,7 @@ export function PalliativeMonitoringPanel() {
                       <SelectItem value="meninggal">Meninggal</SelectItem>
                       <SelectItem value="lost_follow_up">Lost to Follow-up</SelectItem>
                       <SelectItem value="pindah_faskes">Pindah Faskes</SelectItem>
+                      <SelectItem value="program_selesai">Program Selesai</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -3769,6 +4047,131 @@ export function PalliativeMonitoringPanel() {
               onClick={() => showDeleteConfirm && handleDeletePatient(showDeleteConfirm)}
             >
               Hapus
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Program Selesai Confirm ── */}
+      <Dialog
+        open={!!showProgramCompleteConfirm}
+        onOpenChange={(open) => {
+          if (!open) setShowProgramCompleteConfirm(null);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CircleOff className="w-5 h-5 text-slate-600" />
+              Akhiri Program Monitoring Paliatif
+            </DialogTitle>
+            <DialogDescription>
+              {showProgramCompleteConfirm && (() => {
+                const patient = palliativePatients.find((p) => p.id === showProgramCompleteConfirm);
+                return patient
+                  ? `Pasien: ${patient.patientName || '-'} (RM: ${patient.rmNumber || '-'})`
+                  : '';
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertTriangle className="w-4 h-4 text-amber-600" />
+              <AlertTitle className="text-amber-800">Perhatian</AlertTitle>
+              <AlertDescription className="text-amber-700">
+                Tindakan ini akan mengakhiri program Monitoring Paliatif untuk pasien ini. Pasien tidak akan lagi menerima form monitoring, skrining, atau notifikasi aktif. Seluruh data riwayat tetap tersimpan.
+              </AlertDescription>
+            </Alert>
+
+            <div className="space-y-3">
+              <div>
+                <Label className="font-medium">Tanggal Selesai Program <span className="text-destructive">*</span></Label>
+                <Input
+                  type="date"
+                  value={programCompletionDate}
+                  onChange={(e) => setProgramCompletionDate(e.target.value)}
+                  max={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+
+              <div>
+                <Label className="font-medium">Alasan Program Selesai <span className="text-destructive">*</span></Label>
+                <Select
+                  value={programCompletionReason}
+                  onValueChange={(v) => setProgramCompletionReason(v as PalliativeProgramCompletionReason)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih alasan" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sembuh_stabil">Sembuh / Stabil</SelectItem>
+                    <SelectItem value="meninggal_dunia">Meninggal Dunia</SelectItem>
+                    <SelectItem value="dirujuk">Dirujuk</SelectItem>
+                    <SelectItem value="pindah_faskes">Pindah Fasilitas Kesehatan</SelectItem>
+                    <SelectItem value="permintaan_pasien_keluarga">Permintaan Pasien/Keluarga</SelectItem>
+                    <SelectItem value="lainnya">Lainnya</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {programCompletionReason === 'lainnya' && (
+                <div>
+                  <Label className="font-medium">Keterangan Alasan Lainnya <span className="text-destructive">*</span></Label>
+                  <Input
+                    placeholder="Jelaskan alasan lainnya..."
+                    value={programCompletionOtherReason}
+                    onChange={(e) => setProgramCompletionOtherReason(e.target.value)}
+                  />
+                </div>
+              )}
+
+              <div>
+                <Label className="font-medium">Catatan Akhir Pelayanan (Opsional)</Label>
+                <Textarea
+                  placeholder="Catatan akhir pelayanan Monitoring Paliatif..."
+                  value={programCompletionNotes}
+                  onChange={(e) => setProgramCompletionNotes(e.target.value)}
+                  rows={3}
+                />
+              </div>
+
+              {showProgramCompleteConfirm && (() => {
+                const patient = palliativePatients.find((p) => p.id === showProgramCompleteConfirm);
+                if (!patient) return null;
+                const startDate = new Date(patient.createdAt);
+                const endDate = new Date(programCompletionDate);
+                const durationDays = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+                return (
+                  <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-sm">
+                    <p className="font-medium text-foreground">Ringkasan Penutupan Program</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground">
+                      <span>Tanggal Mulai:</span>
+                      <span className="text-foreground">{formatDate(patient.createdAt)}</span>
+                      <span>Tanggal Selesai:</span>
+                      <span className="text-foreground">{formatDate(programCompletionDate)}</span>
+                      <span>Durasi Monitoring:</span>
+                      <span className="text-foreground">{durationDays} hari</span>
+                      <span>Diagnosa Utama:</span>
+                      <span className="text-foreground">{patient.primaryDiagnosis || '-'}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowProgramCompleteConfirm(null)}>
+              Batal
+            </Button>
+            <Button
+              className="bg-slate-700 hover:bg-slate-800 text-white"
+              onClick={() => showProgramCompleteConfirm && handleProgramComplete(showProgramCompleteConfirm)}
+              disabled={programCompletionReason === 'lainnya' && !programCompletionOtherReason.trim()}
+            >
+              <CircleOff className="w-4 h-4 mr-1" />
+              Akhiri Program
             </Button>
           </DialogFooter>
         </DialogContent>

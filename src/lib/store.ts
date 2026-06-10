@@ -10,6 +10,7 @@ import type {
   AdvanceCarePlanInfo, PalliativeScreeningRecordInfo,
   PalliativeChatMessage, PalliativeClinicalAlert, PalliativeAuditEntry,
   PalliativeMonitoringStatus, PalliativeMarkingData, PalliativeMonitoringNotification,
+  PalliativeProgramCompletion, PalliativeProgramCompletionReason,
   PalliativeClinicalSummary, PalliativeCommunicationPatient, PalliativeMonitoringFormType,
   WearableDevice, WearableVitalData, RVSMAlert, RVSMDailyReport,
   RVSMFamilyAccess, RVSMAuditEntry, RVSMPalliativeScoreEstimate,
@@ -171,6 +172,10 @@ interface TelemedicineStore {
   setScreeningNavigationFrom: (from: 'monitoring' | null) => void;
   screeningPreselectedPatientId: string | null;
   setScreeningPreselectedPatientId: (id: string | null) => void;
+
+  // Palliative Program Completion
+  palliativeProgramCompletions: PalliativeProgramCompletion[];
+  completePalliativeProgram: (patientId: string, completionData: Omit<PalliativeProgramCompletion, 'id' | 'createdAt'>) => void;
 
   // RVSM (Remote Vital Sign Monitoring)
   rvsmDevices: WearableDevice[];
@@ -960,6 +965,26 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setScreeningNavigationFrom: (from) => set({ screeningNavigationFrom: from }),
   screeningPreselectedPatientId: null as string | null,
   setScreeningPreselectedPatientId: (id) => set({ screeningPreselectedPatientId: id }),
+
+  // Palliative Program Completion
+  palliativeProgramCompletions: [] as PalliativeProgramCompletion[],
+  completePalliativeProgram: (patientId, completionData) => set((state) => {
+    const completion: PalliativeProgramCompletion = {
+      ...completionData,
+      id: `pcomp-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+    // Update patient status to program_selesai
+    const updatedPatients = state.palliativePatients.map(p =>
+      p.id === patientId
+        ? { ...p, patientStatus: 'program_selesai' as const, monitoringStatus: 'program_selesai' as PalliativeMonitoringStatus, updatedAt: new Date().toISOString() }
+        : p
+    );
+    return {
+      palliativeProgramCompletions: [...state.palliativeProgramCompletions, completion],
+      palliativePatients: updatedPatients,
+    };
+  }),
 
   // RVSM
   rvsmDevices: [

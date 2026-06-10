@@ -435,7 +435,32 @@ export type ActivePanel =
 // ── Palliative Monitoring Types ──────────────────────────────────────────
 
 export type PalliativeCareStatus = 'rawat_jalan' | 'home_care' | 'hospice' | 'rawat_inap';
-export type PalliativePatientStatus = 'aktif' | 'meninggal' | 'lost_follow_up' | 'pindah_faskes';
+export type PalliativePatientStatus = 'aktif' | 'meninggal' | 'lost_follow_up' | 'pindah_faskes' | 'program_selesai';
+
+export type PalliativeProgramCompletionReason =
+  | 'sembuh_stabil'
+  | 'meninggal_dunia'
+  | 'dirujuk'
+  | 'pindah_faskes'
+  | 'permintaan_pasien_keluarga'
+  | 'lainnya';
+
+export interface PalliativeProgramCompletion {
+  id: string;
+  palliativePatientId: string;
+  patientName?: string;
+  rmNumber?: string;
+  completionDate: string;
+  reason: PalliativeProgramCompletionReason;
+  otherReason?: string;
+  closingNotes?: string;
+  programStartDate: string;
+  programEndDate: string;
+  monitoringDurationDays: number;
+  performedBy: string;
+  performedByRole: 'doctor' | 'admin';
+  createdAt: string;
+}
 export type PalliativeRiskLevel = 'hijau' | 'kuning' | 'merah';
 
 export interface PalliativePatientInfo {
@@ -673,7 +698,7 @@ export interface PalliativeClinicalAlert {
 export interface PalliativeAuditEntry {
   id: string;
   patientId: string;
-  action: 'chat_sent' | 'form_sent' | 'form_opened' | 'form_filled' | 'form_submitted' | 'result_read' | 'ai_generated' | 'alert_triggered' | 'clinical_action' | 'medication_not_taken' | 'side_effect_reported' | 'alert_followed_up' | 'ai_analysis_generated';
+  action: 'chat_sent' | 'form_sent' | 'form_opened' | 'form_filled' | 'form_submitted' | 'result_read' | 'ai_generated' | 'alert_triggered' | 'clinical_action' | 'medication_not_taken' | 'side_effect_reported' | 'alert_followed_up' | 'ai_analysis_generated' | 'program_completed';
   performedBy: string;
   performedByRole: 'doctor' | 'patient' | 'family' | 'system';
   details?: string;
