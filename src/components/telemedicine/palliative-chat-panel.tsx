@@ -15,7 +15,10 @@ import type {
   PalliativeAuditEntry,
   PalliativeEwsLevel,
   VitalSignRecordInfo,
+  PalliativeScreeningRecordInfo,
 } from '@/lib/types';
+import { calculateScreeningResult, type ScreeningScoreResult } from '@/lib/palliative-screening-data';
+import { InlineScreeningForm } from '@/components/telemedicine/inline-screening-form';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -411,6 +414,7 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
   const [showScreeningPicker, setShowScreeningPicker] = useState(false);
   const [selectedScreeningTool, setSelectedScreeningTool] = useState<PalliativeToolType | null>(null);
   const [activeFormMsgId, setActiveFormMsgId] = useState<string | null>(null);
+  const [activeScreeningType, setActiveScreeningType] = useState<PalliativeToolType | null>(null);
   const [showAlertsPanel, setShowAlertsPanel] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -683,6 +687,105 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
     setActiveFormMsgId(null);
   }, [patient, currentUser, roomId, activeFormMsgId, addPalliativeChatMessage, addPalliativeAuditEntry]);
 
+  // Handle Screening form submission from patient
+  const handleScreeningSubmit = useCallback((result: ScreeningScoreResult, answers: Record<string, number | string | string[]>) => {
+    if (!patient || !currentUser || !activeScreeningType) return;
+    const responseMsg: PalliativeChatMessage = {
+      id: genId('pcm'),
+      roomId,
+      senderId: patient.patientId || patient.id,
+      senderName: patient.patientName || 'Pasien',
+      senderRole: 'patient',
+      type: 'form_response',
+      content: `Skrining ${getToolLabel(activeScreeningType)} telah diisi.`,
+      formType: 'screening',
+      formResponse: {
+        formId: activeFormMsgId || genId('form'),
+        formType: 'screening',
+        screeningType: activeScreeningType,
+        screeningAnswers: answers,
+        screeningResult: {
+          score: result.score,
+          scoreLabel: result.scoreLabel,
+          interpretation: result.interpretation,
+          ewsLevel: result.ewsLevel,
+        },
+        submittedAt: new Date().toISOString(),
+      },
+      status: 'delivered',
+      createdAt: new Date().toISOString(),
+    };
+    addPalliativeChatMessage(responseMsg);
+
+    // Save to screening records
+    const screeningRecord: PalliativeScreeningRecordInfo = {
+      id: genId('sr'),
+      palliativePatientId: patient.id,
+      screeningType: activeScreeningType,
+      score: result.score,
+      scoreLabel: result.scoreLabel,
+      interpretation: result.interpretation,
+      ewsLevel: result.ewsLevel,
+      details: JSON.stringify(result.details),
+      performedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    addPalliativeScreeningRecord(screeningRecord);
+
+    // Check for clinical alerts based on screening result
+    if (result.ewsLevel === 'merah') {
+      const alert: PalliativeClinicalAlert = {
+        id: genId('alert'),
+        patientId: patient.id,
+        alertType: 'perburukan',
+        severity: 'merah',
+        title: `Skrining ${getToolLabel(activeScreeningType)} Kritis`,
+        description: `Hasil skrining ${getToolLabel(activeScreeningType)} menunjukkan kondisi kritis: ${result.scoreLabel}. ${result.interpretation}`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
+      addPalliativeClinicalAlert(alert);
+
+      const alertMsg: PalliativeChatMessage = {
+        id: genId('pcm'),
+        roomId,
+        senderId: 'system',
+        senderName: 'Sistem',
+        senderRole: 'system',
+        type: 'clinical_alert',
+        content: `Peringatan: Skrining ${getToolLabel(activeScreeningType)} menunjukkan kondisi kritis (${result.scoreLabel})`,
+        clinicalAlert: alert,
+        status: 'delivered',
+        createdAt: new Date().toISOString(),
+      };
+      addPalliativeChatMessage(alertMsg);
+    }
+
+    addPalliativeAuditEntry({
+      id: genId('audit'),
+      patientId: patient.id,
+      action: 'form_submitted',
+      performedBy: patient.patientId || patient.id,
+      performedByRole: 'patient',
+      details: `Pasien mengirimkan hasil Skrining ${getToolLabel(activeScreeningType)}: ${result.scoreLabel}`,
+      createdAt: new Date().toISOString(),
+    });
+
+    setActiveFormMsgId(null);
+    setActiveScreeningType(null);
+  }, [patient, currentUser, roomId, activeFormMsgId, activeScreeningType, addPalliativeChatMessage, addPalliativeScreeningRecord, addPalliativeClinicalAlert, addPalliativeAuditEntry]);
+
+  // Open form from chat message click
+  const handleOpenForm = useCallback((msg: PalliativeChatMessage) => {
+    if (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') {
+      setActiveFormMsgId(msg.formData.id);
+      setFormType(msg.formType || null);
+      if (msg.formType === 'screening' && msg.screeningType) {
+        setActiveScreeningType(msg.screeningType);
+      }
+    }
+  }, []);
+
   // Render message bubble
   const renderMessage = (msg: PalliativeChatMessage) => {
     const isDoctor = msg.senderRole === 'doctor';
@@ -719,15 +822,30 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
 
           {/* Form TTV */}
           {msg.type === 'form_ttv' && (
-            <div className="space-y-2">
+            <div
+              className={cn(
+                'space-y-2',
+                (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && 'cursor-pointer hover:opacity-90'
+              )}
+              onClick={() => {
+                if (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') {
+                  handleOpenForm(msg);
+                }
+              }}
+            >
               <div className="flex items-center gap-1.5">
                 <HeartPulse className="w-4 h-4" />
                 <span className="font-semibold">Form Monitoring TTV</span>
               </div>
               <p className="text-xs opacity-80">{msg.content}</p>
-              {msg.formData?.status === 'sent' && (
-                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                  <Clock className="w-3 h-3 mr-1" /> Menunggu pengisian
+              {(msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && (
+                <Button variant="outline" size="sm" className="text-xs h-7 w-full mt-1">
+                  <FileText className="w-3 h-3 mr-1" /> Klik untuk mengisi form TTV
+                </Button>
+              )}
+              {msg.formData?.status === 'submitted' && (
+                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                  <CheckCircle2 className="w-3 h-3 mr-1" /> Sudah diisi
                 </Badge>
               )}
             </div>
@@ -735,15 +853,30 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
 
           {/* Form Keluhan */}
           {msg.type === 'form_keluhan' && (
-            <div className="space-y-2">
+            <div
+              className={cn(
+                'space-y-2',
+                (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && 'cursor-pointer hover:opacity-90'
+              )}
+              onClick={() => {
+                if (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') {
+                  handleOpenForm(msg);
+                }
+              }}
+            >
               <div className="flex items-center gap-1.5">
                 <ClipboardList className="w-4 h-4" />
                 <span className="font-semibold">Form Keluhan Harian</span>
               </div>
               <p className="text-xs opacity-80">{msg.content}</p>
-              {msg.formData?.status === 'sent' && (
-                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                  <Clock className="w-3 h-3 mr-1" /> Menunggu pengisian
+              {(msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && (
+                <Button variant="outline" size="sm" className="text-xs h-7 w-full mt-1">
+                  <FileText className="w-3 h-3 mr-1" /> Klik untuk mengisi form keluhan
+                </Button>
+              )}
+              {msg.formData?.status === 'submitted' && (
+                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                  <CheckCircle2 className="w-3 h-3 mr-1" /> Sudah diisi
                 </Badge>
               )}
             </div>
@@ -751,7 +884,17 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
 
           {/* Form Screening */}
           {msg.type === 'form_screening' && (
-            <div className="space-y-2">
+            <div
+              className={cn(
+                'space-y-2',
+                (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && 'cursor-pointer hover:opacity-90'
+              )}
+              onClick={() => {
+                if (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') {
+                  handleOpenForm(msg);
+                }
+              }}
+            >
               <div className="flex items-center gap-1.5">
                 <Activity className="w-4 h-4" />
                 <span className="font-semibold">Skrining Paliatif</span>
@@ -760,9 +903,14 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
               {msg.screeningType && (
                 <Badge variant="outline" className="text-xs">{getToolLabel(msg.screeningType)}</Badge>
               )}
-              {msg.formData?.status === 'sent' && (
-                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                  <Clock className="w-3 h-3 mr-1" /> Menunggu pengisian
+              {(msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && (
+                <Button variant="outline" size="sm" className="text-xs h-7 w-full mt-1">
+                  <FileText className="w-3 h-3 mr-1" /> Klik untuk mengisi skrining
+                </Button>
+              )}
+              {msg.formData?.status === 'submitted' && (
+                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                  <CheckCircle2 className="w-3 h-3 mr-1" /> Sudah diisi
                 </Badge>
               )}
             </div>
@@ -959,10 +1107,15 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
         </div>
       </ScrollArea>
 
-      {/* Patient Fill Form (simulated - shows TTV/Keluhan form for patient view) */}
+      {/* Patient Fill Form (shows TTV/Keluhan/Screening form for patient view) */}
       {activeFormMsgId && (
-        <Dialog open={!!activeFormMsgId} onOpenChange={() => setActiveFormMsgId(null)}>
-          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <Dialog open={!!activeFormMsgId} onOpenChange={(open) => {
+          if (!open) {
+            setActiveFormMsgId(null);
+            setActiveScreeningType(null);
+          }
+        }}>
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Isi Formulir</DialogTitle>
               <DialogDescription>Silakan isi formulir yang dikirim oleh dokter</DialogDescription>
@@ -976,6 +1129,13 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
             {formType === 'keluhan' && (
               <KeluhanForm
                 onSubmit={(answers) => handleKeluhanSubmit(answers)}
+                onSaveDraft={() => {}}
+              />
+            )}
+            {formType === 'screening' && activeScreeningType && (
+              <InlineScreeningForm
+                screeningType={activeScreeningType}
+                onSubmit={handleScreeningSubmit}
                 onSaveDraft={() => {}}
               />
             )}
@@ -1103,6 +1263,9 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
                   if (lastForm?.formType) {
                     setActiveFormMsgId(lastForm.formData.id);
                     setFormType(lastForm.formType);
+                    if (lastForm.formType === 'screening' && lastForm.screeningType) {
+                      setActiveScreeningType(lastForm.screeningType);
+                    }
                   }
                 }}>
                   <UserCheck className="w-4 h-4 mr-1" />
