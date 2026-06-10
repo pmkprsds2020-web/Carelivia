@@ -25,6 +25,7 @@ import {
   ClipboardCheck,
   HeartPulse,
   Monitor,
+  Watch,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -62,6 +63,7 @@ const allNavItems: NavItem[] = [
   { id: 'screening', label: 'Skrining Pasien', icon: <ClipboardCheck className="w-5 h-5" />, roles: ['doctor'], section: 'Kesehatan' },
   { id: 'palliative-screening', label: 'Skrining Paliatif', icon: <HeartPulse className="w-5 h-5" />, roles: ['doctor'], section: 'Kesehatan' },
   { id: 'palliative-monitoring', label: 'Monitoring Paliatif', icon: <Monitor className="w-5 h-5" />, roles: ['doctor'], section: 'Kesehatan' },
+  { id: 'rvsm', label: 'Remote Vital Sign', icon: <Watch className="w-5 h-5" />, roles: ['doctor'], section: 'Kesehatan' },
   { id: 'payments', label: 'Pendapatan', icon: <CreditCard className="w-5 h-5" />, roles: ['doctor'], section: 'Lainnya' },
   { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['doctor'] },
   { id: 'profile', label: 'Profil', icon: <User className="w-5 h-5" />, roles: ['doctor'] },

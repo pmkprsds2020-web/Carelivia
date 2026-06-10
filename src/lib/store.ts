@@ -10,7 +10,9 @@ import type {
   AdvanceCarePlanInfo, PalliativeScreeningRecordInfo,
   PalliativeChatMessage, PalliativeClinicalAlert, PalliativeAuditEntry,
   PalliativeMonitoringStatus, PalliativeMarkingData, PalliativeMonitoringNotification,
-  PalliativeClinicalSummary, PalliativeCommunicationPatient, PalliativeMonitoringFormType
+  PalliativeClinicalSummary, PalliativeCommunicationPatient, PalliativeMonitoringFormType,
+  WearableDevice, WearableVitalData, RVSMAlert, RVSMDailyReport,
+  RVSMFamilyAccess, RVSMAuditEntry, RVSMPalliativeScoreEstimate
 } from './types';
 
 interface TelemedicineStore {
@@ -161,6 +163,29 @@ interface TelemedicineStore {
   setActiveInlineScreeningFormId: (id: string | null) => void;
   activeInlineScreeningType: PalliativeMonitoringFormType | null;
   setActiveInlineScreeningType: (type: PalliativeMonitoringFormType | null) => void;
+
+  // RVSM (Remote Vital Sign Monitoring)
+  rvsmDevices: WearableDevice[];
+  addRvsmDevice: (device: WearableDevice) => void;
+  updateRvsmDevice: (deviceId: string, data: Partial<WearableDevice>) => void;
+  removeRvsmDevice: (deviceId: string) => void;
+  rvsmVitalData: WearableVitalData[];
+  addRvsmVitalData: (data: WearableVitalData) => void;
+  rvsmAlerts: RVSMAlert[];
+  addRvsmAlert: (alert: RVSMAlert) => void;
+  markRvsmAlertRead: (alertId: string) => void;
+  acknowledgeRvsmAlert: (alertId: string, acknowledgedBy: string) => void;
+  rvsmDailyReports: RVSMDailyReport[];
+  addRvsmDailyReport: (report: RVSMDailyReport) => void;
+  rvsmFamilyAccess: RVSMFamilyAccess[];
+  addRvsmFamilyAccess: (access: RVSMFamilyAccess) => void;
+  removeRvsmFamilyAccess: (accessId: string) => void;
+  rvsmAuditLog: RVSMAuditEntry[];
+  addRvsmAuditEntry: (entry: RVSMAuditEntry) => void;
+  rvsmPalliativeEstimates: RVSMPalliativeScoreEstimate[];
+  addRvsmPalliativeEstimate: (estimate: RVSMPalliativeScoreEstimate) => void;
+  rvsmAiSummary: string;
+  setRvsmAiSummary: (summary: string) => void;
 }
 
 export const useStore = create<TelemedicineStore>((set) => ({
@@ -909,4 +934,206 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setActiveInlineScreeningFormId: (id) => set({ activeInlineScreeningFormId: id }),
   activeInlineScreeningType: null as PalliativeMonitoringFormType | null,
   setActiveInlineScreeningType: (type) => set({ activeInlineScreeningType: type }),
+
+  // RVSM
+  rvsmDevices: [
+    {
+      id: 'wd-1', patientId: 'pp-1', deviceType: 'apple_watch' as const,
+      deviceName: 'Apple Watch Series 9', integrationMethod: 'apple_healthkit' as const,
+      status: 'connected' as const, batteryLevel: 72, isConnected: true,
+      lastSyncAt: new Date(Date.now() - 300000).toISOString(),
+      firmwareVersion: '10.3.1', serialNumber: 'AW9-2024-00123',
+      registeredAt: new Date(Date.now() - 2592000000).toISOString(),
+    },
+    {
+      id: 'wd-2', patientId: 'pp-2', deviceType: 'samsung_galaxy_watch' as const,
+      deviceName: 'Samsung Galaxy Watch 6', integrationMethod: 'samsung_health' as const,
+      status: 'connected' as const, batteryLevel: 45, isConnected: true,
+      lastSyncAt: new Date(Date.now() - 600000).toISOString(),
+      firmwareVersion: '5.0.2', serialNumber: 'SGW6-2024-00456',
+      registeredAt: new Date(Date.now() - 1728000000).toISOString(),
+    },
+    {
+      id: 'wd-3', patientId: 'pp-3', deviceType: 'garmin_watch' as const,
+      deviceName: 'Garmin Vivosmart 5', integrationMethod: 'rest_api' as const,
+      status: 'low_battery' as const, batteryLevel: 12, isConnected: true,
+      lastSyncAt: new Date(Date.now() - 1800000).toISOString(),
+      firmwareVersion: '8.15', serialNumber: 'GV5-2024-00789',
+      registeredAt: new Date(Date.now() - 864000000).toISOString(),
+    },
+  ] as WearableDevice[],
+  addRvsmDevice: (device) => set((state) => ({ rvsmDevices: [...state.rvsmDevices, device] })),
+  updateRvsmDevice: (deviceId, data) => set((state) => ({
+    rvsmDevices: state.rvsmDevices.map(d => d.id === deviceId ? { ...d, ...data } : d),
+  })),
+  removeRvsmDevice: (deviceId) => set((state) => ({ rvsmDevices: state.rvsmDevices.filter(d => d.id !== deviceId) })),
+
+  rvsmVitalData: (() => {
+    const now = Date.now();
+    const data: WearableVitalData[] = [];
+    // Generate 24 data points for each palliative patient over last 24h
+    const patients = [
+      { id: 'pp-1', deviceId: 'wd-1', hr: 88, spo2: 93, rr: 22, steps: 450, sleep: 420, temp: 36.8 },
+      { id: 'pp-2', deviceId: 'wd-2', hr: 78, spo2: 96, rr: 18, steps: 3200, sleep: 390, temp: 36.6 },
+      { id: 'pp-3', deviceId: 'wd-3', hr: 95, spo2: 88, rr: 26, steps: 120, sleep: 540, temp: 37.5 },
+    ];
+    patients.forEach(p => {
+      for (let i = 23; i >= 0; i--) {
+        const t = now - i * 3600000;
+        const hrVar = Math.round(p.hr + (Math.random() - 0.5) * 10);
+        const spo2Var = Math.round(p.spo2 + (Math.random() - 0.5) * 3);
+        const rrVar = Math.round(p.rr + (Math.random() - 0.5) * 4);
+        data.push({
+          id: `rvd-${p.id}-${i}`,
+          deviceId: p.deviceId,
+          patientId: p.id,
+          timestamp: new Date(t).toISOString(),
+          heartRate: hrVar,
+          heartRateVariability: Math.round(30 + Math.random() * 40),
+          heartRhythm: hrVar > 100 ? 'sinus_tachycardia' : hrVar < 60 ? 'sinus_bradycardia' : 'normal_sinus',
+          arrhythmiaDetected: Math.random() < 0.05,
+          respiratoryRate: rrVar,
+          respiratoryPattern: rrVar > 24 ? 'tachypneic' : rrVar < 10 ? 'bradypneic' : 'normal',
+          apneaEpisode: Math.random() < 0.03,
+          oxygenSat: spo2Var,
+          steps: i < 12 ? Math.round(p.steps / 12 + (Math.random() - 0.5) * 50) : undefined,
+          distance: i < 12 ? Math.round(p.steps * 0.7 + (Math.random() - 0.5) * 200) : undefined,
+          walkDuration: i < 12 ? Math.round(p.steps / 10 + (Math.random() - 0.5) * 5) : undefined,
+          dailyActivityLevel: p.steps < 500 ? 'sedentary' : p.steps < 3000 ? 'light' : 'moderate',
+          sittingDuration: i === 0 ? Math.round(180 + Math.random() * 120) : undefined,
+          standingDuration: i === 0 ? Math.round(30 + Math.random() * 60) : undefined,
+          lyingDuration: i === 0 ? Math.round(p.sleep + Math.random() * 60) : undefined,
+          postureChangeCount: i === 0 ? Math.round(5 + Math.random() * 10) : undefined,
+          sleepDuration: i === 0 ? p.sleep : undefined,
+          sleepQuality: p.sleep < 300 ? 'poor' : p.sleep < 420 ? 'fair' : 'good',
+          sleepDisturbances: Math.round(Math.random() * 5),
+          sleepPattern: p.sleep > 540 ? 'hypersomnia' : p.sleep < 300 ? 'insomnia' : 'normal',
+          skinTemperature: Math.round((p.temp - 0.5 + Math.random()) * 10) / 10,
+          estimatedCoreTemp: p.temp,
+          painScore: p.id === 'pp-3' ? Math.round(6 + Math.random() * 3) : p.id === 'pp-1' ? Math.round(3 + Math.random() * 3) : Math.round(1 + Math.random() * 2),
+          stressLevel: Math.round(p.id === 'pp-3' ? 65 + Math.random() * 25 : p.id === 'pp-1' ? 40 + Math.random() * 30 : 20 + Math.random() * 20),
+          fatigueLevel: Math.round(p.id === 'pp-3' ? 70 + Math.random() * 20 : p.id === 'pp-1' ? 50 + Math.random() * 25 : 25 + Math.random() * 15),
+          systolicBP: p.id === 'pp-1' ? 105 + Math.round((Math.random() - 0.5) * 10) : p.id === 'pp-2' ? 130 + Math.round((Math.random() - 0.5) * 10) : 90 + Math.round((Math.random() - 0.5) * 8),
+          diastolicBP: p.id === 'pp-1' ? 65 + Math.round((Math.random() - 0.5) * 8) : p.id === 'pp-2' ? 82 + Math.round((Math.random() - 0.5) * 8) : 60 + Math.round((Math.random() - 0.5) * 6),
+        });
+      }
+    });
+    return data;
+  })() as WearableVitalData[],
+  addRvsmVitalData: (d) => set((state) => ({ rvsmVitalData: [...state.rvsmVitalData, d] })),
+
+  rvsmAlerts: [
+    {
+      id: 'rva-1', patientId: 'pp-3', patientName: 'Maria Susanti', deviceId: 'wd-3',
+      category: 'oxygenation' as const, severity: 'critical' as const,
+      title: 'SpO2 Sangat Rendah',
+      description: 'Saturasi oksigen pasien turun di bawah 90%. Diperlukan tindakan segera.',
+      values: { oxygenSat: 88 }, threshold: { parameter: 'oxygenSat', operator: '<', value: 92 },
+      actualValue: 88, isRead: false, isAcknowledged: false,
+      createdAt: new Date(Date.now() - 1800000).toISOString(),
+    },
+    {
+      id: 'rva-2', patientId: 'pp-1', patientName: 'Siti Rahayu', deviceId: 'wd-1',
+      category: 'cardiovascular' as const, severity: 'attention' as const,
+      title: 'Takikardia Deteksi',
+      description: 'Denyut jantung pasien melebihi 100 bpm secara konsisten.',
+      values: { heartRate: 105 }, threshold: { parameter: 'heartRate', operator: '>', value: 100 },
+      actualValue: 105, isRead: false, isAcknowledged: false,
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+    },
+    {
+      id: 'rva-3', patientId: 'pp-3', patientName: 'Maria Susanti', deviceId: 'wd-3',
+      category: 'mobility' as const, severity: 'attention' as const,
+      title: 'Penurunan Aktivitas Signifikan',
+      description: 'Aktivitas pasien menurun lebih dari 30% dibanding baseline. Pasien lebih banyak berbaring.',
+      values: { activityChange: -35, lyingHours: 12.5 },
+      actualValue: -35, isRead: true, isAcknowledged: true,
+      acknowledgedBy: 'dr. Sarah Wijaya',
+      acknowledgedAt: new Date(Date.now() - 900000).toISOString(),
+      createdAt: new Date(Date.now() - 7200000).toISOString(),
+    },
+    {
+      id: 'rva-4', patientId: 'pp-1', patientName: 'Siti Rahayu', deviceId: 'wd-1',
+      category: 'sleep' as const, severity: 'attention' as const,
+      title: 'Gangguan Tidur',
+      description: 'Kualitas tidur pasien menurun. Durasi tidur hanya 4.2 jam dengan 5 kali gangguan.',
+      values: { sleepDuration: 252, sleepDisturbances: 5 },
+      isRead: false, isAcknowledged: false,
+      createdAt: new Date(Date.now() - 5400000).toISOString(),
+    },
+  ] as RVSMAlert[],
+  addRvsmAlert: (alert) => set((state) => ({ rvsmAlerts: [...state.rvsmAlerts, alert] })),
+  markRvsmAlertRead: (alertId) => set((state) => ({
+    rvsmAlerts: state.rvsmAlerts.map(a => a.id === alertId ? { ...a, isRead: true } : a),
+  })),
+  acknowledgeRvsmAlert: (alertId, acknowledgedBy) => set((state) => ({
+    rvsmAlerts: state.rvsmAlerts.map(a => a.id === alertId ? { ...a, isAcknowledged: true, acknowledgedBy, acknowledgedAt: new Date().toISOString() } : a),
+  })),
+
+  rvsmDailyReports: [
+    {
+      id: 'rdr-1', patientId: 'pp-1', patientName: 'Siti Rahayu',
+      reportDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+      activityChangePercent: -25, avgSpO2: 92, avgHeartRate: 90, avgRespiratoryRate: 23,
+      sleepDurationHours: 4.2, lyingDurationHours: 14, stepsCount: 450, painScoreAvg: 4.5,
+      stressLevelAvg: 55, fatigueLevelAvg: 62,
+      aiSummary: 'Aktivitas pasien menurun 25% dibanding minggu sebelumnya. Rata-rata SpO2 92% (menurun dari 94%). Durasi tidur hanya 4.2 jam menunjukkan insomnia. Temuan mengindikasikan penurunan status fungsional.',
+      riskPrediction: { hospitalizationRisk: 'moderate', symptomWorseningRisk: 'high', ppsDeclineRisk: 'moderate', homeVisitNeedRisk: 'high' },
+      createdAt: new Date(Date.now() - 86400000).toISOString(),
+    },
+    {
+      id: 'rdr-2', patientId: 'pp-3', patientName: 'Maria Susanti',
+      reportDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+      activityChangePercent: -45, avgSpO2: 88, avgHeartRate: 96, avgRespiratoryRate: 26,
+      sleepDurationHours: 9.5, lyingDurationHours: 20, stepsCount: 80, painScoreAvg: 7.5,
+      stressLevelAvg: 78, fatigueLevelAvg: 82,
+      aiSummary: 'Penurunan aktivitas signifikan 45%. SpO2 konsisten rendah (rata-rata 88%). Pasien hampir sepenuhnya bed rest. Nyeri tinggi (7.5/10) dan fatigue berat (82/100). Risiko perburukan TINGGI.',
+      riskPrediction: { hospitalizationRisk: 'high', symptomWorseningRisk: 'high', ppsDeclineRisk: 'high', homeVisitNeedRisk: 'high' },
+      createdAt: new Date(Date.now() - 86400000).toISOString(),
+    },
+  ] as RVSMDailyReport[],
+  addRvsmDailyReport: (report) => set((state) => ({ rvsmDailyReports: [...state.rvsmDailyReports, report] })),
+
+  rvsmFamilyAccess: [
+    {
+      id: 'rfa-1', patientId: 'pp-1', familyMemberId: 'fam-budi', familyMemberName: 'Budi Rahayu',
+      relationship: 'Anak', canViewActivity: true, canViewDeviceStatus: true,
+      canViewHealthGraphs: true, canReceiveAlerts: true, canViewSchedule: true,
+      grantedAt: new Date(Date.now() - 2592000000).toISOString(),
+    },
+    {
+      id: 'rfa-2', patientId: 'pp-3', familyMemberId: 'fam-yohanes', familyMemberName: 'Yohanes Susanti',
+      relationship: 'Suami', canViewActivity: true, canViewDeviceStatus: true,
+      canViewHealthGraphs: true, canReceiveAlerts: true, canViewSchedule: true,
+      grantedAt: new Date(Date.now() - 1728000000).toISOString(),
+    },
+  ] as RVSMFamilyAccess[],
+  addRvsmFamilyAccess: (access) => set((state) => ({ rvsmFamilyAccess: [...state.rvsmFamilyAccess, access] })),
+  removeRvsmFamilyAccess: (accessId) => set((state) => ({ rvsmFamilyAccess: state.rvsmFamilyAccess.filter(a => a.id !== accessId) })),
+
+  rvsmAuditLog: [
+    { id: 'ra-1', patientId: 'pp-1', action: 'data_received' as const, performedBy: 'wd-1', performedByRole: 'system' as const, details: 'Data vital diterima dari Apple Watch', deviceId: 'wd-1', createdAt: new Date(Date.now() - 300000).toISOString() },
+    { id: 'ra-2', patientId: 'pp-3', action: 'alert_generated' as const, performedBy: 'system', performedByRole: 'system' as const, details: 'Alert: SpO2 rendah terdeteksi (88%)', deviceId: 'wd-3', createdAt: new Date(Date.now() - 1800000).toISOString() },
+    { id: 'ra-3', patientId: 'pp-3', action: 'alert_acknowledged' as const, performedBy: 'doc-sarah', performedByRole: 'doctor' as const, details: 'Dokter mengakui alert SpO2 rendah', createdAt: new Date(Date.now() - 900000).toISOString() },
+  ] as RVSMAuditEntry[],
+  addRvsmAuditEntry: (entry) => set((state) => ({ rvsmAuditLog: [...state.rvsmAuditLog, entry] })),
+
+  rvsmPalliativeEstimates: [
+    {
+      patientId: 'pp-1', estimatedAt: new Date(Date.now() - 3600000).toISOString(),
+      ppsEstimate: { currentEstimate: 40, previousEstimate: 50, change: -10, confidence: 0.78, factors: ['Penurunan aktivitas 25%', 'SpO2 menurun', 'Durasi tidur berkurang'] },
+      esasEstimate: { fatigueLevel: 7, sleepDisturbance: 6, activityDecline: 5, estimatedTotalScore: 45 },
+      spictEstimate: { deteriorationRisk: 'high', indicators: ['Penurunan fungsi fisik', 'Hipoksemia berulang', 'Penurunan berat badan'] },
+    },
+    {
+      patientId: 'pp-3', estimatedAt: new Date(Date.now() - 3600000).toISOString(),
+      ppsEstimate: { currentEstimate: 20, previousEstimate: 30, change: -10, confidence: 0.85, factors: ['Bed rest total', 'SpO2 konsisten rendah', 'Nyeri tidak terkontrol'] },
+      esasEstimate: { fatigueLevel: 9, sleepDisturbance: 8, activityDecline: 9, estimatedTotalScore: 72 },
+      spictEstimate: { deteriorationRisk: 'high', indicators: ['Ketergantungan total', 'Hipoksemia persisten', 'Penurunan kesadaran', 'Disfungsi multiorgan'] },
+    },
+  ] as RVSMPalliativeScoreEstimate[],
+  addRvsmPalliativeEstimate: (estimate) => set((state) => ({ rvsmPalliativeEstimates: [...state.rvsmPalliativeEstimates, estimate] })),
+
+  rvsmAiSummary: '',
+  setRvsmAiSummary: (summary) => set({ rvsmAiSummary: summary }),
 }));

@@ -22,6 +22,7 @@ import { LoginPage } from '@/components/telemedicine/login-page';
 import { ScreeningPanel } from '@/components/telemedicine/screening-panel';
 import { PalliativeScreeningPanel } from '@/components/telemedicine/palliative-screening-panel';
 import { PalliativeMonitoringPanel } from '@/components/telemedicine/palliative-monitoring-panel';
+import { RvsmPanel } from '@/components/telemedicine/rvsm-panel';
 import { Button } from '@/components/ui/button';
 import { Menu, X } from 'lucide-react';
 
@@ -96,6 +97,7 @@ export default function TelemedicineApp() {
       case 'screening': return <ScreeningPanel />;
       case 'palliative-screening': return <PalliativeScreeningPanel />;
       case 'palliative-monitoring': return <PalliativeMonitoringPanel />;
+      case 'rvsm': return <RvsmPanel />;
       case 'doctor-panel': return <DoctorPanel />;
       case 'pharmacist-panel': return <PharmacistPanel />;
       case 'homecare-staff-panel': return <HomeCareStaffPanel />;
@@ -149,6 +151,7 @@ export default function TelemedicineApp() {
               {activePanel === 'screening' && (currentUser?.role === 'doctor' ? 'Skrining Pasien' : 'Skrining Kesehatan')}
               {activePanel === 'palliative-screening' && 'Skrining Paliatif'}
               {activePanel === 'palliative-monitoring' && 'Monitoring Paliatif'}
+              {activePanel === 'rvsm' && 'Remote Vital Sign Monitoring'}
               {activePanel === 'doctor-panel' && 'Panel Dokter'}
               {activePanel === 'pharmacist-panel' && 'Panel Apotek'}
               {activePanel === 'homecare-staff-panel' && 'Panel Petugas'}

@@ -429,7 +429,8 @@ export type ActivePanel =
   | 'profile'
   | 'screening'
   | 'palliative-screening'
-  | 'palliative-monitoring';
+  | 'palliative-monitoring'
+  | 'rvsm';
 
 // ── Palliative Monitoring Types ──────────────────────────────────────────
 
@@ -761,4 +762,173 @@ export interface PalliativeClinicalSummary {
     oxygenSat?: number;
     recordedAt: string;
   };
+}
+
+// ── Remote Vital Sign Monitoring (RVSM) Types ─────────────────────────────
+
+export type WearableDeviceType = 
+  | 'apple_watch' | 'samsung_galaxy_watch' | 'garmin_watch' 
+  | 'huawei_watch' | 'xiaomi_smart_band' | 'fitbit' 
+  | 'wear_os' | 'bluetooth_health';
+
+export type WearableIntegrationMethod = 
+  | 'apple_healthkit' | 'google_health_connect' | 'samsung_health' 
+  | 'fitbit_api' | 'bluetooth_health_device' | 'rest_api';
+
+export type WearableDeviceStatus = 
+  | 'connected' | 'sync_pending' | 'offline' | 'low_battery' | 'inactive';
+
+export type RVSMAlertSeverity = 'normal' | 'attention' | 'critical';
+
+export type RVSMTimeRange = '24h' | '7d' | '30d' | '90d';
+
+export interface WearableDevice {
+  id: string;
+  patientId: string;
+  deviceType: WearableDeviceType;
+  deviceName: string;
+  integrationMethod: WearableIntegrationMethod;
+  status: WearableDeviceStatus;
+  batteryLevel?: number;
+  lastSyncAt?: string;
+  firmwareVersion?: string;
+  serialNumber?: string;
+  isConnected: boolean;
+  registeredAt: string;
+  deactivatedAt?: string;
+}
+
+export interface WearableVitalData {
+  id: string;
+  deviceId: string;
+  patientId: string;
+  timestamp: string;
+  // Cardiovascular
+  heartRate?: number;
+  heartRateVariability?: number;
+  heartRhythm?: 'normal_sinus' | 'sinus_tachycardia' | 'sinus_bradycardia' | 'atrial_fibrillation' | 'other';
+  arrhythmiaDetected?: boolean;
+  // Respiratory
+  respiratoryRate?: number;
+  respiratoryPattern?: 'normal' | 'tachypneic' | 'bradypneic' | 'irregular';
+  apneaEpisode?: boolean;
+  // Oxygenation
+  oxygenSat?: number;
+  // Activity
+  steps?: number;
+  distance?: number; // meters
+  walkDuration?: number; // minutes
+  dailyActivityLevel?: 'sedentary' | 'light' | 'moderate' | 'active';
+  // Mobility
+  sittingDuration?: number; // minutes
+  standingDuration?: number; // minutes
+  lyingDuration?: number; // minutes
+  postureChangeCount?: number;
+  // Sleep
+  sleepDuration?: number; // minutes
+  sleepQuality?: 'poor' | 'fair' | 'good' | 'excellent';
+  sleepDisturbances?: number;
+  sleepPattern?: 'normal' | 'insomnia' | 'hypersomnia' | 'fragmented';
+  // Temperature
+  skinTemperature?: number;
+  estimatedCoreTemp?: number;
+  // Pain/Symptoms (if supported)
+  painScore?: number;
+  stressLevel?: number; // 0-100
+  fatigueLevel?: number; // 0-100
+  // Blood pressure
+  systolicBP?: number;
+  diastolicBP?: number;
+}
+
+export interface RVSMAlert {
+  id: string;
+  patientId: string;
+  patientName?: string;
+  deviceId?: string;
+  category: 'cardiovascular' | 'oxygenation' | 'respiratory' | 'activity' | 'sleep' | 'mobility' | 'temperature' | 'pain';
+  severity: RVSMAlertSeverity;
+  title: string;
+  description: string;
+  values?: Record<string, string | number>;
+  threshold?: { parameter: string; operator: string; value: number };
+  actualValue?: number;
+  isRead: boolean;
+  isAcknowledged: boolean;
+  acknowledgedBy?: string;
+  acknowledgedAt?: string;
+  createdAt: string;
+}
+
+export interface RVSMPalliativeScoreEstimate {
+  patientId: string;
+  estimatedAt: string;
+  ppsEstimate?: {
+    currentEstimate: number;
+    previousEstimate?: number;
+    change?: number;
+    confidence: number; // 0-1
+    factors: string[];
+  };
+  esasEstimate?: {
+    fatigueLevel: number;
+    sleepDisturbance: number;
+    activityDecline: number;
+    estimatedTotalScore: number;
+  };
+  spictEstimate?: {
+    deteriorationRisk: 'low' | 'moderate' | 'high';
+    indicators: string[];
+  };
+}
+
+export interface RVSMDailyReport {
+  id: string;
+  patientId: string;
+  patientName?: string;
+  reportDate: string;
+  activityChangePercent?: number;
+  avgSpO2?: number;
+  avgHeartRate?: number;
+  avgRespiratoryRate?: number;
+  sleepDurationHours?: number;
+  lyingDurationHours?: number;
+  stepsCount?: number;
+  painScoreAvg?: number;
+  stressLevelAvg?: number;
+  fatigueLevelAvg?: number;
+  aiSummary?: string;
+  riskPrediction?: {
+    hospitalizationRisk: 'low' | 'moderate' | 'high';
+    symptomWorseningRisk: 'low' | 'moderate' | 'high';
+    ppsDeclineRisk: 'low' | 'moderate' | 'high';
+    homeVisitNeedRisk: 'low' | 'moderate' | 'high';
+  };
+  createdAt: string;
+}
+
+export interface RVSMFamilyAccess {
+  id: string;
+  patientId: string;
+  familyMemberId: string;
+  familyMemberName: string;
+  relationship: string;
+  canViewActivity: boolean;
+  canViewDeviceStatus: boolean;
+  canViewHealthGraphs: boolean;
+  canReceiveAlerts: boolean;
+  canViewSchedule: boolean;
+  grantedAt: string;
+}
+
+export interface RVSMAuditEntry {
+  id: string;
+  patientId: string;
+  action: 'device_connected' | 'device_disconnected' | 'data_received' | 'data_analyzed' | 'alert_generated' | 'alert_acknowledged' | 'alert_viewed' | 'followup_action' | 'report_generated' | 'family_access_granted' | 'family_access_revoked';
+  performedBy: string;
+  performedByRole: 'doctor' | 'patient' | 'family' | 'system';
+  details?: string;
+  ipAddress?: string;
+  deviceId?: string;
+  createdAt: string;
 }
