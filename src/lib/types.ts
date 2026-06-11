@@ -1231,3 +1231,204 @@ export interface PalliativeDocumentAuditEntry {
   details?: string;
   createdAt: string;
 }
+
+// ── Social Support Management Types ───────────────────────────────────────
+
+export type SocialScreeningPriority = 'rendah' | 'sedang' | 'tinggi';
+export type SocialScreeningStatus = 'lengkap' | 'sebagian' | 'belum_dilakukan';
+export type HousingCondition = 'layak' | 'kurang_layak' | 'tidak_layak';
+export type CaregiverAvailability = 'tersedia' | 'terbatas' | 'tidak_tersedia';
+export type FamilySupportLevel = 'kuat' | 'cukup' | 'lemah' | 'tidak_ada';
+export type TransportDifficulty = 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+export type EconomicConstraint = 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+export type HealthcareAccess = 'mudah' | 'cukup' | 'sulit' | 'sangat_sulit';
+export type MedicalEquipmentNeed = 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+export type SocialAssistanceNeed = 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+export type SocialIsolationRisk = 'rendah' | 'sedang' | 'tinggi';
+
+export interface SocialAssessmentRecord {
+  id: string;
+  palliativePatientId: string;
+  // Screening items
+  housingCondition: HousingCondition;
+  housingNotes?: string;
+  caregiverAvailability: CaregiverAvailability;
+  caregiverNotes?: string;
+  familySupportLevel: FamilySupportLevel;
+  familySupportNotes?: string;
+  transportDifficulty: TransportDifficulty;
+  transportNotes?: string;
+  economicConstraint: EconomicConstraint;
+  economicNotes?: string;
+  healthcareAccess: HealthcareAccess;
+  healthcareAccessNotes?: string;
+  medicalEquipmentNeed: MedicalEquipmentNeed;
+  medicalEquipmentNotes?: string;
+  socialAssistanceNeed: SocialAssistanceNeed;
+  socialAssistanceNotes?: string;
+  socialIsolationRisk: SocialIsolationRisk;
+  socialIsolationNotes?: string;
+  // Results
+  overallStatus: SocialScreeningStatus;
+  priorityLevel: SocialScreeningPriority;
+  recommendations: string[];
+  assessedBy: string;
+  assessedByRole: 'doctor' | 'nurse' | 'social_worker' | 'palliative_team';
+  assessedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CaregiverRole = 'utama' | 'pendamping';
+export type CaregiverRelation = 'suami' | 'istri' | 'anak' | 'orang_tua' | 'saudara' | 'teman' | 'pembantu' | 'perawat' | 'lainnya';
+
+export interface CaregiverInfo {
+  id: string;
+  palliativePatientId: string;
+  name: string;
+  role: CaregiverRole;
+  relation: CaregiverRelation;
+  relationOther?: string;
+  phone: string;
+  email?: string;
+  address?: string;
+  schedule?: string;
+  tasks?: string[];
+  isActive: boolean;
+  zaritScore?: number;
+  zaritLevel?: 'beban_ringan' | 'beban_sedang' | 'beban_berat';
+  familyApgarScore?: number;
+  familyApgarLevel?: 'dysfunctional' | 'severe_dysfunction' | 'moderate_dysfunction' | 'good' | 'high_functional';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MeetingStatus = 'dijadwalkan' | 'berlangsung' | 'selesai' | 'dibatalkan';
+
+export interface FamilyMeetingRecord {
+  id: string;
+  palliativePatientId: string;
+  title: string;
+  scheduledAt: string;
+  duration?: number; // minutes
+  status: MeetingStatus;
+  participants: FamilyMeetingParticipant[];
+  agenda?: string;
+  discussionNotes?: string;
+  resume?: string;
+  followUpActions?: string[];
+  meetingUrl?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FamilyMeetingParticipant {
+  name: string;
+  role: string;
+  email?: string;
+  phone?: string;
+  attended: boolean;
+}
+
+export type EduMaterialCategory = 'perawatan_rumah' | 'panduan_caregiver' | 'video_edukasi' | 'dukungan_psikososial' | 'gawat_darurat' | 'end_of_life' | 'faq';
+
+export interface EduMaterialAccessLog {
+  materialId: string;
+  accessedBy: string;
+  accessedAt: string;
+}
+
+export interface EduMaterial {
+  id: string;
+  title: string;
+  category: EduMaterialCategory;
+  description?: string;
+  type: 'artikel' | 'video' | 'pdf' | 'infografis' | 'faq';
+  url?: string;
+  content?: string;
+  accessCount: number;
+  accessLogs: EduMaterialAccessLog[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FamilyCoordinationNote {
+  id: string;
+  palliativePatientId: string;
+  authorName: string;
+  authorRelation: string;
+  content: string;
+  type: 'perkembangan' | 'tugas' | 'pengingat_obat' | 'pengingat_kontrol' | 'tanggung_jawab' | 'lainnya';
+  isCompleted: boolean;
+  dueDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmergencyContact {
+  id: string;
+  palliativePatientId: string;
+  name: string;
+  role: 'dokter' | 'perawat' | 'caregiver_utama' | 'keluarga' | 'ambulans' | 'rumah_sakit' | 'gawat_darurat' | 'lainnya';
+  phone: string;
+  alternatePhone?: string;
+  isPrimary: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type InsuranceStatus = 'bpjs' | 'asuransi_swasta' | 'tidak_memiliki' | 'campuran';
+export type SocialAidStatus = 'menerima' | 'pernah_menerima' | 'belum_menerima' | 'tidak_berhak';
+
+export interface FinancialSupportRecord {
+  id: string;
+  palliativePatientId: string;
+  insuranceStatus: InsuranceStatus;
+  insuranceDetails?: string;
+  bpjsNumber?: string;
+  socialAidStatus: SocialAidStatus;
+  socialAidDetails?: string;
+  treatmentCostNeed: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  medicalEquipmentCostNeed: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  transportCostNeed: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  recommendedPrograms: string[];
+  notes?: string;
+  assessedBy: string;
+  assessedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TransportNeedType = 'ambulans' | 'ambulans_darurat' | 'kendaraan_pribadi' | 'transportasi_medis' | 'lainnya';
+export type TransportStatus = 'belum_dipesan' | 'dipesan' | 'dalam_perjalanan' | 'selesai' | 'dibatalkan';
+
+export interface TransportRecord {
+  id: string;
+  palliativePatientId: string;
+  type: TransportNeedType;
+  status: TransportStatus;
+  scheduledAt?: string;
+  completedAt?: string;
+  origin: string;
+  destination: string;
+  notes?: string;
+  requestedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SocialMonitoringAlert {
+  id: string;
+  patientId: string;
+  patientName?: string;
+  type: 'isolasi_sosial' | 'beban_caregiver' | 'kendala_ekonomi' | 'akses_kesehatan' | 'transportasi' | 'dukungan_keluarga';
+  severity: 'info' | 'warning' | 'critical';
+  title: string;
+  description: string;
+  isRead: boolean;
+  createdAt: string;
+}

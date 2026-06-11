@@ -143,11 +143,12 @@ import {
 import { PalliativeChatPanel } from './palliative-chat-panel';
 import { MedicationMonitoringDashboard } from './medication-monitoring-dashboard';
 import { PalliativeResumeReferralPanel } from './palliative-resume-referral-panel';
+import SocialSupportPanel from './social-support-panel';
 import { useToast } from '@/hooks/use-toast';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'nutrition' | 'acp' | 'ai' | 'chat' | 'dokumen';
+type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'nutrition' | 'sosial' | 'acp' | 'ai' | 'chat' | 'dokumen';
 
 // ── Helper Functions ─────────────────────────────────────────────────────
 
@@ -3659,7 +3660,7 @@ export function PalliativeMonitoringPanel() {
   };
 
   // ── Main Render ──
-  const needsPatientSelection = ['ttv', 'screening', 'medication', 'nutrition', 'acp', 'ai', 'chat'].includes(
+  const needsPatientSelection = ['ttv', 'screening', 'medication', 'nutrition', 'sosial', 'acp', 'ai', 'chat'].includes(
     activeTab
   );
 
@@ -3698,6 +3699,10 @@ export function PalliativeMonitoringPanel() {
             <Utensils className="w-4 h-4 mr-1" />
             Nutrisi
           </TabsTrigger>
+          <TabsTrigger value="sosial" className="text-xs sm:text-sm">
+            <Users className="w-4 h-4 mr-1" />
+            Sosial
+          </TabsTrigger>
           <TabsTrigger value="acp" className="text-xs sm:text-sm">
             <Shield className="w-4 h-4 mr-1" />
             ACP
@@ -3725,6 +3730,9 @@ export function PalliativeMonitoringPanel() {
         <TabsContent value="screening">{renderScreening()}</TabsContent>
         <TabsContent value="medication">{renderMedication()}</TabsContent>
         <TabsContent value="nutrition">{renderNutrition()}</TabsContent>
+        <TabsContent value="sosial">
+          <SocialSupportPanel palliativePatientId={selectedPalliativePatientId} />
+        </TabsContent>
         <TabsContent value="acp">{renderACP()}</TabsContent>
         <TabsContent value="ai">{renderAI()}</TabsContent>
         <TabsContent value="chat">
