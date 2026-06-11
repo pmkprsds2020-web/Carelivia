@@ -23,7 +23,8 @@ import type {
   NutritionCalculationResult,
   SocialAssessmentRecord, CaregiverInfo, FamilyMeetingRecord,
   EduMaterial, FamilyCoordinationNote, EmergencyContact,
-  FinancialSupportRecord, TransportRecord, SocialMonitoringAlert
+  FinancialSupportRecord, TransportRecord, SocialMonitoringAlert,
+  AISocialAnalysisResult, AISocialAnalysisRecord, AISocialPopulationStats
 } from './types';
 
 interface TelemedicineStore {
@@ -268,6 +269,16 @@ interface TelemedicineStore {
   socialAlerts: SocialMonitoringAlert[];
   addSocialAlert: (alert: SocialMonitoringAlert) => void;
   markSocialAlertRead: (alertId: string) => void;
+
+  // AI Social Needs Analysis
+  aiSocialAnalysisResult: AISocialAnalysisResult | null;
+  setAiSocialAnalysisResult: (result: AISocialAnalysisResult | null) => void;
+  aiSocialAnalysisLoading: boolean;
+  setAiSocialAnalysisLoading: (loading: boolean) => void;
+  aiSocialAnalysisRecords: AISocialAnalysisRecord[];
+  addAiSocialAnalysisRecord: (record: AISocialAnalysisRecord) => void;
+  aiSocialPopulationStats: AISocialPopulationStats | null;
+  setAiSocialPopulationStats: (stats: AISocialPopulationStats | null) => void;
 }
 
 export const useStore = create<TelemedicineStore>((set) => ({
@@ -1522,4 +1533,14 @@ export const useStore = create<TelemedicineStore>((set) => ({
   markSocialAlertRead: (alertId) => set((state) => ({
     socialAlerts: state.socialAlerts.map(a => a.id === alertId ? { ...a, isRead: true } : a),
   })),
+
+  // AI Social Needs Analysis
+  aiSocialAnalysisResult: null,
+  setAiSocialAnalysisResult: (result) => set({ aiSocialAnalysisResult: result }),
+  aiSocialAnalysisLoading: false,
+  setAiSocialAnalysisLoading: (loading) => set({ aiSocialAnalysisLoading: loading }),
+  aiSocialAnalysisRecords: [],
+  addAiSocialAnalysisRecord: (record) => set((state) => ({ aiSocialAnalysisRecords: [...state.aiSocialAnalysisRecords, record] })),
+  aiSocialPopulationStats: null,
+  setAiSocialPopulationStats: (stats) => set({ aiSocialPopulationStats: stats }),
 }));

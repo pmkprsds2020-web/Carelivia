@@ -1432,3 +1432,116 @@ export interface SocialMonitoringAlert {
   isRead: boolean;
   createdAt: string;
 }
+
+// ── AI Social Needs Analysis Types ─────────────────────────────────────────
+
+export type SocialRiskLevel = 'rendah' | 'sedang' | 'tinggi';
+
+export interface AISocialRisk {
+  riskType: 'isolasi_sosial' | 'caregiver_burnout' | 'ketidakpatuhan_terapi' | 'putus_pengobatan' | 'masalah_finansial' | 'akses_layanan' | 'konflik_keluarga' | 'kebutuhan_spiritual' | 'rawat_inap_berulang' | 'penurunan_kualitas_hidup';
+  level: SocialRiskLevel;
+  reason: string;
+}
+
+export interface AIFamilySupportAnalysis {
+  familySupportScore: number; // 0-100
+  caregiverBurnoutRiskScore: number; // 0-100
+  activeFamilyMembers: number;
+  familyInvolvementLevel: 'tinggi' | 'sedang' | 'rendah';
+  needFamilyMeeting: boolean;
+  needFamilyEducation: boolean;
+  recommendations: string[];
+}
+
+export interface AICaregiverAnalysis {
+  status: 'normal' | 'ringan' | 'sedang' | 'berat';
+  zaritScore?: number;
+  physicalBurden: 'rendah' | 'sedang' | 'tinggi';
+  emotionalBurden: 'rendah' | 'sedang' | 'tinggi';
+  companionDuration: string;
+  stressLevel: 'rendah' | 'sedang' | 'tinggi';
+  recommendations: string[];
+}
+
+export interface AIFinancialAnalysis {
+  priorityNeeds: ('bantuan_finansial' | 'alat_kesehatan' | 'nutrisi' | 'transportasi' | 'home_care' | 'pendampingan_sosial')[];
+  bpjsStatus?: string;
+  insuranceStatus?: string;
+  economicConstraintLevel: SocialRiskLevel;
+  socialAssistanceRecommendations: string[];
+}
+
+export interface AITransportAnalysis {
+  accessRiskLevel: SocialRiskLevel;
+  controlDelayRisk: SocialRiskLevel;
+  accessLossRisk: SocialRiskLevel;
+  teleconsultationRecommended: boolean;
+  homeVisitRecommended: boolean;
+  ambulanceRecommended: boolean;
+  recommendations: string[];
+}
+
+export interface AIActionPlanItem {
+  action: string;
+  priority: 'tinggi' | 'sedang' | 'rendah';
+  deadline: string;
+  category: 'family_meeting' | 'caregiver_support' | 'home_visit' | 'family_education' | 'monitoring' | 'financial_support' | 'transport_support' | 'psychosocial' | 'other';
+}
+
+export interface AIEarlyWarning {
+  id: string;
+  patientId: string;
+  type: 'penurunan_dukungan_keluarga' | 'caregiver_burden_meningkat' | 'risiko_putus_pengobatan' | 'distress_tinggi' | 'isolasi_sosial' | 'masalah_finansial_berat' | 'tidak_ada_caregiver_aktif' | 'monitoring_terlambat';
+  severity: 'info' | 'warning' | 'critical';
+  title: string;
+  description: string;
+  isRead: boolean;
+  detectedAt: string;
+  createdAt: string;
+}
+
+export interface AISocialAnalysisResult {
+  // Section 1: Ringkasan Kondisi Sosial
+  socialConditionSummary: string;
+  // Section 2: Identifikasi Risiko Sosial
+  socialRisks: AISocialRisk[];
+  // Section 3: Family Support Analysis
+  familySupportAnalysis: AIFamilySupportAnalysis;
+  // Section 4: Caregiver Analysis
+  caregiverAnalysis: AICaregiverAnalysis;
+  // Section 5: Financial Analysis
+  financialAnalysis: AIFinancialAnalysis;
+  // Section 6: Transport Analysis
+  transportAnalysis: AITransportAnalysis;
+  // Section 7: Action Plan
+  actionPlan: AIActionPlanItem[];
+  // Section 8: Early Warnings
+  earlyWarnings: AIEarlyWarning[];
+  // Metadata
+  generatedAt: string;
+  dataSourcesUsed: string[];
+}
+
+export interface AISocialAnalysisRecord {
+  id: string;
+  palliativePatientId: string;
+  result: AISocialAnalysisResult;
+  generatedBy: string;
+  acceptedActions: string[];
+  rejectedActions: string[];
+  modifiedActions: AIActionPlanItem[];
+  notes?: string;
+  createdAt: string;
+}
+
+export interface AISocialPopulationStats {
+  totalActivePatients: number;
+  highSocialRiskCount: number;
+  caregiverBurnoutCount: number;
+  topSocialNeeds: { need: string; count: number }[];
+  familySupportDistribution: { level: string; count: number }[];
+  socialTrendData: { month: string; highRisk: number; mediumRisk: number; lowRisk: number }[];
+  predictedNeeds30Days: { category: string; estimatedCount: number }[];
+  predictedNeeds90Days: { category: string; estimatedCount: number }[];
+  generatedAt: string;
+}

@@ -51,8 +51,10 @@ import {
   Calendar, Clock, Star, PhoneCall, MessageSquare, Trash2,
   Edit, CheckCircle2, Circle, ArrowRight, TrendingUp,
   FileText, Activity, Shield, Home, Briefcase, Ambulance,
-  ChevronRight, Eye, Download, XCircle, Info, Bell
+  ChevronRight, Eye, Download, XCircle, Info, Bell, Brain
 } from 'lucide-react';
+
+import AISocialAnalysisTab from './ai-social-analysis-tab';
 
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -2490,6 +2492,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
     { value: 'emergency', label: 'Kontak Darurat', icon: Phone },
     { value: 'financial', label: 'Finansial', icon: DollarSign },
     { value: 'transport', label: 'Transportasi', icon: Car },
+    { value: 'ai-analysis', label: 'AI Analisis Sosial', icon: Brain },
   ];
 
   return (
@@ -2536,6 +2539,9 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
         </TabsContent>
         <TabsContent value="transport" className="mt-4">
           <TransportTab />
+        </TabsContent>
+        <TabsContent value="ai-analysis" className="mt-4">
+          <AISocialAnalysisTab palliativePatientId={palliativePatientId} />
         </TabsContent>
       </Tabs>
     </div>
