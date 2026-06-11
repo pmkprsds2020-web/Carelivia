@@ -17,7 +17,10 @@ import type {
   MedicationMonitoringFormInfo, MedicationMonitoringAlert, MedicationMonitoringAuditEntry,
   MedicationComplianceSummary,
   PalliativeResumeMedis, PalliativeReferralLetter, PalliativeDocumentAuditEntry,
-  ReferralTargetDepartment, ReferralStatus
+  ReferralTargetDepartment, ReferralStatus,
+  NutritionRecordInfo, NutritionAIRecommendation, NutritionActivityLevel,
+  NutritionWeightStatus, NutritionMetabolicStress, NutritionSpecialCondition,
+  NutritionCalculationResult
 } from './types';
 
 interface TelemedicineStore {
@@ -146,6 +149,13 @@ interface TelemedicineStore {
   addPalliativeScreeningRecord: (record: PalliativeScreeningRecordInfo) => void;
   palliativeAiSummary: string;
   setPalliativeAiSummary: (summary: string) => void;
+
+  // Nutrition Records
+  nutritionRecords: NutritionRecordInfo[];
+  setNutritionRecords: (records: NutritionRecordInfo[]) => void;
+  addNutritionRecord: (record: NutritionRecordInfo) => void;
+  nutritionAiRecommendation: NutritionAIRecommendation | null;
+  setNutritionAiRecommendation: (rec: NutritionAIRecommendation | null) => void;
 
   // Palliative Chat
   palliativeChatMessages: PalliativeChatMessage[];
@@ -693,6 +703,54 @@ export const useStore = create<TelemedicineStore>((set) => ({
   addPalliativeScreeningRecord: (record) => set((state) => ({ palliativeScreeningRecords: [...state.palliativeScreeningRecords, record] })),
   palliativeAiSummary: '',
   setPalliativeAiSummary: (summary) => set({ palliativeAiSummary: summary }),
+  nutritionRecords: [
+    {
+      id: 'nr-1', palliativePatientId: 'pp-1', age: 81, gender: 'P', weight: 48, height: 155,
+      activityLevel: 'bed_rest', metabolicStress: 'sedang', specialCondition: 'tidak_ada',
+      calculation: {
+        bmi: 19.98, bmiCategory: 'normal', idealBodyWeight: 49.5, basalCalories: 1237.5,
+        ageCorrectionKcal: -247.5, ageCorrectionPercent: -20, activityCorrectionKcal: 123.75, activityCorrectionPercent: 10,
+        weightCorrectionKcal: 0, weightCorrectionPercent: 0, stressCorrectionKcal: 247.5, stressCorrectionPercent: 20,
+        specialConditionKcal: 0, totalCalorieNeeds: 1361.25,
+        carbohydrateKcal: 612.56, proteinKcal: 340.31, fatKcal: 272.25, mineralKcal: 136.13,
+        carbohydrateGrams: 153.14, proteinGrams: 85.08, fatGrams: 30.25,
+      },
+      actualIntakeKcal: 1100, notes: 'Pasien makan sedikit, sering mual',
+      recordedBy: 'dr. Sarah Wijaya', recordedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString(),
+    },
+    {
+      id: 'nr-2', palliativePatientId: 'pp-2', age: 72, gender: 'L', weight: 55, height: 165,
+      activityLevel: 'ringan', metabolicStress: 'ringan', specialCondition: 'tidak_ada',
+      calculation: {
+        bmi: 20.2, bmiCategory: 'normal', idealBodyWeight: 58.5, basalCalories: 1755,
+        ageCorrectionKcal: -351, ageCorrectionPercent: -20, activityCorrectionKcal: 263.25, activityCorrectionPercent: 15,
+        weightCorrectionKcal: 0, weightCorrectionPercent: 0, stressCorrectionKcal: 175.5, stressCorrectionPercent: 10,
+        specialConditionKcal: 0, totalCalorieNeeds: 1842.75,
+        carbohydrateKcal: 829.24, proteinKcal: 460.69, fatKcal: 368.55, mineralKcal: 184.28,
+        carbohydrateGrams: 207.31, proteinGrams: 115.17, fatGrams: 40.95,
+      },
+      actualIntakeKcal: 1500, notes: 'Nafsu makan menurun, sesak saat makan',
+      recordedBy: 'dr. Lisa Permata', recordedAt: new Date(Date.now() - 172800000).toISOString(), createdAt: new Date(Date.now() - 172800000).toISOString(),
+    },
+    {
+      id: 'nr-3', palliativePatientId: 'pp-3', age: 68, gender: 'P', weight: 40, height: 150,
+      activityLevel: 'bed_rest', metabolicStress: 'berat', specialCondition: 'tidak_ada',
+      calculation: {
+        bmi: 17.78, bmiCategory: 'underweight', idealBodyWeight: 45, basalCalories: 1125,
+        ageCorrectionKcal: -112.5, ageCorrectionPercent: -10, activityCorrectionKcal: 112.5, activityCorrectionPercent: 10,
+        weightCorrectionKcal: 225, weightCorrectionPercent: 20, stressCorrectionKcal: 337.5, stressCorrectionPercent: 30,
+        specialConditionKcal: 0, totalCalorieNeeds: 1687.5,
+        carbohydrateKcal: 759.38, proteinKcal: 421.88, fatKcal: 337.5, mineralKcal: 168.75,
+        carbohydrateGrams: 189.84, proteinGrams: 105.47, fatGrams: 37.5,
+      },
+      actualIntakeKcal: 650, notes: 'Cachexia berat, mual muntah terus menerus',
+      recordedBy: 'dr. Lisa Permata', recordedAt: new Date(Date.now() - 259200000).toISOString(), createdAt: new Date(Date.now() - 259200000).toISOString(),
+    },
+  ] as NutritionRecordInfo[],
+  setNutritionRecords: (records) => set({ nutritionRecords: records }),
+  addNutritionRecord: (record) => set((state) => ({ nutritionRecords: [...state.nutritionRecords, record] })),
+  nutritionAiRecommendation: null,
+  setNutritionAiRecommendation: (rec) => set({ nutritionAiRecommendation: rec }),
 
   // Palliative Chat
   palliativeChatMessages: [

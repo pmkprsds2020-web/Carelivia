@@ -709,6 +709,68 @@ export interface PalliativeAuditEntry {
 
 // ── TelePalliative Care Integration Types ──────────────────────────────────
 
+// ── Nutrition & Calorie Calculator Types ──────────────────────────────────
+
+export type NutritionActivityLevel = 'bed_rest' | 'ringan' | 'sedang' | 'berat';
+export type NutritionWeightStatus = 'underweight' | 'normal' | 'overweight' | 'obesitas';
+export type NutritionMetabolicStress = 'ringan' | 'sedang' | 'berat' | 'tidak_ada';
+export type NutritionSpecialCondition = 'tidak_ada' | 'hamil' | 'laktasi';
+
+export interface NutritionCalculationResult {
+  bmi: number;
+  bmiCategory: NutritionWeightStatus;
+  idealBodyWeight: number;
+  basalCalories: number;
+  ageCorrectionKcal: number;
+  ageCorrectionPercent: number;
+  activityCorrectionKcal: number;
+  activityCorrectionPercent: number;
+  weightCorrectionKcal: number;
+  weightCorrectionPercent: number;
+  stressCorrectionKcal: number;
+  stressCorrectionPercent: number;
+  specialConditionKcal: number;
+  totalCalorieNeeds: number;
+  carbohydrateKcal: number;
+  proteinKcal: number;
+  fatKcal: number;
+  mineralKcal: number;
+  carbohydrateGrams: number;
+  proteinGrams: number;
+  fatGrams: number;
+}
+
+export interface NutritionRecordInfo {
+  id: string;
+  palliativePatientId: string;
+  age: number;
+  gender: 'L' | 'P';
+  weight: number;
+  height: number;
+  activityLevel: NutritionActivityLevel;
+  metabolicStress: NutritionMetabolicStress;
+  specialCondition: NutritionSpecialCondition;
+  calculation: NutritionCalculationResult;
+  actualIntakeKcal?: number;
+  notes?: string;
+  recordedBy?: string;
+  recordedAt: string;
+  createdAt: string;
+}
+
+export interface NutritionAIRecommendation {
+  targetCalories: number;
+  targetProteinGrams: number;
+  mealPattern: string;
+  mealFrequency: string;
+  supplementRecommendation: string;
+  malnutritionRisk: 'rendah' | 'sedang' | 'tinggi';
+  recommendations: string[];
+  generatedAt: string;
+}
+
+// ── TelePalliative Care Integration Types (continued) ──────────────────────
+
 export type PalliativeMonitoringStatus =
   | 'monitoring_aktif'
   | 'stabil'

@@ -194,3 +194,40 @@ Stage Summary:
 - Removed Skrining and Resume & Rujukan from dashboard quick actions
 - Dashboard summary reduced from 9 to 7 cards
 - All changes maintain clean, focused UI for clinical workflow
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Add Kalkulator Kebutuhan Kalori Pasien Paliatif
+
+Work Log:
+- Added NutritionRecordInfo, NutritionCalculationResult, NutritionAIRecommendation types to types.ts
+- Added nutrition store state (nutritionRecords, addNutritionRecord, nutritionAiRecommendation, setNutritionAiRecommendation) to store.ts
+- Added 3 seed nutrition records for existing patients (pp-1, pp-2, pp-3)
+- Added Nutrisi tab to Monitoring Paliatif (MonitorTab type updated)
+- Built comprehensive renderNutrition() function with:
+  - Calorie Achievement Status card (green/yellow/red indicator based on intake vs target)
+  - Kalkulator Kebutuhan Kalori with all inputs (age, gender, weight, height, activity, stress, special conditions)
+  - BMI auto-calculation with category (Underweight/Normal/Overweight/Obesitas)
+  - BBI (Berat Badan Ideal) calculation using Broca formula
+  - Basal calories: L=30×BBI, P=25×BBI
+  - Correction factors: Age (-20% for ≥70), Activity (+10-30%), Weight status (+20/-20%), Metabolic stress (+10-30%), Special conditions (+300/+500)
+  - Macronutrient distribution: Carbohydrate 45%, Protein 25%, Fat 20%, Mineral 10%
+  - Save to Monitoring functionality
+  - AI Nutrition Recommendation integration with /api/palliative-nutrition-ai endpoint
+  - Nutrition symptom selector (Mual, Muntah, Disfagia, Cachexia, Anoreksia, etc.)
+  - Nutrition trend charts (Kalori, BB & BMI) using recharts
+  - Nutrition history table with status badges
+- Created /api/palliative-nutrition-ai API endpoint for AI nutrition recommendations
+- Added Nutrisi quick action button on dashboard patient cards
+- Added Nutrisi indicator on dashboard patient cards showing calorie achievement percentage
+- All lint checks pass
+- Verified with Agent Browser: Nutrisi tab renders correctly, calorie status shows, calculator works
+
+Stage Summary:
+- Complete Kalkulator Kebutuhan Kalori feature added to Monitoring Paliatif
+- Nutrisi tab with 10 tab items (Dashboard, Pasien, TTV, Skrining, Obat, Nutrisi, ACP, AI, Chat, Dokumen)
+- Dashboard shows nutrition status badges per patient (e.g., "81% — Tercapai" for Siti Rahayu)
+- AI nutrition recommendation API endpoint created
+- All calculations follow clinical standards (BMI, BBI, basal calories, correction factors)
+- Macronutrient distribution with kcal and gram conversions

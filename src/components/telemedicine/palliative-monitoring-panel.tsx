@@ -21,6 +21,13 @@ import type {
   PalliativeChatMessage,
   PalliativeAuditEntry,
   PalliativeProgramCompletionReason,
+  NutritionRecordInfo,
+  NutritionActivityLevel,
+  NutritionMetabolicStress,
+  NutritionSpecialCondition,
+  NutritionWeightStatus,
+  NutritionCalculationResult,
+  NutritionAIRecommendation,
 } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -124,6 +131,14 @@ import {
   CalendarCheck,
   FileCheck,
   Archive,
+  Utensils,
+  Calculator,
+  Download,
+  Printer,
+  Send,
+  Apple,
+  Scale,
+  Flame,
 } from 'lucide-react';
 import { PalliativeChatPanel } from './palliative-chat-panel';
 import { MedicationMonitoringDashboard } from './medication-monitoring-dashboard';
@@ -132,7 +147,7 @@ import { useToast } from '@/hooks/use-toast';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'acp' | 'ai' | 'chat' | 'dokumen';
+type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'nutrition' | 'acp' | 'ai' | 'chat' | 'dokumen';
 
 // ── Helper Functions ─────────────────────────────────────────────────────
 
@@ -273,6 +288,20 @@ export function PalliativeMonitoringPanel() {
   const [programCompletionNotes, setProgramCompletionNotes] = useState('');
   const [patientListFilter, setPatientListFilter] = useState<'aktif' | 'program_selesai'>('aktif');
   const [showPatientDetail, setShowPatientDetail] = useState<string | null>(null);
+  // Nutrition state
+  const [nutAge, setNutAge] = useState<string>('');
+  const [nutGender, setNutGender] = useState<'L' | 'P'>('L');
+  const [nutWeight, setNutWeight] = useState<string>('');
+  const [nutHeight, setNutHeight] = useState<string>('');
+  const [nutActivity, setNutActivity] = useState<NutritionActivityLevel>('bed_rest');
+  const [nutStress, setNutStress] = useState<NutritionMetabolicStress>('tidak_ada');
+  const [nutSpecial, setNutSpecial] = useState<NutritionSpecialCondition>('tidak_ada');
+  const [nutActualIntake, setNutActualIntake] = useState<string>('');
+  const [nutNotes, setNutNotes] = useState<string>('');
+  const [nutResult, setNutResult] = useState<NutritionCalculationResult | null>(null);
+  const [aiNutLoading, setAiNutLoading] = useState(false);
+  const [showAiNutResult, setShowAiNutResult] = useState(false);
+  const [selectedNutSymptoms, setSelectedNutSymptoms] = useState<string[]>([]);
   const [vitalPeriod, setVitalPeriod] = useState<'harian' | 'mingguan' | 'bulanan'>('harian');
   const [acpStep, setAcpStep] = useState(0);
   const [showACPDetail, setShowACPDetail] = useState<string | null>(null);
@@ -314,6 +343,10 @@ export function PalliativeMonitoringPanel() {
     palliativeScreeningRecords,
     palliativeAiSummary,
     setPalliativeAiSummary,
+    nutritionRecords,
+    addNutritionRecord,
+    nutritionAiRecommendation,
+    setNutritionAiRecommendation,
     currentUser,
     doctors,
     palliativeChatMessages,
@@ -1401,6 +1434,24 @@ export function PalliativeMonitoringPanel() {
                             'Belum ada'
                           )}
                         </span>
+                        {(() => {
+                          const pNut = nutritionRecords
+                            .filter(n => n.palliativePatientId === patient.id)
+                            .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime())[0];
+                          if (!pNut) return null;
+                          const nutPct = pNut.actualIntakeKcal && pNut.calculation.totalCalorieNeeds
+                            ? Math.round((pNut.actualIntakeKcal / pNut.calculation.totalCalorieNeeds) * 100) : 0;
+                          const nutColor = nutPct >= 80 ? 'bg-green-100 text-green-800 border-green-300' : nutPct >= 50 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-red-100 text-red-800 border-red-300';
+                          return (
+                            <span className="flex items-center gap-1">
+                              <Utensils className="w-3 h-3" />
+                              Nutrisi:{' '}
+                              <Badge variant="outline" className={cn('text-[10px] px-1', nutColor)}>
+                                {nutPct}%
+                              </Badge>
+                            </span>
+                          );
+                        })()}
                       </div>
                     )}
                     {!isCompleted && riskIndicators.length > 0 && (
@@ -1444,6 +1495,9 @@ export function PalliativeMonitoringPanel() {
                       </Button>
                       <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('medication'); }}>
                         <Pill className="w-3 h-3 mr-1" /> Obat
+                      </Button>
+                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('nutrition'); }}>
+                        <Utensils className="w-3 h-3 mr-1" /> Nutrisi
                       </Button>
                       <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('acp'); }}>
                         <Shield className="w-3 h-3 mr-1" /> ACP
@@ -2906,8 +2960,706 @@ export function PalliativeMonitoringPanel() {
     </div>
   );
 
+  // ── Render: Nutrition & Calorie Calculator ──
+  const renderNutrition = () => {
+    // Pre-fill from patient data
+    const pPatient = palliativePatients.find(p => p.id === selectedPalliativePatientId);
+
+    // Nutrition history for the selected patient
+    const patientNutritionRecords = nutritionRecords
+      .filter(r => r.palliativePatientId === selectedPalliativePatientId)
+      .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime());
+
+    const latestNutrition = patientNutritionRecords[0];
+
+    const symptomOptions = ['Mual', 'Muntah', 'Disfagia', 'Cachexia', 'Anoreksia', 'Diare', 'Konstipasi', 'Sariawan', 'Nyeri saat menelan', 'Sesak saat makan'];
+
+    const calculateNutrition = () => {
+      const age = parseFloat(nutAge);
+      const weight = parseFloat(nutWeight);
+      const height = parseFloat(nutHeight);
+      if (!age || !weight || !height || age <= 0 || weight <= 0 || height <= 0) {
+        toast({ title: 'Data Tidak Lengkap', description: 'Harap isi usia, berat badan, dan tinggi badan', variant: 'destructive' });
+        return;
+      }
+
+      const heightM = height / 100;
+      const bmi = weight / (heightM * heightM);
+      let bmiCategory: NutritionWeightStatus;
+      if (bmi < 18.5) bmiCategory = 'underweight';
+      else if (bmi < 25) bmiCategory = 'normal';
+      else if (bmi < 30) bmiCategory = 'overweight';
+      else bmiCategory = 'obesitas';
+
+      // BBI = (TB - 100) - 10% × (TB - 100)
+      const ibw = (height - 100) - (0.1 * (height - 100));
+
+      // Basal calories
+      const basalCalories = nutGender === 'L' ? 30 * ibw : 25 * ibw;
+
+      // Age correction
+      let agePercent = 0;
+      if (age < 40) agePercent = 0;
+      else if (age < 60) agePercent = -5;
+      else if (age < 70) agePercent = -10;
+      else agePercent = -20;
+      const ageKcal = basalCalories * (agePercent / 100);
+
+      // Activity correction
+      const activityMap: Record<NutritionActivityLevel, number> = {
+        bed_rest: 10, ringan: 15, sedang: 20, berat: 30,
+      };
+      const activityPercent = activityMap[nutActivity];
+      const activityKcal = (basalCalories + ageKcal) * (activityPercent / 100);
+
+      // Weight status correction
+      const weightMap: Record<NutritionWeightStatus, number> = {
+        underweight: 20, normal: 0, overweight: -10, obesitas: -20,
+      };
+      const weightPercent = weightMap[bmiCategory];
+      const weightKcal = (basalCalories + ageKcal + activityKcal) * (weightPercent / 100);
+
+      // Metabolic stress correction
+      const stressMap: Record<NutritionMetabolicStress, number> = {
+        tidak_ada: 0, ringan: 10, sedang: 20, berat: 30,
+      };
+      const stressPercent = stressMap[nutStress];
+      const stressKcal = (basalCalories + ageKcal + activityKcal + weightKcal) * (stressPercent / 100);
+
+      // Special condition
+      const specialMap: Record<NutritionSpecialCondition, number> = {
+        tidak_ada: 0, hamil: 300, laktasi: 500,
+      };
+      const specialKcal = specialMap[nutSpecial];
+
+      const totalCalories = basalCalories + ageKcal + activityKcal + weightKcal + stressKcal + specialKcal;
+
+      // Macronutrient distribution
+      const carbKcal = totalCalories * 0.45;
+      const protKcal = totalCalories * 0.25;
+      const fatKcal = totalCalories * 0.20;
+      const mineralKcal = totalCalories * 0.10;
+
+      const result: NutritionCalculationResult = {
+        bmi: Math.round(bmi * 100) / 100,
+        bmiCategory,
+        idealBodyWeight: Math.round(ibw * 10) / 10,
+        basalCalories: Math.round(basalCalories * 100) / 100,
+        ageCorrectionKcal: Math.round(ageKcal * 100) / 100,
+        ageCorrectionPercent: agePercent,
+        activityCorrectionKcal: Math.round(activityKcal * 100) / 100,
+        activityCorrectionPercent: activityPercent,
+        weightCorrectionKcal: Math.round(weightKcal * 100) / 100,
+        weightCorrectionPercent: weightPercent,
+        stressCorrectionKcal: Math.round(stressKcal * 100) / 100,
+        stressCorrectionPercent: stressPercent,
+        specialConditionKcal: specialKcal,
+        totalCalorieNeeds: Math.round(totalCalories * 100) / 100,
+        carbohydrateKcal: Math.round(carbKcal * 100) / 100,
+        proteinKcal: Math.round(protKcal * 100) / 100,
+        fatKcal: Math.round(fatKcal * 100) / 100,
+        mineralKcal: Math.round(mineralKcal * 100) / 100,
+        carbohydrateGrams: Math.round((carbKcal / 4) * 100) / 100,
+        proteinGrams: Math.round((protKcal / 4) * 100) / 100,
+        fatGrams: Math.round((fatKcal / 9) * 100) / 100,
+      };
+      setNutResult(result);
+    };
+
+    const handleSaveNutrition = () => {
+      if (!nutResult || !selectedPalliativePatientId) return;
+      const record: NutritionRecordInfo = {
+        id: `nr-${Date.now()}`,
+        palliativePatientId: selectedPalliativePatientId,
+        age: parseFloat(nutAge),
+        gender: nutGender,
+        weight: parseFloat(nutWeight),
+        height: parseFloat(nutHeight),
+        activityLevel: nutActivity,
+        metabolicStress: nutStress,
+        specialCondition: nutSpecial,
+        calculation: nutResult,
+        actualIntakeKcal: nutActualIntake ? parseFloat(nutActualIntake) : undefined,
+        notes: nutNotes || undefined,
+        recordedBy: currentUser?.name || undefined,
+        recordedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      };
+      addNutritionRecord(record);
+      toast({ title: 'Berhasil Disimpan', description: 'Data nutrisi pasien telah disimpan' });
+    };
+
+    const handleGenerateAI = async () => {
+      if (!nutResult || !pPatient) {
+        toast({ title: 'Data Tidak Lengkap', description: 'Hitung kebutuhan kalori terlebih dahulu', variant: 'destructive' });
+        return;
+      }
+      setAiNutLoading(true);
+      try {
+        const res = await fetch('/api/palliative-nutrition-ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patientData: {
+              name: pPatient.patientName, age: nutAge, gender: nutGender,
+              diagnosis: pPatient.primaryDiagnosis, diseaseStage: pPatient.diseaseStage,
+              careStatus: pPatient.careStatus, riskLevel: pPatient.riskLevel,
+              weight: nutWeight, height: nutHeight,
+              bmi: nutResult.bmi, bmiCategory: nutResult.bmiCategory,
+            },
+            nutritionData: {
+              totalCalorieNeeds: nutResult.totalCalorieNeeds,
+              basalCalories: nutResult.basalCalories,
+              idealBodyWeight: nutResult.idealBodyWeight,
+              actualIntakeKcal: nutActualIntake || 0,
+              activityLevel: nutActivity,
+              metabolicStress: nutStress,
+              specialCondition: nutSpecial,
+              macronutrients: {
+                carbohydrateKcal: nutResult.carbohydrateKcal,
+                proteinKcal: nutResult.proteinKcal,
+                fatKcal: nutResult.fatKcal,
+                mineralKcal: nutResult.mineralKcal,
+                carbohydrateGrams: nutResult.carbohydrateGrams,
+                proteinGrams: nutResult.proteinGrams,
+                fatGrams: nutResult.fatGrams,
+              },
+            },
+            symptoms: selectedNutSymptoms,
+          }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        setNutritionAiRecommendation({ ...data, generatedAt: new Date().toISOString() });
+        setShowAiNutResult(true);
+        toast({ title: 'Rekomendasi AI', description: 'Rekomendasi nutrisi AI berhasil dibuat' });
+      } catch (err) {
+        toast({ title: 'Gagal', description: 'Gagal menghasilkan rekomendasi AI', variant: 'destructive' });
+      } finally {
+        setAiNutLoading(false);
+      }
+    };
+
+    const getBmiColor = (cat: NutritionWeightStatus) => {
+      switch (cat) {
+        case 'underweight': return 'text-amber-600';
+        case 'normal': return 'text-green-600';
+        case 'overweight': return 'text-amber-600';
+        case 'obesitas': return 'text-red-600';
+      }
+    };
+
+    const getBmiBg = (cat: NutritionWeightStatus) => {
+      switch (cat) {
+        case 'underweight': return 'bg-amber-50 border-amber-200';
+        case 'normal': return 'bg-green-50 border-green-200';
+        case 'overweight': return 'bg-amber-50 border-amber-200';
+        case 'obesitas': return 'bg-red-50 border-red-200';
+      }
+    };
+
+    const getBmiLabel = (cat: NutritionWeightStatus) => {
+      switch (cat) {
+        case 'underweight': return 'Underweight';
+        case 'normal': return 'Normal';
+        case 'overweight': return 'Overweight';
+        case 'obesitas': return 'Obesitas';
+      }
+    };
+
+    const getCalorieStatus = (actual?: number, target?: number) => {
+      if (!actual || !target) return { label: 'Belum ada data', color: 'text-muted-foreground', bg: 'bg-muted', percent: 0 };
+      const pct = Math.round((actual / target) * 100);
+      if (pct >= 80) return { label: `${pct}% — Tercapai`, color: 'text-green-700', bg: 'bg-green-50 border-green-300', percent: pct };
+      if (pct >= 50) return { label: `${pct}% — Perlu Perhatian`, color: 'text-amber-700', bg: 'bg-amber-50 border-amber-300', percent: pct };
+      return { label: `${pct}% — Kritis`, color: 'text-red-700', bg: 'bg-red-50 border-red-300', percent: pct };
+    };
+
+    // Trend data for charts
+    const trendData = patientNutritionRecords.slice(0, 10).reverse().map(r => ({
+      tanggal: new Date(r.recordedAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }),
+      BB: r.weight,
+      BMI: r.calculation.bmi,
+      Kebutuhan: Math.round(r.calculation.totalCalorieNeeds),
+      Asupan: r.actualIntakeKcal || 0,
+    }));
+
+    // Auto-fill from patient data
+    const effectiveAge = nutAge || (pPatient?.dateOfBirth ? Math.floor((Date.now() - new Date(pPatient.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : '');
+    const effectiveGender = nutGender || (pPatient?.gender === 'Perempuan' ? 'P' : 'L');
+    const latestVital = vitalSignRecords
+      .filter(v => v.palliativePatientId === selectedPalliativePatientId)
+      .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime())[0];
+    const effectiveWeight = nutWeight || (latestVital?.weight?.toString() || '');
+    const effectiveHeight = nutHeight || (latestVital?.height?.toString() || '');
+
+    const calorieStatus = getCalorieStatus(
+      latestNutrition?.actualIntakeKcal,
+      latestNutrition?.calculation.totalCalorieNeeds
+    );
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Utensils className="w-5 h-5 text-primary" />
+            Nutrisi & Kalori Pasien Paliatif
+          </h2>
+        </div>
+
+        {/* Calorie Achievement Status */}
+        {latestNutrition && (
+          <Card className={cn('border p-4', calorieStatus.bg)}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Flame className="w-5 h-5" />
+                <span className="font-semibold">Status Pencapaian Kalori</span>
+              </div>
+              <Badge className={cn('font-bold', calorieStatus.color)}>
+                {calorieStatus.label}
+              </Badge>
+            </div>
+            <div className="mt-2">
+              <Progress value={calorieStatus.percent} className="h-3" />
+              <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                <span>Asupan: {latestNutrition.actualIntakeKcal || 0} kkal</span>
+                <span>Target: {Math.round(latestNutrition.calculation.totalCalorieNeeds)} kkal/hari</span>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Calculator Input */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Calculator className="w-4 h-4 text-primary" />
+                Kalkulator Kebutuhan Kalori
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Hitung kebutuhan kalori harian berdasarkan data pasien
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Patient Data */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Usia (tahun) *</Label>
+                  <Input type="number" value={nutAge} onChange={e => setNutAge(e.target.value)} placeholder={effectiveAge ? String(effectiveAge) : 'Usia'} />
+                </div>
+                <div>
+                  <Label className="text-xs">Jenis Kelamin *</Label>
+                  <Select value={nutGender} onValueChange={v => setNutGender(v as 'L' | 'P')}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="L">Laki-laki</SelectItem>
+                      <SelectItem value="P">Perempuan</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Berat Badan (kg) *</Label>
+                  <Input type="number" value={nutWeight} onChange={e => setNutWeight(e.target.value)} placeholder={effectiveWeight || 'BB'} />
+                </div>
+                <div>
+                  <Label className="text-xs">Tinggi Badan (cm) *</Label>
+                  <Input type="number" value={nutHeight} onChange={e => setNutHeight(e.target.value)} placeholder={effectiveHeight || 'TB'} />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Correction Factors */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Faktor Koreksi</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Aktivitas Fisik</Label>
+                    <Select value={nutActivity} onValueChange={v => setNutActivity(v as NutritionActivityLevel)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="bed_rest">Bed Rest (+10%)</SelectItem>
+                        <SelectItem value="ringan">Ringan (+15%)</SelectItem>
+                        <SelectItem value="sedang">Sedang (+20%)</SelectItem>
+                        <SelectItem value="berat">Berat (+30%)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Stres Metabolik</Label>
+                    <Select value={nutStress} onValueChange={v => setNutStress(v as NutritionMetabolicStress)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="tidak_ada">Tidak ada (0%)</SelectItem>
+                        <SelectItem value="ringan">Ringan (+10%)</SelectItem>
+                        <SelectItem value="sedang">Sedang (+20%)</SelectItem>
+                        <SelectItem value="berat">Berat (+30%)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Kondisi Khusus</Label>
+                  <Select value={nutSpecial} onValueChange={v => setNutSpecial(v as NutritionSpecialCondition)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="tidak_ada">Tidak ada</SelectItem>
+                      <SelectItem value="hamil">Hamil (+300 kkal)</SelectItem>
+                      <SelectItem value="laktasi">Laktasi (+500 kkal)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Actual intake & symptoms */}
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs">Asupan Kalori Aktual (kkal)</Label>
+                  <Input type="number" value={nutActualIntake} onChange={e => setNutActualIntake(e.target.value)} placeholder="Jika diketahui" />
+                </div>
+                <div>
+                  <Label className="text-xs">Gejala Terkait Nutrisi</Label>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {symptomOptions.map(s => (
+                      <button
+                        key={s}
+                        className={cn(
+                          'px-2 py-1 rounded-full text-[10px] font-medium border transition-colors',
+                          selectedNutSymptoms.includes(s)
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-muted text-muted-foreground border-border hover:bg-accent'
+                        )}
+                        onClick={() => setSelectedNutSymptoms(prev =>
+                          prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+                        )}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Catatan</Label>
+                  <Textarea value={nutNotes} onChange={e => setNutNotes(e.target.value)} placeholder="Catatan tambahan..." className="text-xs" rows={2} />
+                </div>
+              </div>
+
+              <Button className="w-full" onClick={calculateNutrition}>
+                <Calculator className="w-4 h-4 mr-2" />
+                Hitung Kebutuhan Kalori
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Results */}
+          <div className="space-y-4">
+            {nutResult ? (
+              <>
+                {/* BMI Card */}
+                <Card className={cn('border', getBmiBg(nutResult.bmiCategory))}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold">BMI (Indeks Massa Tubuh)</span>
+                      <Badge className={cn('font-bold', getBmiColor(nutResult.bmiCategory))}>
+                        {getBmiLabel(nutResult.bmiCategory)}
+                      </Badge>
+                    </div>
+                    <div className="text-center py-2">
+                      <p className="text-4xl font-black" style={{ color: 'var(--foreground)' }}>{nutResult.bmi}</p>
+                      <p className="text-xs text-muted-foreground mt-1">kg/m²</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+                      <div className="p-2 rounded bg-background/60">
+                        <span className="text-muted-foreground">Berat Badan Ideal</span>
+                        <p className="font-bold">{nutResult.idealBodyWeight} kg</p>
+                      </div>
+                      <div className="p-2 rounded bg-background/60">
+                        <span className="text-muted-foreground">Kalori Basal</span>
+                        <p className="font-bold">{Math.round(nutResult.basalCalories)} kkal</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Calorie Breakdown Table */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Rincian Perhitungan Kalori</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-0">
+                    <table className="w-full text-sm">
+                      <tbody>
+                        <tr className="border-b border-border">
+                          <td className="py-2 text-muted-foreground">Kalori Basal</td>
+                          <td className="py-2 text-right font-medium">{Math.round(nutResult.basalCalories)} kkal</td>
+                        </tr>
+                        <tr className="border-b border-border">
+                          <td className="py-2 text-muted-foreground">Koreksi Usia ({nutResult.ageCorrectionPercent}%)</td>
+                          <td className="py-2 text-right font-medium">{nutResult.ageCorrectionKcal > 0 ? '+' : ''}{Math.round(nutResult.ageCorrectionKcal)} kkal</td>
+                        </tr>
+                        <tr className="border-b border-border">
+                          <td className="py-2 text-muted-foreground">Koreksi Aktivitas (+{nutResult.activityCorrectionPercent}%)</td>
+                          <td className="py-2 text-right font-medium">+{Math.round(nutResult.activityCorrectionKcal)} kkal</td>
+                        </tr>
+                        <tr className="border-b border-border">
+                          <td className="py-2 text-muted-foreground">Koreksi Berat Badan ({nutResult.weightCorrectionPercent > 0 ? '+' : ''}{nutResult.weightCorrectionPercent}%)</td>
+                          <td className="py-2 text-right font-medium">{nutResult.weightCorrectionKcal > 0 ? '+' : ''}{Math.round(nutResult.weightCorrectionKcal)} kkal</td>
+                        </tr>
+                        <tr className="border-b border-border">
+                          <td className="py-2 text-muted-foreground">Koreksi Stres Metabolik (+{nutResult.stressCorrectionPercent}%)</td>
+                          <td className="py-2 text-right font-medium">+{Math.round(nutResult.stressCorrectionKcal)} kkal</td>
+                        </tr>
+                        {nutResult.specialConditionKcal > 0 && (
+                          <tr className="border-b border-border">
+                            <td className="py-2 text-muted-foreground">Hamil/Laktasi</td>
+                            <td className="py-2 text-right font-medium">+{nutResult.specialConditionKcal} kkal</td>
+                          </tr>
+                        )}
+                        <tr className="bg-primary/5">
+                          <td className="py-3 font-bold">Total Kebutuhan Kalori</td>
+                          <td className="py-3 text-right font-black text-primary text-lg">{Math.round(nutResult.totalCalorieNeeds)} kkal/hari</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </CardContent>
+                </Card>
+
+                {/* Macronutrient Distribution */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Distribusi Makronutrien</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-0">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="py-1.5 text-left text-xs text-muted-foreground">Nutrisi</th>
+                          <th className="py-1.5 text-center text-xs text-muted-foreground">%</th>
+                          <th className="py-1.5 text-center text-xs text-muted-foreground">Kkal</th>
+                          <th className="py-1.5 text-right text-xs text-muted-foreground">Gram</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-b border-border">
+                          <td className="py-2 flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-amber-500" />Karbohidrat</td>
+                          <td className="py-2 text-center">45%</td>
+                          <td className="py-2 text-center font-medium">{Math.round(nutResult.carbohydrateKcal)}</td>
+                          <td className="py-2 text-right font-medium">{Math.round(nutResult.carbohydrateGrams)} g</td>
+                        </tr>
+                        <tr className="border-b border-border">
+                          <td className="py-2 flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500" />Protein</td>
+                          <td className="py-2 text-center">25%</td>
+                          <td className="py-2 text-center font-medium">{Math.round(nutResult.proteinKcal)}</td>
+                          <td className="py-2 text-right font-medium">{Math.round(nutResult.proteinGrams)} g</td>
+                        </tr>
+                        <tr className="border-b border-border">
+                          <td className="py-2 flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-yellow-500" />Lemak</td>
+                          <td className="py-2 text-center">20%</td>
+                          <td className="py-2 text-center font-medium">{Math.round(nutResult.fatKcal)}</td>
+                          <td className="py-2 text-right font-medium">{Math.round(nutResult.fatGrams)} g</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-teal-500" />Mineral & Mikronutrien</td>
+                          <td className="py-2 text-center">10%</td>
+                          <td className="py-2 text-center font-medium">{Math.round(nutResult.mineralKcal)}</td>
+                          <td className="py-2 text-right font-medium">—</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </CardContent>
+                </Card>
+
+                {/* Action Buttons */}
+                <div className="flex flex-wrap gap-2">
+                  <Button className="flex-1" onClick={handleSaveNutrition}>
+                    Simpan ke Monitoring
+                  </Button>
+                  <Button variant="outline" onClick={handleGenerateAI} disabled={aiNutLoading}>
+                    {aiNutLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                    Rekomendasi Nutrisi AI
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <Card className="border-dashed">
+                <CardContent className="p-8 text-center">
+                  <Calculator className="w-12 h-12 text-muted-foreground/50 mx-auto mb-3" />
+                  <p className="text-sm text-muted-foreground">Masukkan data pasien dan klik &quot;Hitung Kebutuhan Kalori&quot; untuk melihat hasil perhitungan.</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+
+        {/* AI Recommendation Result */}
+        {showAiNutResult && nutritionAiRecommendation && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  Rekomendasi Nutrisi AI
+                </CardTitle>
+                <Badge className={cn('font-bold',
+                  nutritionAiRecommendation.malnutritionRisk === 'tinggi' ? 'bg-red-100 text-red-800' :
+                  nutritionAiRecommendation.malnutritionRisk === 'sedang' ? 'bg-amber-100 text-amber-800' :
+                  'bg-green-100 text-green-800'
+                )}>
+                  Risiko Malnutrisi: {nutritionAiRecommendation.malnutritionRisk === 'tinggi' ? 'Tinggi' : nutritionAiRecommendation.malnutritionRisk === 'sedang' ? 'Sedang' : 'Rendah'}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 rounded-lg bg-background text-center">
+                  <p className="text-xs text-muted-foreground">Target Kalori</p>
+                  <p className="text-lg font-bold">{nutritionAiRecommendation.targetCalories} kkal</p>
+                </div>
+                <div className="p-3 rounded-lg bg-background text-center">
+                  <p className="text-xs text-muted-foreground">Target Protein</p>
+                  <p className="text-lg font-bold">{nutritionAiRecommendation.targetProteinGrams} g</p>
+                </div>
+                <div className="p-3 rounded-lg bg-background text-center">
+                  <p className="text-xs text-muted-foreground">Frekuensi Makan</p>
+                  <p className="text-sm font-bold">{nutritionAiRecommendation.mealFrequency}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-background text-center">
+                  <p className="text-xs text-muted-foreground">Suplemen</p>
+                  <p className="text-xs font-bold">{nutritionAiRecommendation.supplementRecommendation}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-1">Saran Pola Makan</p>
+                <p className="text-sm">{nutritionAiRecommendation.mealPattern}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-1">Rekomendasi</p>
+                <ul className="space-y-1">
+                  {nutritionAiRecommendation.recommendations.map((r, i) => (
+                    <li key={i} className="text-sm flex items-start gap-2">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0 mt-0.5" />
+                      {r}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Nutrition Trend Chart */}
+        {trendData.length >= 2 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-primary" />
+                Tren Nutrisi Pasien
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="kalori">
+                <TabsList className="mb-2">
+                  <TabsTrigger value="kalori" className="text-xs">Kalori</TabsTrigger>
+                  <TabsTrigger value="bb" className="text-xs">Berat Badan & BMI</TabsTrigger>
+                </TabsList>
+                <TabsContent value="kalori">
+                  <ResponsiveContainer width="100%" height={250}>
+                    <LineChart data={trendData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="tanggal" tick={{ fontSize: 10 }} />
+                      <YAxis tick={{ fontSize: 10 }} />
+                      <Tooltip />
+                      <Legend />
+                      <Line type="monotone" dataKey="Kebutuhan" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="Asupan" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </TabsContent>
+                <TabsContent value="bb">
+                  <ResponsiveContainer width="100%" height={250}>
+                    <LineChart data={trendData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="tanggal" tick={{ fontSize: 10 }} />
+                      <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
+                      <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} />
+                      <Tooltip />
+                      <Legend />
+                      <Line yAxisId="left" type="monotone" dataKey="BB" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} name="Berat Badan (kg)" />
+                      <Line yAxisId="right" type="monotone" dataKey="BMI" stroke="#06b6d4" strokeWidth={2} dot={{ r: 3 }} name="BMI" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Nutrition History */}
+        {patientNutritionRecords.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <History className="w-4 h-4 text-primary" />
+                  Riwayat Nutrisi Pasien
+                </CardTitle>
+                <Badge variant="outline" className="text-[10px]">{patientNutritionRecords.length} catatan</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted/50">
+                      <th className="px-2 py-1.5 text-left font-semibold text-muted-foreground">Tanggal</th>
+                      <th className="px-2 py-1.5 text-center font-semibold text-muted-foreground">BB</th>
+                      <th className="px-2 py-1.5 text-center font-semibold text-muted-foreground">BMI</th>
+                      <th className="px-2 py-1.5 text-center font-semibold text-muted-foreground">Kategori</th>
+                      <th className="px-2 py-1.5 text-center font-semibold text-muted-foreground">Kebutuhan</th>
+                      <th className="px-2 py-1.5 text-center font-semibold text-muted-foreground">Asupan</th>
+                      <th className="px-2 py-1.5 text-center font-semibold text-muted-foreground">Status</th>
+                      <th className="px-2 py-1.5 text-center font-semibold text-muted-foreground">Oleh</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {patientNutritionRecords.map(r => {
+                      const status = getCalorieStatus(r.actualIntakeKcal, r.calculation.totalCalorieNeeds);
+                      return (
+                        <tr key={r.id} className="border-t border-border hover:bg-muted/30">
+                          <td className="px-2 py-1.5">{formatDate(r.recordedAt)}</td>
+                          <td className="px-2 py-1.5 text-center font-medium">{r.weight} kg</td>
+                          <td className="px-2 py-1.5 text-center font-medium">{r.calculation.bmi}</td>
+                          <td className="px-2 py-1.5 text-center">
+                            <Badge variant="outline" className={cn('text-[9px] font-bold', getBmiColor(r.calculation.bmiCategory))}>
+                              {getBmiLabel(r.calculation.bmiCategory)}
+                            </Badge>
+                          </td>
+                          <td className="px-2 py-1.5 text-center font-medium">{Math.round(r.calculation.totalCalorieNeeds)} kkal</td>
+                          <td className="px-2 py-1.5 text-center">{r.actualIntakeKcal || '-'} kkal</td>
+                          <td className="px-2 py-1.5 text-center">
+                            <Badge variant="outline" className={cn('text-[9px] font-bold', status.color)}>
+                              {status.percent > 0 ? `${status.percent}%` : '-'}
+                            </Badge>
+                          </td>
+                          <td className="px-2 py-1.5 text-center text-muted-foreground">{r.recordedBy || '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
+
   // ── Main Render ──
-  const needsPatientSelection = ['ttv', 'screening', 'medication', 'acp', 'ai', 'chat'].includes(
+  const needsPatientSelection = ['ttv', 'screening', 'medication', 'nutrition', 'acp', 'ai', 'chat'].includes(
     activeTab
   );
 
@@ -2942,6 +3694,10 @@ export function PalliativeMonitoringPanel() {
             <Pill className="w-4 h-4 mr-1" />
             Obat
           </TabsTrigger>
+          <TabsTrigger value="nutrition" className="text-xs sm:text-sm">
+            <Utensils className="w-4 h-4 mr-1" />
+            Nutrisi
+          </TabsTrigger>
           <TabsTrigger value="acp" className="text-xs sm:text-sm">
             <Shield className="w-4 h-4 mr-1" />
             ACP
@@ -2968,6 +3724,7 @@ export function PalliativeMonitoringPanel() {
         <TabsContent value="ttv">{renderTTV()}</TabsContent>
         <TabsContent value="screening">{renderScreening()}</TabsContent>
         <TabsContent value="medication">{renderMedication()}</TabsContent>
+        <TabsContent value="nutrition">{renderNutrition()}</TabsContent>
         <TabsContent value="acp">{renderACP()}</TabsContent>
         <TabsContent value="ai">{renderAI()}</TabsContent>
         <TabsContent value="chat">
