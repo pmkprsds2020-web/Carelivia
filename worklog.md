@@ -102,3 +102,47 @@ Stage Summary:
 - Sidebar section headers now use pure functional comparison instead of mutable state
 - App verified working: Login → Dashboard → Monitoring Paliatif all render correctly
 - Lint passes clean (0 errors)
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Add Dashboard feature to RVSM Module with Real-Time, Tren, and Skor Paliatif buttons
+
+Work Log:
+- Analyzed existing RVSM panel code (rvsm-panel.tsx, 2347+ lines)
+- Added dialog state variables: dashboardDialogType, dashboardDialogPatientId, dashboardTrendRange
+- Added palliativeScreeningRecords to store destructuring
+- Redesigned renderDashboard() with:
+  - Risk summary bar (Risiko Tinggi/Sedang/Rendah counts)
+  - Auto-sorted patient cards by risk level (highest first)
+  - Enhanced patient cards with: avatar, risk badge, 5-column vital signs (HR, SpO2, RR, TD, Suhu), monitoring status badge, PPS score, weight
+  - Three action buttons per card: Real-Time, Tren, Skor Paliatif
+  - Color-coded borders by risk level
+- Implemented Real-Time dialog:
+  - Full vital signs grid (BP, HR, SpO2, RR, Temp, Weight) with color-coded status
+  - Connection status (Online/Offline) with device info
+  - Last sync time
+  - Auto-refresh indicator
+- Implemented Tren dialog:
+  - Time range selector (24h, 7d, 30d, 90d)
+  - Trend summary indicators (Stabil/Meningkat/Menurun/Fluktuatif) for all vitals
+  - Charts: BP, HR, SpO2, RR, Temperature, Weight
+  - Color legend (Hijau=Normal, Kuning=Perhatian, Merah=Kritis)
+  - PDF export button
+- Implemented Skor Paliatif dialog:
+  - Automatic interpretation (Kondisi stabil/Membutuhkan evaluasi/Risiko penurunan/Memerlukan intervensi segera)
+  - Score cards: PPS, ESAS-r, SPICT, Distress Thermometer
+  - Optional placeholders: Karnofsky, ECOG
+  - Score trend chart for PPS and ESAS
+  - Screening history table
+  - Significant decline alert with priority monitoring badge
+- Fixed riskBadge type mismatch (patient.riskLevel is 'merah'/'kuning'/'hijau' not 'low'/'moderate'/'high')
+- Verified with agent browser: Real-Time and Tren dialogs confirmed working
+- Lint passes clean
+
+Stage Summary:
+- Enhanced RVSM Dashboard with three quick-action buttons per patient card
+- Auto-sort by risk level (merah > kuning > hijau)
+- Comprehensive Real-Time, Tren, and Skor Paliatif dialogs
+- Risk badges, monitoring status, PPS score on dashboard cards
+- All changes in src/components/telemedicine/rvsm-panel.tsx

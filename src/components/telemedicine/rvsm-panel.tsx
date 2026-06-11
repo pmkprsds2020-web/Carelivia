@@ -356,6 +356,11 @@ export function RvsmPanel() {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
 
+  // Dashboard Quick-Action Dialogs
+  const [dashboardDialogType, setDashboardDialogType] = useState<'realtime' | 'tren' | 'skor-paliatif' | null>(null);
+  const [dashboardDialogPatientId, setDashboardDialogPatientId] = useState<string | null>(null);
+  const [dashboardTrendRange, setDashboardTrendRange] = useState<RVSMTimeRange>('24h');
+
   // New device form
   const [newDevice, setNewDevice] = useState<{
     deviceName: string;
@@ -418,6 +423,7 @@ export function RvsmPanel() {
     palliativePatients,
     selectedPalliativePatientId,
     setSelectedPalliativePatientId,
+    palliativeScreeningRecords,
     currentUser,
     addPalliativeChatMessage,
     addPalliativeMonitoringNotification,
@@ -851,129 +857,271 @@ export function RvsmPanel() {
     </div>
   );
 
+  // ── Risk sort order for auto-sorting ──
+  const riskSortOrder: Record<string, number> = { merah: 0, kuning: 1, hijau: 2 };
+
+  // ── Sorted patient latest vitals (highest risk first) ──
+  const sortedPatientLatestVitals = useMemo(() => {
+    return [...patientLatestVitals].sort((a, b) => {
+      const riskA = riskSortOrder[a.patient.riskLevel] ?? 3;
+      const riskB = riskSortOrder[b.patient.riskLevel] ?? 3;
+      if (riskA !== riskB) return riskA - riskB;
+      // Secondary sort: patients with critical vitals come first
+      const criticalA = [getHRStatus(a.latestVital?.heartRate), getSpO2Status(a.latestVital?.oxygenSat), getRRStatus(a.latestVital?.respiratoryRate)].includes('critical') ? 0 : 1;
+      const criticalB = [getHRStatus(b.latestVital?.heartRate), getSpO2Status(b.latestVital?.oxygenSat), getRRStatus(b.latestVital?.respiratoryRate)].includes('critical') ? 0 : 1;
+      return criticalA - criticalB;
+    });
+  }, [patientLatestVitals]);
+
+  // ── Get monitoring status summary for a patient ──
+  const getMonitoringStatus = useCallback((patientId: string): { label: string; className: string } => {
+    const alerts = rvsmAlerts.filter(a => a.patientId === patientId && !a.isAcknowledged);
+    const criticalCount = alerts.filter(a => a.severity === 'critical').length;
+    const attentionCount = alerts.filter(a => a.severity === 'attention').length;
+    if (criticalCount > 0) return { label: 'Kritis', className: 'bg-red-100 text-red-800 border-red-300' };
+    if (attentionCount > 0) return { label: 'Perlu Perhatian', className: 'bg-yellow-100 text-yellow-800 border-yellow-300' };
+    return { label: 'Normal', className: 'bg-green-100 text-green-800 border-green-300' };
+  }, [rvsmAlerts]);
+
+  // ── Get last PPS score for a patient ──
+  const getLastPPSScore = useCallback((patientId: string): number | null => {
+    const records = palliativeScreeningRecords.filter(r => r.palliativePatientId === patientId && r.screeningType === 'pps');
+    if (records.length === 0) return null;
+    return records.sort((a, b) => new Date(b.performedAt).getTime() - new Date(a.performedAt).getTime())[0].score ?? null;
+  }, [palliativeScreeningRecords]);
+
+  // ── Get last ESAS score for a patient ──
+  const getLastESASScore = useCallback((patientId: string): number | null => {
+    const records = palliativeScreeningRecords.filter(r => r.palliativePatientId === patientId && r.screeningType === 'esas');
+    if (records.length === 0) return null;
+    return records.sort((a, b) => new Date(b.performedAt).getTime() - new Date(a.performedAt).getTime())[0].score ?? null;
+  }, [palliativeScreeningRecords]);
+
+  // ── Open dashboard dialog ──
+  const openDashboardDialog = useCallback((type: 'realtime' | 'tren' | 'skor-paliatif', patientId: string) => {
+    setDashboardDialogType(type);
+    setDashboardDialogPatientId(patientId);
+  }, []);
+
   // ── Tab: Dashboard ──
-  const renderDashboard = () => (
-    <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-teal-100 text-teal-700">
-                <Users className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Pasien Dimonitor</p>
-                <p className="text-2xl font-bold">{dashboardStats.totalPatients}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-100 text-green-700">
-                <Watch className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Perangkat Aktif</p>
-                <p className="text-2xl font-bold">{dashboardStats.activeDevices}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-red-100 text-red-700">
-                <Siren className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Alert Kritis</p>
-                <p className="text-2xl font-bold text-red-600">{dashboardStats.criticalAlerts}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-yellow-100 text-yellow-700">
-                <ShieldAlert className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Alert Perhatian</p>
-                <p className="text-2xl font-bold text-yellow-600">{dashboardStats.attentionAlerts}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+  const renderDashboard = () => {
+    // Count risk levels
+    const riskCounts = {
+      merah: palliativePatients.filter(p => p.patientStatus === 'aktif' && p.riskLevel === 'merah').length,
+      kuning: palliativePatients.filter(p => p.patientStatus === 'aktif' && p.riskLevel === 'kuning').length,
+      hijau: palliativePatients.filter(p => p.patientStatus === 'aktif' && p.riskLevel === 'hijau').length,
+    };
 
-      {/* Patient selector */}
-      <div className="flex items-center gap-3">
-        <Label className="text-sm font-medium">Pasien:</Label>
-        {renderPatientSelector()}
-      </div>
+    return (
+      <div className="space-y-6">
+        {/* Summary Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-teal-100 text-teal-700">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Pasien Dimonitor</p>
+                  <p className="text-2xl font-bold">{dashboardStats.totalPatients}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-green-100 text-green-700">
+                  <Watch className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Perangkat Aktif</p>
+                  <p className="text-2xl font-bold">{dashboardStats.activeDevices}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-red-100 text-red-700">
+                  <Siren className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Alert Kritis</p>
+                  <p className="text-2xl font-bold text-red-600">{dashboardStats.criticalAlerts}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-yellow-100 text-yellow-700">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Alert Perhatian</p>
+                  <p className="text-2xl font-bold text-yellow-600">{dashboardStats.attentionAlerts}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-      {/* Real-time Vitals Grid */}
-      <div className="space-y-3">
-        <h3 className="text-lg font-semibold">Tanda Vital Real-time</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {patientLatestVitals.map(({ patient, latestVital, device }) => {
-            const hrStatus = getHRStatus(latestVital?.heartRate);
-            const spo2Status = getSpO2Status(latestVital?.oxygenSat);
-            const rrStatus = getRRStatus(latestVital?.respiratoryRate);
-            const deviceConnected = device?.isConnected && device?.status === 'connected';
-            return (
-              <Card
-                key={patient.id}
-                className={cn(
-                  'cursor-pointer transition-all hover:shadow-md border',
-                  selectedPalliativePatientId === patient.id ? 'ring-2 ring-primary' : ''
-                )}
-                onClick={() => handleSelectPatient(patient.id)}
-              >
-                <CardHeader className="pb-2 p-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-medium">{patient.patientName || patient.rmNumber}</CardTitle>
-                    <div className="flex items-center gap-1">
-                      <span className={cn('w-2 h-2 rounded-full', deviceConnected ? 'bg-green-500' : 'bg-gray-400')} />
-                      <span className="text-xs text-muted-foreground">{deviceConnected ? 'Online' : 'Offline'}</span>
+        {/* Risk Summary Bar */}
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full bg-red-500" />
+            <span className="text-sm font-medium">Risiko Tinggi: {riskCounts.merah}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full bg-yellow-500" />
+            <span className="text-sm font-medium">Risiko Sedang: {riskCounts.kuning}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full bg-green-500" />
+            <span className="text-sm font-medium">Risiko Rendah: {riskCounts.hijau}</span>
+          </div>
+          <div className="ml-auto text-xs text-muted-foreground flex items-center gap-1">
+            <RefreshCw className="w-3 h-3" /> Diurutkan berdasarkan risiko tertinggi
+          </div>
+        </div>
+
+        {/* Patient Cards Grid with Action Buttons */}
+        <div className="space-y-3">
+          <h3 className="text-lg font-semibold">Dashboard Pasien</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+            {sortedPatientLatestVitals.map(({ patient, latestVital, device }) => {
+              const hrStatus = getHRStatus(latestVital?.heartRate);
+              const spo2Status = getSpO2Status(latestVital?.oxygenSat);
+              const rrStatus = getRRStatus(latestVital?.respiratoryRate);
+              const bpStatus = getBPStatus(latestVital?.systolicBP, latestVital?.diastolicBP);
+              const tempStatus = getTemperatureStatus(latestVital?.estimatedCoreTemp || latestVital?.skinTemperature);
+              const deviceConnected = device?.isConnected && device?.status === 'connected';
+              const monitoringStatus = getMonitoringStatus(patient.id);
+              const lastPPS = getLastPPSScore(patient.id);
+              const riskBadge = patient.riskLevel === 'merah' ? { label: 'Tinggi', className: 'bg-red-100 text-red-800 border-red-300' } :
+                    patient.riskLevel === 'kuning' ? { label: 'Sedang', className: 'bg-yellow-100 text-yellow-800 border-yellow-300' } :
+                    { label: 'Rendah', className: 'bg-green-100 text-green-800 border-green-300' };
+
+              return (
+                <Card
+                  key={patient.id}
+                  className={cn(
+                    'transition-all hover:shadow-md border-2',
+                    patient.riskLevel === 'merah' ? 'border-red-300 bg-red-50/30' :
+                    patient.riskLevel === 'kuning' ? 'border-yellow-300 bg-yellow-50/30' :
+                    'border-green-200 bg-green-50/20'
+                  )}
+                >
+                  {/* Patient Header */}
+                  <CardHeader className="pb-2 p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={cn(
+                          'w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0',
+                          patient.riskLevel === 'merah' ? 'bg-red-200 text-red-800' :
+                          patient.riskLevel === 'kuning' ? 'bg-yellow-200 text-yellow-800' :
+                          'bg-green-200 text-green-800'
+                        )}>
+                          {(patient.patientName || 'P').charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <CardTitle className="text-sm font-semibold truncate">{patient.patientName || patient.rmNumber}</CardTitle>
+                          <p className="text-xs text-muted-foreground truncate">{patient.primaryDiagnosis}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Badge variant="outline" className={cn('text-xs px-1.5 py-0', riskBadge.className)}>
+                          {riskBadge.label}
+                        </Badge>
+                        <div className="flex items-center gap-0.5">
+                          <span className={cn('w-2 h-2 rounded-full', deviceConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400')} />
+                          <span className="text-xs text-muted-foreground">{deviceConnected ? 'Online' : 'Offline'}</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{patient.primaryDiagnosis}</p>
-                </CardHeader>
-                <CardContent className="p-4 pt-0">
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className={cn('rounded-md p-2 border', statusBgClass(hrStatus))}>
-                      <p className="text-xs text-muted-foreground">HR</p>
-                      <p className={cn('text-lg font-bold', statusTextClass(hrStatus))}>{latestVital?.heartRate || '-'}</p>
-                      <p className="text-xs text-muted-foreground">bpm</p>
+                  </CardHeader>
+
+                  {/* Vital Signs Summary */}
+                  <CardContent className="p-4 pt-0 space-y-3">
+                    <div className="grid grid-cols-5 gap-1.5 text-center">
+                      <div className={cn('rounded-md p-1.5 border', statusBgClass(hrStatus))}>
+                        <p className="text-[10px] text-muted-foreground">HR</p>
+                        <p className={cn('text-sm font-bold', statusTextClass(hrStatus))}>{latestVital?.heartRate || '-'}</p>
+                      </div>
+                      <div className={cn('rounded-md p-1.5 border', statusBgClass(spo2Status))}>
+                        <p className="text-[10px] text-muted-foreground">SpO2</p>
+                        <p className={cn('text-sm font-bold', statusTextClass(spo2Status))}>{latestVital?.oxygenSat || '-'}</p>
+                      </div>
+                      <div className={cn('rounded-md p-1.5 border', statusBgClass(rrStatus))}>
+                        <p className="text-[10px] text-muted-foreground">RR</p>
+                        <p className={cn('text-sm font-bold', statusTextClass(rrStatus))}>{latestVital?.respiratoryRate || '-'}</p>
+                      </div>
+                      <div className={cn('rounded-md p-1.5 border', statusBgClass(bpStatus))}>
+                        <p className="text-[10px] text-muted-foreground">TD</p>
+                        <p className={cn('text-xs font-bold', statusTextClass(bpStatus))}>{latestVital?.systolicBP || '-'}/{latestVital?.diastolicBP || '-'}</p>
+                      </div>
+                      <div className={cn('rounded-md p-1.5 border', statusBgClass(tempStatus))}>
+                        <p className="text-[10px] text-muted-foreground">Suhu</p>
+                        <p className={cn('text-sm font-bold', statusTextClass(tempStatus))}>{latestVital?.estimatedCoreTemp || latestVital?.skinTemperature || '-'}</p>
+                      </div>
                     </div>
-                    <div className={cn('rounded-md p-2 border', statusBgClass(spo2Status))}>
-                      <p className="text-xs text-muted-foreground">SpO2</p>
-                      <p className={cn('text-lg font-bold', statusTextClass(spo2Status))}>{latestVital?.oxygenSat || '-'}</p>
-                      <p className="text-xs text-muted-foreground">%</p>
+
+                    {/* Status Summary Row */}
+                    <div className="flex items-center justify-between text-xs">
+                      <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0', monitoringStatus.className)}>
+                        {monitoringStatus.label}
+                      </Badge>
+                      {lastPPS !== null && (
+                        <span className="text-muted-foreground">PPS: {lastPPS}%</span>
+                      )}
+                      {latestVital?.weight && (
+                        <span className="text-muted-foreground">BB: {latestVital.weight} kg</span>
+                      )}
                     </div>
-                    <div className={cn('rounded-md p-2 border', statusBgClass(rrStatus))}>
-                      <p className="text-xs text-muted-foreground">RR</p>
-                      <p className={cn('text-lg font-bold', statusTextClass(rrStatus))}>{latestVital?.respiratoryRate || '-'}</p>
-                      <p className="text-xs text-muted-foreground">/menit</p>
+
+                    {/* Quick Action Buttons */}
+                    <div className="grid grid-cols-3 gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={cn(
+                          'h-8 text-xs gap-1',
+                          deviceConnected ? 'border-green-300 text-green-700 hover:bg-green-50' : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+                        )}
+                        onClick={(e) => { e.stopPropagation(); openDashboardDialog('realtime', patient.id); }}
+                      >
+                        <Activity className="w-3.5 h-3.5" /> Real-Time
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs gap-1 border-teal-300 text-teal-700 hover:bg-teal-50"
+                        onClick={(e) => { e.stopPropagation(); openDashboardDialog('tren', patient.id); }}
+                      >
+                        <TrendingUp className="w-3.5 h-3.5" /> Tren
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs gap-1 border-purple-300 text-purple-700 hover:bg-purple-50"
+                        onClick={(e) => { e.stopPropagation(); openDashboardDialog('skor-paliatif', patient.id); }}
+                      >
+                        <Brain className="w-3.5 h-3.5" /> Skor Paliatif
+                      </Button>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                    <span>Aktivitas: {latestVital?.dailyActivityLevel || '-'}</span>
-                    <span>Tidur: {latestVital?.sleepDuration ? `${Math.round(latestVital.sleepDuration / 60 * 10) / 10}j` : '-'}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // ── Tab: Devices ──
   const renderDevices = () => (
@@ -2341,6 +2489,682 @@ export function RvsmPanel() {
           <TabsContent value="medical-records" className="mt-0">{renderMedicalRecords()}</TabsContent>
         </div>
       </Tabs>
+
+      {/* ── Dashboard Quick-Action Dialogs ── */}
+
+      {/* Real-Time Dialog */}
+      <Dialog open={dashboardDialogType === 'realtime'} onOpenChange={(open) => { if (!open) setDashboardDialogType(null); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          {(() => {
+            const patient = palliativePatients.find(p => p.id === dashboardDialogPatientId);
+            const device = rvsmDevices.find(d => d.patientId === dashboardDialogPatientId);
+            const vitals = rvsmVitalData
+              .filter(d => d.patientId === dashboardDialogPatientId)
+              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            const v = vitals[0] || null;
+            const deviceConnected = device?.isConnected && device?.status === 'connected';
+
+            if (!patient) return <DialogHeader><DialogTitle>Pasien tidak ditemukan</DialogTitle></DialogHeader>;
+
+            const hrStatus = getHRStatus(v?.heartRate);
+            const spo2Status = getSpO2Status(v?.oxygenSat);
+            const rrStatus = getRRStatus(v?.respiratoryRate);
+            const bpStatus = getBPStatus(v?.systolicBP, v?.diastolicBP);
+            const tempStatus = getTemperatureStatus(v?.estimatedCoreTemp || v?.skinTemperature);
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-green-600" />
+                    Real-Time Monitoring — {patient.patientName}
+                  </DialogTitle>
+                  <DialogDescription>
+                    Data tanda vital real-time dari perangkat monitoring
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  {/* Connection Status */}
+                  <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <div className={cn('w-3 h-3 rounded-full', deviceConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400')} />
+                      <div>
+                        <p className="text-sm font-medium">Status Koneksi: {deviceConnected ? 'Online' : 'Offline'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {device ? `${device.deviceName} (${getDeviceTypeLabel(device.deviceType)})` : 'Tidak ada perangkat terhubung'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Terakhir Sinkronisasi</p>
+                      <p className="text-sm font-medium">{device?.lastSyncAt ? formatDateTime(device.lastSyncAt) : '-'}</p>
+                    </div>
+                  </div>
+
+                  {/* Vital Signs Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <Card className={cn('border-2', statusBgClass(hrStatus))}>
+                      <CardContent className="p-3 text-center">
+                        <HeartPulse className={cn('w-5 h-5 mx-auto mb-1', statusTextClass(hrStatus))} />
+                        <p className="text-xs text-muted-foreground">Tekanan Darah</p>
+                        <p className={cn('text-2xl font-bold', statusTextClass(bpStatus))}>{v?.systolicBP || '-'}/{v?.diastolicBP || '-'}</p>
+                        <p className="text-xs text-muted-foreground">mmHg</p>
+                        <Badge variant="outline" className={cn('text-[10px] mt-1', statusBgClass(bpStatus))}>
+                          {bpStatus === 'normal' ? 'Normal' : bpStatus === 'attention' ? 'Perhatian' : 'Kritis'}
+                        </Badge>
+                      </CardContent>
+                    </Card>
+                    <Card className={cn('border-2', statusBgClass(hrStatus))}>
+                      <CardContent className="p-3 text-center">
+                        <HeartPulse className={cn('w-5 h-5 mx-auto mb-1', statusTextClass(hrStatus))} />
+                        <p className="text-xs text-muted-foreground">Nadi (HR)</p>
+                        <p className={cn('text-2xl font-bold', statusTextClass(hrStatus))}>{v?.heartRate || '-'}</p>
+                        <p className="text-xs text-muted-foreground">bpm</p>
+                        <Badge variant="outline" className={cn('text-[10px] mt-1', statusBgClass(hrStatus))}>
+                          {hrStatus === 'normal' ? 'Normal' : hrStatus === 'attention' ? 'Perhatian' : 'Kritis'}
+                        </Badge>
+                      </CardContent>
+                    </Card>
+                    <Card className={cn('border-2', statusBgClass(spo2Status))}>
+                      <CardContent className="p-3 text-center">
+                        <Droplets className={cn('w-5 h-5 mx-auto mb-1', statusTextClass(spo2Status))} />
+                        <p className="text-xs text-muted-foreground">SpO2</p>
+                        <p className={cn('text-2xl font-bold', statusTextClass(spo2Status))}>{v?.oxygenSat || '-'}</p>
+                        <p className="text-xs text-muted-foreground">%</p>
+                        <Badge variant="outline" className={cn('text-[10px] mt-1', statusBgClass(spo2Status))}>
+                          {spo2Status === 'normal' ? 'Normal' : spo2Status === 'attention' ? 'Perhatian' : 'Kritis'}
+                        </Badge>
+                      </CardContent>
+                    </Card>
+                    <Card className={cn('border-2', statusBgClass(rrStatus))}>
+                      <CardContent className="p-3 text-center">
+                        <Wind className={cn('w-5 h-5 mx-auto mb-1', statusTextClass(rrStatus))} />
+                        <p className="text-xs text-muted-foreground">Frekuensi Napas</p>
+                        <p className={cn('text-2xl font-bold', statusTextClass(rrStatus))}>{v?.respiratoryRate || '-'}</p>
+                        <p className="text-xs text-muted-foreground">/menit</p>
+                        <Badge variant="outline" className={cn('text-[10px] mt-1', statusBgClass(rrStatus))}>
+                          {rrStatus === 'normal' ? 'Normal' : rrStatus === 'attention' ? 'Perhatian' : 'Kritis'}
+                        </Badge>
+                      </CardContent>
+                    </Card>
+                    <Card className={cn('border-2', statusBgClass(tempStatus))}>
+                      <CardContent className="p-3 text-center">
+                        <Thermometer className={cn('w-5 h-5 mx-auto mb-1', statusTextClass(tempStatus))} />
+                        <p className="text-xs text-muted-foreground">Suhu Tubuh</p>
+                        <p className={cn('text-2xl font-bold', statusTextClass(tempStatus))}>{v?.estimatedCoreTemp || v?.skinTemperature || '-'}</p>
+                        <p className="text-xs text-muted-foreground">°C</p>
+                        <Badge variant="outline" className={cn('text-[10px] mt-1', statusBgClass(tempStatus))}>
+                          {tempStatus === 'normal' ? 'Normal' : tempStatus === 'attention' ? 'Perhatian' : 'Kritis'}
+                        </Badge>
+                      </CardContent>
+                    </Card>
+                    <Card className="border-2">
+                      <CardContent className="p-3 text-center">
+                        <Activity className="w-5 h-5 mx-auto mb-1 text-muted-foreground" />
+                        <p className="text-xs text-muted-foreground">Berat Badan</p>
+                        <p className="text-2xl font-bold">{v?.weight || '-'}</p>
+                        <p className="text-xs text-muted-foreground">kg</p>
+                        {v?.weight && <Badge variant="outline" className="text-[10px] mt-1 bg-green-50">Tersedia</Badge>}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Auto-refresh indicator */}
+                  <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    Data diperbarui otomatis tanpa perlu refresh halaman
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Tren (Trend) Dialog */}
+      <Dialog open={dashboardDialogType === 'tren'} onOpenChange={(open) => { if (!open) setDashboardDialogType(null); }}>
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+          {(() => {
+            const patient = palliativePatients.find(p => p.id === dashboardDialogPatientId);
+            if (!patient) return <DialogHeader><DialogTitle>Pasien tidak ditemukan</DialogTitle></DialogHeader>;
+
+            // Get trend data for this patient
+            const trendData = rvsmVitalData
+              .filter(d => d.patientId === dashboardDialogPatientId)
+              .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+            const now = Date.now();
+            const rangeMs: Record<RVSMTimeRange, number> = {
+              '24h': 24 * 3600000, '7d': 7 * 24 * 3600000, '30d': 30 * 24 * 3600000, '90d': 90 * 24 * 3600000,
+            };
+            const cutoff = now - rangeMs[dashboardTrendRange];
+            const filteredData = trendData.filter(d => new Date(d.timestamp).getTime() >= cutoff);
+
+            const chartData = filteredData.map(d => ({
+              time: new Date(d.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+              fullTime: formatDateTime(d.timestamp),
+              heartRate: d.heartRate,
+              oxygenSat: d.oxygenSat,
+              respiratoryRate: d.respiratoryRate,
+              systolicBP: d.systolicBP,
+              diastolicBP: d.diastolicBP,
+              temperature: d.estimatedCoreTemp || d.skinTemperature,
+              weight: d.weight,
+            }));
+
+            // Calculate trend summary
+            const getTrendDirection = (values: (number | undefined)[]): 'Stabil' | 'Meningkat' | 'Menurun' | 'Fluktuatif' => {
+              const nums = values.filter((v): v is number => v !== undefined);
+              if (nums.length < 2) return 'Stabil';
+              const firstHalf = nums.slice(0, Math.floor(nums.length / 2));
+              const secondHalf = nums.slice(Math.floor(nums.length / 2));
+              const avgFirst = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+              const avgSecond = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+              const diff = avgSecond - avgFirst;
+              const pctChange = avgFirst !== 0 ? Math.abs(diff / avgFirst) * 100 : 0;
+              if (pctChange < 5) return 'Stabil';
+              if (diff > 0) return 'Meningkat';
+              return 'Menurun';
+            };
+
+            const hrTrend = getTrendDirection(chartData.map(d => d.heartRate));
+            const spo2Trend = getTrendDirection(chartData.map(d => d.oxygenSat));
+            const rrTrend = getTrendDirection(chartData.map(d => d.respiratoryRate));
+            const tempTrend = getTrendDirection(chartData.map(d => d.temperature));
+            const bpTrend = getTrendDirection(chartData.map(d => d.systolicBP));
+            const weightTrend = getTrendDirection(chartData.map(d => d.weight));
+
+            const trendIcon = (trend: string) => {
+              if (trend === 'Meningkat') return <TrendingUp className="w-3.5 h-3.5 text-red-500" />;
+              if (trend === 'Menurun') return <TrendingDown className="w-3.5 h-3.5 text-blue-500" />;
+              if (trend === 'Fluktuatif') return <Activity className="w-3.5 h-3.5 text-yellow-500" />;
+              return <Minus className="w-3.5 h-3.5 text-green-500" />;
+            };
+
+            const trendColor = (trend: string) => {
+              if (trend === 'Stabil') return 'text-green-700 bg-green-50';
+              if (trend === 'Meningkat') return 'text-red-700 bg-red-50';
+              if (trend === 'Menurun') return 'text-blue-700 bg-blue-50';
+              return 'text-yellow-700 bg-yellow-50';
+            };
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-teal-600" />
+                    Tren Tanda Vital — {patient.patientName}
+                  </DialogTitle>
+                  <DialogDescription>
+                    Grafik dan analisis tren tanda vital pasien
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  {/* Time Range Selector */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {(['24h', '7d', '30d', '90d'] as RVSMTimeRange[]).map(range => (
+                      <Button
+                        key={range}
+                        size="sm"
+                        variant={dashboardTrendRange === range ? 'default' : 'outline'}
+                        className="h-7 text-xs"
+                        onClick={() => setDashboardTrendRange(range)}
+                      >
+                        {range === '24h' ? '24 Jam' : range === '7d' ? '7 Hari' : range === '30d' ? '30 Hari' : '90 Hari'}
+                      </Button>
+                    ))}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1 ml-auto"
+                      onClick={() => toast({ title: 'Ekspor PDF', description: 'Laporan tren sedang disiapkan...' })}
+                    >
+                      <Download className="w-3 h-3" /> Ekspor PDF
+                    </Button>
+                  </div>
+
+                  {/* Trend Summary */}
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                    {[
+                      { label: 'Nadi', trend: hrTrend },
+                      { label: 'SpO2', trend: spo2Trend },
+                      { label: 'RR', trend: rrTrend },
+                      { label: 'Suhu', trend: tempTrend },
+                      { label: 'TD', trend: bpTrend },
+                      { label: 'BB', trend: weightTrend },
+                    ].map(({ label, trend }) => (
+                      <div key={label} className={cn('rounded-md p-2 border text-center', trendColor(trend))}>
+                        <p className="text-[10px] font-medium">{label}</p>
+                        <div className="flex items-center justify-center gap-1">
+                          {trendIcon(trend)}
+                          <p className="text-xs font-bold">{trend}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Charts */}
+                  {chartData.length === 0 ? (
+                    <div className="flex flex-col items-center py-8 text-muted-foreground">
+                      <Activity className="w-10 h-10 mb-2" />
+                      <p className="text-sm">Tidak ada data untuk rentang waktu ini</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Blood Pressure Chart */}
+                      <Card className="border">
+                        <CardHeader className="p-3 pb-1">
+                          <CardTitle className="text-xs font-medium flex items-center gap-1">
+                            <HeartPulse className="w-3.5 h-3.5 text-red-500" /> Tekanan Darah (mmHg)
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-3 pt-0">
+                          <ResponsiveContainer width="100%" height={180}>
+                            <LineChart data={chartData}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="time" tick={{ fontSize: 9 }} />
+                              <YAxis domain={[60, 180]} tick={{ fontSize: 9 }} />
+                              <Tooltip />
+                              <Legend wrapperStyle={{ fontSize: 10 }} />
+                              <Line type="monotone" dataKey="systolicBP" stroke="#ef4444" strokeWidth={2} dot={false} name="Sistolik" />
+                              <Line type="monotone" dataKey="diastolicBP" stroke="#f97316" strokeWidth={2} dot={false} name="Diastolik" />
+                              {/* Normal range indicator */}
+                            </LineChart>
+                          </ResponsiveContainer>
+                          <div className="flex items-center gap-3 mt-1 text-[10px]">
+                            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500" /> Normal (90-140/60-90)</span>
+                            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500" /> Perhatian</span>
+                            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> Kritis</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* HR & SpO2 Charts */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Card className="border">
+                          <CardHeader className="p-3 pb-1">
+                            <CardTitle className="text-xs font-medium flex items-center gap-1">
+                              <HeartPulse className="w-3.5 h-3.5 text-red-500" /> Nadi (bpm)
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="p-3 pt-0">
+                            <ResponsiveContainer width="100%" height={160}>
+                              <LineChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="time" tick={{ fontSize: 9 }} />
+                                <YAxis domain={[40, 140]} tick={{ fontSize: 9 }} />
+                                <Tooltip />
+                                <Line type="monotone" dataKey="heartRate" stroke="#ef4444" strokeWidth={2} dot={false} name="HR" />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </CardContent>
+                        </Card>
+                        <Card className="border">
+                          <CardHeader className="p-3 pb-1">
+                            <CardTitle className="text-xs font-medium flex items-center gap-1">
+                              <Droplets className="w-3.5 h-3.5 text-sky-500" /> SpO2 (%)
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="p-3 pt-0">
+                            <ResponsiveContainer width="100%" height={160}>
+                              <LineChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="time" tick={{ fontSize: 9 }} />
+                                <YAxis domain={[80, 100]} tick={{ fontSize: 9 }} />
+                                <Tooltip />
+                                <Line type="monotone" dataKey="oxygenSat" stroke="#0ea5e9" strokeWidth={2} dot={false} name="SpO2" />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </CardContent>
+                        </Card>
+                      </div>
+
+                      {/* RR & Temperature Charts */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Card className="border">
+                          <CardHeader className="p-3 pb-1">
+                            <CardTitle className="text-xs font-medium flex items-center gap-1">
+                              <Wind className="w-3.5 h-3.5 text-teal-500" /> Frekuensi Napas (/menit)
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="p-3 pt-0">
+                            <ResponsiveContainer width="100%" height={160}>
+                              <LineChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="time" tick={{ fontSize: 9 }} />
+                                <YAxis domain={[8, 35]} tick={{ fontSize: 9 }} />
+                                <Tooltip />
+                                <Line type="monotone" dataKey="respiratoryRate" stroke="#14b8a6" strokeWidth={2} dot={false} name="RR" />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </CardContent>
+                        </Card>
+                        <Card className="border">
+                          <CardHeader className="p-3 pb-1">
+                            <CardTitle className="text-xs font-medium flex items-center gap-1">
+                              <Thermometer className="w-3.5 h-3.5 text-orange-500" /> Suhu Tubuh (°C)
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="p-3 pt-0">
+                            <ResponsiveContainer width="100%" height={160}>
+                              <LineChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="time" tick={{ fontSize: 9 }} />
+                                <YAxis domain={[35, 40]} tick={{ fontSize: 9 }} />
+                                <Tooltip />
+                                <Line type="monotone" dataKey="temperature" stroke="#f97316" strokeWidth={2} dot={false} name="Suhu" />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </CardContent>
+                        </Card>
+                      </div>
+
+                      {/* Weight Chart */}
+                      {chartData.some(d => d.weight !== undefined) && (
+                        <Card className="border">
+                          <CardHeader className="p-3 pb-1">
+                            <CardTitle className="text-xs font-medium flex items-center gap-1">
+                              <Activity className="w-3.5 h-3.5 text-purple-500" /> Berat Badan (kg)
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="p-3 pt-0">
+                            <ResponsiveContainer width="100%" height={160}>
+                              <LineChart data={chartData.filter(d => d.weight !== undefined)}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="time" tick={{ fontSize: 9 }} />
+                                <YAxis tick={{ fontSize: 9 }} />
+                                <Tooltip />
+                                <Line type="monotone" dataKey="weight" stroke="#a855f7" strokeWidth={2} dot={false} name="BB" />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Color Legend */}
+                  <div className="flex items-center gap-4 text-xs pt-2 border-t">
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500" /> Hijau = Normal</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-500" /> Kuning = Perlu Perhatian</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500" /> Merah = Di Luar Batas Aman</span>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Skor Paliatif Dialog */}
+      <Dialog open={dashboardDialogType === 'skor-paliatif'} onOpenChange={(open) => { if (!open) setDashboardDialogType(null); }}>
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+          {(() => {
+            const patient = palliativePatients.find(p => p.id === dashboardDialogPatientId);
+            if (!patient) return <DialogHeader><DialogTitle>Pasien tidak ditemukan</DialogTitle></DialogHeader>;
+
+            // Get screening records for this patient
+            const screeningRecords = palliativeScreeningRecords
+              .filter(r => r.palliativePatientId === dashboardDialogPatientId)
+              .sort((a, b) => new Date(b.performedAt).getTime() - new Date(a.performedAt).getTime());
+
+            const ppsRecords = screeningRecords.filter(r => r.screeningType === 'pps');
+            const esasRecords = screeningRecords.filter(r => r.screeningType === 'esas');
+            const spictRecords = screeningRecords.filter(r => r.screeningType === 'spict');
+            const distressRecords = screeningRecords.filter(r => r.screeningType === 'distress');
+
+            // Get RVSM estimate
+            const estimate = rvsmPalliativeEstimates.find(e => e.patientId === dashboardDialogPatientId);
+
+            // Determine interpretation
+            const latestPPS = ppsRecords[0];
+            const latestESAS = esasRecords[0];
+            const latestDistress = distressRecords[0];
+
+            const getOverallInterpretation = (): { text: string; className: string; icon: React.ReactNode } => {
+              const ppsScore = latestPPS?.score;
+              const esasScore = latestESAS?.score;
+              const distressScore = latestDistress?.score;
+
+              if (ppsScore !== undefined && ppsScore <= 30) return {
+                text: 'Memerlukan intervensi segera',
+                className: 'bg-red-100 text-red-800 border-red-300',
+                icon: <Siren className="w-4 h-4 text-red-600" />,
+              };
+              if (distressScore !== undefined && distressScore >= 8) return {
+                text: 'Memerlukan intervensi segera',
+                className: 'bg-red-100 text-red-800 border-red-300',
+                icon: <Siren className="w-4 h-4 text-red-600" />,
+              };
+              if ((esasScore !== undefined && esasScore >= 40) || (ppsScore !== undefined && ppsScore <= 50)) return {
+                text: 'Risiko penurunan fungsi',
+                className: 'bg-orange-100 text-orange-800 border-orange-300',
+                icon: <TrendingDown className="w-4 h-4 text-orange-600" />,
+              };
+              if ((esasScore !== undefined && esasScore >= 20) || (distressScore !== undefined && distressScore >= 4)) return {
+                text: 'Membutuhkan evaluasi lanjutan',
+                className: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+                icon: <AlertTriangle className="w-4 h-4 text-yellow-600" />,
+              };
+              return {
+                text: 'Kondisi stabil',
+                className: 'bg-green-100 text-green-800 border-green-300',
+                icon: <CheckCircle2 className="w-4 h-4 text-green-600" />,
+              };
+            };
+
+            const interpretation = getOverallInterpretation();
+            const isSignificantDecline = interpretation.text === 'Memerlukan intervensi segera';
+
+            // Score trend chart data
+            const scoreTrendData = [...screeningRecords]
+              .sort((a, b) => new Date(a.performedAt).getTime() - new Date(b.performedAt).getTime())
+              .map(r => ({
+                time: formatDate(r.performedAt),
+                type: r.screeningType,
+                score: r.score,
+              }));
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Brain className="w-5 h-5 text-purple-600" />
+                    Skor Paliatif — {patient.patientName}
+                  </DialogTitle>
+                  <DialogDescription>
+                    Hasil penilaian kondisi pasien paliatif secara terintegrasi
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  {/* Overall Interpretation */}
+                  <div className={cn('flex items-center gap-3 p-4 rounded-lg border', interpretation.className)}>
+                    {interpretation.icon}
+                    <div>
+                      <p className="font-semibold">{interpretation.text}</p>
+                      <p className="text-xs">Interpretasi otomatis berdasarkan skor terkini</p>
+                    </div>
+                    {isSignificantDecline && (
+                      <Badge variant="destructive" className="ml-auto text-xs">Prioritas Pemantauan</Badge>
+                    )}
+                  </div>
+
+                  {/* Score Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {/* PPS */}
+                    <Card className="border">
+                      <CardHeader className="p-3 pb-1">
+                        <CardTitle className="text-xs font-medium">PPS</CardTitle>
+                        <CardDescription className="text-[10px]">Palliative Performance Scale</CardDescription>
+                      </CardHeader>
+                      <CardContent className="p-3 pt-0 text-center">
+                        {latestPPS ? (
+                          <>
+                            <p className={cn('text-3xl font-bold', (latestPPS.score || 0) <= 40 ? 'text-red-600' : (latestPPS.score || 0) <= 60 ? 'text-yellow-600' : 'text-green-600')}>
+                              {latestPPS.score}%
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">{latestPPS.scoreLabel || ''}</p>
+                            <p className="text-[10px] text-muted-foreground">{formatDate(latestPPS.performedAt)}</p>
+                          </>
+                        ) : (
+                          <p className="text-sm text-muted-foreground py-2">Belum ada data</p>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* ESAS-r */}
+                    <Card className="border">
+                      <CardHeader className="p-3 pb-1">
+                        <CardTitle className="text-xs font-medium">ESAS-r</CardTitle>
+                        <CardDescription className="text-[10px]">Edmonton Symptom Assessment</CardDescription>
+                      </CardHeader>
+                      <CardContent className="p-3 pt-0 text-center">
+                        {latestESAS ? (
+                          <>
+                            <p className={cn('text-3xl font-bold', (latestESAS.score || 0) >= 40 ? 'text-red-600' : (latestESAS.score || 0) >= 20 ? 'text-yellow-600' : 'text-green-600')}>
+                              {latestESAS.score}/90
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">{latestESAS.scoreLabel || ''}</p>
+                            <p className="text-[10px] text-muted-foreground">{formatDate(latestESAS.performedAt)}</p>
+                          </>
+                        ) : (
+                          <p className="text-sm text-muted-foreground py-2">Belum ada data</p>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* SPICT */}
+                    <Card className="border">
+                      <CardHeader className="p-3 pb-1">
+                        <CardTitle className="text-xs font-medium">SPICT</CardTitle>
+                        <CardDescription className="text-[10px]">SPICT Screening</CardDescription>
+                      </CardHeader>
+                      <CardContent className="p-3 pt-0 text-center">
+                        {spictRecords[0] ? (
+                          <>
+                            <p className={cn('text-3xl font-bold', spictRecords[0].scoreLabel?.includes('Positif') ? 'text-red-600' : 'text-green-600')}>
+                              {spictRecords[0].score ?? '-'}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">{spictRecords[0].scoreLabel || ''}</p>
+                            <p className="text-[10px] text-muted-foreground">{formatDate(spictRecords[0].performedAt)}</p>
+                          </>
+                        ) : (
+                          <p className="text-sm text-muted-foreground py-2">Belum ada data</p>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Distress Thermometer */}
+                    <Card className="border">
+                      <CardHeader className="p-3 pb-1">
+                        <CardTitle className="text-xs font-medium">Distress</CardTitle>
+                        <CardDescription className="text-[10px]">Distress Thermometer</CardDescription>
+                      </CardHeader>
+                      <CardContent className="p-3 pt-0 text-center">
+                        {latestDistress ? (
+                          <>
+                            <p className={cn('text-3xl font-bold', (latestDistress.score || 0) >= 8 ? 'text-red-600' : (latestDistress.score || 0) >= 4 ? 'text-yellow-600' : 'text-green-600')}>
+                              {latestDistress.score}/10
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">{latestDistress.scoreLabel || ''}</p>
+                            <p className="text-[10px] text-muted-foreground">{formatDate(latestDistress.performedAt)}</p>
+                          </>
+                        ) : (
+                          <p className="text-sm text-muted-foreground py-2">Belum ada data</p>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Karnofsky (optional placeholder) */}
+                    <Card className="border border-dashed">
+                      <CardHeader className="p-3 pb-1">
+                        <CardTitle className="text-xs font-medium text-muted-foreground">Karnofsky</CardTitle>
+                        <CardDescription className="text-[10px]">Performance Status (opsional)</CardDescription>
+                      </CardHeader>
+                      <CardContent className="p-3 pt-0 text-center">
+                        <p className="text-sm text-muted-foreground py-2">Belum dinilai</p>
+                      </CardContent>
+                    </Card>
+
+                    {/* ECOG (optional placeholder) */}
+                    <Card className="border border-dashed">
+                      <CardHeader className="p-3 pb-1">
+                        <CardTitle className="text-xs font-medium text-muted-foreground">ECOG</CardTitle>
+                        <CardDescription className="text-[10px]">Performance Status (opsional)</CardDescription>
+                      </CardHeader>
+                      <CardContent className="p-3 pt-0 text-center">
+                        <p className="text-sm text-muted-foreground py-2">Belum dinilai</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Score Trend Chart */}
+                  {scoreTrendData.length >= 2 && (
+                    <Card className="border">
+                      <CardHeader className="p-3 pb-1">
+                        <CardTitle className="text-xs font-medium flex items-center gap-1">
+                          <TrendingUp className="w-3.5 h-3.5" /> Tren Perubahan Skor
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-3 pt-0">
+                        <ResponsiveContainer width="100%" height={200}>
+                          <LineChart data={scoreTrendData.filter(d => d.type === 'pps' || d.type === 'esas')}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="time" tick={{ fontSize: 9 }} />
+                            <YAxis tick={{ fontSize: 9 }} />
+                            <Tooltip />
+                            <Legend wrapperStyle={{ fontSize: 10 }} />
+                            <Line type="monotone" dataKey="score" stroke="#8b5cf6" strokeWidth={2} name="Skor" />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Screening History */}
+                  {screeningRecords.length > 0 && (
+                    <Card className="border">
+                      <CardHeader className="p-3 pb-1">
+                        <CardTitle className="text-xs font-medium">Riwayat Skrining</CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-3 pt-0">
+                        <ScrollArea className="max-h-40">
+                          <div className="space-y-1.5">
+                            {screeningRecords.slice(0, 10).map(record => (
+                              <div key={record.id} className="flex items-center gap-2 text-xs p-1.5 rounded border bg-muted/20">
+                                <Badge variant="outline" className={cn('text-[10px] px-1 py-0', record.ewsLevel === 'merah' ? 'bg-red-100 text-red-800' : record.ewsLevel === 'kuning' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800')}>
+                                  {record.screeningType.toUpperCase()}
+                                </Badge>
+                                <span className="font-medium">Skor: {record.score ?? '-'}</span>
+                                <span className="text-muted-foreground truncate">{record.scoreLabel || record.interpretation || ''}</span>
+                                <span className="text-muted-foreground ml-auto shrink-0">{formatDate(record.performedAt)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Significant Decline Notification */}
+                  {isSignificantDecline && (
+                    <Alert variant="destructive">
+                      <Siren className="w-4 h-4" />
+                      <AlertTitle>Penurunan Signifikan Terdeteksi</AlertTitle>
+                      <AlertDescription>
+                        Skor pasien menunjukkan penurunan signifikan. Sistem telah memberikan notifikasi kepada dokter dan menandai pasien sebagai prioritas pemantauan.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
