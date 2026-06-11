@@ -146,3 +146,51 @@ Stage Summary:
 - Comprehensive Real-Time, Tren, and Skor Paliatif dialogs
 - Risk badges, monitoring status, PPS score on dashboard cards
 - All changes in src/components/telemedicine/rvsm-panel.tsx
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Revisi Tampilan Hasil Skrining Paliatif dan Modul Monitoring/Skrining Paliatif
+
+Work Log:
+- Explored project structure to locate all relevant files and button/feature locations
+- Modified palliative-screening-panel.tsx:
+  - Removed "Simpan ke RME" button from screening result footer
+  - Removed "Buat SOAP" button from screening result footer
+  - Made "Simpan & Kembali ke Monitoring" the primary action button (changed from variant="secondary" to default variant)
+  - When NOT navigated from monitoring, shows "Simpan Hasil" button instead
+  - Removed "Form Skrining Pasien" section entirely
+  - Removed "Riwayat Hasil Skrining" section entirely
+- Modified palliative-monitoring-panel.tsx:
+  - Removed "Komunikasi" tab from tab navigation and content
+  - Removed "Audit" tab from tab navigation and content
+  - Removed renderKomunikasi() function (~370 lines)
+  - Removed renderAudit() function (~140 lines)
+  - Updated MonitorTab type to remove 'komunikasi' and 'audit'
+  - Removed "Generate Resume AI" button from patient detail card
+  - Removed "Surat Rujukan AI" button from patient detail card
+  - Removed "Lihat Dokumen" button from patient detail card
+  - Removed "Skrining" button from patient detail card
+  - Kept: Edit, Hapus, Program Selesai buttons on patient detail card
+  - Removed "Skrining" and "Resume & Rujukan" buttons from dashboard quick action buttons
+  - Removed "Skrining" button from patient list table row
+  - Removed "Resume AI" and "Surat Rujukan" summary cards from dashboard
+  - Adjusted dashboard summary grid from 9 to 7 columns
+- Verified with Agent Browser:
+  - Monitoring Paliatif: 9 tabs (Dashboard, Pasien, TTV, Skrining, Obat, ACP, AI, Chat, Dokumen)
+  - Dashboard summary: 7 cards (Total, Aktif, Program Selesai, Risiko Merah, Risiko Kuning, Alert Aktif, Chat Aktif)
+  - Patient cards quick actions: Profil, TTV, Obat, ACP, Chat, Program Selesai
+  - Patient detail: only Edit, Hapus, Program Selesai buttons
+  - Skrining Paliatif: clean tool cards grid without Form Skrining Pasien or Riwayat sections
+  - Screening result footer: Kembali + Simpan Hasil/Simpan & Kembali ke Monitoring
+- All lint checks pass
+
+Stage Summary:
+- Simplified screening result footer from 4 buttons to 2 (Kembali + Simpan)
+- Made "Simpan & Kembali ke Monitoring" the primary action when navigated from monitoring
+- Removed "Form Skrining Pasien" and "Riwayat Hasil Skrining" sections from Skrining Paliatif
+- Removed Komunikasi and Audit tabs from Monitoring Paliatif
+- Removed 4 non-essential buttons from patient detail (Generate Resume AI, Skrining, Surat Rujukan AI, Lihat Dokumen)
+- Removed Skrining and Resume & Rujukan from dashboard quick actions
+- Dashboard summary reduced from 9 to 7 cards
+- All changes maintain clean, focused UI for clinical workflow

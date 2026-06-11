@@ -2217,140 +2217,6 @@ export function PalliativeScreeningPanel() {
               </Card>
             ))}
           </div>
-
-          <Separator />
-
-          {/* Palliative Screening Forms from Store */}
-          {palliativeScreeningForms.length > 0 && (
-            <div className="space-y-3">
-              <h3 className="text-base font-semibold text-foreground">Form Skrining Pasien</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-64 overflow-y-auto">
-                {palliativeScreeningForms.map(form => {
-                  const patient = consultations
-                    .filter(c => c.patientId === form.patientId && c.patient)
-                    .map(c => c.patient!)[0];
-                  const toolResultEntries = Object.entries(form.toolResults) as [ToolType, { score: number; scoreLabel: string; interpretation: string; ewsLevel: 'merah' | 'kuning' | 'hijau'; details: Record<string, unknown> }][];
-                  const completedCount = form.selectedTools.filter(t => form.toolResults[t]).length;
-                  const statusBadge = getStatusBadge(form.status);
-                  return (
-                    <Card key={form.id} className="border-border">
-                      <CardContent className="p-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-semibold text-foreground">
-                            {patient?.name || 'Pasien'}
-                          </p>
-                          <Badge variant="outline" className={cn('text-[10px] font-bold border', statusBadge.bg, statusBadge.color)}>
-                            {statusBadge.label}
-                          </Badge>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground">
-                          {form.selectedTools.length} alat • {completedCount} selesai • {formatDate(form.updatedAt)}
-                        </p>
-                        {toolResultEntries.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {toolResultEntries.map(([toolKey, toolResult]) => {
-                              const ewsBadge = getEwsBadge(toolResult.ewsLevel);
-                              return (
-                                <Badge key={toolKey} variant="outline" className={cn('text-[9px] font-bold border', ewsBadge.bg, ewsBadge.color)}>
-                                  {TOOL_DEFS[toolKey]?.name}: {toolResult.scoreLabel}
-                                </Badge>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {toolResultEntries.length > 0 && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-[10px] h-6 w-full"
-                            onClick={() => {
-                              // Show first result detail
-                              const [firstTool, firstResult] = toolResultEntries[0];
-                              setDetailResult({
-                                id: `${form.id}-${firstTool}`,
-                                tool: firstTool,
-                                toolName: TOOL_DEFS[firstTool]?.name || firstTool,
-                                patientId: form.patientId,
-                                patientName: patient?.name || 'Pasien',
-                                score: firstResult.score,
-                                scoreLabel: firstResult.scoreLabel,
-                                interpretation: firstResult.interpretation,
-                                ewsLevel: firstResult.ewsLevel,
-                                details: firstResult.details,
-                                savedAt: form.updatedAt,
-                              });
-                            }}
-                          >
-                            Lihat Detail
-                          </Button>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* History Table (from store) */}
-          <div>
-            <h3 className="text-base font-semibold text-foreground mb-3">Riwayat Hasil Skrining</h3>
-            {screeningHistory.length === 0 ? (
-              <Card className="border-dashed">
-                <CardContent className="p-8 text-center">
-                  <ClipboardList className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Belum ada hasil skrining paliatif. Mulai skrining untuk menyimpan hasil.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-muted/50">
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Waktu</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Pasien</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Alat</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Skor Utama</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Interpretasi</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">EWS</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {screeningHistory.map((row) => {
-                      const ews = getEwsBadge(row.ewsLevel);
-                      return (
-                        <tr key={row.id} className="border-t border-border hover:bg-muted/30">
-                          <td className="px-3 py-2 text-xs">{formatDate(row.savedAt)}</td>
-                          <td className="px-3 py-2 text-xs font-medium">{row.patientName}</td>
-                          <td className="px-3 py-2 text-xs">{row.toolName}</td>
-                          <td className="px-3 py-2 text-xs font-bold">{row.scoreLabel}</td>
-                          <td className="px-3 py-2 text-xs max-w-[200px] truncate" title={row.interpretation}>
-                            {row.interpretation}
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <Badge variant="outline" className={cn('text-[10px] font-bold border', ews.bg, ews.color)}>
-                              {ews.label}
-                            </Badge>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-xs h-7"
-                              onClick={() => setDetailResult(row)}
-                            >
-                              Detail
-                            </Button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
         </>
       )}
 
@@ -2408,11 +2274,8 @@ export function PalliativeScreeningPanel() {
                   <Button variant="outline" size="sm" onClick={() => { setShowResult(false); setCurrentStep(toolSteps - 1); }}>
                     <ChevronLeft className="w-4 h-4 mr-1" /> Kembali
                   </Button>
-                  <Button size="sm" onClick={handleSaveResult}>
-                    <Save className="w-4 h-4 mr-1" /> Simpan ke RME
-                  </Button>
-                  {isNavigatedFromMonitoring && (
-                    <Button variant="secondary" size="sm" onClick={() => {
+                  {isNavigatedFromMonitoring ? (
+                    <Button size="sm" onClick={() => {
                       handleSaveResult();
                       setTimeout(() => {
                         setScreeningNavigationFrom(null);
@@ -2420,12 +2283,11 @@ export function PalliativeScreeningPanel() {
                         setActivePanel('palliative-monitoring');
                       }, 300);
                     }}>
-                      <ArrowLeft className="w-4 h-4 mr-1" /> Simpan & Kembali ke Monitoring
+                      <Save className="w-4 h-4 mr-1" /> Simpan & Kembali ke Monitoring
                     </Button>
-                  )}
-                  {activeTool === 'esas' && (
-                    <Button variant="secondary" size="sm" onClick={() => toast({ title: 'SOAP', description: 'Navigasi ke panel SOAP (dalam pengembangan)' })}>
-                      <FileText className="w-4 h-4 mr-1" /> Buat SOAP
+                  ) : (
+                    <Button size="sm" onClick={handleSaveResult}>
+                      <Save className="w-4 h-4 mr-1" /> Simpan Hasil
                     </Button>
                   )}
                 </div>

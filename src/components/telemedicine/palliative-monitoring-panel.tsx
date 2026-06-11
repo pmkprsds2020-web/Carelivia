@@ -132,7 +132,7 @@ import { useToast } from '@/hooks/use-toast';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'acp' | 'komunikasi' | 'ai' | 'chat' | 'audit' | 'dokumen';
+type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'acp' | 'ai' | 'chat' | 'dokumen';
 
 // ── Helper Functions ─────────────────────────────────────────────────────
 
@@ -1161,7 +1161,7 @@ export function PalliativeMonitoringPanel() {
   const renderDashboard = () => (
     <div className="space-y-4">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-9 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-1">
             <Users className="w-4 h-4 text-muted-foreground" />
@@ -1210,20 +1210,6 @@ export function PalliativeMonitoringPanel() {
             <span className="text-xs text-muted-foreground">Chat Aktif</span>
           </div>
           <p className="text-2xl font-bold text-primary">{new Set(palliativeChatMessages.map(m => m.roomId)).size}</p>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <FileText className="w-4 h-4 text-teal-600" />
-            <span className="text-xs text-muted-foreground">Resume AI</span>
-          </div>
-          <p className="text-2xl font-bold text-teal-600">{palliativeResumes.length}</p>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <Building2 className="w-4 h-4 text-purple-600" />
-            <span className="text-xs text-muted-foreground">Surat Rujukan</span>
-          </div>
-          <p className="text-2xl font-bold text-purple-600">{palliativeReferralLetters.length}</p>
         </Card>
       </div>
 
@@ -1456,9 +1442,6 @@ export function PalliativeMonitoringPanel() {
                       <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('ttv'); }}>
                         <Thermometer className="w-3 h-3 mr-1" /> TTV
                       </Button>
-                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('screening'); }}>
-                        <ClipboardCheck className="w-3 h-3 mr-1" /> Skrining
-                      </Button>
                       <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('medication'); }}>
                         <Pill className="w-3 h-3 mr-1" /> Obat
                       </Button>
@@ -1467,9 +1450,6 @@ export function PalliativeMonitoringPanel() {
                       </Button>
                       <Button variant="default" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('chat'); }}>
                         <MessageCircle className="w-3 h-3 mr-1" /> Chat
-                      </Button>
-                      <Button variant="outline" size="sm" className="h-7 text-[11px] border-primary/20 text-primary hover:bg-primary hover:text-primary-foreground" onClick={() => { handleSelectPatient(patient.id); setActiveTab('dokumen'); }}>
-                        <FileText className="w-3 h-3 mr-1" /> Resume & Rujukan
                       </Button>
                       <Button
                         variant="outline"
@@ -1602,42 +1582,6 @@ export function PalliativeMonitoringPanel() {
                   </div>
                 </div>
                 <div className="flex sm:flex-col gap-2 shrink-0">
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="bg-primary hover:bg-primary/90 gap-1"
-                    onClick={() => { handleSelectPatient(detailPatient.id); setActiveTab('dokumen'); }}
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    Generate Resume AI
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-primary/20 text-primary hover:bg-primary hover:text-primary-foreground gap-1"
-                    onClick={() => { handleSelectPatient(detailPatient.id); setActiveTab('dokumen'); }}
-                  >
-                    <Building2 className="w-4 h-4" />
-                    Surat Rujukan AI
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-primary/20 text-primary hover:bg-primary hover:text-primary-foreground gap-1"
-                    onClick={() => { handleSelectPatient(detailPatient.id); setActiveTab('dokumen'); }}
-                  >
-                    <FileText className="w-4 h-4" />
-                    Lihat Dokumen
-                  </Button>
-                  <Separator className="hidden sm:block" />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleNavigateToScreening(detailPatient.id)}
-                  >
-                    <ClipboardCheck className="w-4 h-4 mr-1" />
-                    Skrining
-                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -1859,17 +1803,6 @@ export function PalliativeMonitoringPanel() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
-                              {!isCompleted && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 text-xs border-primary/30 text-primary hover:bg-primary hover:text-primary-foreground"
-                                  onClick={() => handleNavigateToScreening(p.id)}
-                                >
-                                  <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
-                                  Skrining
-                                </Button>
-                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -2973,519 +2906,6 @@ export function PalliativeMonitoringPanel() {
     </div>
   );
 
-  // ── Render: Komunikasi Pasien ──
-  const renderKomunikasi = () => {
-    const allFormTypes: PalliativeMonitoringFormType[] = [
-      'ttv', 'pps', 'spict', 'esas', 'eortc', 'penilaian_nyeri', 'penilaian_sesak', 'penilaian_nutrisi', 'acp',
-    ];
-
-    const monitoringStatusOptions: PalliativeMonitoringStatus[] = [
-      'monitoring_aktif', 'stabil', 'membutuhkan_home_visit', 'membutuhkan_telekonsultasi',
-      'membutuhkan_rujukan', 'terminal', 'meninggal_dunia', 'program_selesai',
-    ];
-
-    return (
-      <div className="space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <MessageCircle className="w-5 h-5 text-primary" />
-            Komunikasi Pasien
-          </h2>
-          <div className="flex items-center gap-2">
-            {palliativeMonitoringNotifications.filter((n) => !n.isRead).length > 0 && (
-              <Badge variant="destructive" className="text-xs">
-                <Bell className="w-3 h-3 mr-1" />
-                {palliativeMonitoringNotifications.filter((n) => !n.isRead).length} Notifikasi
-              </Badge>
-            )}
-          </div>
-        </div>
-
-        {/* Summary Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
-          <Card className="p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Users className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-[10px] text-muted-foreground">Total Aktif</span>
-            </div>
-            <p className="text-xl font-bold">{komunikasiStats.total}</p>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Activity className="w-3.5 h-3.5 text-green-600" />
-              <span className="text-[10px] text-muted-foreground">Monitoring</span>
-            </div>
-            <p className="text-xl font-bold text-green-600">{komunikasiStats.monitoringAktif}</p>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
-              <span className="text-[10px] text-muted-foreground">Stabil</span>
-            </div>
-            <p className="text-xl font-bold text-teal-600">{komunikasiStats.stabil}</p>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Home className="w-3.5 h-3.5 text-amber-600" />
-              <span className="text-[10px] text-muted-foreground">Home Visit</span>
-            </div>
-            <p className="text-xl font-bold text-amber-600">{komunikasiStats.homeVisit}</p>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Stethoscope className="w-3.5 h-3.5 text-blue-600" />
-              <span className="text-[10px] text-muted-foreground">Telekonsultasi</span>
-            </div>
-            <p className="text-xl font-bold text-blue-600">{komunikasiStats.telekonsultasi}</p>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
-              <span className="text-[10px] text-muted-foreground">Terminal</span>
-            </div>
-            <p className="text-xl font-bold text-red-600">{komunikasiStats.terminal}</p>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <MessageCircle className="w-3.5 h-3.5 text-primary" />
-              <span className="text-[10px] text-muted-foreground">Belum Dibaca</span>
-            </div>
-            <p className="text-xl font-bold text-primary">{komunikasiStats.totalUnread}</p>
-          </Card>
-        </div>
-
-        {/* Search and Filter */}
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Cari nama pasien, RM, diagnosa, status..."
-              value={komunikasiSearch}
-              onChange={(e) => setKomunikasiSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-          <Select value={komunikasiFilter} onValueChange={setKomunikasiFilter}>
-            <SelectTrigger className="w-full sm:w-52">
-              <Filter className="w-4 h-4 mr-2" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Semua Status</SelectItem>
-              <SelectItem value="monitoring_aktif">Monitoring Aktif</SelectItem>
-              <SelectItem value="stabil">Stabil</SelectItem>
-              <SelectItem value="membutuhkan_home_visit">Home Visit</SelectItem>
-              <SelectItem value="membutuhkan_telekonsultasi">Telekonsultasi</SelectItem>
-              <SelectItem value="membutuhkan_rujukan">Perlu Rujukan</SelectItem>
-              <SelectItem value="terminal">Terminal</SelectItem>
-              <SelectItem value="meninggal_dunia">Meninggal Dunia</SelectItem>
-              <SelectItem value="program_selesai">Program Selesai</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Notifications */}
-        {palliativeMonitoringNotifications.filter((n) => !n.isRead).length > 0 && (
-          <Card className="p-4 border-amber-200 bg-amber-50">
-            <CardHeader className="p-0 pb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Bell className="w-4 h-4 text-amber-600" />
-                  <CardTitle className="text-sm font-medium text-amber-800">Notifikasi Terbaru</CardTitle>
-                </div>
-                <Badge variant="outline" className="text-[10px] bg-amber-100 text-amber-800 border-amber-300">
-                  {palliativeMonitoringNotifications.filter((n) => !n.isRead).length} baru
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar">
-                {palliativeMonitoringNotifications
-                  .filter((n) => !n.isRead)
-                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                  .slice(0, 5)
-                  .map((notif) => (
-                    <div
-                      key={notif.id}
-                      className="flex items-start gap-2 p-2 rounded-md hover:bg-amber-100/50 cursor-pointer"
-                      onClick={() => markPalliativeNotificationRead(notif.id)}
-                    >
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          'text-[9px] shrink-0',
-                          notif.severity === 'critical'
-                            ? 'bg-red-100 text-red-800 border-red-300'
-                            : notif.severity === 'warning'
-                              ? 'bg-amber-100 text-amber-800 border-amber-300'
-                              : 'bg-blue-100 text-blue-800 border-blue-300'
-                        )}
-                      >
-                        {notif.severity === 'critical' ? 'Kritis' : notif.severity === 'warning' ? 'Perhatian' : 'Info'}
-                      </Badge>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-amber-900 truncate">{notif.title}</p>
-                        <p className="text-[10px] text-amber-700 truncate">{notif.description}</p>
-                      </div>
-                      <span className="text-[9px] text-amber-600 shrink-0">
-                        {formatDateTime(notif.createdAt)}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Patient Communication List */}
-        <div className="space-y-3 max-h-[calc(100vh-480px)] overflow-y-auto custom-scrollbar">
-          {filteredKomunikasiPatients.length === 0 ? (
-            <Card className="p-6 text-center text-muted-foreground">
-              <MessageCircle className="w-10 h-10 mx-auto mb-2 text-muted-foreground/50" />
-              <p>Tidak ada pasien ditemukan.</p>
-              <p className="text-xs mt-1">Coba ubah filter atau kata kunci pencarian.</p>
-            </Card>
-          ) : (
-            filteredKomunikasiPatients.map((patient) => {
-              const statusBadge = getMonitoringStatusBadge(patient.monitoringStatus);
-              const riskBadge = getRiskBadge(patient.riskLevel);
-              const lastPPS = getLastPPS(patient.id);
-              const unread = getUnreadCount(patient.id);
-              const lastChat = getLastChatDate(patient.id);
-
-              return (
-                <Card
-                  key={patient.id}
-                  className={cn(
-                    'p-4 hover:shadow-md transition-shadow border-l-4',
-                    patient.riskLevel === 'merah'
-                      ? 'border-l-red-500'
-                      : patient.riskLevel === 'kuning'
-                        ? 'border-l-amber-500'
-                        : 'border-l-green-500'
-                  )}
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                    {/* Patient Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-semibold text-foreground truncate">
-                          {patient.patientName || '-'}
-                        </h3>
-                        <Badge variant="outline" className={cn('text-[10px]', riskBadge.className)}>
-                          {riskBadge.label}
-                        </Badge>
-                        <Badge variant="outline" className={cn('text-[10px]', statusBadge.className)}>
-                          {statusBadge.label}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-0.5">
-                        RM: {patient.rmNumber || '-'} | {patient.primaryDiagnosis || '-'}
-                        {patient.diseaseStage ? ` (${patient.diseaseStage})` : ''}
-                      </p>
-                      <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground flex-wrap">
-                        <span className="flex items-center gap-1">
-                          <Activity className="w-3 h-3" />
-                          PPS: {lastPPS ?? '-'}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          Chat terakhir: {lastChat ? formatDateTime(lastChat) : 'Belum ada'}
-                        </span>
-                        {unread > 0 && (
-                          <Badge variant="destructive" className="text-[10px] h-5 px-1.5">
-                            {unread} belum dibaca
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Status Dropdown */}
-                    <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="sm" className="h-7 text-[11px]">
-                            <RefreshCw className="w-3 h-3 mr-1" /> Ubah Status
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-52">
-                          <DropdownMenuLabel className="text-xs">Status Monitoring</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          {monitoringStatusOptions.map((status) => {
-                            const badge = getMonitoringStatusBadge(status);
-                            return (
-                              <DropdownMenuItem
-                                key={status}
-                                className="text-xs"
-                                onClick={() => handleMonitoringStatusChange(patient.id, status)}
-                              >
-                                <span className={cn('w-2 h-2 rounded-full mr-2', badge.className.split(' ')[0])} />
-                                {badge.label}
-                              </DropdownMenuItem>
-                            );
-                          })}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex items-center gap-1.5 mt-3 flex-wrap">
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="h-7 text-[11px]"
-                      onClick={() => {
-                        handleSelectPatient(patient.id);
-                        setActiveTab('chat');
-                      }}
-                    >
-                      <MessageCircle className="w-3 h-3 mr-1" /> Chat
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-[11px]"
-                      onClick={() => handleOpenSendForm(patient.id)}
-                    >
-                      <FileText className="w-3 h-3 mr-1" /> Kirim Form
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-[11px]"
-                      onClick={() => {
-                        handleSelectPatient(patient.id);
-                        setActiveTab('patients');
-                      }}
-                    >
-                      <Eye className="w-3 h-3 mr-1" /> Lihat Profil
-                    </Button>
-                  </div>
-                </Card>
-              );
-            })
-          )}
-        </div>
-
-        {/* Send Form Dialog */}
-        <Dialog open={showSendFormDialog} onOpenChange={(open) => {
-          setShowSendFormDialog(open);
-          if (!open) {
-            setSendFormPatientId(null);
-            setSelectedFormTypes([]);
-          }
-        }}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Kirim Form Monitoring</DialogTitle>
-              <DialogDescription>
-                Pilih form monitoring yang akan dikirim ke{' '}
-                <span className="font-medium">
-                  {palliativePatients.find((p) => p.id === sendFormPatientId)?.patientName || 'Pasien'}
-                </span>
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 gap-2">
-                {allFormTypes.map((formType) => (
-                  <label
-                    key={formType}
-                    className={cn(
-                      'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-                      selectedFormTypes.includes(formType)
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:bg-muted/30'
-                    )}
-                  >
-                    <Checkbox
-                      checked={selectedFormTypes.includes(formType)}
-                      onCheckedChange={() => toggleFormType(formType)}
-                    />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{getFormTypeLabel(formType)}</p>
-                    </div>
-                    {selectedFormTypes.includes(formType) && (
-                      <CheckCircle2 className="w-4 h-4 text-primary" />
-                    )}
-                  </label>
-                ))}
-              </div>
-              {selectedFormTypes.length > 0 && (
-                <div className="p-3 bg-muted/30 rounded-lg">
-                  <p className="text-xs text-muted-foreground">
-                    {selectedFormTypes.length} form akan dikirim:{' '}
-                    {selectedFormTypes.map((t) => getFormTypeLabel(t)).join(', ')}
-                  </p>
-                </div>
-              )}
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowSendFormDialog(false);
-                  setSendFormPatientId(null);
-                  setSelectedFormTypes([]);
-                }}
-              >
-                Batal
-              </Button>
-              <Button
-                onClick={handleSendForms}
-                disabled={selectedFormTypes.length === 0}
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                Kirim {selectedFormTypes.length > 0 ? `(${selectedFormTypes.length})` : ''}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-    );
-  };
-
-  // ── Render: Audit Trail Tab ──
-  const renderAudit = () => (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Audit Trail dan Keamanan</h2>
-      </div>
-
-      {/* Clinical Alerts Summary */}
-      <Card className="p-4">
-        <CardHeader className="p-0 pb-3">
-          <div className="flex items-center gap-2">
-            <Bell className="w-5 h-5 text-red-600" />
-            <CardTitle className="text-base">Notifikasi Klinis</CardTitle>
-            <Badge variant="destructive" className="text-xs">{palliativeClinicalAlerts.filter(a => !a.isRead).length} belum dibaca</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {palliativeClinicalAlerts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Tidak ada notifikasi klinis</p>
-          ) : (
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {palliativeClinicalAlerts.map(alert => {
-                const pPatient = palliativePatients.find(p => p.id === alert.patientId);
-                return (
-                  <div key={alert.id} className={cn(
-                    'flex items-start gap-3 p-3 rounded-lg border cursor-pointer',
-                    !alert.isRead ? 'bg-red-50 border-red-200' : 'bg-muted/30'
-                  )} onClick={() => markPalliativeAlertRead(alert.id)}>
-                    <Badge variant="outline" className={cn('text-[10px] shrink-0', alert.severity === 'merah' ? 'bg-red-100 text-red-800 border-red-300' : alert.severity === 'kuning' ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-green-100 text-green-800 border-green-300')}>
-                      {alert.severity === 'merah' ? 'Gawat' : alert.severity === 'kuning' ? 'Waspada' : 'Stabil'}
-                    </Badge>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{alert.title}</span>
-                        <span className="text-xs text-muted-foreground">- {pPatient?.patientName || '-'}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{alert.description}</p>
-                      <p className="text-[10px] text-muted-foreground mt-1">{formatDateTime(alert.createdAt)}</p>
-                    </div>
-                    {!alert.isRead && <div className="w-2 h-2 rounded-full bg-red-500 shrink-0 mt-1" />}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Audit Log */}
-      <Card className="p-4">
-        <CardHeader className="p-0 pb-3">
-          <div className="flex items-center gap-2">
-            <History className="w-5 h-5 text-primary" />
-            <CardTitle className="text-base">Log Aktivitas</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {palliativeAuditLog.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Belum ada aktivitas tercatat</p>
-          ) : (
-            <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
-              {[...palliativeAuditLog].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(entry => {
-                const pPatient = palliativePatients.find(p => p.id === entry.patientId);
-                const actionLabel: Record<string, string> = {
-                  chat_sent: 'Pesan Terkirim',
-                  form_sent: 'Form Dikirim',
-                  form_opened: 'Form Dibuka',
-                  form_filled: 'Form Diisi',
-                  form_submitted: 'Form Terkirim',
-                  result_read: 'Hasil Dibaca',
-                  ai_generated: 'AI Ringkasan',
-                  alert_triggered: 'Notifikasi Klinis',
-                  clinical_action: 'Tindakan Klinis',
-                  program_completed: 'Program Selesai',
-                };
-                const actionColor: Record<string, string> = {
-                  chat_sent: 'bg-blue-100 text-blue-800',
-                  form_sent: 'bg-teal-100 text-teal-800',
-                  form_opened: 'bg-sky-100 text-sky-800',
-                  form_filled: 'bg-amber-100 text-amber-800',
-                  form_submitted: 'bg-green-100 text-green-800',
-                  result_read: 'bg-gray-100 text-gray-800',
-                  ai_generated: 'bg-purple-100 text-purple-800',
-                  alert_triggered: 'bg-red-100 text-red-800',
-                  clinical_action: 'bg-orange-100 text-orange-800',
-                  program_completed: 'bg-slate-200 text-slate-800',
-                };
-                return (
-                  <div key={entry.id} className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted/30 text-sm">
-                    <Badge variant="outline" className={cn('text-[10px] shrink-0', actionColor[entry.action] || 'bg-gray-100 text-gray-800')}>
-                      {actionLabel[entry.action] || entry.action}
-                    </Badge>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs">{entry.details || '-'}</p>
-                      <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground">
-                        <span>{pPatient?.patientName || '-'}</span>
-                        <span>Oleh: {entry.performedByRole === 'doctor' ? 'Dokter' : entry.performedByRole === 'patient' ? 'Pasien' : entry.performedByRole === 'family' ? 'Keluarga' : 'Sistem'}</span>
-                        <span>{formatDateTime(entry.createdAt)}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Chat Activity Summary */}
-      <Card className="p-4">
-        <CardHeader className="p-0 pb-3">
-          <div className="flex items-center gap-2">
-            <MessageCircle className="w-5 h-5 text-primary" />
-            <CardTitle className="text-base">Ringkasan Aktivitas Chat</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-3 rounded-lg bg-muted/30 text-center">
-              <p className="text-lg font-bold">{palliativeChatMessages.filter(m => m.type === 'text').length}</p>
-              <p className="text-xs text-muted-foreground">Pesan Teks</p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/30 text-center">
-              <p className="text-lg font-bold">{palliativeChatMessages.filter(m => m.type.startsWith('form_')).length}</p>
-              <p className="text-xs text-muted-foreground">Form Dikirim</p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/30 text-center">
-              <p className="text-lg font-bold">{palliativeChatMessages.filter(m => m.type === 'form_response').length}</p>
-              <p className="text-xs text-muted-foreground">Form Dijawab</p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/30 text-center">
-              <p className="text-lg font-bold">{palliativeChatMessages.filter(m => m.type === 'ai_summary').length}</p>
-              <p className="text-xs text-muted-foreground">AI Ringkasan</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
   // ── Main Render ──
   const needsPatientSelection = ['ttv', 'screening', 'medication', 'acp', 'ai', 'chat'].includes(
     activeTab
@@ -3526,9 +2946,6 @@ export function PalliativeMonitoringPanel() {
             <Shield className="w-4 h-4 mr-1" />
             ACP
           </TabsTrigger>
-          <TabsTrigger value="komunikasi" className="text-xs gap-1">
-            <MessageCircle className="w-3.5 h-3.5" /> Komunikasi
-          </TabsTrigger>
           <TabsTrigger value="ai" className="text-xs sm:text-sm">
             <Brain className="w-4 h-4 mr-1" />
             AI
@@ -3536,10 +2953,6 @@ export function PalliativeMonitoringPanel() {
           <TabsTrigger value="chat" className="text-xs sm:text-sm">
             <MessageCircle className="w-4 h-4 mr-1" />
             Chat
-          </TabsTrigger>
-          <TabsTrigger value="audit" className="text-xs sm:text-sm">
-            <History className="w-4 h-4 mr-1" />
-            Audit
           </TabsTrigger>
           <TabsTrigger value="dokumen" className="text-xs sm:text-sm">
             <FileText className="w-4 h-4 mr-1" />
@@ -3556,16 +2969,12 @@ export function PalliativeMonitoringPanel() {
         <TabsContent value="screening">{renderScreening()}</TabsContent>
         <TabsContent value="medication">{renderMedication()}</TabsContent>
         <TabsContent value="acp">{renderACP()}</TabsContent>
-        <TabsContent value="komunikasi" className="mt-4">
-          {renderKomunikasi()}
-        </TabsContent>
         <TabsContent value="ai">{renderAI()}</TabsContent>
         <TabsContent value="chat">
           <div className="h-[calc(100vh-280px)]">
             <PalliativeChatPanel patient={selectedPatient} />
           </div>
         </TabsContent>
-        <TabsContent value="audit">{renderAudit()}</TabsContent>
         <TabsContent value="dokumen">
           <PalliativeResumeReferralPanel patient={selectedPatient} />
         </TabsContent>
