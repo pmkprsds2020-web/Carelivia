@@ -291,9 +291,9 @@ export function LoginPage() {
           <div
             className="p-6"
             style={{
-              background: 'rgba(255, 255, 255, 0.08)',
-              backdropFilter: 'blur(8px)',
-              WebkitBackdropFilter: 'blur(8px)',
+              background: 'rgba(255, 255, 255, 0.12)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               borderRadius: '24px',
               boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
@@ -385,8 +385,8 @@ export function LoginPage() {
                       }`}
                       style={{
                         background: isSelected
-                          ? 'rgba(255, 255, 255, 0.15)'
-                          : 'rgba(255, 255, 255, 0.05)',
+                          ? 'rgba(255, 255, 255, 0.18)'
+                          : 'rgba(255, 255, 255, 0.12)',
                         backdropFilter: 'blur(10px)',
                         WebkitBackdropFilter: 'blur(10px)',
                         borderRadius: '20px',
@@ -400,14 +400,14 @@ export function LoginPage() {
                       onMouseEnter={(e) => {
                         if (!isSelected) {
                           e.currentTarget.style.boxShadow = config.hoverShadow;
-                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.18)';
                           e.currentTarget.style.border = `1px solid ${config.accentColor}40`;
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (!isSelected) {
                           e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.06)';
-                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
                           e.currentTarget.style.border = '1px solid rgba(255,255,255,0.08)';
                         }
                       }}

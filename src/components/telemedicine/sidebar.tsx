@@ -77,7 +77,7 @@ const allNavItems: NavItem[] = [
   { id: 'homecare', label: 'Home Care', icon: <Heart className="w-5 h-5" />, roles: ['admin'] },
   { id: 'pharmacist-panel', label: 'Kelola Apotek', icon: <Package className="w-5 h-5" />, roles: ['admin'] },
   { id: 'homecare-staff-panel', label: 'Kelola Petugas', icon: <Truck className="w-5 h-5" />, roles: ['admin'] },
-  { id: 'admin', label: 'Kelola Pengguna', icon: <Users className="w-5 h-5" />, roles: ['admin'] },
+  { id: 'admin-users', label: 'Kelola Pengguna', icon: <Users className="w-5 h-5" />, roles: ['admin'] },
   { id: 'reports', label: 'Laporan', icon: <BarChart3 className="w-5 h-5" />, roles: ['admin'], section: 'Lainnya' },
   { id: 'payments', label: 'Pembayaran', icon: <CreditCard className="w-5 h-5" />, roles: ['admin'] },
   { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['admin'] },
@@ -193,7 +193,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
                             item.id === 'notifications' ? unreadCount : 0;
 
           return (
-            <div key={`${item.id}-${item.roles.join(',')}`}>
+            <div key={`${item.id}-${item.roles.join(',')}-${index}`}>
               {sectionHeader}
               <button
                 onClick={() => handleNavClick(item.id)}

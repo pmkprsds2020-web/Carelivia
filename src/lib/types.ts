@@ -423,6 +423,7 @@ export type ActivePanel =
   | 'homecare-staff-panel'
   | 'admin' 
   | 'admin-pricing'
+  | 'admin-users'
   | 'notifications'
   | 'payments'
   | 'reports'
