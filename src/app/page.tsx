@@ -198,7 +198,7 @@ export default function TelemedicineApp() {
         {/* Footer */}
         <footer className="border-t border-border bg-background/80 backdrop-blur-md px-4 py-2 text-center">
           <p className="text-xs text-muted-foreground">
-            &copy; 2026 CARE&apos;Livia &mdash; Telepalliative Care Platform &middot; Caring for Life, Preserving Human Dignity
+            &copy; 2025 CareLivia &mdash; Telepalliative Care Platform &middot; Caring for Life, Preserving Human Dignity
           </p>
         </footer>
       </div>

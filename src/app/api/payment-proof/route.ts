@@ -156,9 +156,9 @@ export async function GET(req: NextRequest) {
       </div>
     </div>
     <div class="footer">
-      <p>Bukti pembayaran ini merupakan bukti sah dari CARE'Livia.</p>
+      <p>Bukti pembayaran ini merupakan bukti sah dari CareLivia.</p>
       <p>Untuk pertanyaan, hubungi support@carelivia.id</p>
-      <p style="margin-top: 8px; color: #0d9488; font-weight: 600;">CARE'Livia &mdash; Sehat Terhubung, Hidup Lebih Baik</p>
+      <p style="margin-top: 8px; color: #0d9488; font-weight: 600;">CareLivia &mdash; Sehat Terhubung, Hidup Lebih Baik</p>
     </div>
   </div>
   <script>

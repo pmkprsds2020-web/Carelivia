@@ -14,10 +14,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CARE'Livia - Telepalliative Care Platform",
+  title: "CareLivia - Telepalliative Care Platform",
   description: "Platform telepalliative care yang berfokus pada peningkatan kualitas hidup pasien, penghormatan terhadap martabat manusia, dukungan keluarga, serta perawatan yang berkelanjutan. Caring for Life, Preserving Human Dignity.",
   keywords: ["telepalliative", "paliatif", "perawatan lansia", "dukungan keluarga", "home care", "telehealth", "kesehatan", "Indonesia"],
-  authors: [{ name: "CARE'Livia Team" }],
+  authors: [{ name: "CareLivia Team" }],
   icons: {
     icon: "/carelivia-icon.png",
   },

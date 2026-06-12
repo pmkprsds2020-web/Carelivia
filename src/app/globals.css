@@ -51,7 +51,7 @@
 
 :root {
   --radius: 0.625rem;
-  /* CARE'Livia Color Scheme - Healing Nature Theme */
+  /* CareLivia Color Scheme - Healing Nature Theme */
   /* Primary: #2D8C7A → oklch(0.56 0.1 170) */
   /* Secondary: #6DB8A8 → oklch(0.72 0.08 170) */
   /* Accent: #D9B26F → oklch(0.78 0.12 75) */
@@ -177,7 +177,7 @@
   animation: slide-in 0.2s ease-out;
 }
 
-/* CARE'Livia Gradient */
+/* CareLivia Gradient */
 .carelivia-gradient {
   background: linear-gradient(135deg, oklch(0.56 0.1 170), oklch(0.45 0.08 180));
 }
@@ -233,7 +233,7 @@
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
-/* ── CARE'Livia Login Page Animations ── */
+/* ── CareLivia Login Page Animations ── */
 @keyframes float-gentle {
   0%, 100% { transform: translateY(0px) rotate(0deg); }
   50% { transform: translateY(-12px) rotate(2deg); }

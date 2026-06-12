@@ -18,7 +18,7 @@ export async function GET() {
     const admin = await db.user.create({
       data: {
         email: "admin@carelivia.id",
-        name: "Admin CARE'Livia",
+        name: "Admin CareLivia",
         role: "admin",
         phone: "081111111111",
         isVerified: true,
@@ -171,7 +171,7 @@ export async function GET() {
         pharmacistProfile: {
           create: {
             licenseNumber: "SIPA-001",
-            pharmacyName: "Apotek CARE'Livia",
+            pharmacyName: "Apotek CareLivia",
           },
         },
       },

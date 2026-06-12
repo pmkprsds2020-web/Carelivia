@@ -581,7 +581,7 @@ export function HomeDashboard() {
                       {article.title}
                     </h3>
                     <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <span>{article.author || "Tim CARE'Livia"}</span>
+                      <span>{article.author || "Tim CareLivia"}</span>
                       <span className="text-border">|</span>
                       <span>{formatDateShort(article.createdAt)}</span>
                     </div>

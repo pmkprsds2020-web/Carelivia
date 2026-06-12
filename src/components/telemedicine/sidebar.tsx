@@ -137,7 +137,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         <div className="w-10 h-10 rounded-xl carelivia-gradient flex items-center justify-center shrink-0 shadow-md overflow-hidden">
           <Image
             src="/carelivia-icon.png"
-            alt="CARE'Livia"
+            alt="CareLivia"
             width={40}
             height={40}
             className="w-8 h-8 object-contain p-0.5"
@@ -145,7 +145,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         </div>
         {!collapsed && (
           <div className="overflow-hidden">
-            <h1 className="text-lg font-bold text-foreground whitespace-nowrap">CARE&apos;Livia</h1>
+            <h1 className="text-lg font-bold text-foreground whitespace-nowrap">CareLivia</h1>
             <p className="text-[10px] text-muted-foreground whitespace-nowrap">Telepalliative Care</p>
           </div>
         )}

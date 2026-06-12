@@ -551,7 +551,7 @@ export function PaymentsPanel() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Atas Nama</span>
-                    <span className="font-medium">PT CARE'Livia Indonesia</span>
+                    <span className="font-medium">PT CareLivia Indonesia</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Jumlah</span>
@@ -667,7 +667,7 @@ export function PaymentsPanel() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Atas Nama</span>
-                    <span className="font-medium">PT CARE'Livia Indonesia</span>
+                    <span className="font-medium">PT CareLivia Indonesia</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Jumlah</span>

@@ -559,7 +559,7 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
       return;
     }
 
-    const message = `${docLabel} - ${doc.patientName || 'Pasien'}\n\nNo. Dokumen: ${doc.documentNumber}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}\nStatus: ${doc.isSigned ? 'Ditandatangani secara elektronik' : 'Belum ditandatangani'}\n\nDokumen ini dihasilkan oleh CARE'Livia`;
+    const message = `${docLabel} - ${doc.patientName || 'Pasien'}\n\nNo. Dokumen: ${doc.documentNumber}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}\nStatus: ${doc.isSigned ? 'Ditandatangani secara elektronik' : 'Belum ditandatangani'}\n\nDokumen ini dihasilkan oleh CareLivia`;
     const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(waUrl, '_blank');
 
@@ -588,8 +588,8 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
     if (!doc) return;
 
     const docLabel = docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan';
-    const subject = encodeURIComponent(`[CARE'Livia] ${docLabel} - ${doc.patientName || 'Pasien'} - ${doc.documentNumber}`);
-    const body = encodeURIComponent(`Kepada Yth.,\n\nBerikut kami sampaikan ${docLabel} untuk pasien ${doc.patientName || '-'} (RM: ${doc.rmNumber || '-'}).\n\nDetail Dokumen:\n- No. Dokumen: ${doc.documentNumber}\n- Tanggal: ${formatDate(doc.generatedAt)}\n- Dokter: ${doc.doctorName || '-'}\n- SIP: ${doc.doctorSip || '-'}\n- Status Tanda Tangan: ${doc.isSigned ? 'Ditandatangani secara elektronik' : 'Belum ditandatangani'}\n- Versi: ${doc.version}\n\nDokumen ini dihasilkan oleh CARE'Livia.\nHormat kami,\n${currentUser?.name || 'Dokter'}`);
+    const subject = encodeURIComponent(`[CareLivia] ${docLabel} - ${doc.patientName || 'Pasien'} - ${doc.documentNumber}`);
+    const body = encodeURIComponent(`Kepada Yth.,\n\nBerikut kami sampaikan ${docLabel} untuk pasien ${doc.patientName || '-'} (RM: ${doc.rmNumber || '-'}).\n\nDetail Dokumen:\n- No. Dokumen: ${doc.documentNumber}\n- Tanggal: ${formatDate(doc.generatedAt)}\n- Dokter: ${doc.doctorName || '-'}\n- SIP: ${doc.doctorSip || '-'}\n- Status Tanda Tangan: ${doc.isSigned ? 'Ditandatangani secara elektronik' : 'Belum ditandatangani'}\n- Versi: ${doc.version}\n\nDokumen ini dihasilkan oleh CareLivia.\nHormat kami,\n${currentUser?.name || 'Dokter'}`);
     window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
 
     if (docType === 'resume') {
