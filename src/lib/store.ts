@@ -24,7 +24,8 @@ import type {
   SocialAssessmentRecord, CaregiverInfo, FamilyMeetingRecord,
   EduMaterial, FamilyCoordinationNote, EmergencyContact,
   FinancialSupportRecord, TransportRecord, SocialMonitoringAlert,
-  AISocialAnalysisResult, AISocialAnalysisRecord, AISocialPopulationStats
+  AISocialAnalysisResult, AISocialAnalysisRecord, AISocialPopulationStats,
+  PatientTransportRequest, PatientCareUpdate, PatientPaliatifChatMessage
 } from './types';
 
 interface TelemedicineStore {
@@ -279,6 +280,16 @@ interface TelemedicineStore {
   addAiSocialAnalysisRecord: (record: AISocialAnalysisRecord) => void;
   aiSocialPopulationStats: AISocialPopulationStats | null;
   setAiSocialPopulationStats: (stats: AISocialPopulationStats | null) => void;
+
+  // Patient Paliatif Module
+  patientTransportRequests: PatientTransportRequest[];
+  addPatientTransportRequest: (request: PatientTransportRequest) => void;
+  updatePatientTransportRequest: (id: string, data: Partial<PatientTransportRequest>) => void;
+  patientCareUpdates: PatientCareUpdate[];
+  addPatientCareUpdate: (update: PatientCareUpdate) => void;
+  markCareUpdateViewed: (id: string) => void;
+  patientPaliatifMessages: PatientPaliatifChatMessage[];
+  addPatientPaliatifMessage: (message: PatientPaliatifChatMessage) => void;
 }
 
 export const useStore = create<TelemedicineStore>((set) => ({
@@ -1543,4 +1554,125 @@ export const useStore = create<TelemedicineStore>((set) => ({
   addAiSocialAnalysisRecord: (record) => set((state) => ({ aiSocialAnalysisRecords: [...state.aiSocialAnalysisRecords, record] })),
   aiSocialPopulationStats: null,
   setAiSocialPopulationStats: (stats) => set({ aiSocialPopulationStats: stats }),
+
+  // Patient Paliatif Module
+  patientTransportRequests: [
+    {
+      id: 'ptr-1',
+      palliativePatientId: 'pp-1',
+      requestType: 'kontrol_faskes',
+      requestDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+      requestTime: '09:00',
+      pickupLocation: 'Jl. Melati No. 12, Bandung',
+      destination: 'RS Hasan Sadikin, Bandung',
+      notes: 'Kontrol rutin dengan dr. Sarah',
+      status: 'disetujui',
+      requestedBy: 'Siti Rahayu',
+      confirmedBy: 'dr. Sarah Wijaya',
+      confirmedAt: new Date(Date.now() - 3600000).toISOString(),
+      createdAt: new Date(Date.now() - 86400000).toISOString(),
+      updatedAt: new Date(Date.now() - 3600000).toISOString(),
+    },
+    {
+      id: 'ptr-2',
+      palliativePatientId: 'pp-1',
+      requestType: 'pengambilan_obat',
+      requestDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+      requestTime: '14:00',
+      pickupLocation: 'Jl. Melati No. 12, Bandung',
+      destination: 'Apotek Kimia Farma, Jl. Asia Afrika',
+      status: 'menunggu_konfirmasi',
+      requestedBy: 'Siti Rahayu',
+      createdAt: new Date(Date.now() - 7200000).toISOString(),
+      updatedAt: new Date(Date.now() - 7200000).toISOString(),
+    },
+  ] as PatientTransportRequest[],
+  addPatientTransportRequest: (request) => set((state) => ({ patientTransportRequests: [...state.patientTransportRequests, request] })),
+  updatePatientTransportRequest: (id, data) => set((state) => ({
+    patientTransportRequests: state.patientTransportRequests.map(r =>
+      r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r
+    ),
+  })),
+  patientCareUpdates: [
+    {
+      id: 'pcu-1',
+      palliativePatientId: 'pp-1',
+      conditionStatus: 'stabil',
+      newComplaints: false,
+      activityChange: false,
+      appetiteChange: true,
+      sleepQualityChange: false,
+      additionalNotes: 'Nafsu makan sedikit berkurang hari ini',
+      submittedBy: 'Siti Rahayu',
+      viewedByDoctor: true,
+      createdAt: new Date(Date.now() - 172800000).toISOString(),
+    },
+    {
+      id: 'pcu-2',
+      palliativePatientId: 'pp-1',
+      conditionStatus: 'menurun',
+      newComplaints: true,
+      activityChange: true,
+      appetiteChange: true,
+      sleepQualityChange: true,
+      additionalNotes: 'Sesak napas bertambah, sulit tidur, nafsu makan menurun',
+      submittedBy: 'Siti Rahayu',
+      viewedByDoctor: false,
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+    },
+  ] as PatientCareUpdate[],
+  addPatientCareUpdate: (update) => set((state) => ({ patientCareUpdates: [...state.patientCareUpdates, update] })),
+  markCareUpdateViewed: (id) => set((state) => ({
+    patientCareUpdates: state.patientCareUpdates.map(u =>
+      u.id === id ? { ...u, viewedByDoctor: true } : u
+    ),
+  })),
+  patientPaliatifMessages: [
+    {
+      id: 'ppm-1',
+      roomId: 'pp-1_doc-sarah',
+      senderId: 'doc-sarah',
+      senderName: 'dr. Sarah Wijaya',
+      senderRole: 'doctor',
+      content: 'Selamat pagi Ibu Siti, bagaimana kondisi Anda hari ini?',
+      type: 'text',
+      status: 'read',
+      createdAt: new Date(Date.now() - 7200000).toISOString(),
+      readAt: new Date(Date.now() - 7000000).toISOString(),
+    },
+    {
+      id: 'ppm-2',
+      roomId: 'pp-1_doc-sarah',
+      senderId: 'patient-1',
+      senderName: 'Siti Rahayu',
+      senderRole: 'patient',
+      content: 'Selamat pagi Dokter, alhamdulillah hari ini cukup baik, tapi sesak sedikit bertambah',
+      type: 'text',
+      status: 'read',
+      createdAt: new Date(Date.now() - 6800000).toISOString(),
+    },
+    {
+      id: 'ppm-3',
+      roomId: 'pp-1_doc-sarah',
+      senderId: 'doc-sarah',
+      senderName: 'dr. Sarah Wijaya',
+      senderRole: 'doctor',
+      content: 'Baik Bu Siti, tolong isi form TTV hari ini ya untuk memantau kondisi Anda',
+      type: 'form_ttv',
+      status: 'delivered',
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+    },
+    {
+      id: 'ppm-4',
+      roomId: 'pp-1_doc-sarah',
+      senderId: 'doc-sarah',
+      senderName: 'dr. Sarah Wijaya',
+      senderRole: 'doctor',
+      content: 'Juga tolong isi form ESAS-r untuk evaluasi gejala Anda',
+      type: 'form_esas',
+      status: 'delivered',
+      createdAt: new Date(Date.now() - 3500000).toISOString(),
+    },
+  ] as PatientPaliatifChatMessage[],
+  addPatientPaliatifMessage: (message) => set((state) => ({ patientPaliatifMessages: [...state.patientPaliatifMessages, message] })),
 }));

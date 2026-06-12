@@ -430,7 +430,8 @@ export type ActivePanel =
   | 'screening'
   | 'palliative-screening'
   | 'palliative-monitoring'
-  | 'rvsm';
+  | 'rvsm'
+  | 'patient-paliatif';
 
 // ── Palliative Monitoring Types ──────────────────────────────────────────
 
@@ -1544,4 +1545,58 @@ export interface AISocialPopulationStats {
   predictedNeeds30Days: { category: string; estimatedCount: number }[];
   predictedNeeds90Days: { category: string; estimatedCount: number }[];
   generatedAt: string;
+}
+
+// ── Patient Paliatif Module Types ──────────────────────────────────────────
+
+export type PatientTransportRequestType = 'kontrol_faskes' | 'kunjungan_rumah' | 'transportasi_darurat' | 'pengambilan_obat' | 'lainnya';
+export type PatientTransportRequestStatus = 'menunggu_konfirmasi' | 'disetujui' | 'dijadwalkan' | 'selesai' | 'ditolak';
+
+export interface PatientTransportRequest {
+  id: string;
+  palliativePatientId: string;
+  requestType: PatientTransportRequestType;
+  requestDate: string;
+  requestTime: string;
+  pickupLocation: string;
+  destination: string;
+  notes?: string;
+  status: PatientTransportRequestStatus;
+  requestedBy: string;
+  confirmedBy?: string;
+  confirmedAt?: string;
+  rejectionReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PatientConditionStatus = 'membaik' | 'stabil' | 'menurun' | 'keluhan_baru';
+
+export interface PatientCareUpdate {
+  id: string;
+  palliativePatientId: string;
+  conditionStatus: PatientConditionStatus;
+  newComplaints: boolean;
+  activityChange: boolean;
+  appetiteChange: boolean;
+  sleepQualityChange: boolean;
+  additionalNotes?: string;
+  submittedBy: string;
+  viewedByDoctor: boolean;
+  createdAt: string;
+}
+
+export interface PatientPaliatifChatMessage {
+  id: string;
+  roomId: string;
+  senderId: string;
+  senderName: string;
+  senderRole: 'patient' | 'doctor' | 'perawat' | 'tim_paliatif' | 'system';
+  content: string;
+  type: 'text' | 'form_ttv' | 'form_keluhan' | 'form_esas' | 'form_pps' | 'form_distress' | 'form_screening' | 'image' | 'document' | 'system';
+  status: 'sent' | 'delivered' | 'read';
+  imageUrl?: string;
+  documentUrl?: string;
+  createdAt: string;
+  readAt?: string;
 }
