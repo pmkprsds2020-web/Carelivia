@@ -3,6 +3,7 @@
 import { useStore } from '@/lib/store';
 import type { ActivePanel, UserRole } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import Image from 'next/image';
 import {
   Home,
   MessageCircle,
@@ -95,11 +96,11 @@ const allNavItems: NavItem[] = [
 
 // Role display configuration
 const roleConfig: Record<UserRole, { label: string; color: string; bgColor: string }> = {
-  patient: { label: 'Pasien', color: 'text-rose-600', bgColor: 'bg-rose-50' },
-  doctor: { label: 'Dokter', color: 'text-teal-600', bgColor: 'bg-teal-50' },
-  admin: { label: 'Admin', color: 'text-amber-600', bgColor: 'bg-amber-50' },
-  pharmacist: { label: 'Apoteker', color: 'text-violet-600', bgColor: 'bg-violet-50' },
-  homecare_staff: { label: 'Petugas HC', color: 'text-sky-600', bgColor: 'bg-sky-50' },
+  patient: { label: 'Pasien', color: 'text-[#2D8C7A]', bgColor: 'bg-[#2D8C7A]/8' },
+  doctor: { label: 'Dokter', color: 'text-[#2D8C7A]', bgColor: 'bg-[#2D8C7A]/8' },
+  admin: { label: 'Admin', color: 'text-[#D9B26F]', bgColor: 'bg-[#D9B26F]/8' },
+  pharmacist: { label: 'Apoteker', color: 'text-[#2D8C7A]', bgColor: 'bg-[#2D8C7A]/8' },
+  homecare_staff: { label: 'Petugas HC', color: 'text-[#6DB8A8]', bgColor: 'bg-[#6DB8A8]/8' },
 };
 
 export function Sidebar({ collapsed }: SidebarProps) {
@@ -133,15 +134,19 @@ export function Sidebar({ collapsed }: SidebarProps) {
     >
       {/* Logo */}
       <div className="p-4 border-b border-border flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl medika-gradient flex items-center justify-center shrink-0 shadow-md">
-          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-          </svg>
+        <div className="w-10 h-10 rounded-xl carelivia-gradient flex items-center justify-center shrink-0 shadow-md overflow-hidden">
+          <Image
+            src="/carelivia-icon.png"
+            alt="CARE'Livia"
+            width={40}
+            height={40}
+            className="w-8 h-8 object-contain p-0.5"
+          />
         </div>
         {!collapsed && (
           <div className="overflow-hidden">
-            <h1 className="text-lg font-bold text-foreground whitespace-nowrap">MedikaLink</h1>
-            <p className="text-[10px] text-muted-foreground whitespace-nowrap">Telemedicine Terintegrasi</p>
+            <h1 className="text-lg font-bold text-foreground whitespace-nowrap">CARE&apos;Livia</h1>
+            <p className="text-[10px] text-muted-foreground whitespace-nowrap">Telepalliative Care</p>
           </div>
         )}
       </div>
@@ -151,11 +156,11 @@ export function Sidebar({ collapsed }: SidebarProps) {
         <div className="px-3 pt-3">
           <div className={cn('rounded-lg px-3 py-2 flex items-center gap-2', roleInfo.bgColor)}>
             <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0', 
-              userRole === 'patient' ? 'bg-rose-500' :
-              userRole === 'doctor' ? 'bg-teal-500' :
-              userRole === 'admin' ? 'bg-amber-500' :
-              userRole === 'pharmacist' ? 'bg-violet-500' :
-              'bg-sky-500'
+              userRole === 'patient' ? 'bg-[#6DB8A8]' :
+              userRole === 'doctor' ? 'bg-[#2D8C7A]' :
+              userRole === 'admin' ? 'bg-[#D9B26F]' :
+              userRole === 'pharmacist' ? 'bg-[#2D8C7A]' :
+              'bg-[#6DB8A8]'
             )}>
               {currentUser.name.replace(/^(dr\.|drg\.)\s*/i, '').charAt(0)}
             </div>
@@ -255,10 +260,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
       {/* Help Card (only when expanded) */}
       {!collapsed && (
         <div className="p-3 border-t border-border">
-          <div className="bg-medika-light rounded-lg p-3">
-            <p className="text-xs font-semibold text-medika-dark">Butuh Bantuan?</p>
+          <div className="bg-[#2D8C7A]/5 rounded-lg p-3">
+            <p className="text-xs font-semibold text-[#2D8C7A]">Butuh Bantuan?</p>
             <p className="text-[10px] text-muted-foreground mt-1">Hubungi customer service kami 24/7</p>
-            <button className="mt-2 w-full text-xs bg-primary text-primary-foreground rounded-md py-1.5 font-medium hover:bg-primary/90 transition-colors">
+            <button className="mt-2 w-full text-xs bg-[#2D8C7A] text-white rounded-md py-1.5 font-medium hover:bg-[#1F6B5C] transition-colors">
               Hubungi CS
             </button>
           </div>

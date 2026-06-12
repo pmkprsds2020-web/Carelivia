@@ -280,7 +280,7 @@ export function HomeDashboard() {
   return (
     <div className="space-y-6 pb-6">
       {/* ====== 1. WELCOME BANNER ====== */}
-      <Card className="medika-gradient border-0 overflow-hidden">
+      <Card className="carelivia-gradient border-0 overflow-hidden">
         <CardContent className="p-6 md:p-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="space-y-1">
@@ -581,7 +581,7 @@ export function HomeDashboard() {
                       {article.title}
                     </h3>
                     <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <span>{article.author || 'Tim MedikaLink'}</span>
+                      <span>{article.author || "Tim CARE'Livia"}</span>
                       <span className="text-border">|</span>
                       <span>{formatDateShort(article.createdAt)}</span>
                     </div>

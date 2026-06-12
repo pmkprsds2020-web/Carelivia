@@ -141,7 +141,7 @@ export function VideoCallPanel() {
   if (callState === 'idle') {
     return (
       <div className="p-4 md:p-6 space-y-6">
-        <Card className="border-0 medika-gradient overflow-hidden">
+        <Card className="border-0 carelivia-gradient overflow-hidden">
           <CardContent className="p-8 md:p-12 text-center">
             <div className="w-20 h-20 mx-auto rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center mb-4">
               <Video className="w-10 h-10 text-white" />

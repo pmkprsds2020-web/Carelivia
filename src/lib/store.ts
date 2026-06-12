@@ -311,7 +311,7 @@ export const useStore = create<TelemedicineStore>((set) => ({
   doctors: [
     {
       id: 'doc-sarah',
-      email: 'sarah@medikalinku.id',
+      email: 'sarah@carelivia.id',
       name: 'dr. Sarah Wijaya',
       role: 'doctor' as const,
       avatar: '',
@@ -332,7 +332,7 @@ export const useStore = create<TelemedicineStore>((set) => ({
     },
     {
       id: 'doc-ahmad',
-      email: 'ahmad@medikalinku.id',
+      email: 'ahmad@carelivia.id',
       name: 'dr. Ahmad Rizki',
       role: 'doctor' as const,
       avatar: '',
@@ -353,7 +353,7 @@ export const useStore = create<TelemedicineStore>((set) => ({
     },
     {
       id: 'doc-lisa',
-      email: 'lisa@medikalinku.id',
+      email: 'lisa@carelivia.id',
       name: 'dr. Lisa Permata',
       role: 'doctor' as const,
       avatar: '',
@@ -374,7 +374,7 @@ export const useStore = create<TelemedicineStore>((set) => ({
     },
     {
       id: 'doc-dewi',
-      email: 'dewi@medikalinku.id',
+      email: 'dewi@carelivia.id',
       name: 'dr. Dewi Sartika',
       role: 'doctor' as const,
       avatar: '',
@@ -395,7 +395,7 @@ export const useStore = create<TelemedicineStore>((set) => ({
     },
     {
       id: 'doc-budi',
-      email: 'budi@medikalinku.id',
+      email: 'budi@carelivia.id',
       name: 'drg. Budi Santoso',
       role: 'doctor' as const,
       avatar: '',
@@ -502,7 +502,7 @@ export const useStore = create<TelemedicineStore>((set) => ({
   
   // Notifications
   notifications: [
-    { id: 'notif-1', userId: '', title: 'Selamat Datang!', message: 'Selamat datang di MedikaLink. Mulai konsultasi dengan dokter sekarang!', type: 'chat' as const, isRead: false, createdAt: new Date().toISOString() },
+    { id: 'notif-1', userId: '', title: 'Selamat Datang!', message: "Selamat datang di CARE'Livia. Mulai konsultasi dengan dokter sekarang!", type: 'chat' as const, isRead: false, createdAt: new Date().toISOString() },
     { id: 'notif-2', userId: '', title: 'Promo Spesial', message: 'Diskon 20% untuk pembelian vitamin minggu ini!', type: 'pharmacy' as const, isRead: false, createdAt: new Date(Date.now() - 3600000).toISOString() },
     { id: 'notif-3', userId: '', title: 'Jadwal Konsultasi', message: 'Konsultasi Anda akan dimulai dalam 30 menit', type: 'consultation' as const, isRead: true, createdAt: new Date(Date.now() - 7200000).toISOString() },
   ] as Notification[],

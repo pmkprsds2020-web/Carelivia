@@ -426,7 +426,7 @@ export function ChatPanel() {
       id: generateId(),
       consultationId,
       senderId: 'system',
-      content: 'Selamat datang di MedikaLink! Dokter akan segera merespons pesan Anda.',
+      content: "Selamat datang di CARE'Livia! Dokter akan segera merespons pesan Anda.",
       type: 'text',
       status: 'read',
       createdAt: new Date().toISOString(),

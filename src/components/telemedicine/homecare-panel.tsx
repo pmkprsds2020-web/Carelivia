@@ -189,7 +189,7 @@ export function HomeCarePanel() {
         {/* Tab 1: Layanan */}
         <TabsContent value="layanan" className="space-y-6 mt-4">
           {/* Hero Section */}
-          <div className="medika-gradient rounded-xl p-6 md:p-8 text-white relative overflow-hidden">
+          <div className="carelivia-gradient rounded-xl p-6 md:p-8 text-white relative overflow-hidden">
             <div className="relative z-10">
               <h2 className="text-2xl md:text-3xl font-bold">Layanan Kesehatan ke Rumah Anda</h2>
               <p className="mt-2 text-white/80 text-sm md:text-base max-w-lg">

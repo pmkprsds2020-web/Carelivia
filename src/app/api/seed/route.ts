@@ -17,8 +17,8 @@ export async function GET() {
     // ========== USERS ==========
     const admin = await db.user.create({
       data: {
-        email: "admin@medikalinku.id",
-        name: "Admin MedikaLink",
+        email: "admin@carelivia.id",
+        name: "Admin CARE'Livia",
         role: "admin",
         phone: "081111111111",
         isVerified: true,
@@ -29,7 +29,7 @@ export async function GET() {
     const doctors = await Promise.all([
       db.user.create({
         data: {
-          email: "sarah@medikalinku.id",
+          email: "sarah@carelivia.id",
           name: "dr. Sarah Wijaya",
           role: "doctor",
           phone: "081222220001",
@@ -55,7 +55,7 @@ export async function GET() {
       }),
       db.user.create({
         data: {
-          email: "ahmad@medikalinku.id",
+          email: "ahmad@carelivia.id",
           name: "dr. Ahmad Rizki",
           role: "doctor",
           phone: "081222220002",
@@ -81,7 +81,7 @@ export async function GET() {
       }),
       db.user.create({
         data: {
-          email: "lisa@medikalinku.id",
+          email: "lisa@carelivia.id",
           name: "dr. Lisa Permata",
           role: "doctor",
           phone: "081222220003",
@@ -107,7 +107,7 @@ export async function GET() {
       }),
       db.user.create({
         data: {
-          email: "dewi@medikalinku.id",
+          email: "dewi@carelivia.id",
           name: "dr. Dewi Sartika",
           role: "doctor",
           phone: "081222220004",
@@ -133,7 +133,7 @@ export async function GET() {
       }),
       db.user.create({
         data: {
-          email: "budi@medikalinku.id",
+          email: "budi@carelivia.id",
           name: "drg. Budi Santoso",
           role: "doctor",
           phone: "081222220005",
@@ -161,7 +161,7 @@ export async function GET() {
 
     const pharmacist = await db.user.create({
       data: {
-        email: "farma@medikalinku.id",
+        email: "farma@carelivia.id",
         name: "Apoteker Rina",
         role: "pharmacist",
         phone: "081333330001",
@@ -171,7 +171,7 @@ export async function GET() {
         pharmacistProfile: {
           create: {
             licenseNumber: "SIPA-001",
-            pharmacyName: "Apotek MedikaLink",
+            pharmacyName: "Apotek CARE'Livia",
           },
         },
       },
@@ -179,7 +179,7 @@ export async function GET() {
 
     const homeCareStaffUser = await db.user.create({
       data: {
-        email: "homecare@medikalinku.id",
+        email: "homecare@carelivia.id",
         name: "Perawat Andi",
         role: "homecare_staff",
         phone: "081444440001",

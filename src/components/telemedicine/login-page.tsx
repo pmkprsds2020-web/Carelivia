@@ -7,8 +7,8 @@ import type { User, DoctorProfile } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Stethoscope, Heart, Shield, ChevronRight, ArrowLeft, Activity, Lock } from 'lucide-react';
+import { Stethoscope, Heart, Shield, ChevronRight, ArrowLeft, Lock } from 'lucide-react';
+import Image from 'next/image';
 
 type RoleType = 'dokter' | 'pasien' | 'admin';
 
@@ -28,58 +28,54 @@ const roleConfig: Record<RoleType, {
   description: string;
   icon: React.ElementType;
   gradient: string;
-  gradientFrom: string;
-  gradientTo: string;
   badgeColor: string;
   iconBg: string;
   hoverBorder: string;
   selectedBg: string;
+  accentColor: string;
 }> = {
   dokter: {
     label: 'Dokter',
-    description: 'Konsultasi & kelola pasien',
+    description: 'Kelola pasien dan layanan paliatif',
     icon: Stethoscope,
-    gradient: 'from-teal-500 to-emerald-600',
-    gradientFrom: 'from-teal-500',
-    gradientTo: 'to-emerald-600',
-    badgeColor: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
-    iconBg: 'bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-400',
-    hoverBorder: 'hover:border-teal-300 dark:hover:border-teal-700',
-    selectedBg: 'bg-teal-50 border-teal-300 dark:bg-teal-950/30 dark:border-teal-700',
+    gradient: 'from-[#2D8C7A] to-[#1F6B5C]',
+    badgeColor: 'bg-[#2D8C7A]/10 text-[#2D8C7A] dark:bg-[#2D8C7A]/20 dark:text-[#6DB8A8]',
+    iconBg: 'bg-[#2D8C7A]/10 text-[#2D8C7A] dark:bg-[#2D8C7A]/20 dark:text-[#6DB8A8]',
+    hoverBorder: 'hover:border-[#2D8C7A]/40 dark:hover:border-[#2D8C7A]/60',
+    selectedBg: 'bg-[#2D8C7A]/5 border-[#2D8C7A]/40 dark:bg-[#2D8C7A]/10 dark:border-[#2D8C7A]/50',
+    accentColor: '#2D8C7A',
   },
   pasien: {
     label: 'Pasien',
-    description: 'Layanan kesehatan untuk Anda',
+    description: 'Akses layanan kesehatan dan pendampingan',
     icon: Heart,
-    gradient: 'from-rose-400 to-pink-500',
-    gradientFrom: 'from-rose-400',
-    gradientTo: 'to-pink-500',
-    badgeColor: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-    iconBg: 'bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-400',
-    hoverBorder: 'hover:border-rose-300 dark:hover:border-rose-700',
-    selectedBg: 'bg-rose-50 border-rose-300 dark:bg-rose-950/30 dark:border-rose-700',
+    gradient: 'from-[#6DB8A8] to-[#2D8C7A]',
+    badgeColor: 'bg-[#6DB8A8]/10 text-[#2D8C7A] dark:bg-[#6DB8A8]/20 dark:text-[#6DB8A8]',
+    iconBg: 'bg-[#6DB8A8]/10 text-[#2D8C7A] dark:bg-[#6DB8A8]/20 dark:text-[#6DB8A8]',
+    hoverBorder: 'hover:border-[#6DB8A8]/40 dark:hover:border-[#6DB8A8]/60',
+    selectedBg: 'bg-[#6DB8A8]/5 border-[#6DB8A8]/40 dark:bg-[#6DB8A8]/10 dark:border-[#6DB8A8]/50',
+    accentColor: '#6DB8A8',
   },
   admin: {
     label: 'Admin',
-    description: 'Kelola sistem & laporan',
+    description: 'Kelola sistem dan laporan',
     icon: Shield,
-    gradient: 'from-amber-500 to-orange-500',
-    gradientFrom: 'from-amber-500',
-    gradientTo: 'to-orange-500',
-    badgeColor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-    iconBg: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400',
-    hoverBorder: 'hover:border-amber-300 dark:hover:border-amber-700',
-    selectedBg: 'bg-amber-50 border-amber-300 dark:bg-amber-950/30 dark:border-amber-700',
+    gradient: 'from-[#D9B26F] to-[#C49A52]',
+    badgeColor: 'bg-[#D9B26F]/10 text-[#9A7B3F] dark:bg-[#D9B26F]/20 dark:text-[#D9B26F]',
+    iconBg: 'bg-[#D9B26F]/10 text-[#9A7B3F] dark:bg-[#D9B26F]/20 dark:text-[#D9B26F]',
+    hoverBorder: 'hover:border-[#D9B26F]/40 dark:hover:border-[#D9B26F]/60',
+    selectedBg: 'bg-[#D9B26F]/5 border-[#D9B26F]/40 dark:bg-[#D9B26F]/10 dark:border-[#D9B26F]/50',
+    accentColor: '#D9B26F',
   },
 };
 
 const demoAccounts: Record<RoleType, DemoAccount[]> = {
   dokter: [
-    { id: 'doc-sarah', name: 'dr. Sarah Wijaya', email: 'sarah@medikalinku.id', role: 'doctor', specialization: 'umum', consultationFee: 150000, gender: 'Perempuan' },
-    { id: 'doc-ahmad', name: 'dr. Ahmad Rizki', email: 'ahmad@medikalinku.id', role: 'doctor', specialization: 'anak', consultationFee: 175000, gender: 'Laki-laki' },
-    { id: 'doc-lisa', name: 'dr. Lisa Permata', email: 'lisa@medikalinku.id', role: 'doctor', specialization: 'penyakit_dalam', consultationFee: 200000, gender: 'Perempuan' },
-    { id: 'doc-dewi', name: 'dr. Dewi Sartika', email: 'dewi@medikalinku.id', role: 'doctor', specialization: 'kebidanan', consultationFee: 175000, gender: 'Perempuan' },
-    { id: 'doc-budi', name: 'drg. Budi Santoso', email: 'budi@medikalinku.id', role: 'doctor', specialization: 'gigi', consultationFee: 200000, gender: 'Laki-laki' },
+    { id: 'doc-sarah', name: 'dr. Sarah Wijaya', email: 'sarah@carelivia.id', role: 'doctor', specialization: 'umum', consultationFee: 150000, gender: 'Perempuan' },
+    { id: 'doc-ahmad', name: 'dr. Ahmad Rizki', email: 'ahmad@carelivia.id', role: 'doctor', specialization: 'anak', consultationFee: 175000, gender: 'Laki-laki' },
+    { id: 'doc-lisa', name: 'dr. Lisa Permata', email: 'lisa@carelivia.id', role: 'doctor', specialization: 'penyakit_dalam', consultationFee: 200000, gender: 'Perempuan' },
+    { id: 'doc-dewi', name: 'dr. Dewi Sartika', email: 'dewi@carelivia.id', role: 'doctor', specialization: 'kebidanan', consultationFee: 175000, gender: 'Perempuan' },
+    { id: 'doc-budi', name: 'drg. Budi Santoso', email: 'budi@carelivia.id', role: 'doctor', specialization: 'gigi', consultationFee: 200000, gender: 'Laki-laki' },
   ],
   pasien: [
     { id: 'pat-rina', name: 'Rina Wulandari', email: 'rina@mail.com', role: 'patient', phone: '081234567890', gender: 'Perempuan' },
@@ -89,7 +85,7 @@ const demoAccounts: Record<RoleType, DemoAccount[]> = {
     { id: 'pat-joko', name: 'Joko Widodo', email: 'joko@mail.com', role: 'patient', phone: '081234567894', gender: 'Laki-laki' },
   ],
   admin: [
-    { id: 'admin-medika', name: 'Admin MedikaLink', email: 'admin@medikalinku.id', role: 'admin', phone: '081200000000', gender: 'Laki-laki' },
+    { id: 'admin-carelivia', name: 'Admin CARE\'Livia', email: 'admin@carelivia.id', role: 'admin', phone: '081200000000', gender: 'Laki-laki' },
   ],
 };
 
@@ -148,7 +144,6 @@ export function LoginPage() {
       } as DoctorProfile;
     }
 
-    // Simulate brief loading for animation
     setTimeout(() => {
       setCurrentUser(user);
     }, 600);
@@ -161,24 +156,62 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
-      {/* Animated gradient background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-teal-600 via-emerald-600 to-teal-700" />
+      {/* Background - Soft sage gradient with nature imagery */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#2D8C7A] via-[#3A9D8B] to-[#1F6B5C]" />
       
-      {/* Decorative floating circles */}
+      {/* Background image overlay */}
+      <div className="absolute inset-0 opacity-15">
+        <Image
+          src="/carelivia-bg.png"
+          alt=""
+          fill
+          className="object-cover"
+          priority
+        />
+      </div>
+      
+      {/* Decorative botanical SVG elements */}
+      <svg className="absolute top-0 left-0 w-full h-full leaf-decoration" viewBox="0 0 1440 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Top-left leaf cluster */}
+        <g className="animate-leaf-sway">
+          <path d="M0 0C100 50 180 120 200 250C150 180 80 100 0 70V0Z" fill="white" />
+          <path d="M20 10C90 40 140 90 160 180C120 120 70 60 20 40V10Z" fill="white" opacity="0.5" />
+        </g>
+        {/* Bottom-right leaf cluster */}
+        <g className="animate-leaf-sway" style={{ animationDelay: '-4s' }}>
+          <path d="M1440 900C1340 850 1260 780 1240 650C1290 720 1360 800 1440 830V900Z" fill="white" />
+          <path d="M1420 890C1350 860 1300 810 1280 720C1320 780 1370 840 1420 860V890Z" fill="white" opacity="0.5" />
+        </g>
+        {/* Top-right small leaf */}
+        <g className="animate-leaf-sway" style={{ animationDelay: '-8s' }}>
+          <path d="M1440 0C1380 30 1340 80 1330 150C1360 100 1400 50 1440 30V0Z" fill="white" />
+        </g>
+        {/* Bottom-left small leaf */}
+        <g className="animate-leaf-sway" style={{ animationDelay: '-2s' }}>
+          <path d="M0 900C60 870 100 820 110 750C80 800 40 850 0 870V900Z" fill="white" />
+        </g>
+      </svg>
+
+      {/* Floating decorative circles */}
       <motion.div
-        className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] rounded-full bg-white/5 blur-3xl"
-        animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.5, 0.3] }}
-        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-      />
-      <motion.div
-        className="absolute bottom-[-15%] left-[-10%] w-[600px] h-[600px] rounded-full bg-emerald-400/10 blur-3xl"
-        animate={{ scale: [1.1, 1, 1.1], opacity: [0.2, 0.4, 0.2] }}
+        className="absolute top-[-8%] right-[-3%] w-[400px] h-[400px] rounded-full bg-white/5 blur-3xl"
+        animate={{ scale: [1, 1.08, 1], opacity: [0.25, 0.4, 0.25] }}
         transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
       />
       <motion.div
-        className="absolute top-[40%] left-[60%] w-[300px] h-[300px] rounded-full bg-teal-300/8 blur-2xl"
-        animate={{ y: [-20, 20, -20], opacity: [0.15, 0.3, 0.15] }}
-        transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+        className="absolute bottom-[-10%] left-[-5%] w-[500px] h-[500px] rounded-full bg-[#6DB8A8]/10 blur-3xl"
+        animate={{ scale: [1.05, 1, 1.05], opacity: [0.15, 0.3, 0.15] }}
+        transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        className="absolute top-[35%] right-[20%] w-[200px] h-[200px] rounded-full bg-[#D9B26F]/8 blur-2xl"
+        animate={{ y: [-15, 15, -15], opacity: [0.1, 0.2, 0.1] }}
+        transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        className="absolute top-[60%] left-[10%] w-[250px] h-[250px] rounded-full bg-[#6DB8A8]/5 blur-2xl"
+        animate={{ y: [10, -10, 10], opacity: [0.08, 0.18, 0.08] }}
+        transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
       />
 
       {/* Content */}
@@ -188,57 +221,66 @@ export function LoginPage() {
           className="text-center mb-8 sm:mb-10"
           initial={{ opacity: 0, y: -30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, ease: 'easeOut' }}
+          transition={{ duration: 0.8, ease: 'easeOut' }}
         >
-          {/* Logo icon */}
+          {/* Logo */}
           <motion.div
-            className="mx-auto mb-4 w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20 flex items-center justify-center shadow-lg"
+            className="mx-auto mb-5 w-20 h-20 sm:w-24 sm:h-24 relative"
             initial={{ scale: 0, rotate: -180 }}
             animate={{ scale: 1, rotate: 0 }}
             transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
           >
-            <Activity className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
+            <div className="w-full h-full rounded-2xl bg-white/15 backdrop-blur-sm border border-white/25 flex items-center justify-center shadow-lg overflow-hidden">
+              <Image
+                src="/carelivia-icon.png"
+                alt="CARE'Livia"
+                width={80}
+                height={80}
+                className="w-14 h-14 sm:w-16 sm:h-16 object-contain p-1"
+                priority
+              />
+            </div>
           </motion.div>
           
+          {/* Brand Name */}
           <motion.h1
             className="text-3xl sm:text-4xl md:text-5xl font-bold text-white tracking-tight"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.5 }}
+            transition={{ delay: 0.4, duration: 0.6 }}
           >
-            Medika<span className="text-emerald-200">Link</span>
+            CARE<span className="text-[#6DB8A8]">&apos;</span>Livia
           </motion.h1>
           
+          {/* Subtitle */}
           <motion.p
-            className="mt-2 text-sm sm:text-base text-teal-100/80 font-medium"
+            className="mt-3 text-sm sm:text-base text-white/80 font-medium max-w-md mx-auto leading-relaxed"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.5, duration: 0.5 }}
+            transition={{ delay: 0.6, duration: 0.6 }}
           >
-            Platform Telemedicine Terintegrasi
+            Perawatan Paliatif Digital untuk Meningkatkan Kualitas Hidup Pasien dan Keluarga
           </motion.p>
 
-          <motion.div
-            className="mt-3 flex items-center justify-center gap-2"
+          {/* Tagline */}
+          <motion.p
+            className="mt-2 text-xs sm:text-sm text-[#D9B26F]/90 font-medium italic"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.7, duration: 0.5 }}
+            transition={{ delay: 0.8, duration: 0.6 }}
           >
-            <Badge className="bg-white/15 text-white border-white/20 backdrop-blur-sm hover:bg-white/20 text-xs">
-              <Lock className="w-3 h-3 mr-1" />
-              Demo Mode
-            </Badge>
-          </motion.div>
+            &ldquo;Caring for Life, Preserving Human Dignity&rdquo;
+          </motion.p>
         </motion.div>
 
-        {/* Main Card */}
+        {/* Main Card - Glassmorphism */}
         <motion.div
           className="w-full max-w-4xl"
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.6, ease: 'easeOut' }}
+          transition={{ delay: 0.5, duration: 0.7, ease: 'easeOut' }}
         >
-          <Card className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border-0 shadow-2xl shadow-black/20 rounded-2xl overflow-hidden">
+          <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/30 dark:border-white/10 shadow-2xl shadow-black/15 rounded-2xl overflow-hidden">
             <CardContent className="p-4 sm:p-6 md:p-8">
               {/* Section title */}
               <AnimatePresence mode="wait">
@@ -255,7 +297,7 @@ export function LoginPage() {
                       variant="ghost"
                       size="icon"
                       onClick={handleBack}
-                      className="shrink-0 h-9 w-9 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+                      className="shrink-0 h-9 w-9 rounded-full hover:bg-[#2D8C7A]/10 dark:hover:bg-[#2D8C7A]/20"
                     >
                       <ArrowLeft className="w-4 h-4" />
                     </Button>
@@ -306,13 +348,13 @@ export function LoginPage() {
                       key={role}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.6 + index * 0.1, duration: 0.4 }}
-                      whileHover={{ scale: 1.02, y: -2 }}
+                      transition={{ delay: 0.7 + index * 0.1, duration: 0.5 }}
+                      whileHover={{ scale: 1.03, y: -3 }}
                       whileTap={{ scale: 0.98 }}
-                      className={`cursor-pointer rounded-xl border-2 transition-colors duration-200 ${
+                      className={`cursor-pointer rounded-xl border-2 transition-all duration-300 ${
                         isSelected
                           ? config.selectedBg
-                          : `bg-card border-border ${config.hoverBorder}`
+                          : `bg-card border-border/60 ${config.hoverBorder} hover:shadow-lg`
                       }`}
                       onClick={() => {
                         if (isSelected) {
@@ -326,16 +368,16 @@ export function LoginPage() {
                       <div className="p-4 sm:p-5 flex flex-col items-center text-center gap-3">
                         {/* Icon with gradient background */}
                         <div
-                          className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br ${config.gradient} flex items-center justify-center shadow-lg`}
+                          className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br ${config.gradient} flex items-center justify-center shadow-lg transition-transform duration-300`}
                         >
-                          <Icon className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+                          <Icon className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
                         </div>
 
                         <div>
                           <h3 className="font-semibold text-foreground text-sm sm:text-base">
                             {config.label}
                           </h3>
-                          <p className="text-xs text-muted-foreground mt-0.5">
+                          <p className="text-xs text-muted-foreground mt-0.5 max-w-[180px]">
                             {config.description}
                           </p>
                         </div>
@@ -350,10 +392,7 @@ export function LoginPage() {
                               animate={{ scale: 1 }}
                               transition={{ type: 'spring', stiffness: 300, damping: 20 }}
                             >
-                              <ChevronRight className={`w-4 h-4 ${
-                                role === 'dokter' ? 'text-teal-500' :
-                                role === 'pasien' ? 'text-rose-500' : 'text-amber-500'
-                              } rotate-90`} />
+                              <ChevronRight className="w-4 h-4 rotate-90" style={{ color: config.accentColor }} />
                             </motion.div>
                           )}
                         </div>
@@ -374,7 +413,7 @@ export function LoginPage() {
                     transition={{ duration: 0.4, ease: 'easeInOut' }}
                     className="overflow-hidden"
                   >
-                    <div className="mt-6 pt-6 border-t border-border">
+                    <div className="mt-6 pt-6 border-t border-border/60">
                       <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar pr-1">
                         {demoAccounts[selectedRole].map((account, index) => {
                           const isThisSelected = selectedAccountId === account.id;
@@ -391,10 +430,10 @@ export function LoginPage() {
                               whileTap={{ scale: 0.99 }}
                             >
                               <Card
-                                className={`cursor-pointer border transition-all duration-200 ${
+                                className={`cursor-pointer border transition-all duration-300 ${
                                   isThisSelected
                                     ? `${config.selectedBg} shadow-md`
-                                    : 'hover:shadow-md border-border'
+                                    : 'hover:shadow-md border-border/60 hover:border-border'
                                 } ${isLoggingIn && isThisSelected ? 'opacity-70' : ''}`}
                                 onClick={() => handleLogin(account)}
                               >
@@ -441,16 +480,14 @@ export function LoginPage() {
                                       {isThisSelected && isLoggingIn ? (
                                         <motion.div
                                           className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
-                                          style={{ borderColor: selectedRole === 'dokter' ? '#14b8a6' : selectedRole === 'pasien' ? '#f43f5e' : '#f59e0b', borderTopColor: 'transparent' }}
+                                          style={{ borderColor: config.accentColor, borderTopColor: 'transparent' }}
                                           initial={{ opacity: 0 }}
                                           animate={{ opacity: 1 }}
                                         />
                                       ) : (
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                                          selectedRole === 'dokter' ? 'bg-teal-50 text-teal-600 hover:bg-teal-100 dark:bg-teal-900/30 dark:text-teal-400 dark:hover:bg-teal-900/50' :
-                                          selectedRole === 'pasien' ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-900/50' :
-                                          'bg-amber-50 text-amber-600 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50'
-                                        }`}>
+                                        <div className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+                                          style={{ backgroundColor: `${config.accentColor}12`, color: config.accentColor }}
+                                        >
                                           <ChevronRight className="w-4 h-4" />
                                         </div>
                                       )}
@@ -465,13 +502,13 @@ export function LoginPage() {
 
                       {/* Password hint */}
                       <motion.div
-                        className="mt-4 p-3 rounded-lg bg-muted/50 border border-border/50"
+                        className="mt-4 p-3 rounded-lg bg-[#2D8C7A]/5 dark:bg-[#2D8C7A]/10 border border-[#2D8C7A]/10 dark:border-[#2D8C7A]/20"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.5 }}
                       >
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Lock className="w-3.5 h-3.5 shrink-0" />
+                          <Lock className="w-3.5 h-3.5 shrink-0 text-[#2D8C7A]" />
                           <span>
                             <strong>Demo Mode</strong> — Klik akun untuk langsung masuk. 
                             Tidak perlu kata sandi.
@@ -491,10 +528,16 @@ export function LoginPage() {
           className="mt-8 text-center"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1, duration: 0.5 }}
+          transition={{ delay: 1.2, duration: 0.6 }}
         >
-          <p className="text-xs text-white/50">
-            © 2025 MedikaLink — Demo Telemedicine Platform
+          <p className="text-xs text-white/40 font-medium">
+            &copy; 2026 CARE&apos;Livia
+          </p>
+          <p className="text-[10px] text-white/30 mt-0.5">
+            Telepalliative Care Platform
+          </p>
+          <p className="text-[10px] text-white/25 mt-0.5 italic">
+            Caring for Life, Preserving Human Dignity
           </p>
         </motion.footer>
       </div>

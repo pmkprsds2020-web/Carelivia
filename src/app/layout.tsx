@@ -14,12 +14,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MedikaLink - Telemedicine Terintegrasi",
-  description: "Platform telemedicine terintegrasi untuk konsultasi kesehatan jarak jauh, pembelian obat online, layanan home care, dan pembayaran digital.",
-  keywords: ["telemedicine", "konsultasi dokter", "obat online", "home care", "kesehatan", "Indonesia"],
-  authors: [{ name: "MedikaLink Team" }],
+  title: "CARE'Livia - Telepalliative Care Platform",
+  description: "Platform telepalliative care yang berfokus pada peningkatan kualitas hidup pasien, penghormatan terhadap martabat manusia, dukungan keluarga, serta perawatan yang berkelanjutan. Caring for Life, Preserving Human Dignity.",
+  keywords: ["telepalliative", "paliatif", "perawatan lansia", "dukungan keluarga", "home care", "telehealth", "kesehatan", "Indonesia"],
+  authors: [{ name: "CARE'Livia Team" }],
   icons: {
-    icon: "/logo.svg",
+    icon: "/carelivia-icon.png",
   },
 };
 

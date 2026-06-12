@@ -156,9 +156,9 @@ export async function GET(req: NextRequest) {
       </div>
     </div>
     <div class="footer">
-      <p>Bukti pembayaran ini merupakan bukti sah dari MedikaLink.</p>
-      <p>Untuk pertanyaan, hubungi support@medikalink.id</p>
-      <p style="margin-top: 8px; color: #0d9488; font-weight: 600;">MedikaLink &mdash; Sehat Terhubung, Hidup Lebih Baik</p>
+      <p>Bukti pembayaran ini merupakan bukti sah dari CARE'Livia.</p>
+      <p>Untuk pertanyaan, hubungi support@carelivia.id</p>
+      <p style="margin-top: 8px; color: #0d9488; font-weight: 600;">CARE'Livia &mdash; Sehat Terhubung, Hidup Lebih Baik</p>
     </div>
   </div>
   <script>
