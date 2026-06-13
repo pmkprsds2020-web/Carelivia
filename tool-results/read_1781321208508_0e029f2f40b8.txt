@@ -1,0 +1,857 @@
+     1→     1→import type {
+     2→     2→  SocialNeedsCategory,
+     3→     3→  SocialNeedsQuestion,
+     4→     4→  SocialNeedsQuestionOption,
+     5→     5→  SocialNeedsRiskLevel,
+     6→     6→  SocialNeedsCategoryScore,
+     7→     7→  SocialNeedsScreeningResult,
+     8→     8→} from '@/lib/types';
+     9→     9→
+    10→    10→// ═══════════════════════════════════════════════════════════════════════════
+    11→    11→// CATEGORY DEFINITIONS
+    12→    12→// ═══════════════════════════════════════════════════════════════════════════
+    13→    13→
+    14→    14→export const CATEGORY_META: Record<SocialNeedsCategory, { label: string; icon: string; color: string; description: string }> = {
+    15→    15→  dukungan_keluarga: { label: 'Dukungan Keluarga', icon: 'Heart', color: '#2D8C7A', description: 'Menilai kecukupan dukungan keluarga terhadap pasien' },
+    16→    16→  caregiver: { label: 'Caregiver & Pendampingan', icon: 'Users', color: '#6DB8A8', description: 'Menilai kondisi dan beban caregiver utama' },
+    17→    17→  tempat_tinggal: { label: 'Kondisi Tempat Tinggal', icon: 'Home', color: '#4A9B8C', description: 'Menilai kelayakan dan aksesibilitas tempat tinggal' },
+    18→    18→  akses_layanan: { label: 'Akses Pelayanan Kesehatan', icon: 'Building2', color: '#3D7A6E', description: 'Menilai kemudahan akses ke fasilitas kesehatan' },
+    19→    19→  ekonomi: { label: 'Kondisi Ekonomi & Finansial', icon: 'Wallet', color: '#D9B26F', description: 'Menilai beban ekonomi dan kebutuhan bantuan finansial' },
+    20→    20→  transportasi: { label: 'Transportasi', icon: 'Car', color: '#C49A52', description: 'Menilai ketersediaan dan hambatan transportasi' },
+    21→    21→  interaksi_sosial: { label: 'Interaksi Sosial', icon: 'MessageCircle', color: '#7BC4B4', description: 'Menilai tingkat interaksi sosial dan risiko isolasi' },
+    22→    22→  kebutuhan_informasi: { label: 'Kebutuhan Informasi', icon: 'BookOpen', color: '#5A9E8F', description: 'Menilai pemahaman dan kebutuhan informasi pasien' },
+    23→    23→  pertanyaan_terbuka: { label: 'Pertanyaan Terbuka', icon: 'FileText', color: '#8BBFAD', description: 'Catatan tambahan dari pasien dan keluarga' },
+    24→    24→};
+    25→    25→
+    26→    26→// ═══════════════════════════════════════════════════════════════════════════
+    27→    27→// ALL 31 SCREENING QUESTIONS
+    28→    28→// ═══════════════════════════════════════════════════════════════════════════
+    29→    29→
+    30→    30→export const SOCIAL_NEEDS_QUESTIONS: SocialNeedsQuestion[] = [
+    31→    31→  // ─── A. DUKUNGAN KELUARGA (Q1-Q5) ────────────────────────────────────
+    32→    32→  {
+    33→    33→    id: 'q1',
+    34→    34→    category: 'dukungan_keluarga',
+    35→    35→    categoryLabel: 'Dukungan Keluarga',
+    36→    36→    questionNumber: 1,
+    37→    37→    questionText: 'Siapa yang saat ini menjadi pendamping utama pasien?',
+    38→    38→    type: 'single_choice',
+    39→    39→    options: [
+    40→    40→      { label: 'Pasangan', value: 'pasangan', score: 0 },
+    41→    41→      { label: 'Anak', value: 'anak', score: 1 },
+    42→    42→      { label: 'Orang Tua', value: 'orang_tua', score: 1 },
+    43→    43→      { label: 'Saudara', value: 'saudara', score: 2 },
+    44→    44→      { label: 'Tetangga', value: 'tetangga', score: 3 },
+    45→    45→      { label: 'Caregiver Profesional', value: 'caregiver_profesional', score: 2 },
+    46→    46→      { label: 'Tidak Ada Pendamping Tetap', value: 'tidak_ada', score: 3 },
+    47→    47→    ],
+    48→    48→    required: true,
+    49→    49→  },
+    50→    50→  {
+    51→    51→    id: 'q2',
+    52→    52→    category: 'dukungan_keluarga',
+    53→    53→    categoryLabel: 'Dukungan Keluarga',
+    54→    54→    questionNumber: 2,
+    55→    55→    questionText: 'Apakah pasien tinggal bersama keluarga?',
+    56→    56→    type: 'single_choice',
+    57→    57→    options: [
+    58→    58→      { label: 'Ya', value: 'ya', score: 0 },
+    59→    59→      { label: 'Tidak', value: 'tidak', score: 3 },
+    60→    60→    ],
+    61→    61→    required: true,
+    62→    62→  },
+    63→    63→  {
+    64→    64→    id: 'q3',
+    65→    65→    category: 'dukungan_keluarga',
+    66→    66→    categoryLabel: 'Dukungan Keluarga',
+    67→    67→    questionNumber: 3,
+    68→    68→    questionText: 'Seberapa sering anggota keluarga membantu kebutuhan sehari-hari pasien?',
+    69→    69→    type: 'single_choice',
+    70→    70→    options: [
+    71→    71→      { label: 'Selalu', value: 'selalu', score: 0 },
+    72→    72→      { label: 'Sering', value: 'sering', score: 1 },
+    73→    73→      { label: 'Kadang-kadang', value: 'kadang', score: 2 },
+    74→    74→      { label: 'Jarang', value: 'jarang', score: 3 },
+    75→    75→      { label: 'Tidak Pernah', value: 'tidak_pernah', score: 3 },
+    76→    76→    ],
+    77→    77→    required: true,
+    78→    78→  },
+    79→    79→  {
+    80→    80→    id: 'q4',
+    81→    81→    category: 'dukungan_keluarga',
+    82→    82→    categoryLabel: 'Dukungan Keluarga',
+    83→    83→    questionNumber: 4,
+    84→    84→    questionText: 'Apakah pasien merasa mendapatkan dukungan emosional yang cukup dari keluarga?',
+    85→    85→    type: 'single_choice',
+    86→    86→    options: [
+    87→    87→      { label: 'Sangat Cukup', value: 'sangat_cukup', score: 0 },
+    88→    88→      { label: 'Cukup', value: 'cukup', score: 1 },
+    89→    89→      { label: 'Kurang', value: 'kurang', score: 2 },
+    90→    90→      { label: 'Tidak Ada', value: 'tidak_ada', score: 3 },
+    91→    91→    ],
+    92→    92→    required: true,
+    93→    93→  },
+    94→    94→  {
+    95→    95→    id: 'q5',
+    96→    96→    category: 'dukungan_keluarga',
+    97→    97→    categoryLabel: 'Dukungan Keluarga',
+    98→    98→    questionNumber: 5,
+    99→    99→    questionText: 'Apakah terdapat konflik keluarga yang memengaruhi perawatan pasien?',
+   100→   100→    type: 'single_choice',
+   101→   101→    options: [
+   102→   102→      { label: 'Tidak Ada', value: 'tidak_ada', score: 0 },
+   103→   103→      { label: 'Ringan', value: 'ringan', score: 1 },
+   104→   104→      { label: 'Sedang', value: 'sedang', score: 2 },
+   105→   105→      { label: 'Berat', value: 'berat', score: 3 },
+   106→   106→    ],
+   107→   107→    required: true,
+   108→   108→  },
+   109→   109→
+   110→   110→  // ─── B. CAREGIVER & PENDAMPINGAN (Q6-Q9) ────────────────────────────
+   111→   111→  {
+   112→   112→    id: 'q6',
+   113→   113→    category: 'caregiver',
+   114→   114→    categoryLabel: 'Caregiver & Pendampingan',
+   115→   115→    questionNumber: 6,
+   116→   116→    questionText: 'Apakah pasien memiliki caregiver utama?',
+   117→   117→    type: 'single_choice',
+   118→   118→    options: [
+   119→   119→      { label: 'Ya', value: 'ya', score: 0 },
+   120→   120→      { label: 'Tidak', value: 'tidak', score: 3 },
+   121→   121→    ],
+   122→   122→    required: true,
+   123→   123→  },
+   124→   124→  {
+   125→   125→    id: 'q7',
+   126→   126→    category: 'caregiver',
+   127→   127→    categoryLabel: 'Caregiver & Pendampingan',
+   128→   128→    questionNumber: 7,
+   129→   129→    questionText: 'Berapa lama caregiver mendampingi pasien setiap hari?',
+   130→   130→    type: 'single_choice',
+   131→   131→    options: [
+   132→   132→      { label: 'Kurang dari 4 jam', value: 'kurang_4', score: 0 },
+   133→   133→      { label: '4–8 jam', value: '4_8', score: 1 },
+   134→   134→      { label: '8–12 jam', value: '8_12', score: 2 },
+   135→   135→      { label: 'Lebih dari 12 jam', value: 'lebih_12', score: 3 },
+   136→   136→      { label: '24 jam penuh', value: '24_jam', score: 3 },
+   137→   137→    ],
+   138→   138→    required: true,
+   139→   139→  },
+   140→   140→  {
+   141→   141→    id: 'q8',
+   142→   142→    category: 'caregiver',
+   143→   143→    categoryLabel: 'Caregiver & Pendampingan',
+   144→   144→    questionNumber: 8,
+   145→   145→    questionText: 'Apakah caregiver merasa kewalahan dalam merawat pasien?',
+   146→   146→    type: 'single_choice',
+   147→   147→    options: [
+   148→   148→      { label: 'Tidak', value: 'tidak', score: 0 },
+   149→   149→      { label: 'Sedikit', value: 'sedikit', score: 1 },
+   150→   150→      { label: 'Cukup Berat', value: 'cukup_berat', score: 2 },
+   151→   151→      { label: 'Sangat Berat', value: 'sangat_berat', score: 3 },
+   152→   152→    ],
+   153→   153→    required: true,
+   154→   154→  },
+   155→   155→  {
+   156→   156→    id: 'q9',
+   157→   157→    category: 'caregiver',
+   158→   158→    categoryLabel: 'Caregiver & Pendampingan',
+   159→   159→    questionNumber: 9,
+   160→   160→    questionText: 'Apakah terdapat caregiver cadangan apabila caregiver utama berhalangan?',
+   161→   161→    type: 'single_choice',
+   162→   162→    options: [
+   163→   163→      { label: 'Ya', value: 'ya', score: 0 },
+   164→   164→      { label: 'Tidak', value: 'tidak', score: 3 },
+   165→   165→    ],
+   166→   166→    required: true,
+   167→   167→  },
+   168→   168→
+   169→   169→  // ─── C. KONDISI TEMPAT TINGGAL (Q10-Q12) ────────────────────────────
+   170→   170→  {
+   171→   171→    id: 'q10',
+   172→   172→    category: 'tempat_tinggal',
+   173→   173→    categoryLabel: 'Kondisi Tempat Tinggal',
+   174→   174→    questionNumber: 10,
+   175→   175→    questionText: 'Kondisi tempat tinggal pasien saat ini',
+   176→   176→    type: 'single_choice',
+   177→   177→    hasTooltip: true,
+   178→   178→    options: [
+   179→   179→      {
+   180→   180→        label: 'Sangat Layak',
+   181→   181→        value: 'sangat_layak',
+   182→   182→        score: 0,
+   183→   183→        tooltip: 'Rumah permanen, bersih, aman, memiliki ventilasi dan pencahayaan yang baik, tersedia air bersih, listrik, sanitasi memadai, serta mendukung kebutuhan perawatan pasien di rumah.',
+   184→   184→      },
+   185→   185→      {
+   186→   186→        label: 'Layak',
+   187→   187→        value: 'layak',
+   188→   188→        score: 1,
+   189→   189→        tooltip: 'Rumah aman dan nyaman untuk ditempati, kebutuhan dasar tersedia, namun masih terdapat keterbatasan kecil yang tidak secara signifikan mengganggu perawatan pasien.',
+   190→   190→      },
+   191→   191→      {
+   192→   192→        label: 'Kurang Layak',
+   193→   193→        value: 'kurang_layak',
+   194→   194→        score: 2,
+   195→   195→        tooltip: 'Terdapat kondisi lingkungan atau bangunan yang dapat menghambat kenyamanan dan perawatan pasien, seperti ruang sempit, ventilasi kurang baik, sanitasi kurang memadai, atau akses rumah yang sulit.',
+   196→   196→      },
+   197→   197→      {
+   198→   198→        label: 'Tidak Layak',
+   199→   199→        value: 'tidak_layak',
+   200→   200→        score: 3,
+   201→   201→        tooltip: 'Kondisi rumah tidak memenuhi kebutuhan dasar kesehatan dan keselamatan sehingga berpotensi membahayakan pasien atau menghambat proses perawatan secara signifikan.',
+   202→   202→      },
+   203→   203→    ],
+   204→   204→    required: true,
+   205→   205→  },
+   206→   206→  {
+   207→   207→    id: 'q11',
+   208→   208→    category: 'tempat_tinggal',
+   209→   209→    categoryLabel: 'Kondisi Tempat Tinggal',
+   210→   210→    questionNumber: 11,
+   211→   211→    questionText: 'Apakah rumah pasien mudah diakses oleh tenaga kesehatan?',
+   212→   212→    type: 'single_choice',
+   213→   213→    options: [
+   214→   214→      { label: 'Mudah', value: 'mudah', score: 0 },
+   215→   215→      { label: 'Sulit', value: 'sulit', score: 2 },
+   216→   216→      { label: 'Sangat Sulit', value: 'sangat_sulit', score: 3 },
+   217→   217→    ],
+   218→   218→    required: true,
+   219→   219→  },
+   220→   220→  {
+   221→   221→    id: 'q12',
+   222→   222→    category: 'tempat_tinggal',
+   223→   223→    categoryLabel: 'Kondisi Tempat Tinggal',
+   224→   224→    questionNumber: 12,
+   225→   225→    questionText: 'Fasilitas pendukung yang tersedia di rumah pasien',
+   226→   226→    type: 'multiple_choice',
+   227→   227→    options: [
+   228→   228→      { label: 'Tempat Tidur Khusus', value: 'tempat_tidur', score: 0 },
+   229→   229→      { label: 'Kursi Roda', value: 'kursi_roda', score: 0 },
+   230→   230→      { label: 'Toilet Ramah Disabilitas', value: 'toilet_disabilitas', score: 0 },
+   231→   231→      { label: 'Pegangan Tangan', value: 'pegangan_tangan', score: 0 },
+   232→   232→      { label: 'Oksigen', value: 'oksigen', score: 0 },
+   233→   233→      { label: 'Alat Suction', value: 'suction', score: 0 },
+   234→   234→      { label: 'Kasur Antidekubitus', value: 'kasur_anti', score: 0 },
+   235→   235→      { label: 'Tidak Ada Fasilitas Khusus', value: 'tidak_ada', score: 3 },
+   236→   236→    ],
+   237→   237→    required: true,
+   238→   238→  },
+   239→   239→
+   240→   240→  // ─── D. AKSES PELAYANAN KESEHATAN (Q13-Q15) ────────────────────────
+   241→   241→  {
+   242→   242→    id: 'q13',
+   243→   243→    category: 'akses_layanan',
+   244→   244→    categoryLabel: 'Akses Pelayanan Kesehatan',
+   245→   245→    questionNumber: 13,
+   246→   246→    questionText: 'Jarak rumah ke fasilitas kesehatan terdekat',
+   247→   247→    type: 'single_choice',
+   248→   248→    options: [
+   249→   249→      { label: '< 5 km', value: 'kurang_5', score: 0 },
+   250→   250→      { label: '5–10 km', value: '5_10', score: 1 },
+   251→   251→      { label: '10–20 km', value: '10_20', score: 2 },
+   252→   252→      { label: '> 20 km', value: 'lebih_20', score: 3 },
+   253→   253→    ],
+   254→   254→    required: true,
+   255→   255→  },
+   256→   256→  {
+   257→   257→    id: 'q14',
+   258→   258→    category: 'akses_layanan',
+   259→   259→    categoryLabel: 'Akses Pelayanan Kesehatan',
+   260→   260→    questionNumber: 14,
+   261→   261→    questionText: 'Apakah pasien mengalami kesulitan mencapai fasilitas kesehatan?',
+   262→   262→    type: 'single_choice',
+   263→   263→    options: [
+   264→   264→      { label: 'Tidak', value: 'tidak', score: 0 },
+   265→   265→      { label: 'Kadang-kadang', value: 'kadang', score: 1 },
+   266→   266→      { label: 'Sering', value: 'sering', score: 2 },
+   267→   267→      { label: 'Selalu', value: 'selalu', score: 3 },
+   268→   268→    ],
+   269→   269→    required: true,
+   270→   270→  },
+   271→   271→  {
+   272→   272→    id: 'q15',
+   273→   273→    category: 'akses_layanan',
+   274→   274→    categoryLabel: 'Akses Pelayanan Kesehatan',
+   275→   275→    questionNumber: 15,
+   276→   276→    questionText: 'Penyebab utama kesulitan akses',
+   277→   277→    type: 'multiple_choice',
+   278→   278→    options: [
+   279→   279→      { label: 'Transportasi', value: 'transportasi', score: 2 },
+   280→   280→      { label: 'Biaya', value: 'biaya', score: 2 },
+   281→   281→      { label: 'Kondisi Fisik Pasien', value: 'kondisi_fisik', score: 2 },
+   282→   282→      { label: 'Tidak Ada Pendamping', value: 'tidak_ada_pendamping', score: 2 },
+   283→   283→      { label: 'Lokasi Jauh', value: 'lokasi_jauh', score: 2 },
+   284→   284→      { label: 'Faktor Geografis', value: 'geografis', score: 2 },
+   285→   285→      { label: 'Faktor Lainnya', value: 'lainnya', score: 1 },
+   286→   286→    ],
+   287→   287→    required: false,
+   288→   288→  },
+   289→   289→
+   290→   290→  // ─── E. KONDISI EKONOMI & FINANSIAL (Q16-Q20) ──────────────────────
+   291→   291→  {
+   292→   292→    id: 'q16',
+   293→   293→    category: 'ekonomi',
+   294→   294→    categoryLabel: 'Kondisi Ekonomi & Finansial',
+   295→   295→    questionNumber: 16,
+   296→   296→    questionText: 'Sumber pembiayaan utama pengobatan',
+   297→   297→    type: 'single_choice',
+   298→   298→    options: [
+   299→   299→      { label: 'BPJS', value: 'bpjs', score: 0 },
+   300→   300→      { label: 'Asuransi Swasta', value: 'asuransi_swasta', score: 0 },
+   301→   301→      { label: 'Biaya Pribadi', value: 'biaya_pribadi', score: 2 },
+   302→   302→      { label: 'Bantuan Keluarga', value: 'bantuan_keluarga', score: 2 },
+   303→   303→      { label: 'Bantuan Sosial', value: 'bantuan_sosial', score: 3 },
+   304→   304→    ],
+   305→   305→    required: true,
+   306→   306→  },
+   307→   307→  {
+   308→   308→    id: 'q17',
+   309→   309→    category: 'ekonomi',
+   310→   310→    categoryLabel: 'Kondisi Ekonomi & Finansial',
+   311→   311→    questionNumber: 17,
+   312→   312→    questionText: 'Apakah biaya pengobatan menjadi beban bagi keluarga?',
+   313→   313→    type: 'single_choice',
+   314→   314→    options: [
+   315→   315→      { label: 'Tidak', value: 'tidak', score: 0 },
+   316→   316→      { label: 'Sedikit', value: 'sedikit', score: 1 },
+   317→   317→      { label: 'Cukup Berat', value: 'cukup_berat', score: 2 },
+   318→   318→      { label: 'Sangat Berat', value: 'sangat_berat', score: 3 },
+   319→   319→    ],
+   320→   320→    required: true,
+   321→   321→  },
+   322→   322→  {
+   323→   323→    id: 'q18',
+   324→   324→    category: 'ekonomi',
+   325→   325→    categoryLabel: 'Kondisi Ekonomi & Finansial',
+   326→   326→    questionNumber: 18,
+   327→   327→    questionText: 'Apakah pasien pernah menunda pengobatan karena masalah biaya?',
+   328→   328→    type: 'single_choice',
+   329→   329→    options: [
+   330→   330→      { label: 'Ya', value: 'ya', score: 3 },
+   331→   331→      { label: 'Tidak', value: 'tidak', score: 0 },
+   332→   332→    ],
+   333→   333→    required: true,
+   334→   334→  },
+   335→   335→  {
+   336→   336→    id: 'q19',
+   337→   337→    category: 'ekonomi',
+   338→   338→    categoryLabel: 'Kondisi Ekonomi & Finansial',
+   339→   339→    questionNumber: 19,
+   340→   340→    questionText: 'Apakah pasien memerlukan bantuan biaya tambahan?',
+   341→   341→    type: 'single_choice',
+   342→   342→    options: [
+   343→   343→      { label: 'Ya', value: 'ya', score: 3 },
+   344→   344→      { label: 'Tidak', value: 'tidak', score: 0 },
+   345→   345→    ],
+   346→   346→    required: true,
+   347→   347→  },
+   348→   348→  {
+   349→   349→    id: 'q20',
+   350→   350→    category: 'ekonomi',
+   351→   351→    categoryLabel: 'Kondisi Ekonomi & Finansial',
+   352→   352→    questionNumber: 20,
+   353→   353→    questionText: 'Bantuan yang paling dibutuhkan',
+   354→   354→    type: 'multiple_choice',
+   355→   355→    options: [
+   356→   356→      { label: 'Obat', value: 'obat', score: 1 },
+   357→   357→      { label: 'Nutrisi', value: 'nutrisi', score: 1 },
+   358→   358→      { label: 'Alat Kesehatan', value: 'alat_kesehatan', score: 1 },
+   359→   359→      { label: 'Transportasi', value: 'transportasi', score: 1 },
+   360→   360→      { label: 'Home Care', value: 'home_care', score: 1 },
+   361→   361→      { label: 'Bantuan Finansial', value: 'finansial', score: 2 },
+   362→   362→      { label: 'Pendampingan Sosial', value: 'pendampingan_sosial', score: 1 },
+   363→   363→    ],
+   364→   364→    required: false,
+   365→   365→  },
+   366→   366→
+   367→   367→  // ─── F. TRANSPORTASI (Q21-Q23) ─────────────────────────────────────
+   368→   368→  {
+   369→   369→    id: 'q21',
+   370→   370→    category: 'transportasi',
+   371→   371→    categoryLabel: 'Transportasi',
+   372→   372→    questionNumber: 21,
+   373→   373→    questionText: 'Transportasi yang biasa digunakan pasien',
+   374→   374→    type: 'single_choice',
+   375→   375→    options: [
+   376→   376→      { label: 'Kendaraan Pribadi', value: 'pribadi', score: 0 },
+   377→   377→      { label: 'Kendaraan Keluarga', value: 'keluarga', score: 0 },
+   378→   378→      { label: 'Ambulans', value: 'ambulans', score: 2 },
+   379→   379→      { label: 'Transportasi Umum', value: 'umum', score: 1 },
+   380→   380→      { label: 'Ojek Online', value: 'ojek_online', score: 1 },
+   381→   381→      { label: 'Tidak Memiliki Akses Transportasi', value: 'tidak_ada', score: 3 },
+   382→   382→    ],
+   383→   383→    required: true,
+   384→   384→  },
+   385→   385→  {
+   386→   386→    id: 'q22',
+   387→   387→    category: 'transportasi',
+   388→   388→    categoryLabel: 'Transportasi',
+   389→   389→    questionNumber: 22,
+   390→   390→    questionText: 'Apakah transportasi menjadi hambatan untuk berobat?',
+   391→   391→    type: 'single_choice',
+   392→   392→    options: [
+   393→   393→      { label: 'Tidak', value: 'tidak', score: 0 },
+   394→   394→      { label: 'Kadang-kadang', value: 'kadang', score: 1 },
+   395→   395→      { label: 'Sering', value: 'sering', score: 2 },
+   396→   396→      { label: 'Selalu', value: 'selalu', score: 3 },
+   397→   397→    ],
+   398→   398→    required: true,
+   399→   399→  },
+   400→   400→  {
+   401→   401→    id: 'q23',
+   402→   402→    category: 'transportasi',
+   403→   403→    categoryLabel: 'Transportasi',
+   404→   404→    questionNumber: 23,
+   405→   405→    questionText: 'Apakah pasien memerlukan transportasi medis khusus?',
+   406→   406→    type: 'single_choice',
+   407→   407→    options: [
+   408→   408→      { label: 'Ya', value: 'ya', score: 3 },
+   409→   409→      { label: 'Tidak', value: 'tidak', score: 0 },
+   410→   410→    ],
+   411→   411→    required: true,
+   412→   412→  },
+   413→   413→
+   414→   414→  // ─── G. INTERAKSI SOSIAL (Q24-Q26) ─────────────────────────────────
+   415→   415→  {
+   416→   416→    id: 'q24',
+   417→   417→    category: 'interaksi_sosial',
+   418→   418→    categoryLabel: 'Interaksi Sosial',
+   419→   419→    questionNumber: 24,
+   420→   420→    questionText: 'Seberapa sering pasien berinteraksi dengan keluarga atau teman?',
+   421→   421→    type: 'single_choice',
+   422→   422→    options: [
+   423→   423→      { label: 'Setiap Hari', value: 'setiap_hari', score: 0 },
+   424→   424→      { label: 'Beberapa Kali Seminggu', value: 'seminggu', score: 1 },
+   425→   425→      { label: 'Beberapa Kali Sebulan', value: 'sebulan', score: 2 },
+   426→   426→      { label: 'Hampir Tidak Pernah', value: 'hampir_tidak', score: 3 },
+   427→   427→    ],
+   428→   428→    required: true,
+   429→   429→  },
+   430→   430→  {
+   431→   431→    id: 'q25',
+   432→   432→    category: 'interaksi_sosial',
+   433→   433→    categoryLabel: 'Interaksi Sosial',
+   434→   434→    questionNumber: 25,
+   435→   435→    questionText: 'Apakah pasien merasa kesepian?',
+   436→   436→    type: 'single_choice',
+   437→   437→    options: [
+   438→   438→      { label: 'Tidak Pernah', value: 'tidak_pernah', score: 0 },
+   439→   439→      { label: 'Kadang-kadang', value: 'kadang', score: 1 },
+   440→   440→      { label: 'Sering', value: 'sering', score: 2 },
+   441→   441→      { label: 'Hampir Selalu', value: 'hampir_selalu', score: 3 },
+   442→   442→    ],
+   443→   443→    required: true,
+   444→   444→  },
+   445→   445→  {
+   446→   446→    id: 'q26',
+   447→   447→    category: 'interaksi_sosial',
+   448→   448→    categoryLabel: 'Interaksi Sosial',
+   449→   449→    questionNumber: 26,
+   450→   450→    questionText: 'Apakah pasien masih aktif dalam kegiatan sosial atau keagamaan?',
+   451→   451→    type: 'single_choice',
+   452→   452→    options: [
+   453→   453→      { label: 'Aktif', value: 'aktif', score: 0 },
+   454→   454→      { label: 'Kadang-kadang', value: 'kadang', score: 1 },
+   455→   455→      { label: 'Jarang', value: 'jarang', score: 2 },
+   456→   456→      { label: 'Tidak Aktif', value: 'tidak_aktif', score: 3 },
+   457→   457→    ],
+   458→   458→    required: true,
+   459→   459→  },
+   460→   460→
+   461→   461→  // ─── H. KEBUTUHAN INFORMASI (Q27-Q28) ─────────────────────────────
+   462→   462→  {
+   463→   463→    id: 'q27',
+   464→   464→    category: 'kebutuhan_informasi',
+   465→   465→    categoryLabel: 'Kebutuhan Informasi',
+   466→   466→    questionNumber: 27,
+   467→   467→    questionText: 'Apakah pasien dan keluarga memahami kondisi penyakit saat ini?',
+   468→   468→    type: 'single_choice',
+   469→   469→    options: [
+   470→   470→      { label: 'Sangat Paham', value: 'sangat_paham', score: 0 },
+   471→   471→      { label: 'Cukup Paham', value: 'cukup_paham', score: 1 },
+   472→   472→      { label: 'Kurang Paham', value: 'kurang_paham', score: 2 },
+   473→   473→      { label: 'Tidak Paham', value: 'tidak_paham', score: 3 },
+   474→   474→    ],
+   475→   475→    required: true,
+   476→   476→  },
+   477→   477→  {
+   478→   478→    id: 'q28',
+   479→   479→    category: 'kebutuhan_informasi',
+   480→   480→    categoryLabel: 'Kebutuhan Informasi',
+   481→   481→    questionNumber: 28,
+   482→   482→    questionText: 'Informasi yang paling dibutuhkan saat ini',
+   483→   483→    type: 'multiple_choice',
+   484→   484→    options: [
+   485→   485→      { label: 'Penyakit', value: 'penyakit', score: 1 },
+   486→   486→      { label: 'Pengobatan', value: 'pengobatan', score: 1 },
+   487→   487→      { label: 'Perawatan di Rumah', value: 'perawatan_rumah', score: 1 },
+   488→   488→      { label: 'Nutrisi', value: 'nutrisi', score: 1 },
+   489→   489→      { label: 'Dukungan Sosial', value: 'dukungan_sosial', score: 1 },
+   490→   490→      { label: 'Persiapan Akhir Hayat', value: 'akhir_hayat', score: 2 },
+   491→   491→      { label: 'Advance Care Planning', value: 'acp', score: 2 },
+   492→   492→    ],
+   493→   493→    required: false,
+   494→   494→  },
+   495→   495→
+   496→   496→  // ─── I. PERTANYAAN TERBUKA (Q29-Q31) ──────────────────────────────
+   497→   497→  {
+   498→   498→    id: 'q29',
+   499→   499→    category: 'pertanyaan_terbuka',
+   500→   500→    categoryLabel: 'Pertanyaan Terbuka',
+   501→   501→    questionNumber: 29,
+   502→   502→    questionText: 'Apa kesulitan terbesar yang dihadapi pasien atau keluarga saat ini?',
+   503→   503→    type: 'text_area',
+   504→   504→    required: false,
+   505→   505→  },
+   506→   506→  {
+   507→   507→    id: 'q30',
+   508→   508→    category: 'pertanyaan_terbuka',
+   509→   509→    categoryLabel: 'Pertanyaan Terbuka',
+   510→   510→    questionNumber: 30,
+   511→   511→    questionText: 'Bantuan apa yang paling diharapkan dari tenaga kesehatan?',
+   512→   512→    type: 'text_area',
+   513→   513→    required: false,
+   514→   514→  },
+   515→   515→  {
+   516→   516→    id: 'q31',
+   517→   517→    category: 'pertanyaan_terbuka',
+   518→   518→    categoryLabel: 'Pertanyaan Terbuka',
+   519→   519→    questionNumber: 31,
+   520→   520→    questionText: 'Apakah ada kebutuhan khusus yang belum terpenuhi?',
+   521→   521→    type: 'text_area',
+   522→   522→    required: false,
+   523→   523→  },
+   524→   524→];
+   525→   525→
+   526→   526→// ═══════════════════════════════════════════════════════════════════════════
+   527→   527→// SCORING FUNCTIONS
+   528→   528→// ═══════════════════════════════════════════════════════════════════════════
+   529→   529→
+   530→   530→/**
+   531→   531→ * Get the max possible score for a single-choice question
+   532→   532→ */
+   533→   533→function getMaxScoreForQuestion(q: SocialNeedsQuestion): number {
+   534→   534→  if (q.type === 'text_area') return 0;
+   535→   535→  if (!q.options || q.options.length === 0) return 0;
+   536→   536→  return Math.max(...q.options.map((o) => o.score));
+   537→   537→}
+   538→   538→
+   539→   539→/**
+   540→   540→ * Calculate the score for a single-choice answer
+   541→   541→ */
+   542→   542→function getSingleChoiceScore(questionId: string, value: string): number {
+   543→   543→  const question = SOCIAL_NEEDS_QUESTIONS.find((q) => q.id === questionId);
+   544→   544→  if (!question || !question.options) return 0;
+   545→   545→  const option = question.options.find((o) => o.value === value);
+   546→   546→  return option?.score ?? 0;
+   547→   547→}
+   548→   548→
+   549→   549→/**
+   550→   550→ * Calculate the score for a multiple-choice answer
+   551→   551→ * Uses the highest individual score from selected options
+   552→   552→ * (selecting more risky options = higher overall risk)
+   553→   553→ */
+   554→   554→function getMultipleChoiceScore(questionId: string, values: string[]): number {
+   555→   555→  const question = SOCIAL_NEEDS_QUESTIONS.find((q) => q.id === questionId);
+   556→   556→  if (!question || !question.options) return 0;
+   557→   557→
+   558→   558→  let totalScore = 0;
+   559→   559→  for (const val of values) {
+   560→   560→    const option = question.options.find((o) => o.value === val);
+   561→   561→    totalScore += option?.score ?? 0;
+   562→   562→  }
+   563→   563→
+   564→   564→  // Cap at the max possible for this question type
+   565→   565→  const maxScore = getMaxScoreForQuestion(question);
+   566→   566→  // For multiple choice, the max is the sum of all positive scores
+   567→   567→  const sumMax = question.options.reduce((sum, o) => sum + o.score, 0);
+   568→   568→  return Math.min(totalScore, sumMax);
+   569→   569→}
+   570→   570→
+   571→   571→/**
+   572→   572→ * Get max possible score for a multiple choice question (sum of all positive scores)
+   573→   573→ */
+   574→   574→function getMaxScoreForMultipleChoice(q: SocialNeedsQuestion): number {
+   575→   575→  if (!q.options) return 0;
+   576→   576→  // For "tidak_ada" type options with high score, use that as max
+   577→   577→  const hasNegativeIndicator = q.options.some(o => o.score >= 3);
+   578→   578→  if (hasNegativeIndicator) {
+   579→   579→    // If there's a "no facility" option worth 3, max is 3
+   580→   580→    return Math.max(...q.options.map(o => o.score));
+   581→   581→  }
+   582→   582→  // Otherwise, max is sum of top 3 selections (realistic scenario)
+   583→   583→  const sortedScores = q.options.map(o => o.score).sort((a, b) => b - a);
+   584→   584→  return sortedScores.slice(0, Math.min(3, sortedScores.length)).reduce((sum, s) => sum + s, 0);
+   585→   585→}
+   586→   586→
+   587→   587→/**
+   588→   588→ * Determine risk level from percentage
+   589→   589→ */
+   590→   590→export function getRiskLevel(percentage: number): SocialNeedsRiskLevel {
+   591→   591→  if (percentage <= 25) return 'rendah';
+   592→   592→  if (percentage <= 50) return 'sedang';
+   593→   593→  if (percentage <= 75) return 'tinggi';
+   594→   594→  return 'sangat_tinggi';
+   595→   595→}
+   596→   596→
+   597→   597→/**
+   598→   598→ * Get risk level color and label
+   599→   599→ */
+   600→   600→export function getRiskLevelDisplay(level: SocialNeedsRiskLevel): { label: string; color: string; bgColor: string; borderColor: string } {
+   601→   601→  switch (level) {
+   602→   602→    case 'rendah':
+   603→   603→      return { label: 'Rendah', color: '#16A34A', bgColor: '#F0FDF4', borderColor: '#BBF7D0' };
+   604→   604→    case 'sedang':
+   605→   605→      return { label: 'Sedang', color: '#CA8A04', bgColor: '#FEFCE8', borderColor: '#FDE68A' };
+   606→   606→    case 'tinggi':
+   607→   607→      return { label: 'Tinggi', color: '#EA580C', bgColor: '#FFF7ED', borderColor: '#FED7AA' };
+   608→   608→    case 'sangat_tinggi':
+   609→   609→      return { label: 'Sangat Tinggi', color: '#DC2626', bgColor: '#FEF2F2', borderColor: '#FECACA' };
+   610→   610→  }
+   611→   611→}
+   612→   612→
+   613→   613→/**
+   614→   614→ * Calculate full screening result from all answers
+   615→   615→ */
+   616→   616→export function calculateScreeningResult(
+   617→   617→  answers: Record<string, string | string[]>
+   618→   618→): SocialNeedsScreeningResult {
+   619→   619→  const categories = Object.keys(CATEGORY_META) as SocialNeedsCategory[];
+   620→   620→  const categoryScores: SocialNeedsCategoryScore[] = [];
+   621→   621→  let totalScore = 0;
+   622→   622→  let totalMaxScore = 0;
+   623→   623→
+   624→   624→  for (const category of categories) {
+   625→   625→    const categoryQuestions = SOCIAL_NEEDS_QUESTIONS.filter(
+   626→   626→      (q) => q.category === category
+   627→   627→    );
+   628→   628→
+   629→   629→    let catScore = 0;
+   630→   630→    let catMaxScore = 0;
+   631→   631→
+   632→   632→    for (const q of categoryQuestions) {
+   633→   633→      if (q.type === 'text_area') continue; // text areas don't contribute to score
+   634→   634→
+   635→   635→      const answer = answers[q.id];
+   636→   636→      if (!answer) continue;
+   637→   637→
+   638→   638→      // Calculate max score for this question
+   639→   639→      if (q.type === 'multiple_choice') {
+   640→   640→        catMaxScore += getMaxScoreForMultipleChoice(q);
+   641→   641→      } else {
+   642→   642→        catMaxScore += getMaxScoreForQuestion(q);
+   643→   643→      }
+   644→   644→
+   645→   645→      // Calculate actual score
+   646→   646→      if (q.type === 'single_choice' && typeof answer === 'string') {
+   647→   647→        catScore += getSingleChoiceScore(q.id, answer);
+   648→   648→      } else if (q.type === 'multiple_choice' && Array.isArray(answer)) {
+   649→   649→        catScore += getMultipleChoiceScore(q.id, answer);
+   650→   650→      }
+   651→   651→    }
+   652→   652→
+   653→   653→    // Skip categories with no scorable questions (like pertanyaan_terbuka)
+   654→   654→    if (catMaxScore === 0) continue;
+   655→   655→
+   656→   656→    const percentage = catMaxScore > 0 ? Math.round((catScore / catMaxScore) * 100) : 0;
+   657→   657→    categoryScores.push({
+   658→   658→      category,
+   659→   659→      categoryLabel: CATEGORY_META[category].label,
+   660→   660→      totalScore: catScore,
+   661→   661→      maxScore: catMaxScore,
+   662→   662→      percentage,
+   663→   663→      riskLevel: getRiskLevel(percentage),
+   664→   664→    });
+   665→   665→
+   666→   666→    totalScore += catScore;
+   667→   667→    totalMaxScore += catMaxScore;
+   668→   668→  }
+   669→   669→
+   670→   670→  const overallPercentage = totalMaxScore > 0 ? Math.round((totalScore / totalMaxScore) * 100) : 0;
+   671→   671→
+   672→   672→  return {
+   673→   673→    totalScore,
+   674→   674→    maxScore: totalMaxScore,
+   675→   675→    overallPercentage,
+   676→   676→    overallRiskLevel: getRiskLevel(overallPercentage),
+   677→   677→    categoryScores,
+   678→   678→    completedAt: new Date().toISOString(),
+   679→   679→  };
+   680→   680→}
+   681→   681→
+   682→   682→/**
+   683→   683→ * Get questions grouped by category
+   684→   684→ */
+   685→   685→export function getQuestionsByCategory(): Record<SocialNeedsCategory, SocialNeedsQuestion[]> {
+   686→   686→  const grouped = {} as Record<SocialNeedsCategory, SocialNeedsQuestion[]>;
+   687→   687→  for (const cat of Object.keys(CATEGORY_META) as SocialNeedsCategory[]) {
+   688→   688→    grouped[cat] = SOCIAL_NEEDS_QUESTIONS.filter((q) => q.category === cat);
+   689→   689→  }
+   690→   690→  return grouped;
+   691→   691→}
+   692→   692→
+   693→   693→/**
+   694→   694→ * Get category-level risk label for AI score display
+   695→   695→ */
+   696→   696→export function getAIStatusLabel(level: SocialNeedsRiskLevel): string {
+   697→   697→  switch (level) {
+   698→   698→    case 'rendah': return 'Baik';
+   699→   699→    case 'sedang': return 'Cukup';
+   700→   700→    case 'tinggi': return 'Kurang';
+   701→   701→    case 'sangat_tinggi': return 'Risiko Tinggi';
+   702→   702→  }
+   703→   703→}
+   704→   704→
+   705→   705→/**
+   706→   706→ * Get recommendation category label in Indonesian
+   707→   707→ */
+   708→   708→export function getRecommendationCategoryLabel(category: string): string {
+   709→   709→  const labels: Record<string, string> = {
+   710→   710→    edukasi_keluarga: 'Edukasi Keluarga',
+   711→   711→    family_meeting: 'Family Meeting',
+   712→   712→    home_visit: 'Home Visit',
+   713→   713→    konseling_psikososial: 'Konseling Psikososial',
+   714→   714→    dukungan_caregiver: 'Dukungan Caregiver',
+   715→   715→    bantuan_finansial: 'Bantuan Finansial',
+   716→   716→    bantuan_transportasi: 'Bantuan Transportasi',
+   717→   717→    rujukan_pekerja_sosial: 'Rujukan Pekerja Sosial Medis',
+   718→   718→    pendampingan_spiritual: 'Pendampingan Spiritual',
+   719→   719→    monitoring_intensif: 'Monitoring Intensif',
+   720→   720→  };
+   721→   721→  return labels[category] || category;
+   722→   722→}
+   723→   723→
+   724→   724→/**
+   725→   725→ * Mock AI analysis result for fallback when API fails
+   726→   726→ */
+   727→   727→export function generateLocalAIAnalysis(
+   728→   728→  screeningResult: SocialNeedsScreeningResult,
+   729→   729→  answers: Record<string, string | string[]>
+   730→   730→): import('@/lib/types').SocialNeedsAIResult {
+   731→   731→  const cs = screeningResult.categoryScores;
+   732→   732→  const findCat = (cat: SocialNeedsCategory) => cs.find(c => c.category === cat);
+   733→   733→
+   734→   734→  const familyScore = findCat('dukungan_keluarga');
+   735→   735→  const caregiverScore = findCat('caregiver');
+   736→   736→  const housingScore = findCat('tempat_tinggal');
+   737→   737→  const accessScore = findCat('akses_layanan');
+   738→   738→  const econScore = findCat('ekonomi');
+   739→   739→  const transportScore = findCat('transportasi');
+   740→   740→  const socialScore = findCat('interaksi_sosial');
+   741→   741→
+   742→   742→  const recommendations: import('@/lib/types').SocialNeedsAIRecommendation[] = [];
+   743→   743→  const earlyWarnings: import('@/lib/types').SocialNeedsEarlyWarning[] = [];
+   744→   744→
+   745→   745→  // Family support
+   746→   746→  if (familyScore && familyScore.percentage > 50) {
+   747→   747→    recommendations.push({
+   748→   748→      priority: 1,
+   749→   749→      action: 'Edukasi keluarga tentang perawatan paliatif dan dukungan emosional',
+   750→   750→      reason: `Skor dukungan keluarga ${familyScore.percentage}% (${familyScore.riskLevel}) menunjukkan kebutuhan peningkatan dukungan keluarga`,
+   751→   751→      category: 'edukasi_keluarga',
+   752→   752→    });
+   753→   753→  }
+   754→   754→  if (familyScore && familyScore.percentage > 75) {
+   755→   755→    recommendations.push({
+   756→   756→      priority: 2,
+   757→   757→      action: 'Jadwalkan Family Meeting untuk membahas rencana perawatan',
+   758→   758→      reason: 'Risiko konflik keluarga dan kurangnya dukungan memerlukan intervensi melalui family meeting',
+   759→   759→      category: 'family_meeting',
+   760→   760→    });
+   761→   761→  }
+   762→   762→
+   763→   763→  // Caregiver
+   764→   764→  if (caregiverScore && caregiverScore.percentage > 50) {
+   765→   765→    recommendations.push({
+   766→   766→      priority: 1,
+   767→   767→      action: 'Program dukungan dan edukasi caregiver',
+   768→   768→      reason: `Skor caregiver ${caregiverScore.percentage}% menunjukkan risiko burnout yang perlu ditangani`,
+   769→   769→      category: 'dukungan_caregiver',
+   770→   770→    });
+   771→   771→    earlyWarnings.push({
+   772→   772→      type: 'caregiver_burnout',
+   773→   773→      severity: caregiverScore.percentage > 75 ? 'critical' : 'warning',
+   774→   774→      title: 'Risiko Caregiver Burnout',
+   775→   775→      description: `Caregiver menunjukkan tingkat beban ${caregiverScore.riskLevel}. Diperlukan dukungan segera.`,
+   776→   776→    });
+   777→   777→  }
+   778→   778→
+   779→   779→  // Access
+   780→   780→  if (accessScore && accessScore.percentage > 50) {
+   781→   781→    recommendations.push({
+   782→   782→      priority: 2,
+   783→   783→      action: 'Jadwalkan Home Visit untuk evaluasi akses layanan',
+   784→   784→      reason: `Skor akses layanan ${accessScore.percentage}% menunjukkan hambatan akses yang signifikan`,
+   785→   785→      category: 'home_visit',
+   786→   786→    });
+   787→   787→  }
+   788→   788→
+   789→   789→  // Financial
+   790→   790→  if (econScore && econScore.percentage > 50) {
+   791→   791→    recommendations.push({
+   792→   792→      priority: 1,
+   793→   793→      action: 'Rujuk ke pekerja sosial medis untuk evaluasi bantuan finansial',
+   794→   794→      reason: `Skor finansial ${econScore.percentage}% menunjukkan beban ekonomi yang memerlukan intervensi`,
+   795→   795→      category: 'bantuan_finansial',
+   796→   796→    });
+   797→   797→    earlyWarnings.push({
+   798→   798→      type: 'financial_burden',
+   799→   799→      severity: econScore.percentage > 75 ? 'critical' : 'warning',
+   800→   800→      title: 'Risiko Beban Finansial Berat',
+   801→   801→      description: `Beban ekonomi ${econScore.riskLevel} berpotensi mengganggu keberlanjutan perawatan.`,
+   802→   802→    });
+   803→   803→  }
+   804→   804→
+   805→   805→  // Transport
+   806→   806→  if (transportScore && transportScore.percentage > 50) {
+   807→   807→    recommendations.push({
+   808→   808→      priority: 2,
+   809→   809→      action: 'Fasilitasi bantuan transportasi medis',
+   810→   810→      reason: `Skor transportasi ${transportScore.percentage}% menunjukkan hambatan mobilitas yang signifikan`,
+   811→   811→      category: 'bantuan_transportasi',
+   812→   812→    });
+   813→   813→  }
+   814→   814→
+   815→   815→  // Social isolation
+   816→   816→  if (socialScore && socialScore.percentage > 50) {
+   817→   817→    recommendations.push({
+   818→   818→      priority: 1,
+   819→   819→      action: 'Konseling psikososial dan pendampingan spiritual',
+   820→   820→      reason: `Skor interaksi sosial ${socialScore.percentage}% menunjukkan risiko isolasi sosial`,
+   821→   821→      category: 'konseling_psikososial',
+   822→   822→    });
+   823→   823→    earlyWarnings.push({
+   824→   824→      type: 'social_isolation',
+   825→   825→      severity: socialScore.percentage > 75 ? 'critical' : 'warning',
+   826→   826→      title: 'Risiko Isolasi Sosial',
+   827→   827→      description: `Tingkat interaksi sosial rendah (${socialScore.riskLevel}) berpotensi menurunkan kualitas hidup.`,
+   828→   828→    });
+   829→   829→  }
+   830→   830→
+   831→   831→  // Always add monitoring if any risk
+   832→   832→  if (screeningResult.overallPercentage > 50) {
+   833→   833→    recommendations.push({
+   834→   834→      priority: 1,
+   835→   835→      action: 'Tingkatkan frekuensi monitoring dan evaluasi berkala',
+   836→   836→      reason: `Skor risiko keseluruhan ${screeningResult.overallPercentage}% memerlukan monitoring intensif`,
+   837→   837→      category: 'monitoring_intensif',
+   838→   838→    });
+   839→   839→  }
+   840→   840→
+   841→   841→  // Sort by priority
+   842→   842→  recommendations.sort((a, b) => a.priority - b.priority);
+   843→   843→
+   844→   844→  return {
+   845→   845→    familySupportScore: familyScore?.riskLevel ?? 'rendah',
+   846→   846→    socialRiskScore: screeningResult.overallRiskLevel,
+   847→   847→    caregiverBurnoutScore: caregiverScore?.riskLevel ?? 'rendah',
+   848→   848→    accessToCareScore: accessScore?.riskLevel ?? 'rendah',
+   849→   849→    financialRiskScore: econScore?.riskLevel ?? 'rendah',
+   850→   850→    socialIsolationScore: socialScore?.riskLevel ?? 'rendah',
+   851→   851→    recommendations,
+   852→   852→    analysisSummary: `Berdasarkan skrining kebutuhan sosial, pasien memiliki tingkat risiko sosial ${screeningResult.overallRiskLevel} dengan skor ${screeningResult.overallPercentage}%. ${recommendations.length > 0 ? `Terdapat ${recommendations.length} rekomendasi intervensi yang perlu ditindaklanjuti.` : 'Tidak ditemukan kebutuhan intervensi mendesak.'}`,
+   853→   853→    earlyWarnings,
+   854→   854→    generatedAt: new Date().toISOString(),
+   855→   855→  };
+   856→   856→}
+   857→   857→

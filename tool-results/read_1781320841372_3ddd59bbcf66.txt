@@ -1,0 +1,2002 @@
+     1→'use client';
+     2→
+     3→import React, { useState, useMemo, useCallback, useEffect } from 'react';
+     4→import { useStore } from '@/lib/store';
+     5→import type { PalliativeScreeningForm, PalliativeToolType, ScreeningStatus, PalliativePatientInfo } from '@/lib/types';
+     6→import { cn } from '@/lib/utils';
+     7→import { useToast } from '@/hooks/use-toast';
+     8→import { Button } from '@/components/ui/button';
+     9→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+    10→import { Badge } from '@/components/ui/badge';
+    11→import { Progress } from '@/components/ui/progress';
+    12→import { Label } from '@/components/ui/label';
+    13→import { Separator } from '@/components/ui/separator';
+    14→import { Checkbox } from '@/components/ui/checkbox';
+    15→import { Input } from '@/components/ui/input';
+    16→import {
+    17→  Dialog,
+    18→  DialogContent,
+    19→  DialogHeader,
+    20→  DialogTitle,
+    21→  DialogFooter,
+    22→} from '@/components/ui/dialog';
+    23→import {
+    24→  Select,
+    25→  SelectContent,
+    26→  SelectItem,
+    27→  SelectTrigger,
+    28→  SelectValue,
+    29→} from '@/components/ui/select';
+    30→import {
+    31→  Tooltip,
+    32→  TooltipContent,
+    33→  TooltipProvider,
+    34→  TooltipTrigger,
+    35→} from '@/components/ui/tooltip';
+    36→import {
+    37→  BarChart3,
+    38→  Thermometer,
+    39→  Heart,
+    40→  Activity,
+    41→  Users,
+    42→  ClipboardList,
+    43→  ChevronLeft,
+    44→  ChevronRight,
+    45→  Save,
+    46→  FileText,
+    47→  AlertTriangle,
+    48→  CheckCircle,
+    49→  ArrowRight,
+    50→  ArrowLeft,
+    51→  User,
+    52→  ClipboardCheck,
+    53→} from 'lucide-react';
+    54→
+    55→// ── Types ────────────────────────────────────────────────────────────────
+    56→
+    57→type ToolType = PalliativeToolType;
+    58→
+    59→interface ScreeningResult {
+    60→  id: string;
+    61→  tool: ToolType;
+    62→  toolName: string;
+    63→  patientId: string;
+    64→  patientName: string;
+    65→  score: number;
+    66→  scoreLabel: string;
+    67→  interpretation: string;
+    68→  ewsLevel: 'merah' | 'kuning' | 'hijau';
+    69→  details: Record<string, unknown>;
+    70→  savedAt: string;
+    71→}
+    72→
+    73→// ── Tool Definitions ─────────────────────────────────────────────────────
+    74→
+    75→const TOOL_DEFS: Record<ToolType, {
+    76→  name: string;
+    77→  icon: React.ReactNode;
+    78→  description: string;
+    79→  items: string;
+    80→  scale: string;
+    81→  totalSteps: number; // excluding result step
+    82→}> = {
+    83→  esas: {
+    84→    name: 'ESAS-r',
+    85→    icon: <BarChart3 className="w-6 h-6" />,
+    86→    description: 'Edmonton Symptom Assessment System Revised — 9 gejala dengan skala VAS 0-10',
+    87→    items: '9 item',
+    88→    scale: '0-10 VAS per item, total 0-90',
+    89→    totalSteps: 1,
+    90→  },
+    91→  distress: {
+    92→    name: 'Distress Thermometer',
+    93→    icon: <Thermometer className="w-6 h-6" />,
+    94→    description: 'NCCN Distress Thermometer — Skor tekanan + daftar masalah 5 kategori',
+    95→    items: '1 slider + 26 masalah',
+    96→    scale: '0-10 + Problem List',
+    97→    totalSteps: 6,
+    98→  },
+    99→  spict: {
+   100→    name: 'Skrining Kebutuhan Perawatan Paliatif (SPICT)',
+   101→    icon: <ClipboardList className="w-6 h-6" />,
+   102→    description: 'Alat bantu identifikasi pasien yang mungkin memerlukan penilaian paliatif',
+   103→    items: '15 pertanyaan + penyakit kronis + surprise question',
+   104→    scale: '0-15 poin (4 kategori risiko)',
+   105→    totalSteps: 3,
+   106→  },
+   107→  pps: {
+   108→    name: 'Skrining Kondisi Pasien (PPS)',
+   109→    icon: <Activity className="w-6 h-6" />,
+   110→    description: 'Palliative Performance Scale — 5 dimensi kondisi pasien dengan pertanyaan tambahan',
+   111→    items: '5 dimensi + 5 pertanyaan tambahan',
+   112→    scale: 'PPS % (rata-rata 5 dimensi)',
+   113→    totalSteps: 2,
+   114→  },
+   115→  zarit: {
+   116→    name: 'Zarit Caregiver Burden',
+   117→    icon: <Users className="w-6 h-6" />,
+   118→    description: 'Zarit Caregiver Burden Interview — Beban pengasuh 22 pertanyaan',
+   119→    items: '22 pertanyaan',
+   120→    scale: '0-88 (4 kategori)',
+   121→    totalSteps: 4,
+   122→  },
+   123→  eortc: {
+   124→    name: 'EORTC QLQ-C15-PAL',
+   125→    icon: <Heart className="w-6 h-6" />,
+   126→    description: 'Quality of Life Questionnaire — 15 item kualitas hidup paliatif',
+   127→    items: '15 item',
+   128→    scale: '3 skor % (PF, SB, QoL)',
+   129→    totalSteps: 3,
+   130→  },
+   131→};
+   132→
+   133→// ── ESAS-r Data ──────────────────────────────────────────────────────────
+   134→
+   135→const ESAS_ITEMS = [
+   136→  { id: 'esas-nyeri', label: 'Nyeri' },
+   137→  { id: 'esas-sesak', label: 'Sesak Napas' },
+   138→  { id: 'esas-mual', label: 'Mual' },
+   139→  { id: 'esas-kelelahan', label: 'Kelelahan' },
+   140→  { id: 'esas-mengantuk', label: 'Mengantuk' },
+   141→  { id: 'esas-nafsu', label: 'Nafsu Makan' },
+   142→  { id: 'esas-cemas', label: 'Kecemasan' },
+   143→  { id: 'esas-depresi', label: 'Depresi' },
+   144→  { id: 'esas-sejahtera', label: 'Kesejahteraan' },
+   145→];
+   146→
+   147→// ── Distress Thermometer Data ────────────────────────────────────────────
+   148→
+   149→const DT_PROBLEMS: { category: string; step: number; items: string[] }[] = [
+   150→  { category: 'Praktis', step: 2, items: ['Masalah tempat tinggal', 'Masalah asuransi/biaya', 'Transportasi', 'Pekerjaan', 'Masalah kebersihan'] },
+   151→  { category: 'Keluarga', step: 3, items: ['Mengurus anak', 'Kemampuan mengurus keluarga', 'Hubungan dengan pasangan/keluarga'] },
+   152→  { category: 'Emosional', step: 4, items: ['Kecemasan', 'Depresi', 'Ketakutan', 'Kesedihan/gangguan berkabung', 'Kehilangan minat'] },
+   153→  { category: 'Spiritual', step: 5, items: ['Kehilangan keyakinan', 'Berkaitan dengan kematian', 'Berkaitan dengan makna hidup'] },
+   154→  { category: 'Fisik', step: 6, items: ['Nyeri', 'Mual', 'Sesak napas', 'Kelelahan', 'Gangguan tidur', 'Sembelit', 'Diare', 'Perubahan nafsu makan', 'Mulut kering', 'Gangguan pencernaan'] },
+   155→];
+   156→
+   157→// ── SPICT Data ───────────────────────────────────────────────────────────
+   158→
+   159→const SPICT_QUESTIONS = [
+   160→  { id: 'spict-q1', text: 'Apakah kondisi kesehatan pasien semakin menurun dalam beberapa bulan terakhir?', help: 'Apakah tampak lebih sering sakit atau kondisi fisiknya terlihat tidak sebugar dulu?' },
+   161→  { id: 'spict-q2', text: 'Apakah pasien lebih sering dirawat di rumah sakit atau IGD dibanding sebelumnya?', help: 'Apakah dalam 6 bulan terakhir frekuensi masuk RS lebih sering dari biasanya?' },
+   162→  { id: 'spict-q3', text: 'Apakah pasien semakin sulit melakukan aktivitas sehari-hari?', help: 'Contoh: kesulitan mandi, berpakaian, makan, atau berjalan tanpa dibantu.' },
+   163→  { id: 'spict-q4', text: 'Apakah pasien lebih sering berada di tempat tidur atau duduk dibanding sebelumnya?', help: 'Apakah pasien lebih banyak menghabiskan waktu berbaring daripada beraktivitas?' },
+   164→  { id: 'spict-q5', text: 'Apakah berat badan pasien menurun tanpa disengaja?', help: 'Apakah pakaian terasa lebih longgar atau timbangan menunjukkan penurunan berat yang signifikan?' },
+   165→  { id: 'spict-q6', text: 'Apakah nafsu makan pasien berkurang?', help: 'Apakah porsi makan pasien jauh berkurang dari porsi biasanya?' },
+   166→  { id: 'spict-q7', text: 'Apakah pasien merasa lebih lemah atau cepat lelah?', help: 'Apakah pasien tampak kehabisan tenaga bahkan saat melakukan kegiatan ringan?' },
+   167→  { id: 'spict-q8', text: 'Apakah pasien sering mengalami nyeri yang mengganggu?', help: 'Nyeri yang dirasakan cukup kuat untuk membuat pasien sulit fokus atau sulit istirahat.' },
+   168→  { id: 'spict-q9', text: 'Apakah pasien sering sesak napas?', help: 'Apakah napas terasa berat, pendek-pendek, atau terengah-engah?' },
+   169→  { id: 'spict-q10', text: 'Apakah pasien sering mual atau muntah?', help: 'Perasaan ingin muntah yang mengganggu kenyamanan sehari-hari.' },
+   170→  { id: 'spict-q11', text: 'Apakah pasien sering sulit tidur karena keluhan penyakitnya?', help: 'Keluhan nyeri, sesak, atau cemas membuat pasien tidak bisa tidur nyenyak.' },
+   171→  { id: 'spict-q12', text: 'Apakah pasien sering merasa cemas, sedih, atau putus asa?', help: 'Dukungan emosional sangat diperlukan jika pasien sering merasa murung.' },
+   172→  { id: 'spict-q13', text: 'Apakah keluarga semakin sering membantu kebutuhan sehari-hari pasien?', help: 'Apakah Anda/keluarga harus lebih sering turun tangan untuk aktivitas pribadi pasien?' },
+   173→  { id: 'spict-q14', text: 'Apakah keluarga merasa beban merawat pasien semakin berat?', help: 'Apakah Anda merasa kelelahan baik fisik maupun mental dalam merawat pasien?' },
+   174→  { id: 'spict-q15', text: 'Apakah butuh bantuan untuk perencanaan pengobatan ke depan?', help: 'Apakah Anda bingung mengenai langkah medis selanjutnya?' },
+   175→];
+   176→
+   177→const SPICT_DISEASES = [
+   178→  'Kanker stadium lanjut',
+   179→  'Gagal jantung',
+   180→  'Penyakit paru kronis (PPOK)',
+   181→  'Stroke berat',
+   182→  'Demensia',
+   183→  'Penyakit saraf progresif',
+   184→  'Gagal ginjal kronis',
+   185→  'Penyakit hati kronis',
+   186→  'Kondisi kronis berat lainnya',
+   187→];
+   188→
+   189→// ── PPS Data ─────────────────────────────────────────────────────────────
+   190→
+   191→const PPS_QUESTIONS = [
+   192→  {
+   193→    id: 'pps-bergerak',
+   194→    title: '1. Kemampuan Bergerak',
+   195→    options: [
+   196→      { text: 'Jalan normal', desc: 'Masih bisa beraktivitas/ke luar rumah seperti biasa.', score: 100 },
+   197→      { text: 'Jalan lambat', desc: 'Bisa keluar rumah, tapi kecepatan berkurang/mudah lelah.', score: 80 },
+   198→      { text: 'Jalan dalam rumah', desc: 'Tidak keluar rumah, mobilitas hanya di area dalam rumah.', score: 60 },
+   199→      { text: 'Duduk/berbaring', desc: 'Lebih banyak duduk/berbaring daripada berjalan.', score: 40 },
+   200→      { text: 'Hampir selalu tidur', desc: 'Sangat jarang bangun dari tempat tidur.', score: 20 },
+   201→      { text: 'Bedridden', desc: 'Tidak mampu bangun dari tempat tidur sama sekali.', score: 0 },
+   202→    ],
+   203→  },
+   204→  {
+   205→    id: 'pps-aktivitas',
+   206→    title: '2. Aktivitas Sehari-hari',
+   207→    options: [
+   208→      { text: 'Aktivitas penuh', desc: 'Masih mampu melakukan semua kegiatan normal.', score: 100 },
+   209→      { text: 'Aktivitas terbatas', desc: 'Masih beraktivitas, tapi butuh istirahat lebih sering.', score: 80 },
+   210→      { text: 'Tanpa kerja berat', desc: 'Tidak mampu mencuci, mengangkat barang, atau berkebun.', score: 60 },
+   211→      { text: 'Aktivitas ringan', desc: 'Hanya mampu melakukan kegiatan yang sangat ringan.', score: 40 },
+   212→      { text: 'Hampir tidak ada aktivitas', desc: 'Hampir tidak melakukan kegiatan apa pun.', score: 20 },
+   213→      { text: 'Tidak mampu mandiri', desc: 'Tidak bisa melakukan aktivitas sendiri sama sekali.', score: 0 },
+   214→    ],
+   215→  },
+   216→  {
+   217→    id: 'pps-kemandirian',
+   218→    title: '3. Kemandirian',
+   219→    options: [
+   220→      { text: 'Mandiri penuh', desc: 'Tidak membutuhkan bantuan orang lain.', score: 100 },
+   221→      { text: 'Sedikit bantuan', desc: 'Mandiri, hanya butuh bantu hal kecil (misal: kancing baju).', score: 80 },
+   222→      { text: 'Bantuan beberapa', desc: 'Butuh bantuan fisik, misal saat ke kamar mandi/mandi.', score: 60 },
+   223→      { text: 'Bantuan sebagian besar', desc: 'Sebagian besar kebutuhan rutin harus dibantu.', score: 40 },
+   224→      { text: 'Bantuan penuh', desc: 'Butuh bantuan penuh untuk semua aktivitas dasar.', score: 20 },
+   225→      { text: 'Total care', desc: 'Semua kebutuhan harus dibantu total oleh orang lain.', score: 0 },
+   226→    ],
+   227→  },
+   228→  {
+   229→    id: 'pps-makan',
+   230→    title: '4. Makan dan Minum',
+   231→    options: [
+   232→      { text: 'Normal', desc: 'Nafsu makan dan porsi sama seperti biasanya.', score: 100 },
+   233→      { text: 'Sedikit kurang', desc: 'Porsi sedikit berkurang, ada sedikit sisa makanan.', score: 80 },
+   234→      { text: 'Kurang cukup banyak', desc: 'Penurunan asupan yang jelas (misal: hanya habis setengah).', score: 60 },
+   235→      { text: 'Hanya sedikit', desc: 'Hanya sanggup makan beberapa suap/sangat sedikit.', score: 40 },
+   236→      { text: 'Sangat sedikit', desc: 'Hampir tidak ada asupan makanan yang masuk.', score: 20 },
+   237→      { text: 'Tidak mampu', desc: 'Sama sekali tidak mampu makan atau minum.', score: 0 },
+   238→    ],
+   239→  },
+   240→  {
+   241→    id: 'pps-kesadaran',
+   242→    title: '5. Kesadaran dan Komunikasi',
+   243→    options: [
+   244→      { text: 'Sadar penuh', desc: 'Komunikasi normal dan sadar sepenuhnya.', score: 100 },
+   245→      { text: 'Mengantuk ringan', desc: 'Sering mengantuk tapi masih bisa diajak bicara.', score: 80 },
+   246→      { text: 'Sulit konsentrasi', desc: 'Sering mengantuk dan sulit fokus saat bicara.', score: 60 },
+   247→      { text: 'Bingung sesekali', desc: 'Terkadang tampak bingung atau tidak nyambung.', score: 40 },
+   248→      { text: 'Sering bingung', desc: 'Sering sulit diajak komunikasi atau bingung.', score: 20 },
+   249→      { text: 'Tidak responsif', desc: 'Tidak sadar atau tidak memberikan respons.', score: 0 },
+   250→    ],
+   251→  },
+   252→];
+   253→
+   254→const PPS_EXTRA_QUESTIONS = [
+   255→  'Apakah kondisi pasien memburuk dibanding bulan lalu?',
+   256→  'Apakah pasien pernah jatuh dalam 1 bulan terakhir?',
+   257→  'Apakah pasien mengalami penurunan berat badan?',
+   258→  'Apakah pasien lebih banyak tidur dibanding biasanya?',
+   259→  'Apakah keluarga merasa pasien membutuhkan bantuan lebih banyak?',
+   260→];
+   261→
+   262→// ── Zarit Data ───────────────────────────────────────────────────────────
+   263→
+   264→const ZARIT_QUESTIONS = [
+   265→  'Apakah Anda merasa pengasuhan memakan terlalu banyak waktu Anda?',
+   266→  'Apakah Anda merasa lelah karena mengasuh?',
+   267→  'Apakah Anda merasa sulit mengurus rumah tangga selain mengasuh?',
+   268→  'Apakah Anda merasa terkungkung karena mengasuh?',
+   269→  'Apakah Anda merasa keluarga Anda tidak membantu mengasuh?',
+   270→  'Apakah Anda merasa keluarga Anda tidak menghargai usaha mengasuh Anda?',
+   271→  'Apakah Anda merasa pengasuhan memengaruhi hubungan Anda dengan keluarga lain?',
+   272→  'Apakah Anda merasa pengasuhan membuat Anda kehilangan kehidupan sosial?',
+   273→  'Apakah Anda merasa malu karena kondisi orang yang Anda asuh?',
+   274→  'Apakah Anda merasa marah ketika berada di sekitar orang yang Anda asuh?',
+   275→  'Apakah Anda merasa pengasuhan memengaruhi kesehatan Anda?',
+   276→  'Apakah Anda merasa tidak punya waktu untuk diri sendiri?',
+   277→  'Apakah Anda merasa stres karena mengurus dua orang sekaligus (orang yang diasuh dan keluarga)?',
+   278→  'Apakah Anda merasa khawatir tentang apa yang akan terjadi pada orang yang Anda asuh di masa depan?',
+   279→  'Apakah Anda merasa penghasilan Anda tidak cukup untuk biaya pengasuhan?',
+   280→  'Apakah Anda merasa tidak mampu mengasuh lebih lama lagi?',
+   281→  'Apakah Anda merasa tidak punya kehidupan pribadi karena mengasuh?',
+   282→  'Apakah Anda ingin meninggalkan pengasuhan pada orang lain?',
+   283→  'Apakah Anda merasa tidak tahu harus berbuat apa untuk orang yang Anda asuh?',
+   284→  'Apakah Anda merasa seharusnya berbuat lebih banyak untuk orang yang Anda asuh?',
+   285→  'Apakah Anda merasa seharusnya melakukan pengasuhan dengan lebih baik?',
+   286→  'Secara keseluruhan, seberapa besar beban yang Anda rasakan dalam mengasuh?',
+   287→];
+   288→
+   289→const ZARIT_OPTIONS = [
+   290→  { label: 'Tidak pernah', value: 0 },
+   291→  { label: 'Jarang', value: 1 },
+   292→  { label: 'Kadang-kadang', value: 2 },
+   293→  { label: 'Cukup sering', value: 3 },
+   294→  { label: 'Hampir selalu', value: 4 },
+   295→];
+   296→
+   297→// ── EORTC QLQ-C15-PAL Data ──────────────────────────────────────────────
+   298→
+   299→const EORTC_QUESTIONS: { id: string; text: string; section: 'physical' | 'symptom' | 'qol' }[] = [
+   300→  { id: 'eortc-q1', text: 'Apakah Anda kesulitan melakukan pekerjaan berat?', section: 'physical' },
+   301→  { id: 'eortc-q2', text: 'Apakah Anda kesulitan berjalan jarak jauh?', section: 'physical' },
+   302→  { id: 'eortc-q3', text: 'Apakah Anda kesulitan berjalan di luar rumah?', section: 'physical' },
+   303→  { id: 'eortc-q4', text: 'Apakah Anda perlu bantuan untuk beristirahat di tempat tidur atau kursi?', section: 'physical' },
+   304→  { id: 'eortc-q5', text: 'Apakah Anda perlu bantuan untuk makan, berpakaian, mencuci, atau menggunakan toilet?', section: 'physical' },
+   305→  { id: 'eortc-q6', text: 'Apakah Anda terbatas dalam melakukan pekerjaan atau hobi?', section: 'physical' },
+   306→  { id: 'eortc-q7', text: 'Apakah Anda terbatas dalam melakukan aktivitas sehari-hari?', section: 'physical' },
+   307→  { id: 'eortc-q8', text: 'Apakah Anda merasa sesak napas?', section: 'symptom' },
+   308→  { id: 'eortc-q9', text: 'Apakah Anda merasa nyeri?', section: 'symptom' },
+   309→  { id: 'eortc-q10', text: 'Apakah Anda sulit tidur?', section: 'symptom' },
+   310→  { id: 'eortc-q11', text: 'Apakah Anda merasa lemah?', section: 'symptom' },
+   311→  { id: 'eortc-q12', text: 'Apakah nafsu makan Anda berkurang?', section: 'symptom' },
+   312→  { id: 'eortc-q13', text: 'Apakah Anda merasa mual?', section: 'symptom' },
+   313→  { id: 'eortc-q14', text: 'Apakah Anda mengalami sembelit?', section: 'symptom' },
+   314→  { id: 'eortc-q15', text: 'Bagaimana Anda menilai kualitas hidup Anda secara keseluruhan selama seminggu terakhir?', section: 'qol' },
+   315→];
+   316→
+   317→const EORTC_OPTIONS_4 = [
+   318→  { label: 'Tidak sama sekali', value: 1 },
+   319→  { label: 'Sedikit', value: 2 },
+   320→  { label: 'Cukup banyak', value: 3 },
+   321→  { label: 'Sangat banyak', value: 4 },
+   322→];
+   323→
+   324→// ── Helper Functions ─────────────────────────────────────────────────────
+   325→
+   326→function generateId(): string {
+   327→  return `sk-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+   328→}
+   329→
+   330→function formatDate(dateStr: string): string {
+   331→  try {
+   332→    return new Date(dateStr).toLocaleDateString('id-ID', {
+   333→      day: 'numeric', month: 'short', year: 'numeric',
+   334→      hour: '2-digit', minute: '2-digit',
+   335→    });
+   336→  } catch { return dateStr; }
+   337→}
+   338→
+   339→function vasColor(value: number): string {
+   340→  if (value <= 3) return 'text-emerald-600';
+   341→  if (value <= 6) return 'text-amber-600';
+   342→  return 'text-red-600';
+   343→}
+   344→
+   345→function vasBg(value: number): string {
+   346→  if (value <= 3) return 'bg-emerald-500';
+   347→  if (value <= 6) return 'bg-amber-500';
+   348→  return 'bg-red-500';
+   349→}
+   350→
+   351→function getEwsBadge(level: 'merah' | 'kuning' | 'hijau'): { label: string; color: string; bg: string } {
+   352→  switch (level) {
+   353→    case 'merah': return { label: 'Kritis', color: 'text-red-700', bg: 'bg-red-100 border-red-300' };
+   354→    case 'kuning': return { label: 'Perhatian', color: 'text-amber-700', bg: 'bg-amber-100 border-amber-300' };
+   355→    case 'hijau': return { label: 'Normal', color: 'text-emerald-700', bg: 'bg-emerald-100 border-emerald-300' };
+   356→  }
+   357→}
+   358→
+   359→// ── Main Component ───────────────────────────────────────────────────────
+   360→
+   361→export function PalliativeScreeningPanel() {
+   362→  const {
+   363→    currentUser, consultations, doctors,
+   364→    palliativeScreeningForms, addPalliativeScreeningForm, updatePalliativeScreeningForm,
+   365→    activePalliativeFormId, setActivePalliativeFormId,
+   366→    palliativePatients,
+   367→    palliativeScreeningRecords, addPalliativeScreeningRecord,
+   368→    screeningNavigationFrom, setScreeningNavigationFrom,
+   369→    screeningPreselectedPatientId, setScreeningPreselectedPatientId,
+   370→    setActivePanel,
+   371→    addPalliativeAuditEntry,
+   372→  } = useStore();
+   373→  const { toast } = useToast();
+   374→
+   375→  const isDoctor = currentUser?.role === 'doctor';
+   376→  const isPatient = currentUser?.role === 'patient';
+   377→
+   378→  // ── State ──
+   379→  const [selectedPatientId, setSelectedPatientId] = useState<string>('');
+   380→  const [activeTool, setActiveTool] = useState<ToolType | null>(null);
+   381→  const [modalOpen, setModalOpen] = useState(false);
+   382→  const [currentStep, setCurrentStep] = useState(0);
+   383→  const [showResult, setShowResult] = useState(false);
+   384→  const [answers, setAnswers] = useState<Record<string, number | string | string[]>>({});
+   385→  const [detailResult, setDetailResult] = useState<ScreeningResult | null>(null);
+   386→  const [activeFormId, setActiveFormId] = useState<string | null>(null);
+   387→
+   388→  // ── Navigation from Monitoring Paliatif ──
+   389→  const isNavigatedFromMonitoring = screeningNavigationFrom === 'monitoring';
+   390→
+   391→  // Compute effective patient ID from navigation state
+   392→  const navigatedPatientId = useMemo((): string => {
+   393→    if (!isNavigatedFromMonitoring || !screeningPreselectedPatientId) return '';
+   394→    const palliativePatient = palliativePatients.find(p => p.id === screeningPreselectedPatientId);
+   395→    if (!palliativePatient) return screeningPreselectedPatientId;
+   396→    // Try to find matching consultation patient
+   397→    const consultationPatient = consultations.find(c =>
+   398→      c.patient && (c.patient.name === palliativePatient.patientName || c.patientId === palliativePatient.patientId)
+   399→    );
+   400→    if (consultationPatient?.patient) {
+   401→      return consultationPatient.patient.id;
+   402→    }
+   403→    // Use palliative patient's own ID or fallback
+   404→    return palliativePatient.id;
+   405→  }, [isNavigatedFromMonitoring, screeningPreselectedPatientId, palliativePatients, consultations]);
+   406→
+   407→  // Get the palliative patient info for auto-fill when navigated from monitoring
+   408→  const navigatedPalliativePatient = useMemo((): PalliativePatientInfo | null => {
+   409→    if (!isNavigatedFromMonitoring || !screeningPreselectedPatientId) return null;
+   410→    return palliativePatients.find(p => p.id === screeningPreselectedPatientId) || null;
+   411→  }, [isNavigatedFromMonitoring, screeningPreselectedPatientId, palliativePatients]);
+   412→
+   413→  // ── Effective patient ID (auto-select for patients, or from navigation) ──
+   414→  const effectivePatientId = useMemo(() => {
+   415→    if (isPatient && currentUser) return currentUser.id;
+   416→    // If navigated from monitoring, use the computed patient ID
+   417→    if (isNavigatedFromMonitoring && navigatedPatientId) {
+   418→      return selectedPatientId || navigatedPatientId;
+   419→    }
+   420→    return selectedPatientId;
+   421→  }, [isPatient, currentUser, isNavigatedFromMonitoring, navigatedPatientId, selectedPatientId]);
+   422→
+   423→  // ── Effective active form ID (auto-open from store) ──
+   424→  const effectiveActiveFormId = useMemo(() => {
+   425→    if (activePalliativeFormId && isPatient) return activePalliativeFormId;
+   426→    return activeFormId;
+   427→  }, [activePalliativeFormId, isPatient, activeFormId]);
+   428→
+   429→  // ── Patients List ──
+   430→  const patients = useMemo(() => {
+   431→    if (isDoctor) {
+   432→      // Doctor sees patients from consultations
+   433→      const patientIds = new Set(consultations.map(c => c.patientId));
+   434→      const patientUsers = consultations
+   435→        .filter(c => c.patient)
+   436→        .map(c => c.patient!)
+   437→        .filter((p, i, arr) => arr.findIndex(x => x.id === p.id) === i);
+   438→      return patientUsers;
+   439→    }
+   440→    if (isPatient && currentUser) {
+   441→      return [currentUser];
+   442→    }
+   443→    return [];
+   444→  }, [consultations, isDoctor, isPatient, currentUser]);
+   445→
+   446→  const selectedPatient = useMemo(() => {
+   447→    if (!effectivePatientId) return null;
+   448→    // First check consultation patients
+   449→    const consultationPatient = patients.find(p => p.id === effectivePatientId);
+   450→    if (consultationPatient) return consultationPatient;
+   451→    // When navigated from monitoring, check palliative patients too
+   452→    if (isNavigatedFromMonitoring) {
+   453→      const palliativePatient = palliativePatients.find(p => p.id === effectivePatientId);
+   454→      if (palliativePatient) {
+   455→        // Create a pseudo-user object from palliative patient info
+   456→        return {
+   457→          id: palliativePatient.id,
+   458→          name: palliativePatient.patientName || 'Pasien Paliatif',
+   459→          email: '',
+   460→          role: 'patient' as const,
+   461→          phone: palliativePatient.familyContactPhone || '',
+   462→          avatarUrl: '',
+   463→        };
+   464→      }
+   465→    }
+   466→    return null;
+   467→  }, [effectivePatientId, patients, isNavigatedFromMonitoring, palliativePatients]);
+   468→
+   469→  // ── Mark form as opened when it becomes active ──
+   470→  useEffect(() => {
+   471→    if (activePalliativeFormId && isPatient) {
+   472→      const form = palliativeScreeningForms.find(f => f.id === activePalliativeFormId);
+   473→      if (form && form.status === 'sent') {
+   474→        updatePalliativeScreeningForm(activePalliativeFormId, { status: 'opened' });
+   475→      }
+   476→    }
+   477→  }, [activePalliativeFormId, isPatient, palliativeScreeningForms, updatePalliativeScreeningForm]);
+   478→
+   479→  // ── Active form for patient filling ──
+   480→  const activeForm = useMemo(() => {
+   481→    if (!effectiveActiveFormId) return null;
+   482→    return palliativeScreeningForms.find(f => f.id === effectiveActiveFormId) || null;
+   483→  }, [effectiveActiveFormId, palliativeScreeningForms]);
+   484→
+   485→  // ── Patient's forms from store ──
+   486→  const patientForms = useMemo(() => {
+   487→    if (!currentUser) return [];
+   488→    if (isPatient) {
+   489→      return palliativeScreeningForms.filter(f => f.patientId === currentUser.id);
+   490→    }
+   491→    if (isDoctor) {
+   492→      return palliativeScreeningForms;
+   493→    }
+   494→    return [];
+   495→  }, [currentUser, isPatient, isDoctor, palliativeScreeningForms]);
+   496→
+   497→  // ── Build screening history from store ──
+   498→  const screeningHistory = useMemo(() => {
+   499→    const results: ScreeningResult[] = [];
+   500→    for (const form of palliativeScreeningForms) {
+   501→      const patient = consultations
+   502→        .filter(c => c.patientId === form.patientId && c.patient)
+   503→        .map(c => c.patient!)[0];
+   504→      const patientName = patient?.name || (currentUser?.id === form.patientId ? currentUser.name : 'Pasien');
+   505→      for (const [toolKey, toolResult] of Object.entries(form.toolResults) as [string, { score: number; scoreLabel: string; interpretation: string; ewsLevel: 'merah' | 'kuning' | 'hijau'; details: Record<string, unknown> }][]) {
+   506→        const tool = toolKey as ToolType;
+   507→        if (!TOOL_DEFS[tool]) continue;
+   508→        results.push({
+   509→          id: `${form.id}-${tool}`,
+   510→          tool,
+   511→          toolName: TOOL_DEFS[tool].name,
+   512→          patientId: form.patientId,
+   513→          patientName,
+   514→          score: toolResult.score,
+   515→          scoreLabel: toolResult.scoreLabel,
+   516→          interpretation: toolResult.interpretation,
+   517→          ewsLevel: toolResult.ewsLevel,
+   518→          details: toolResult.details,
+   519→          savedAt: form.updatedAt,
+   520→        });
+   521→      }
+   522→    }
+   523→    return results.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+   524→  }, [palliativeScreeningForms, consultations, currentUser]);
+   525→
+   526→  // ── Tool Step Info ──
+   527→  const toolSteps = useMemo(() => {
+   528→    if (!activeTool) return 0;
+   529→    return TOOL_DEFS[activeTool].totalSteps;
+   530→  }, [activeTool]);
+   531→
+   532→  // ── Computed progress ──
+   533→  const progressPercent = useMemo(() => {
+   534→    if (showResult) return 100;
+   535→    if (toolSteps === 0) return 0;
+   536→    return Math.round((currentStep / (toolSteps + 1)) * 100); // +1 for result step
+   537→  }, [currentStep, toolSteps, showResult]);
+   538→
+   539→  // ── Handlers ──
+   540→  const handleStartTool = useCallback((tool: ToolType) => {
+   541→    if (!effectivePatientId && isDoctor) {
+   542→      toast({ title: 'Pilih Pasien', description: 'Silakan pilih pasien terlebih dahulu sebelum memulai skrining.' });
+   543→      return;
+   544→    }
+   545→    setActiveTool(tool);
+   546→    setCurrentStep(0);
+   547→    setShowResult(false);
+   548→    // Pre-fill answers from store form if patient is resuming
+   549→    if (effectiveActiveFormId && isPatient) {
+   550→      const form = palliativeScreeningForms.find(f => f.id === effectiveActiveFormId);
+   551→      if (form && Object.keys(form.toolAnswers).length > 0) {
+   552→        setAnswers({ ...form.toolAnswers });
+   553→      } else {
+   554→        setAnswers({});
+   555→      }
+   556→    } else {
+   557→      setAnswers({});
+   558→    }
+   559→    setModalOpen(true);
+   560→  }, [effectivePatientId, isDoctor, isPatient, effectiveActiveFormId, palliativeScreeningForms, toast]);
+   561→
+   562→  const handleCloseModal = useCallback(() => {
+   563→    setModalOpen(false);
+   564→    setActiveTool(null);
+   565→    setCurrentStep(0);
+   566→    setShowResult(false);
+   567→    // Don't reset answers so user can resume if needed
+   568→  }, []);
+   569→
+   570→  const handleNext = useCallback(() => {
+   571→    if (currentStep < toolSteps - 1) {
+   572→      setCurrentStep(prev => prev + 1);
+   573→    } else {
+   574→      setShowResult(true);
+   575→    }
+   576→  }, [currentStep, toolSteps]);
+   577→
+   578→  const handlePrev = useCallback(() => {
+   579→    if (showResult) {
+   580→      setShowResult(false);
+   581→    } else if (currentStep > 0) {
+   582→      setCurrentStep(prev => prev - 1);
+   583→    }
+   584→  }, [currentStep, showResult]);
+   585→
+   586→  const setAnswer = useCallback((key: string, value: number | string | string[]) => {
+   587→    setAnswers(prev => ({ ...prev, [key]: value }));
+   588→  }, []);
+   589→
+   590→  const toggleCheck = useCallback((key: string, item: string) => {
+   591→    setAnswers(prev => {
+   592→      const current = (prev[key] as string[]) || [];
+   593→      const next = current.includes(item) ? current.filter(i => i !== item) : [...current, item];
+   594→      return { ...prev, [key]: next };
+   595→    });
+   596→  }, []);
+   597→
+   598→  const isChecked = useCallback((key: string, item: string): boolean => {
+   599→    return ((answers[key] as string[]) || []).includes(item);
+   600→  }, [answers]);
+   601→
+   602→  // ── Scoring Functions ──
+   603→
+   604→  const calcESAS = useCallback((): { total: number; maxSymptom: number; items: { label: string; value: number }[] } => {
+   605→    const items = ESAS_ITEMS.map(item => ({
+   606→      label: item.label,
+   607→      value: Number(answers[item.id]) || 0,
+   608→    }));
+   609→    const total = items.reduce((s, i) => s + i.value, 0);
+   610→    const maxSymptom = Math.max(...items.map(i => i.value));
+   611→    return { total, maxSymptom, items };
+   612→  }, [answers]);
+   613→
+   614→  const calcDistress = useCallback((): { score: number; problems: Record<string, string[]> } => {
+   615→    const score = Number(answers['dt-score']) || 0;
+   616→    const problems: Record<string, string[]> = {};
+   617→    for (const cat of DT_PROBLEMS) {
+   618→      const checked = (answers[`dt-${cat.category}`] as string[]) || [];
+   619→      if (checked.length > 0) problems[cat.category] = checked;
+   620→    }
+   621→    return { score, problems };
+   622→  }, [answers]);
+   623→
+   624→  const calcSPICT = useCallback((): { yesCount: number; riskCategory: string; isHighRisk: boolean; yesItems: { id: string; text: string }[]; checkedDiseases: string[]; surpriseAnswer: string } => {
+   625→    let yesCount = 0;
+   626→    const yesItems: { id: string; text: string }[] = [];
+   627→    for (const q of SPICT_QUESTIONS) {
+   628→      if (Number(answers[q.id]) === 1) {
+   629→        yesCount++;
+   630→        yesItems.push({ id: q.id, text: q.text });
+   631→      }
+   632→    }
+   633→    const checkedDiseases = (answers['spict-diseases'] as string[]) || [];
+   634→    const surpriseAnswer = (answers['spict-surprise'] as string) || '';
+   635→    const isHighRisk = yesCount >= 8 || surpriseAnswer === 'no';
+   636→    let riskCategory = 'Risiko Rendah';
+   637→    if (yesCount >= 8 || surpriseAnswer === 'no') riskCategory = 'Risiko Sangat Tinggi';
+   638→    else if (yesCount >= 6) riskCategory = 'Risiko Tinggi';
+   639→    else if (yesCount >= 3) riskCategory = 'Risiko Sedang';
+   640→    return { yesCount, riskCategory, isHighRisk, yesItems, checkedDiseases, surpriseAnswer };
+   641→  }, [answers]);
+   642→
+   643→  const calcPPS = useCallback((): { pps: number; categoryAnswers: Record<string, number>; extraYesCount: number; dimensionDetails: { id: string; title: string; score: number; label: string }[] } => {
+   644→    let total = 0;
+   645→    const dimensionDetails: { id: string; title: string; score: number; label: string }[] = [];
+   646→    const categoryAnswers: Record<string, number> = {};
+   647→    for (const q of PPS_QUESTIONS) {
+   648→      const score = Number(answers[q.id]) || 0;
+   649→      total += score;
+   650→      categoryAnswers[q.id] = score;
+   651→      const selectedOption = q.options.find(o => o.score === score);
+   652→      dimensionDetails.push({ id: q.id, title: q.title, score, label: selectedOption?.text || '-' });
+   653→    }
+   654→    const pps = Math.round(total / 5);
+   655→    let extraYesCount = 0;
+   656→    for (let i = 0; i < PPS_EXTRA_QUESTIONS.length; i++) {
+   657→      if (Number(answers[`pps-extra-${i}`]) === 1) extraYesCount++;
+   658→    }
+   659→    return { pps, categoryAnswers, extraYesCount, dimensionDetails };
+   660→  }, [answers]);
+   661→
+   662→  const calcZarit = useCallback((): { total: number; category: string; needReferral: boolean } => {
+   663→    let total = 0;
+   664→    for (let i = 0; i < 22; i++) {
+   665→      total += Number(answers[`zarit-${i}`]) || 0;
+   666→    }
+   667→    let category = 'Ringan';
+   668→    let needReferral = false;
+   669→    if (total >= 61) { category = 'Berat Sekali'; needReferral = true; }
+   670→    else if (total >= 41) { category = 'Berat'; needReferral = true; }
+   671→    else if (total >= 21) { category = 'Sedang'; }
+   672→    return { total, category, needReferral };
+   673→  }, [answers]);
+   674→
+   675→  const calcEORTC = useCallback((): { physicalFunction: number; symptomBurden: number; globalQol: number } => {
+   676→    // Physical Function: Q1-Q7 (invert: higher raw = worse, so we invert for PF score)
+   677→    // EORTC scoring: RS = (raw - 1)/3 * 100 for 4-point items
+   678→    // PF: average of Q1-Q7 RS, then PF = 100 - RS (higher = better)
+   679→    let pfSum = 0;
+   680→    for (let i = 0; i < 7; i++) {
+   681→      const raw = Number(answers[`eortc-q${i + 1}`]) || 1;
+   682→      pfSum += (raw - 1) / 3 * 100;
+   683→    }
+   684→    const physicalFunction = Math.round(100 - pfSum / 7);
+   685→
+   686→    // Symptom Burden: Q8-Q14 (higher = worse)
+   687→    let sbSum = 0;
+   688→    for (let i = 7; i < 14; i++) {
+   689→      const raw = Number(answers[`eortc-q${i + 1}`]) || 1;
+   690→      sbSum += (raw - 1) / 3 * 100;
+   691→    }
+   692→    const symptomBurden = Math.round(sbSum / 7);
+   693→
+   694→    // Global QoL: Q15 (1-7 scale)
+   695→    const q15Raw = Number(answers['eortc-q15']) || 1;
+   696→    const globalQol = Math.round((q15Raw - 1) / 6 * 100);
+   697→
+   698→    return { physicalFunction, symptomBurden, globalQol };
+   699→  }, [answers]);
+   700→
+   701→  // ── EWS Level Determination ──
+   702→
+   703→  const getEwsLevel = useCallback((tool: ToolType): 'merah' | 'kuning' | 'hijau' => {
+   704→    switch (tool) {
+   705→      case 'esas': {
+   706→        const { maxSymptom } = calcESAS();
+   707→        if (maxSymptom >= 7) return 'merah';
+   708→        if (maxSymptom >= 4) return 'kuning';
+   709→        return 'hijau';
+   710→      }
+   711→      case 'distress': {
+   712→        const { score } = calcDistress();
+   713→        if (score >= 7) return 'merah';
+   714→        if (score >= 4) return 'kuning';
+   715→        return 'hijau';
+   716→      }
+   717→      case 'spict': {
+   718→        const { yesCount, surpriseAnswer } = calcSPICT();
+   719→        if (yesCount >= 8 || surpriseAnswer === 'no') return 'merah';
+   720→        if (yesCount >= 6) return 'merah';
+   721→        if (yesCount >= 3) return 'kuning';
+   722→        return 'hijau';
+   723→      }
+   724→      case 'pps': {
+   725→        const { pps, extraYesCount } = calcPPS();
+   726→        if (pps <= 30 || extraYesCount >= 3) return 'merah';
+   727→        if (pps <= 60 || extraYesCount >= 2) return 'kuning';
+   728→        return 'hijau';
+   729→      }
+   730→      case 'zarit': {
+   731→        const { total } = calcZarit();
+   732→        if (total >= 61) return 'merah';
+   733→        if (total >= 21) return 'kuning';
+   734→        return 'hijau';
+   735→      }
+   736→      case 'eortc': {
+   737→        const { globalQol } = calcEORTC();
+   738→        if (globalQol < 40) return 'merah';
+   739→        if (globalQol < 60) return 'kuning';
+   740→        return 'hijau';
+   741→      }
+   742→    }
+   743→  }, [calcESAS, calcDistress, calcSPICT, calcPPS, calcZarit, calcEORTC]);
+   744→
+   745→  // ── Save Result ──
+   746→
+   747→  const handleSaveResult = useCallback(() => {
+   748→    if (!activeTool || !effectivePatientId) return;
+   749→
+   750→    let score = 0;
+   751→    let scoreLabel = '';
+   752→    let interpretation = '';
+   753→    let details: Record<string, unknown> = {};
+   754→
+   755→    switch (activeTool) {
+   756→      case 'esas': {
+   757→        const r = calcESAS();
+   758→        score = r.total;
+   759→        scoreLabel = `${r.total}/90`;
+   760→        const maxItem = r.items.reduce((a, b) => a.value > b.value ? a : b);
+   761→        interpretation = `Skor total ${r.total}/90. Gejala terberat: ${maxItem.label} (${maxItem.value}/10). `;
+   762→        if (r.maxSymptom >= 7) interpretation += 'Gejala berat terdeteksi, memerlukan manajemen intensif.';
+   763→        else if (r.maxSymptom >= 4) interpretation += 'Gejala sedang, perlu evaluasi dan intervensi.';
+   764→        else interpretation += 'Gejala terkontrol, lanjutkan monitoring.';
+   765→        details = { items: r.items, maxSymptom: r.maxSymptom };
+   766→        break;
+   767→      }
+   768→      case 'distress': {
+   769→        const r = calcDistress();
+   770→        score = r.score;
+   771→        scoreLabel = `${r.score}/10`;
+   772→        interpretation = `Skor distress ${r.score}/10. `;
+   773→        if (r.score >= 7) interpretation += 'Distress berat, memerlukan intervensi psikologis segera.';
+   774→        else if (r.score >= 4) interpretation += 'Distress sedang, pertimbangkan dukungan psikososial.';
+   775→        else interpretation += 'Distress ringan, dukungan supportif.';
+   776→        if (Object.keys(r.problems).length > 0) {
+   777→          interpretation += ` Masalah teridentifikasi: ${Object.entries(r.problems).map(([k, v]) => `${k} (${v.length})`).join(', ')}.`;
+   778→        }
+   779→        details = { problems: r.problems };
+   780→        break;
+   781→      }
+   782→      case 'spict': {
+   783→        const r = calcSPICT();
+   784→        score = r.yesCount;
+   785→        scoreLabel = `${r.yesCount} poin — ${r.riskCategory}`;
+   786→        interpretation = `SPICT: ${r.yesCount} indikator terdeteksi (${r.riskCategory}). `;
+   787→        if (r.yesCount >= 8 || r.surpriseAnswer === 'no') interpretation += 'Sangat disarankan evaluasi paliatif komprehensif, home care, dan diskusi Advance Care Planning (ACP).';
+   788→        else if (r.yesCount >= 6) interpretation += 'Pasien berpotensi membutuhkan layanan paliatif. Disarankan penilaian oleh dokter atau tim paliatif.';
+   789→        else if (r.yesCount >= 3) interpretation += 'Pertimbangkan konsultasi paliatif. Lakukan evaluasi gejala lebih lanjut.';
+   790→        else interpretation += 'Belum menunjukkan kebutuhan paliatif yang jelas. Lanjutkan kontrol rutin.';
+   791→        if (r.surpriseAnswer === 'no') interpretation += ' Surprise Question negatif — disarankan segera diskusi Advance Care Planning.';
+   792→        details = { yesCount: r.yesCount, riskCategory: r.riskCategory, yesItems: r.yesItems, checkedDiseases: r.checkedDiseases, surpriseAnswer: r.surpriseAnswer };
+   793→        break;
+   794→      }
+   795→      case 'pps': {
+   796→        const r = calcPPS();
+   797→        score = r.pps;
+   798→        scoreLabel = `PPS ${r.pps}%`;
+   799→        interpretation = `PPS ${r.pps}%. `;
+   800→        if (r.pps >= 80) interpretation += 'Kondisi baik. Masih cukup mandiri. Kontrol rutin telemedicine.';
+   801→        else if (r.pps >= 60) interpretation += 'Kondisi mulai menurun. Memerlukan pemantauan lebih sering. Pertimbangkan kunjungan home care.';
+   802→        else if (r.pps >= 40) interpretation += 'Ketergantungan sedang-berat. Home care rutin. Evaluasi kebutuhan paliatif.';
+   803→        else interpretation += 'Kondisi sangat berat. Perawatan intensif di rumah. Pertimbangkan Advance Care Planning.';
+   804→        if (r.extraYesCount >= 3) interpretation += ` Alert: ${r.extraYesCount} indikator perburukan terdeteksi. Disarankan segera konsultasi dokter paliatif.`;
+   805→        details = { pps: r.pps, dimensionDetails: r.dimensionDetails, extraYesCount: r.extraYesCount, categoryAnswers: r.categoryAnswers };
+   806→        break;
+   807→      }
+   808→      case 'zarit': {
+   809→        const r = calcZarit();
+   810→        score = r.total;
+   811→        scoreLabel = `${r.total}/88`;
+   812→        interpretation = `Skor beban pengasuh ${r.total}/88 (${r.category}). `;
+   813→        if (r.needReferral) interpretation += 'Rekomendasi: rujuk ke psikolog/psikiater untuk dukungan pengasuh.';
+   814→        else interpretation += 'Dukungan edukasi dan dukungan kelompok pengasuh diperlukan.';
+   815→        details = { category: r.category, needReferral: r.needReferral };
+   816→        break;
+   817→      }
+   818→      case 'eortc': {
+   819→        const r = calcEORTC();
+   820→        score = r.globalQol;
+   821→        scoreLabel = `QoL ${r.globalQol}%`;
+   822→        interpretation = `Fungsi Fisik: ${r.physicalFunction}%, Beban Gejala: ${r.symptomBurden}%, Kualitas Hidup Global: ${r.globalQol}%. `;
+   823→        if (r.globalQol < 40) interpretation += 'Kualitas hidup sangat rendah, intervensi paliatif intensif diperlukan.';
+   824→        else if (r.globalQol < 60) interpretation += 'Kualitas hidup menurun, evaluasi dan intervensi gejala diperlukan.';
+   825→        else interpretation += 'Kualitas hidup cukup baik, lanjutkan manajemen gejala.';
+   826→        details = { physicalFunction: r.physicalFunction, symptomBurden: r.symptomBurden, globalQol: r.globalQol };
+   827→        break;
+   828→      }
+   829→    }
+   830→
+   831→    const ewsLevel = getEwsLevel(activeTool);
+   832→
+   833→    // Update store form
+   834→    if (effectiveActiveFormId) {
+   835→      // Patient or doctor filling an existing form
+   836→      const form = palliativeScreeningForms.find(f => f.id === effectiveActiveFormId);
+   837→      if (form) {
+   838→        const updatedToolResults = { ...form.toolResults, [activeTool]: { score, scoreLabel, interpretation, ewsLevel, details } };
+   839→        const updatedToolAnswers = { ...form.toolAnswers, ...answers };
+   840→        // Check if all selected tools have results
+   841→        const allToolsCompleted = form.selectedTools.every(t => updatedToolResults[t] !== undefined);
+   842→        const newStatus: ScreeningStatus = allToolsCompleted ? 'completed' : 'in_progress';
+   843→        const updateData: Partial<PalliativeScreeningForm> = {
+   844→          toolResults: updatedToolResults,
+   845→          toolAnswers: updatedToolAnswers,
+   846→          status: newStatus,
+   847→        };
+   848→        if (allToolsCompleted) {
+   849→          updateData.completedAt = new Date().toISOString();
+   850→        }
+   851→        updatePalliativeScreeningForm(effectiveActiveFormId, updateData);
+   852→      }
+   853→    } else if (isDoctor && effectivePatientId) {
+   854→      // Doctor screening directly - create a form entry in the store
+   855→      const newForm: PalliativeScreeningForm = {
+   856→        id: generateId(),
+   857→        consultationId: consultations.find(c => c.patientId === effectivePatientId)?.id || '',
+   858→        doctorId: currentUser?.id || '',
+   859→        patientId: effectivePatientId,
+   860→        status: 'completed',
+   861→        selectedTools: [activeTool],
+   862→        toolAnswers: { ...answers },
+   863→        toolResults: { [activeTool]: { score, scoreLabel, interpretation, ewsLevel, details } } as Record<ToolType, { score: number; scoreLabel: string; interpretation: string; ewsLevel: 'merah' | 'kuning' | 'hijau'; details: Record<string, unknown> }>,
+   864→        completedAt: new Date().toISOString(),
+   865→        createdAt: new Date().toISOString(),
+   866→        updatedAt: new Date().toISOString(),
+   867→      };
+   868→      addPalliativeScreeningForm(newForm);
+   869→    }
+   870→
+   871→    toast({ title: 'Hasil Disimpan', description: `Hasil ${TOOL_DEFS[activeTool].name} berhasil disimpan ke RME.` });
+   872→
+   873→    // Also save to PalliativeScreeningRecords for integration with Monitoring Paliatif
+   874→    if (navigatedPalliativePatient) {
+   875→      const record = {
+   876→        id: `psr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+   877→        palliativePatientId: navigatedPalliativePatient.id,
+   878→        screeningType: activeTool,
+   879→        score,
+   880→        scoreLabel,
+   881→        interpretation,
+   882→        ewsLevel,
+   883→        details: JSON.stringify(details),
+   884→        performedAt: new Date().toISOString(),
+   885→        createdAt: new Date().toISOString(),
+   886→      };
+   887→      addPalliativeScreeningRecord(record);
+   888→
+   889→      // Add audit entry
+   890→      if (addPalliativeAuditEntry) {
+   891→        addPalliativeAuditEntry({
+   892→          id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+   893→          patientId: navigatedPalliativePatient.id,
+   894→          action: 'clinical_action',
+   895→          performedBy: currentUser?.name || 'Dokter',
+   896→          performedByRole: 'doctor',
+   897→          details: `Skrining ${TOOL_DEFS[activeTool].name} selesai. Skor: ${scoreLabel}. ${interpretation}`,
+   898→          createdAt: new Date().toISOString(),
+   899→        });
+   900→      }
+   901→
+   902→      toast({ title: 'Tersimpan di Monitoring Paliatif', description: `Hasil skrining juga tersimpan di Riwayat Skrining pasien pada Modul Monitoring Paliatif.` });
+   903→    }
+   904→
+   905→    handleCloseModal();
+   906→  }, [activeTool, effectivePatientId, selectedPatient, effectiveActiveFormId, palliativeScreeningForms, isDoctor, currentUser, consultations, answers, calcESAS, calcDistress, calcSPICT, calcPPS, calcZarit, calcEORTC, getEwsLevel, handleCloseModal, toast, updatePalliativeScreeningForm, addPalliativeScreeningForm, navigatedPalliativePatient, addPalliativeScreeningRecord, addPalliativeAuditEntry]);
+   907→
+   908→  // ── VAS Slider Component ──
+   909→  const renderVasSlider = (id: string, label: string) => {
+   910→    const value = Number(answers[id]) || 0;
+   911→    return (
+   912→      <div key={id} className="space-y-2 py-3 border-b border-border last:border-b-0">
+   913→        <div className="flex items-center justify-between">
+   914→          <Label className="text-sm font-medium text-foreground">{label}</Label>
+   915→          <span className={cn('text-2xl font-bold tabular-nums', vasColor(value))}>
+   916→            {value}
+   917→          </span>
+   918→        </div>
+   919→        <div className="relative">
+   920→          <input
+   921→            type="range"
+   922→            min={0}
+   923→            max={10}
+   924→            step={1}
+   925→            value={value}
+   926→            onChange={(e) => setAnswer(id, Number(e.target.value))}
+   927→            className="sk-vas-slider w-full"
+   928→            style={{
+   929→              background: `linear-gradient(to right, #10b981 0%, #f59e0b 40%, #ef4444 70%, #dc2626 100%)`,
+   930→            }}
+   931→          />
+   932→          <div className="flex justify-between mt-1">
+   933→            <span className="text-[10px] text-emerald-600">0</span>
+   934→            <span className="text-[10px] text-amber-600">5</span>
+   935→            <span className="text-[10px] text-red-600">10</span>
+   936→          </div>
+   937→        </div>
+   938→      </div>
+   939→    );
+   940→  };
+   941→
+   942→  // ── Step Renderers ──
+   943→
+   944→  const renderStep = (): React.ReactNode => {
+   945→    if (!activeTool) return null;
+   946→
+   947→    if (showResult) return renderResult();
+   948→
+   949→    switch (activeTool) {
+   950→      case 'esas': return renderESAS();
+   951→      case 'distress': return renderDistress();
+   952→      case 'spict': return renderSPICT();
+   953→      case 'pps': return renderPPS();
+   954→      case 'zarit': return renderZarit();
+   955→      case 'eortc': return renderEORTC();
+   956→    }
+   957→  };
+   958→
+   959→  // ── ESAS Step ──
+   960→  const renderESAS = () => (
+   961→    <div className="space-y-1">
+   962→      <p className="text-sm text-muted-foreground mb-4">
+   963→        Berikan skor 0 (tidak ada gejala) sampai 10 (gejala terburuk) untuk setiap item berikut:
+   964→      </p>
+   965→      {ESAS_ITEMS.map(item => renderVasSlider(item.id, item.label))}
+   966→      <div className="mt-4 p-3 rounded-lg bg-muted/50">
+   967→        <p className="text-sm font-medium text-foreground">
+   968→          Skor Total: <span className={cn('text-lg font-bold', vasColor(calcESAS().total > 27 ? 7 : calcESAS().total > 18 ? 4 : 0))}>
+   969→            {calcESAS().total}/90
+   970→          </span>
+   971→        </p>
+   972→      </div>
+   973→    </div>
+   974→  );
+   975→
+   976→  // ── Distress Thermometer Steps ──
+   977→  const renderDistress = () => {
+   978→    if (currentStep === 0) {
+   979→      const value = Number(answers['dt-score']) || 0;
+   980→      return (
+   981→        <div className="space-y-4">
+   982→          <p className="text-sm text-muted-foreground mb-2">
+   983→            Pilih angka yang paling menggambarkan tingkat tekanan/stres Anda selama 1 minggu terakhir:
+   984→          </p>
+   985→          <div className="text-center">
+   986→            <span className={cn('text-6xl font-black', vasColor(value))}>{value}</span>
+   987→            <p className="text-sm text-muted-foreground mt-2">dari 10</p>
+   988→          </div>
+   989→          <input
+   990→            type="range"
+   991→            min={0}
+   992→            max={10}
+   993→            step={1}
+   994→            value={value}
+   995→            onChange={(e) => setAnswer('dt-score', Number(e.target.value))}
+   996→            className="sk-vas-slider w-full"
+   997→            style={{
+   998→              background: `linear-gradient(to right, #10b981 0%, #f59e0b 40%, #ef4444 70%, #dc2626 100%)`,
+   999→            }}
+  1000→          />
+  1001→          <div className="flex justify-between">
+  1002→            <span className="text-xs text-emerald-600">Tidak ada tekanan</span>
+  1003→            <span className="text-xs text-red-600">Tekanan sangat berat</span>
+  1004→          </div>
+  1005→        </div>
+  1006→      );
+  1007→    }
+  1008→
+  1009→    // Problem list steps
+  1010→    const catIdx = currentStep - 1;
+  1011→    const cat = DT_PROBLEMS[catIdx];
+  1012→    if (!cat) return null;
+  1013→
+  1014→    return (
+  1015→      <div className="space-y-3">
+  1016→        <p className="text-sm text-muted-foreground mb-2">
+  1017→          Centang masalah yang Anda alami dalam kategori <strong>{cat.category}</strong>:
+  1018→        </p>
+  1019→        {cat.items.map((item, idx) => (
+  1020→          <div key={idx} className="flex items-center space-x-3 py-1.5">
+  1021→            <Checkbox
+  1022→              id={`dt-${cat.category}-${idx}`}
+  1023→              checked={isChecked(`dt-${cat.category}`, item)}
+  1024→              onCheckedChange={() => toggleCheck(`dt-${cat.category}`, item)}
+  1025→            />
+  1026→            <Label htmlFor={`dt-${cat.category}-${idx}`} className="text-sm font-normal cursor-pointer">
+  1027→              {item}
+  1028→            </Label>
+  1029→          </div>
+  1030→        ))}
+  1031→      </div>
+  1032→    );
+  1033→  };
+  1034→
+  1035→  // ── SPICT Steps ──
+  1036→  const renderSPICT = () => {
+  1037→    if (currentStep === 0) {
+  1038→      // Step 1: 15 Yes/No questions
+  1039→      return (
+  1040→        <div className="space-y-4">
+  1041→          <p className="text-sm text-muted-foreground italic mb-2">
+  1042→            Alat bantu ini digunakan untuk mengidentifikasi pasien yang mungkin memerlukan penilaian paliatif. Ini bukan diagnosis medis.
+  1043→          </p>
+  1044→          {SPICT_QUESTIONS.map((q, idx) => {
+  1045→            const currentVal = answers[q.id] as number | undefined;
+  1046→            const questionNum = idx + 1;
+  1047→            return (
+  1048→              <div key={q.id} className="border-b border-border pb-4 last:border-b-0">
+  1049→                <p className="text-sm font-semibold text-foreground mb-1">
+  1050→                  {questionNum}. {q.text}
+  1051→                </p>
+  1052→                <p className="text-xs text-muted-foreground italic mb-3 underline decoration-primary/20 decoration-1">
+  1053→                  {q.help}
+  1054→                </p>
+  1055→                <div className="flex gap-4">
+  1056→                  <button
+  1057→                    type="button"
+  1058→                    onClick={(e) => { e.stopPropagation(); setAnswer(q.id, 1); }}
+  1059→                    className={cn(
+  1060→                      'px-4 py-2 rounded-lg text-sm font-medium transition-all border',
+  1061→                      currentVal === 1
+  1062→                        ? 'bg-red-100 text-red-700 border-red-300'
+  1063→                        : 'bg-card text-foreground border-border hover:border-red-300',
+  1064→                    )}
+  1065→                  >
+  1066→                    Ya
+  1067→                  </button>
+  1068→                  <button
+  1069→                    type="button"
+  1070→                    onClick={(e) => { e.stopPropagation(); setAnswer(q.id, 0); }}
+  1071→                    className={cn(
+  1072→                      'px-4 py-2 rounded-lg text-sm font-medium transition-all border',
+  1073→                      currentVal === 0
+  1074→                        ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+  1075→                        : 'bg-card text-foreground border-border hover:border-emerald-300',
+  1076→                    )}
+  1077→                  >
+  1078→                    Tidak
+  1079→                  </button>
+  1080→                </div>
+  1081→              </div>
+  1082→            );
+  1083→          })}
+  1084→        </div>
+  1085→      );
+  1086→    }
+  1087→
+  1088→    if (currentStep === 1) {
+  1089→      // Step 2: Chronic diseases checkboxes
+  1090→      return (
+  1091→        <div className="space-y-4">
+  1092→          <div className="p-4 bg-primary/5 rounded-lg">
+  1093→            <h3 className="font-semibold text-foreground mb-2">C. Penyakit Kronis atau Berat</h3>
+  1094→            <p className="text-xs text-muted-foreground mb-3">Pilih salah satu atau lebih jika ada:</p>
+  1095→            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+  1096→              {SPICT_DISEASES.map((disease) => (
+  1097→                <div key={disease} className="flex items-center space-x-2">
+  1098→                  <Checkbox
+  1099→                    id={`spict-disease-${disease}`}
+  1100→                    checked={isChecked('spict-diseases', disease)}
+  1101→                    onCheckedChange={() => toggleCheck('spict-diseases', disease)}
+  1102→                  />
+  1103→                  <Label htmlFor={`spict-disease-${disease}`} className="text-sm font-normal cursor-pointer">
+  1104→                    {disease}
+  1105→                  </Label>
+  1106→                </div>
+  1107→              ))}
+  1108→            </div>
+  1109→          </div>
+  1110→        </div>
+  1111→      );
+  1112→    }
+  1113→
+  1114→    if (currentStep === 2) {
+  1115→      // Step 3: Surprise Question
+  1116→      const surpriseVal = (answers['spict-surprise'] as string) || '';
+  1117→      return (
+  1118→        <div className="space-y-4">
+  1119→          <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+  1120→            <h3 className="font-semibold text-foreground mb-2">Pertanyaan Kejutan (Surprise Question)</h3>
+  1121→            <p className="text-sm text-foreground mb-4">
+  1122→              &quot;Apakah Anda akan terkejut jika pasien meninggal dalam 12 bulan ke depan?&quot;
+  1123→            </p>
+  1124→            <div className="space-y-3">
+  1125→              <button
+  1126→                type="button"
+  1127→                onClick={(e) => { e.stopPropagation(); setAnswer('spict-surprise', 'yes'); }}
+  1128→                className={cn(
+  1129→                  'w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all border-2',
+  1130→                  surpriseVal === 'yes'
+  1131→                    ? 'border-emerald-400 bg-emerald-50 text-emerald-800'
+  1132→                    : 'border-border bg-card text-foreground hover:border-emerald-300',
+  1133→                )}
+  1134→              >
+  1135→                <div className="flex items-center gap-3">
+  1136→                  <div className={cn(
+  1137→                    'w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0',
+  1138→                    surpriseVal === 'yes' ? 'border-emerald-500 bg-emerald-500' : 'border-muted-foreground/40',
+  1139→                  )}>
+  1140→                    {surpriseVal === 'yes' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+  1141→                  </div>
+  1142→                  <span>Ya, saya akan terkejut</span>
+  1143→                </div>
+  1144→              </button>
+  1145→              <button
+  1146→                type="button"
+  1147→                onClick={(e) => { e.stopPropagation(); setAnswer('spict-surprise', 'no'); }}
+  1148→                className={cn(
+  1149→                  'w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all border-2',
+  1150→                  surpriseVal === 'no'
+  1151→                    ? 'border-red-400 bg-red-50 text-red-800'
+  1152→                    : 'border-border bg-card text-foreground hover:border-red-300',
+  1153→                )}
+  1154→              >
+  1155→                <div className="flex items-center gap-3">
+  1156→                  <div className={cn(
+  1157→                    'w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0',
+  1158→                    surpriseVal === 'no' ? 'border-red-500 bg-red-500' : 'border-muted-foreground/40',
+  1159→                  )}>
+  1160→                    {surpriseVal === 'no' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+  1161→                  </div>
+  1162→                  <span>Tidak, saya tidak akan terkejut</span>
+  1163→                </div>
+  1164→              </button>
+  1165→            </div>
+  1166→          </div>
+  1167→        </div>
+  1168→      );
+  1169→    }
+  1170→
+  1171→    return null;
+  1172→  };
+  1173→
+  1174→  // ── PPS Steps ──
+  1175→  const renderPPS = () => {
+  1176→    if (currentStep === 0) {
+  1177→      // Step 1: 5 main dimension questions with radio cards
+  1178→      return (
+  1179→        <div className="space-y-6">
+  1180→          <p className="text-sm text-muted-foreground italic mb-2">
+  1181→            Pilih jawaban yang paling sesuai dengan kondisi pasien dalam 1 minggu terakhir.
+  1182→          </p>
+  1183→          {PPS_QUESTIONS.map(q => {
+  1184→            const selectedValue = Number(answers[q.id]) ?? -1;
+  1185→            return (
+  1186→              <div key={q.id} className="mb-4">
+  1187→                <p className="font-medium text-foreground mb-3">{q.title}</p>
+  1188→                <div className="grid grid-cols-1 gap-2">
+  1189→                  {q.options.map(opt => {
+  1190→                    const isSelected = selectedValue === opt.score;
+  1191→                    return (
+  1192→                      <button
+  1193→                        key={opt.score}
+  1194→                        type="button"
+  1195→                        onClick={(e) => { e.stopPropagation(); setAnswer(q.id, opt.score); }}
+  1196→                        className={cn(
+  1197→                          'w-full text-left border-2 rounded-lg p-3 cursor-pointer transition-all',
+  1198→                          isSelected
+  1199→                            ? 'border-primary bg-primary/5'
+  1200→                            : 'border-border hover:border-primary/40 hover:bg-primary/5',
+  1201→                        )}
+  1202→                      >
+  1203→                        <div className="flex items-center">
+  1204→                          <div className={cn(
+  1205→                            'w-4 h-4 rounded-full border-2 mr-3 flex items-center justify-center shrink-0 transition-all',
+  1206→                            isSelected ? 'border-primary bg-primary' : 'border-muted-foreground/40',
+  1207→                          )}>
+  1208→                            {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-primary-foreground" />}
+  1209→                          </div>
+  1210→                          <span className="font-semibold text-foreground">{opt.text}</span>
+  1211→                        </div>
+  1212→                        <p className="text-xs text-muted-foreground mt-1 ml-7">{opt.desc}</p>
+  1213→                      </button>
+  1214→                    );
+  1215→                  })}
+  1216→                </div>
+  1217→              </div>
+  1218→            );
+  1219→          })}
+  1220→          {PPS_QUESTIONS.every(q => answers[q.id] !== undefined) && (
+  1221→            <div className="p-3 rounded-lg bg-primary/10 text-center">
+  1222→              <p className="text-lg font-bold text-primary">PPS {calcPPS().pps}%</p>
+  1223→              <p className="text-xs text-muted-foreground">Rata-rata dari 5 dimensi</p>
+  1224→            </div>
+  1225→          )}
+  1226→        </div>
+  1227→      );
+  1228→    }
+  1229→
+  1230→    // Step 2: Additional yes/no questions
+  1231→    return (
+  1232→      <div className="space-y-4">
+  1233→        <div className="border-t pt-4">
+  1234→          <p className="text-base font-semibold text-foreground mb-4">Pertanyaan Tambahan</p>
+  1235→        </div>
+  1236→        {PPS_EXTRA_QUESTIONS.map((q, idx) => {
+  1237→          const currentVal = Number(answers[`pps-extra-${idx}`]) ?? 0;
+  1238→          return (
+  1239→            <div key={idx} className="p-4 rounded-lg bg-muted/30 border border-border">
+  1240→              <p className="text-sm font-medium text-foreground mb-3">{q}</p>
+  1241→              <div className="flex gap-3">
+  1242→                <button
+  1243→                  type="button"
+  1244→                  onClick={(e) => { e.stopPropagation(); setAnswer(`pps-extra-${idx}`, 1); }}
+  1245→                  className={cn(
+  1246→                    'px-4 py-2 rounded-lg text-sm font-medium transition-all border',
+  1247→                    currentVal === 1
+  1248→                      ? 'bg-red-100 text-red-700 border-red-300'
+  1249→                      : 'bg-card text-foreground border-border hover:border-red-300',
+  1250→                  )}
+  1251→                >
+  1252→                  Ya
+  1253→                </button>
+  1254→                <button
+  1255→                  type="button"
+  1256→                  onClick={(e) => { e.stopPropagation(); setAnswer(`pps-extra-${idx}`, 0); }}
+  1257→                  className={cn(
+  1258→                    'px-4 py-2 rounded-lg text-sm font-medium transition-all border',
+  1259→                    currentVal === 0
+  1260→                      ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+  1261→                      : 'bg-card text-foreground border-border hover:border-emerald-300',
+  1262→                  )}
+  1263→                >
+  1264→                  Tidak
+  1265→                </button>
+  1266→              </div>
+  1267→            </div>
+  1268→          );
+  1269→        })}
+  1270→      </div>
+  1271→    );
+  1272→  };
+  1273→
+  1274→  // ── Zarit Steps ──
+  1275→  const renderZarit = () => {
+  1276→    const page = currentStep;
+  1277→    const startIdx = page * 6;
+  1278→    const endIdx = Math.min(startIdx + 6, 22);
+  1279→    const pageQuestions = ZARIT_QUESTIONS.slice(startIdx, endIdx);
+  1280→
+  1281→    return (
+  1282→      <div className="space-y-4">
+  1283→        <p className="text-sm text-muted-foreground mb-2">
+  1284→          Seberapa sering Anda merasa hal berikut ini? (Pertanyaan {startIdx + 1}-{endIdx} dari 22)
+  1285→        </p>
+  1286→        {pageQuestions.map((question, qIdx) => {
+  1287→          const globalIdx = startIdx + qIdx;
+  1288→          const currentVal = Number(answers[`zarit-${globalIdx}`]);
+  1289→          return (
+  1290→            <div key={globalIdx} className="space-y-2 py-2 border-b border-border last:border-b-0">
+  1291→              <p className="text-sm font-medium text-foreground">
+  1292→                {globalIdx + 1}. {question}
+  1293→              </p>
+  1294→              <div className="flex flex-wrap gap-2">
+  1295→                {ZARIT_OPTIONS.map(opt => (
+  1296→                  <button
+  1297→                    key={opt.value}
+  1298→                    onClick={(e) => { e.stopPropagation(); setAnswer(`zarit-${globalIdx}`, opt.value); }}
+  1299→                    className={cn(
+  1300→                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+  1301→                      currentVal === opt.value
+  1302→                        ? 'bg-primary text-primary-foreground border-primary'
+  1303→                        : 'bg-card text-foreground border-border hover:border-primary/50 hover:bg-primary/5',
+  1304→                    )}
+  1305→                  >
+  1306→                    {opt.label}
+  1307→                  </button>
+  1308→                ))}
+  1309→              </div>
+  1310→            </div>
+  1311→          );
+  1312→        })}
+  1313→      </div>
+  1314→    );
+  1315→  };
+  1316→
+  1317→  // ── EORTC Steps ──
+  1318→  const renderEORTC = () => {
+  1319→    if (currentStep === 2) {
+  1320→      // Q15 — Global QoL (scale 1-7)
+  1321→      const value = Number(answers['eortc-q15']) || 1;
+  1322→      return (
+  1323→        <div className="space-y-4">
+  1324→          <p className="text-sm text-muted-foreground mb-2">
+  1325→            Pertanyaan terakhir tentang kualitas hidup Anda secara keseluruhan:
+  1326→          </p>
+  1327→          <div className="p-4 rounded-lg border border-border">
+  1328→            <p className="text-sm font-medium text-foreground mb-4">
+  1329→              {EORTC_QUESTIONS[14].text}
+  1330→            </p>
+  1331→            <div className="space-y-2">
+  1332→              {['Sangat buruk', 'Sangat jelek', 'Jelek', 'Cukup', 'Baik', 'Sangat baik', 'Sempurna'].map((label, idx) => {
+  1333→                const val = idx + 1;
+  1334→                return (
+  1335→                  <button
+  1336→                    key={val}
+  1337→                    onClick={(e) => { e.stopPropagation(); setAnswer('eortc-q15', val); }}
+  1338→                    className={cn(
+  1339→                      'w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all border text-left flex items-center gap-3',
+  1340→                      value === val
+  1341→                        ? 'bg-primary text-primary-foreground border-primary'
+  1342→                        : 'bg-card text-foreground border-border hover:border-primary/50 hover:bg-primary/5',
+  1343→                    )}
+  1344→                  >
+  1345→                    <span className={cn(
+  1346→                      'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
+  1347→                      value === val ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground',
+  1348→                    )}>
+  1349→                      {val}
+  1350→                    </span>
+  1351→                    {label}
+  1352→                  </button>
+  1353→                );
+  1354→              })}
+  1355→            </div>
+  1356→          </div>
+  1357→        </div>
+  1358→      );
+  1359→    }
+  1360→
+  1361→    const section = currentStep === 0 ? 'physical' : 'symptom';
+  1362→    const sectionLabel = section === 'physical' ? 'Fungsi Fisik & Aktivitas' : 'Gejala';
+  1363→    const sectionQuestions = EORTC_QUESTIONS.filter(q => q.section === section);
+  1364→
+  1365→    return (
+  1366→      <div className="space-y-4">
+  1367→        <p className="text-sm text-muted-foreground mb-2">
+  1368→          Bagian: <strong>{sectionLabel}</strong> — Pilih jawaban yang paling sesuai selama 1 minggu terakhir:
+  1369→        </p>
+  1370→        {sectionQuestions.map((question, qIdx) => {
+  1371→          const currentVal = Number(answers[question.id]);
+  1372→          return (
+  1373→            <div key={question.id} className="space-y-2 py-2 border-b border-border last:border-b-0">
+  1374→              <p className="text-sm font-medium text-foreground">
+  1375→                {qIdx + 1}. {question.text}
+  1376→              </p>
+  1377→              <div className="flex flex-wrap gap-2">
+  1378→                {EORTC_OPTIONS_4.map(opt => (
+  1379→                  <button
+  1380→                    key={opt.value}
+  1381→                    onClick={(e) => { e.stopPropagation(); setAnswer(question.id, opt.value); }}
+  1382→                    className={cn(
+  1383→                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+  1384→                      currentVal === opt.value
+  1385→                        ? 'bg-primary text-primary-foreground border-primary'
+  1386→                        : 'bg-card text-foreground border-border hover:border-primary/50 hover:bg-primary/5',
+  1387→                    )}
+  1388→                  >
+  1389→                    {opt.label}
+  1390→                  </button>
+  1391→                ))}
+  1392→              </div>
+  1393→            </div>
+  1394→          );
+  1395→        })}
+  1396→      </div>
+  1397→    );
+  1398→  };
+  1399→
+  1400→  // ── Result Renderer ──
+  1401→
+  1402→  const renderResult = (): React.ReactNode => {
+  1403→    if (!activeTool) return null;
+  1404→
+  1405→    const ewsLevel = getEwsLevel(activeTool);
+  1406→    const ews = getEwsBadge(ewsLevel);
+  1407→
+  1408→    const renderESASResult = () => {
+  1409→      const { total, items } = calcESAS();
+  1410→      return (
+  1411→        <div className="space-y-4">
+  1412→          <div className="text-center">
+  1413→            <p className="text-5xl font-black text-primary">{total}</p>
+  1414→            <p className="text-sm text-muted-foreground">dari 90</p>
+  1415→          </div>
+  1416→          <div className={cn('rounded-lg border-2 px-4 py-2 text-center', ews.bg)}>
+  1417→            <span className={cn('text-sm font-bold', ews.color)}>{ews.label}</span>
+  1418→          </div>
+  1419→          {/* Bar chart grid */}
+  1420→          <div className="grid grid-cols-3 gap-3">
+  1421→            {items.map((item, idx) => (
+  1422→              <div key={idx} className="text-center p-2 rounded-lg border border-border bg-card">
+  1423→                <div className="h-20 flex items-end justify-center mb-1">
+  1424→                  <div
+  1425→                    className={cn('w-6 rounded-t-md transition-all', vasBg(item.value))}
+  1426→                    style={{ height: `${Math.max(item.value * 10, 4)}%` }}
+  1427→                  />
+  1428→                </div>
+  1429→                <p className="text-xs text-muted-foreground truncate">{item.label}</p>
+  1430→                <p className={cn('text-sm font-bold', vasColor(item.value))}>{item.value}</p>
+  1431→              </div>
+  1432→            ))}
+  1433→          </div>
+  1434→          <div className="p-3 rounded-lg bg-muted/50">
+  1435→            <p className="text-sm text-foreground">{calcESAS().maxSymptom >= 7 ?
+  1436→              'Gejala berat terdeteksi. Manajemen gejala intensif diperlukan segera.' :
+  1437→              calcESAS().maxSymptom >= 4 ?
+  1438→              'Beberapa gejala sedang. Evaluasi dan intervensi gejala diperlukan.' :
+  1439→              'Gejala terkontrol. Lanjutkan monitoring dan dukungan supportif.'
+  1440→            }</p>
+  1441→          </div>
+  1442→        </div>
+  1443→      );
+  1444→    };
+  1445→
+  1446→    const renderDistressResult = () => {
+  1447→      const { score, problems } = calcDistress();
+  1448→      return (
+  1449→        <div className="space-y-4">
+  1450→          <div className="text-center">
+  1451→            <p className="text-5xl font-black text-primary">{score}</p>
+  1452→            <p className="text-sm text-muted-foreground">dari 10</p>
+  1453→          </div>
+  1454→          <div className={cn('rounded-lg border-2 px-4 py-2 text-center', ews.bg)}>
+  1455→            <span className={cn('text-sm font-bold', ews.color)}>{ews.label}</span>
+  1456→          </div>
+  1457→          {Object.keys(problems).length > 0 ? (
+  1458→            <div className="space-y-3">
+  1459→              <p className="text-sm font-semibold text-foreground">Masalah yang Teridentifikasi:</p>
+  1460→              {Object.entries(problems).map(([cat, items]) => (
+  1461→                <div key={cat} className="p-3 rounded-lg border border-border">
+  1462→                  <p className="text-xs font-semibold text-primary mb-1">{cat}</p>
+  1463→                  <ul className="space-y-0.5">
+  1464→                    {items.map((item, idx) => (
+  1465→                      <li key={idx} className="text-xs text-foreground flex items-center gap-1">
+  1466→                        <CheckCircle className="w-3 h-3 text-primary shrink-0" /> {item}
+  1467→                      </li>
+  1468→                    ))}
+  1469→                  </ul>
+  1470→                </div>
+  1471→              ))}
+  1472→            </div>
+  1473→          ) : (
+  1474→            <p className="text-sm text-muted-foreground text-center">Tidak ada masalah spesifik yang dicentang.</p>
+  1475→          )}
+  1476→        </div>
+  1477→      );
+  1478→    };
+  1479→
+  1480→    const renderSPICTResult = () => {
+  1481→      const { yesCount, riskCategory, yesItems, checkedDiseases, surpriseAnswer } = calcSPICT();
+  1482→
+  1483→      let statusLabel = '';
+  1484→      let statusColor = '';
+  1485→      let statusBg = '';
+  1486→      let advice = '';
+  1487→      if (yesCount >= 8 || surpriseAnswer === 'no') {
+  1488→        statusLabel = 'Risiko Sangat Tinggi';
+  1489→        statusColor = 'text-red-700';
+  1490→        statusBg = 'bg-red-50 border-red-200';
+  1491→        advice = 'Sangat disarankan evaluasi paliatif komprehensif, home care, dan diskusi Advance Care Planning (ACP).';
+  1492→      } else if (yesCount >= 6) {
+  1493→        statusLabel = 'Risiko Tinggi';
+  1494→        statusColor = 'text-orange-700';
+  1495→        statusBg = 'bg-orange-50 border-orange-200';
+  1496→        advice = 'Pasien berpotensi membutuhkan layanan paliatif. Disarankan penilaian oleh dokter atau tim paliatif.';
+  1497→      } else if (yesCount >= 3) {
+  1498→        statusLabel = 'Risiko Sedang';
+  1499→        statusColor = 'text-amber-700';
+  1500→        statusBg = 'bg-amber-50 border-amber-200';
+  1501→        advice = 'Pertimbangkan konsultasi paliatif. Lakukan evaluasi gejala lebih lanjut.';
+  1502→      } else {
+  1503→        statusLabel = 'Risiko Rendah';
+  1504→        statusColor = 'text-emerald-700';
+  1505→        statusBg = 'bg-emerald-50 border-emerald-200';
+  1506→        advice = 'Belum menunjukkan kebutuhan paliatif yang jelas. Lanjutkan kontrol rutin.';
+  1507→      }
+  1508→
+  1509→      return (
+  1510→        <div className="space-y-4">
+  1511→          <div className="text-center">
+  1512→            <p className="text-5xl font-black text-primary">{yesCount}</p>
+  1513→            <p className="text-sm text-muted-foreground">poin dari 15 indikator</p>
+  1514→          </div>
+  1515→          <div className={cn('rounded-lg border-2 px-4 py-2 text-center', ews.bg)}>
+  1516→            <span className={cn('text-sm font-bold', ews.color)}>{ews.label}</span>
+  1517→          </div>
+  1518→          <div className={cn('rounded-xl border-2 p-4', statusBg)}>
+  1519→            <p className={cn('text-lg font-bold mb-2', statusColor)}>{statusLabel} ({yesCount} poin)</p>
+  1520→            <p className={cn('text-sm', statusColor)}>{advice}</p>
+  1521→          </div>
+  1522→          {yesItems.length > 0 && (
+  1523→            <div className="space-y-2">
+  1524→              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Indikator Terdeteksi</p>
+  1525→              {yesItems.map((item) => (
+  1526→                <div key={item.id} className="flex items-start gap-2 p-2.5 rounded-lg bg-muted/30 border border-border">
+  1527→                  <CheckCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+  1528→                  <p className="text-sm text-foreground">{item.text}</p>
+  1529→                </div>
+  1530→              ))}
+  1531→            </div>
+  1532→          )}
+  1533→          {checkedDiseases.length > 0 && (
+  1534→            <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
+  1535→              <p className="text-xs font-semibold text-primary mb-2">Penyakit Kronis Teridentifikasi:</p>
+  1536→              <div className="flex flex-wrap gap-1.5">
+  1537→                {checkedDiseases.map((d) => (
+  1538→                  <span key={d} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary">
+  1539→                    {d}
+  1540→                  </span>
+  1541→                ))}
+  1542→              </div>
+  1543→            </div>
+  1544→          )}
+  1545→          {surpriseAnswer && (
+  1546→            <div className={cn(
+  1547→              'p-3 rounded-lg border-2',
+  1548→              surpriseAnswer === 'no' ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50',
+  1549→            )}>
+  1550→              <p className="text-xs font-semibold text-muted-foreground mb-1">Surprise Question</p>
+  1551→              <p className={cn('text-sm font-medium', surpriseAnswer === 'no' ? 'text-red-700' : 'text-emerald-700')}>
+  1552→                {surpriseAnswer === 'no'
+  1553→                  ? 'Tidak akan terkejut — Disarankan segera diskusi Advance Care Planning.'
+  1554→                  : 'Akan terkejut — Tidak ada indikasi mendesak saat ini.'}
+  1555→              </p>
+  1556→            </div>
+  1557→          )}
+  1558→        </div>
+  1559→      );
+  1560→    };
+  1561→
+  1562→    const renderPPSResult = () => {
+  1563→      const { pps, extraYesCount, dimensionDetails } = calcPPS();
+  1564→
+  1565→      let statusLabel = '';
+  1566→      let statusColor = '';
+  1567→      let statusBg = '';
+  1568→      let advice = '';
+  1569→      if (pps >= 80) {
+  1570→        statusLabel = 'Kondisi Baik (PPS 80-100%)';
+  1571→        statusColor = 'text-emerald-700';
+  1572→        statusBg = 'bg-emerald-50 border-emerald-200';
+  1573→        advice = 'Masih cukup mandiri. Kontrol rutin telemedicine.';
+  1574→      } else if (pps >= 60) {
+  1575→        statusLabel = 'Kondisi Mulai Menurun (PPS 60-70%)';
+  1576→        statusColor = 'text-amber-700';
+  1577→        statusBg = 'bg-amber-50 border-amber-200';
+  1578→        advice = 'Memerlukan pemantauan lebih sering. Pertimbangkan kunjungan home care.';
+  1579→      } else if (pps >= 40) {
+  1580→        statusLabel = 'Ketergantungan Sedang-Berat (PPS 40-50%)';
+  1581→        statusColor = 'text-orange-700';
+  1582→        statusBg = 'bg-orange-50 border-orange-200';
+  1583→        advice = 'Home care rutin. Evaluasi kebutuhan paliatif.';
+  1584→      } else {
+  1585→        statusLabel = 'Kondisi Sangat Berat (PPS 10-30%)';
+  1586→        statusColor = 'text-red-700';
+  1587→        statusBg = 'bg-red-50 border-red-200';
+  1588→        advice = 'Perawatan intensif di rumah. Pertimbangkan Advance Care Planning.';
+  1589→      }
+  1590→
+  1591→      return (
+  1592→        <div className="space-y-4">
+  1593→          <div className="text-center">
+  1594→            <p className="text-5xl font-black text-primary">{pps}%</p>
+  1595→            <p className="text-sm text-muted-foreground">Palliative Performance Scale</p>
+  1596→          </div>
+  1597→          <div className={cn('rounded-lg border-2 px-4 py-2 text-center', ews.bg)}>
+  1598→            <span className={cn('text-sm font-bold', ews.color)}>{ews.label}</span>
+  1599→          </div>
+  1600→          <div className={cn('rounded-xl border-2 p-4', statusBg)}>
+  1601→            <p className={cn('text-lg font-bold mb-2', statusColor)}>{statusLabel}</p>
+  1602→            <p className={cn('text-sm', statusColor)}>{advice}</p>
+  1603→          </div>
+  1604→          <div className="space-y-2">
+  1605→            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Detail Per Dimensi</p>
+  1606→            {dimensionDetails.map(d => (
+  1607→              <div key={d.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 border border-border">
+  1608→                <div>
+  1609→                  <p className="text-sm font-medium text-foreground">{d.title}</p>
+  1610→                  <p className="text-xs text-muted-foreground">{d.label}</p>
+  1611→                </div>
+  1612→                <span className={cn(
+  1613→                  'text-sm font-bold',
+  1614→                  d.score >= 80 ? 'text-emerald-600' : d.score >= 60 ? 'text-amber-600' : d.score >= 40 ? 'text-orange-600' : 'text-red-600',
+  1615→                )}>
+  1616→                  {d.score}%
+  1617→                </span>
+  1618→              </div>
+  1619→            ))}
+  1620→          </div>
+  1621→          {extraYesCount >= 3 && (
+  1622→            <div className="p-4 rounded-lg border-2 border-red-200 bg-red-50 flex items-start gap-2">
+  1623→              <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+  1624→              <div>
+  1625→                <p className="text-sm font-semibold text-red-700">Alert Risiko Perburukan</p>
+  1626→                <p className="text-xs text-red-600">Ditemukan {extraYesCount} indikator perburukan. Disarankan segera konsultasi dokter paliatif atau jadwal kunjungan home care.</p>
+  1627→              </div>
+  1628→            </div>
+  1629→          )}
+  1630→        </div>
+  1631→      );
+  1632→    };
+  1633→
+  1634→    const renderZaritResult = () => {
+  1635→      const { total, category, needReferral } = calcZarit();
+  1636→      return (
+  1637→        <div className="space-y-4">
+  1638→          <div className="text-center">
+  1639→            <p className="text-5xl font-black text-primary">{total}</p>
+  1640→            <p className="text-sm text-muted-foreground">dari 88</p>
+  1641→          </div>
+  1642→          <div className={cn('rounded-lg border-2 px-4 py-2 text-center', ews.bg)}>
+  1643→            <span className={cn('text-sm font-bold', ews.color)}>{ews.label}</span>
+  1644→          </div>
+  1645→          <div className="p-3 rounded-lg border border-border text-center">
+  1646→            <p className="text-xs text-muted-foreground">Kategori Beban Pengasuh</p>
+  1647→            <p className={cn('text-lg font-bold', total >= 61 ? 'text-red-600' : total >= 41 ? 'text-orange-600' : total >= 21 ? 'text-amber-600' : 'text-emerald-600')}>
+  1648→              {category}
+  1649→            </p>
+  1650→          </div>
+  1651→          {needReferral && (
+  1652→            <div className="p-3 rounded-lg border-2 border-red-200 bg-red-50 flex items-start gap-2">
+  1653→              <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+  1654→              <div>
+  1655→                <p className="text-sm font-semibold text-red-700">Rekomendasi Rujukan</p>
+  1656→                <p className="text-xs text-red-600">Skor beban pengasuh tinggi. Disarankan rujuk ke psikolog/psikiater untuk dukungan pengasuh dan intervensi.</p>
+  1657→              </div>
+  1658→            </div>
+  1659→          )}
+  1660→        </div>
+  1661→      );
+  1662→    };
+  1663→
+  1664→    const renderEORTCResult = () => {
+  1665→      const { physicalFunction, symptomBurden, globalQol } = calcEORTC();
+  1666→      return (
+  1667→        <div className="space-y-4">
+  1668→          <div className="text-center">
+  1669→            <p className="text-5xl font-black text-primary">{globalQol}%</p>
+  1670→            <p className="text-sm text-muted-foreground">Kualitas Hidup Global</p>
+  1671→          </div>
+  1672→          <div className={cn('rounded-lg border-2 px-4 py-2 text-center', ews.bg)}>
+  1673→            <span className={cn('text-sm font-bold', ews.color)}>{ews.label}</span>
+  1674→          </div>
+  1675→          <div className="grid grid-cols-3 gap-3">
+  1676→            {[
+  1677→              { label: 'Fungsi Fisik', value: physicalFunction, color: physicalFunction >= 60 ? 'text-emerald-600' : physicalFunction >= 40 ? 'text-amber-600' : 'text-red-600', bgColor: physicalFunction >= 60 ? 'bg-emerald-500' : physicalFunction >= 40 ? 'bg-amber-500' : 'bg-red-500' },
+  1678→              { label: 'Beban Gejala', value: symptomBurden, color: symptomBurden <= 33 ? 'text-emerald-600' : symptomBurden <= 66 ? 'text-amber-600' : 'text-red-600', bgColor: symptomBurden <= 33 ? 'bg-emerald-500' : symptomBurden <= 66 ? 'bg-amber-500' : 'bg-red-500' },
+  1679→              { label: 'QoL Global', value: globalQol, color: globalQol >= 60 ? 'text-emerald-600' : globalQol >= 40 ? 'text-amber-600' : 'text-red-600', bgColor: globalQol >= 60 ? 'bg-emerald-500' : globalQol >= 40 ? 'bg-amber-500' : 'bg-red-500' },
+  1680→            ].map((item, idx) => (
+  1681→              <div key={idx} className="p-3 rounded-lg border border-border text-center">
+  1682→                <p className="text-[10px] text-muted-foreground">{item.label}</p>
+  1683→                <div className="h-16 flex items-end justify-center my-1">
+  1684→                  <div
+  1685→                    className={cn('w-8 rounded-t-md', item.bgColor)}
+  1686→                    style={{ height: `${Math.max(item.value, 4)}%` }}
+  1687→                  />
+  1688→                </div>
+  1689→                <p className={cn('text-lg font-bold', item.color)}>{item.value}%</p>
+  1690→              </div>
+  1691→            ))}
+  1692→          </div>
+  1693→          <div className="p-3 rounded-lg bg-muted/50">
+  1694→            <p className="text-sm text-foreground">
+  1695→              {globalQol < 40 ? 'Kualitas hidup sangat rendah. Intervensi paliatif intensif dan manajemen gejala menyeluruh diperlukan.' :
+  1696→               globalQol < 60 ? 'Kualitas hidup menurun. Evaluasi gejala dan intervensi yang ditargetkan diperlukan.' :
+  1697→               'Kualitas hidup cukup baik. Lanjutkan manajemen gejala dan dukungan supportif.'}
+  1698→            </p>
+  1699→          </div>
+  1700→        </div>
+  1701→      );
+  1702→    };
+  1703→
+  1704→    switch (activeTool) {
+  1705→      case 'esas': return renderESASResult();
+  1706→      case 'distress': return renderDistressResult();
+  1707→      case 'spict': return renderSPICTResult();
+  1708→      case 'pps': return renderPPSResult();
+  1709→      case 'zarit': return renderZaritResult();
+  1710→      case 'eortc': return renderEORTCResult();
+  1711→      default: return null;
+  1712→    }
+  1713→  };
+  1714→
+  1715→  // ── Step Title ──
+  1716→  const getStepTitle = (): string => {
+  1717→    if (!activeTool) return '';
+  1718→    if (showResult) return 'Hasil Skrining';
+  1719→
+  1720→    switch (activeTool) {
+  1721→      case 'esas': return 'Assessment Gejala (ESAS-r)';
+  1722→      case 'distress': {
+  1723→        if (currentStep === 0) return 'Skor Distress';
+  1724→        const cat = DT_PROBLEMS[currentStep - 1];
+  1725→        return cat ? `Masalah: ${cat.category}` : '';
+  1726→      }
+  1727→      case 'spict': {
+  1728→        if (currentStep === 0) return 'Pertanyaan Indikator (1-15)';
+  1729→        if (currentStep === 1) return 'Penyakit Kronis atau Berat';
+  1730→        return 'Pertanyaan Kejutan (Surprise Question)';
+  1731→      }
+  1732→      case 'pps': return 'Palliative Performance Scale';
+  1733→      case 'zarit': return `Pertanyaan ${currentStep * 6 + 1}-${Math.min((currentStep + 1) * 6, 22)}`;
+  1734→      case 'eortc': {
+  1735→        if (currentStep === 0) return 'Fungsi Fisik & Aktivitas';
+  1736→        if (currentStep === 1) return 'Gejala';
+  1737→        return 'Kualitas Hidup Global';
+  1738→      }
+  1739→      default: return '';
+  1740→    }
+  1741→  };
+  1742→
+  1743→  // ── Render: Main Panel ──
+  1744→
+  1745→  // ── Status badge helper ──
+  1746→  const getStatusBadge = (status: ScreeningStatus) => {
+  1747→    switch (status) {
+  1748→      case 'sent': return { label: 'Terkirim', color: 'text-blue-700', bg: 'bg-blue-100 border-blue-300' };
+  1749→      case 'opened': return { label: 'Dibuka', color: 'text-sky-700', bg: 'bg-sky-100 border-sky-300' };
+  1750→      case 'in_progress': return { label: 'Sedang Diisi', color: 'text-amber-700', bg: 'bg-amber-100 border-amber-300' };
+  1751→      case 'completed': return { label: 'Selesai', color: 'text-emerald-700', bg: 'bg-emerald-100 border-emerald-300' };
+  1752→      case 'reviewed': return { label: 'Ditinjau', color: 'text-purple-700', bg: 'bg-purple-100 border-purple-300' };
+  1753→      default: return { label: status, color: 'text-muted-foreground', bg: 'bg-muted border-border' };
+  1754→    }
+  1755→  };
+  1756→
+  1757→  return (
+  1758→    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
+  1759→      {/* ══════════════════════════════════════════════════════════════════
+  1760→          PATIENT VIEW
+  1761→         ══════════════════════════════════════════════════════════════════ */}
+  1762→      {isPatient && (
+  1763→        <>
+  1764→          {/* ── Patient: Active Form Filling ── */}
+  1765→          {activeForm && activeForm.status !== 'completed' && activeForm.status !== 'reviewed' ? (
+  1766→            <div className="space-y-4">
+  1767→              {/* Form Header */}
+  1768→              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+  1769→                <div className="flex-1">
+  1770→                  <div className="flex items-center gap-2">
+  1771→                    <h2 className="text-xl font-bold text-foreground">Form Skrining Paliatif</h2>
+  1772→                    <Badge variant="outline" className={cn('text-[10px] font-bold border', getStatusBadge(activeForm.status).bg, getStatusBadge(activeForm.status).color)}>
+  1773→                      {getStatusBadge(activeForm.status).label}
+  1774→                    </Badge>
+  1775→                  </div>
+  1776→                  {activeForm.instructions && (
+  1777→                    <p className="text-sm text-muted-foreground mt-1">
+  1778→                      Instruksi: {activeForm.instructions}
+  1779→                    </p>
+  1780→                  )}
+  1781→                </div>
+  1782→                <Button
+  1783→                  variant="outline"
+  1784→                  size="sm"
+  1785→                  onClick={() => {
+  1786→                    setActiveFormId(null);
+  1787→                    setActivePalliativeFormId(null);
+  1788→                  }}
+  1789→                >
+  1790→                  <ChevronLeft className="w-4 h-4 mr-1" /> Kembali
+  1791→                </Button>
+  1792→              </div>
+  1793→
+  1794→              {/* Progress */}
+  1795→              <div className="space-y-2">
+  1796→                <div className="flex items-center justify-between">
+  1797→                  <span className="text-sm text-muted-foreground">
+  1798→                    Progres: {activeForm.selectedTools.filter(t => activeForm.toolResults[t]).length}/{activeForm.selectedTools.length} alat selesai
+  1799→                  </span>
+  1800→                  <span className="text-sm font-medium text-primary">
+  1801→                    {Math.round((activeForm.selectedTools.filter(t => activeForm.toolResults[t]).length / activeForm.selectedTools.length) * 100)}%
+  1802→                  </span>
+  1803→                </div>
+  1804→                <Progress
+  1805→                  value={(activeForm.selectedTools.filter(t => activeForm.toolResults[t]).length / activeForm.selectedTools.length) * 100}
+  1806→                  className="h-2"
+  1807→                />
+  1808→              </div>
+  1809→
+  1810→              <Separator />
+  1811→
+  1812→              {/* Tool List for this Form */}
+  1813→              <div className="space-y-3">
+  1814→                {activeForm.selectedTools.map((toolKey) => {
+  1815→                  const tool = TOOL_DEFS[toolKey];
+  1816→                  const result = activeForm.toolResults[toolKey];
+  1817→                  const isCompleted = !!result;
+  1818→
+  1819→                  return (
+  1820→                    <Card
+  1821→                      key={toolKey}
+  1822→                      className={cn(
+  1823→                        'transition-all duration-200',
+  1824→                        isCompleted ? 'border-emerald-200 bg-emerald-50/50' : 'border-border hover:border-primary/30 cursor-pointer hover:-translate-y-[2px] hover:shadow-md',
+  1825→                      )}
+  1826→                      onClick={() => { if (!isCompleted) handleStartTool(toolKey); }}
+  1827→                    >
+  1828→                      <CardContent className="p-4">
+  1829→                        <div className="flex items-center gap-4">
+  1830→                          <div className={cn(
+  1831→                            'w-12 h-12 rounded-lg flex items-center justify-center shrink-0',
+  1832→                            isCompleted ? 'bg-emerald-100 text-emerald-600' : 'bg-primary/10 text-primary',
+  1833→                          )}>
+  1834→                            {isCompleted ? <CheckCircle className="w-6 h-6" /> : tool.icon}
+  1835→                          </div>
+  1836→                          <div className="flex-1 min-w-0">
+  1837→                            <div className="flex items-center gap-2">
+  1838→                              <p className="text-sm font-bold text-foreground">{tool.name}</p>
+  1839→                              {isCompleted && (
+  1840→                                <Badge variant="outline" className={cn('text-[10px] font-bold border', getEwsBadge(result.ewsLevel).bg, getEwsBadge(result.ewsLevel).color)}>
+  1841→                                  {getEwsBadge(result.ewsLevel).label}
+  1842→                                </Badge>
+  1843→                              )}
+  1844→                            </div>
+  1845→                            <p className="text-xs text-muted-foreground mt-0.5">
+  1846→                              {isCompleted ? `Skor: ${result.scoreLabel}` : tool.description}
+  1847→                            </p>
+  1848→                          </div>
+  1849→                          <div className="shrink-0">
+  1850→                            {isCompleted ? (
+  1851→                              <Button
+  1852→                                variant="ghost"
+  1853→                                size="sm"
+  1854→                                className="text-xs"
+  1855→                                onClick={(e) => {
+  1856→                                  e.stopPropagation();
+  1857→                                  setDetailResult({
+  1858→                                    id: `${activeForm.id}-${toolKey}`,
+  1859→                                    tool: toolKey,
+  1860→                                    toolName: tool.name,
+  1861→                                    patientId: activeForm.patientId,
+  1862→                                    patientName: currentUser?.name || 'Pasien',
+  1863→                                    score: result.score,
+  1864→                                    scoreLabel: result.scoreLabel,
+  1865→                                    interpretation: result.interpretation,
+  1866→                                    ewsLevel: result.ewsLevel,
+  1867→                                    details: result.details,
+  1868→                                    savedAt: activeForm.updatedAt,
+  1869→                                  });
+  1870→                                }}
+  1871→                              >
+  1872→                                Detail
+  1873→                              </Button>
+  1874→                            ) : (
+  1875→                              <Button size="sm" className="text-xs" onClick={(e) => { e.stopPropagation(); handleStartTool(toolKey); }}>
+  1876→                                Mulai <ArrowRight className="w-3 h-3 ml-1" />
+  1877→                              </Button>
+  1878→                            )}
+  1879→                          </div>
+  1880→                        </div>
+  1881→                      </CardContent>
+  1882→                    </Card>
+  1883→                  );
+  1884→                })}
+  1885→              </div>
+  1886→            </div>
+  1887→          ) : (
+  1888→            /* ── Patient: Forms List ── */
+  1889→            <div className="space-y-4">
+  1890→              <div>
+  1891→                <h2 className="text-xl font-bold text-foreground">Skrining Paliatif</h2>
+  1892→                <p className="text-sm text-muted-foreground mt-1">
+  1893→                  Form skrining paliatif yang dikirim oleh dokter
+  1894→                </p>
+  1895→              </div>
+  1896→
+  1897→              <Separator />
+  1898→
+  1899→              {/* Pending Forms */}
+  1900→              {(() => {
+  1901→                const pendingForms = patientForms.filter(f => f.status !== 'completed' && f.status !== 'reviewed');
+  1902→                if (pendingForms.length === 0) return null;
+  1903→                return (
+  1904→                  <div className="space-y-3">
+  1905→                    <h3 className="text-base font-semibold text-foreground">Menunggu Pengisian</h3>
+  1906→                    {pendingForms.map(form => {
+  1907→                      const completedCount = form.selectedTools.filter(t => form.toolResults[t]).length;
+  1908→                      return (
+  1909→                        <Card
+  1910→                          key={form.id}
+  1911→                          className="border-amber-200 bg-amber-50/30 cursor-pointer transition-all hover:-translate-y-[2px] hover:shadow-md"
+  1912→                          onClick={() => {
+  1913→                            setActiveFormId(form.id);
+  1914→                            setActivePalliativeFormId(form.id);
+  1915→                          }}
+  1916→                        >
+  1917→                          <CardContent className="p-4">
+  1918→                            <div className="flex items-center justify-between">
+  1919→                              <div>
+  1920→                                <div className="flex items-center gap-2">
+  1921→                                  <p className="text-sm font-bold text-foreground">Form Skrining Paliatif</p>
+  1922→                                  <Badge variant="outline" className={cn('text-[10px] font-bold border', getStatusBadge(form.status).bg, getStatusBadge(form.status).color)}>
+  1923→                                    {getStatusBadge(form.status).label}
+  1924→                                  </Badge>
+  1925→                                </div>
+  1926→                                <p className="text-xs text-muted-foreground mt-1">
+  1927→                                  {form.selectedTools.length} alat skrining • {completedCount}/{form.selectedTools.length} selesai
+  1928→                                </p>
+  1929→                                {form.instructions && (
+  1930→                                  <p className="text-xs text-muted-foreground mt-0.5 italic">
+  1931→                                    {form.instructions}
+  1932→                                  </p>
+  1933→                                )}
+  1934→                              </div>
+  1935→                              <Button size="sm" className="text-xs">
+  1936→                                {completedCount > 0 ? 'Lanjutkan' : 'Isi Skrining'}
+  1937→                                <ArrowRight className="w-3 h-3 ml-1" />
+  1938→                              </Button>
+  1939→                            </div>
+  1940→                          </CardContent>
+  1941→                        </Card>
+  1942→                      );
+  1943→                    })}
+  1944→                  </div>
+  1945→                );
+  1946→              })()}
+  1947→
+  1948→              {/* Completed Forms */}
+  1949→              {(() => {
+  1950→                const completedForms = patientForms.filter(f => f.status === 'completed' || f.status === 'reviewed');
+  1951→                if (completedForms.length === 0) return null;
+  1952→                return (
+  1953→                  <div className="space-y-3">
+  1954→                    <h3 className="text-base font-semibold text-foreground">Selesai</h3>
+  1955→                    {completedForms.map(form => {
+  1956→                      const toolResultEntries = Object.entries(form.toolResults) as [ToolType, { score: number; scoreLabel: string; interpretation: string; ewsLevel: 'merah' | 'kuning' | 'hijau'; details: Record<string, unknown> }][];
+  1957→                      // Find worst EWS level
+  1958→                      const worstEws = toolResultEntries.reduce<'merah' | 'kuning' | 'hijau' | null>((worst, [, r]) => {
+  1959→                        if (r.ewsLevel === 'merah') return 'merah';
+  1960→                        if (worst !== 'merah' && r.ewsLevel === 'kuning') return 'kuning';
+  1961→                        if (worst === null && r.ewsLevel === 'hijau') return 'hijau';
+  1962→                        return worst;
+  1963→                      }, null);
+  1964→                      return (
+  1965→                        <Card key={form.id} className="border-emerald-200 bg-emerald-50/30">
+  1966→                          <CardContent className="p-4">
+  1967→                            <div className="flex items-center justify-between">
+  1968→                              <div>
+  1969→                                <div className="flex items-center gap-2">
+  1970→                                  <p className="text-sm font-bold text-foreground">Form Skrining Paliatif</p>
+  1971→                                  <Badge variant="outline" className={cn('text-[10px] font-bold border', getStatusBadge(form.status).bg, getStatusBadge(form.status).color)}>
+  1972→                                    {getStatusBadge(form.status).label}
+  1973→                                  </Badge>
+  1974→                                  {worstEws && (
+  1975→                                    <Badge variant="outline" className={cn('text-[10px] font-bold border', getEwsBadge(worstEws).bg, getEwsBadge(worstEws).color)}>
+  1976→                                      {getEwsBadge(worstEws).label}
+  1977→                                    </Badge>
+  1978→                                  )}
+  1979→                                </div>
+  1980→                                <div className="flex flex-wrap gap-1.5 mt-2">
+  1981→                                  {toolResultEntries.map(([toolKey, toolResult]) => (
+  1982→                                    <Badge key={toolKey} variant="secondary" className="text-[10px]">
+  1983→                                      {TOOL_DEFS[toolKey]?.name}: {toolResult.scoreLabel}
+  1984→                                    </Badge>
+  1985→                                  ))}
+  1986→                                </div>
+  1987→                                <p className="text-xs text-muted-foreground mt-1">
+  1988→                                  {formatDate(form.completedAt || form.updatedAt)}
+  1989→                                </p>
+  1990→                              </div>
+  1991→                            </div>
+  1992→                          </CardContent>
+  1993→                        </Card>
+  1994→                      );
+  1995→                    })}
+  1996→                  </div>
+  1997→                );
+  1998→              })()}
+  1999→
+  2000→              {/* Empty State */}
+
+[showing lines 1-2000 of 2360; use offset=2001 with limit to continue reading]

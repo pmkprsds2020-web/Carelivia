@@ -1,0 +1,1488 @@
+     1→'use client';
+     2→
+     3→import React, { useState, useMemo, useCallback } from 'react';
+     4→import { useStore } from '@/lib/store';
+     5→import { useToast } from '@/hooks/use-toast';
+     6→import { cn } from '@/lib/utils';
+     7→import type {
+     8→  SocialNeedsCategory,
+     9→  SocialNeedsQuestion,
+    10→  SocialNeedsRiskLevel,
+    11→  SocialNeedsScreeningResult,
+    12→  SocialNeedsAIResult,
+    13→  SocialNeedsCategoryScore,
+    14→} from '@/lib/types';
+    15→import {
+    16→  CATEGORY_META,
+    17→  SOCIAL_NEEDS_QUESTIONS,
+    18→  getRiskLevel,
+    19→  getRiskLevelDisplay,
+    20→  calculateScreeningResult,
+    21→  getQuestionsByCategory,
+    22→  getAIStatusLabel,
+    23→  getRecommendationCategoryLabel,
+    24→  generateLocalAIAnalysis,
+    25→} from '@/lib/social-needs-screening-data';
+    26→
+    27→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+    28→import { Button } from '@/components/ui/button';
+    29→import { Badge } from '@/components/ui/badge';
+    30→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    31→import { Textarea } from '@/components/ui/textarea';
+    32→import { Label } from '@/components/ui/label';
+    33→import { Separator } from '@/components/ui/separator';
+    34→import { Progress } from '@/components/ui/progress';
+    35→import { ScrollArea } from '@/components/ui/scroll-area';
+    36→import {
+    37→  Tooltip,
+    38→  TooltipContent,
+    39→  TooltipProvider,
+    40→  TooltipTrigger,
+    41→} from '@/components/ui/tooltip';
+    42→
+    43→import {
+    44→  Heart, Users, Home, Building2, Wallet, Car, MessageCircle,
+    45→  BookOpen, FileText, ChevronLeft, ChevronRight, Info,
+    46→  AlertTriangle, AlertCircle, CheckCircle, Sparkles, Save,
+    47→  Send, RotateCcw, TrendingUp, Shield, Activity, CircleDot,
+    48→  ClipboardList, BarChart3, Bell, Eye,
+    49→} from 'lucide-react';
+    50→
+    51→// ═══════════════════════════════════════════════════════════════════════════
+    52→// ICON MAPPING
+    53→// ═══════════════════════════════════════════════════════════════════════════
+    54→
+    55→const CATEGORY_ICONS: Record<string, React.ElementType> = {
+    56→  Heart, Users, Home, Building2, Wallet, Car, MessageCircle, BookOpen, FileText,
+    57→};
+    58→
+    59→function CategoryIcon({ name, className, style }: { name: string; className?: string; style?: React.CSSProperties }) {
+    60→  const IconComp = CATEGORY_ICONS[name] || CircleDot;
+    61→  return <IconComp className={className} style={style} />;
+    62→}
+    63→
+    64→// ═══════════════════════════════════════════════════════════════════════════
+    65→// CATEGORY ORDER
+    66→// ═══════════════════════════════════════════════════════════════════════════
+    67→
+    68→const CATEGORY_ORDER: SocialNeedsCategory[] = [
+    69→  'dukungan_keluarga',
+    70→  'caregiver',
+    71→  'tempat_tinggal',
+    72→  'akses_layanan',
+    73→  'ekonomi',
+    74→  'transportasi',
+    75→  'interaksi_sosial',
+    76→  'kebutuhan_informasi',
+    77→  'pertanyaan_terbuka',
+    78→];
+    79→
+    80→// ═══════════════════════════════════════════════════════════════════════════
+    81→// RISK GAUGE COMPONENT (Circular Progress)
+    82→// ═══════════════════════════════════════════════════════════════════════════
+    83→
+    84→function RiskGauge({
+    85→  percentage,
+    86→  size = 120,
+    87→  strokeWidth = 10,
+    88→  label,
+    89→  riskLevel,
+    90→  showLabel = true,
+    91→}: {
+    92→  percentage: number;
+    93→  size?: number;
+    94→  strokeWidth?: number;
+    95→  label?: string;
+    96→  riskLevel: SocialNeedsRiskLevel;
+    97→  showLabel?: boolean;
+    98→}) {
+    99→  const radius = (size - strokeWidth) / 2;
+   100→  const circumference = 2 * Math.PI * radius;
+   101→  const offset = circumference - (percentage / 100) * circumference;
+   102→  const display = getRiskLevelDisplay(riskLevel);
+   103→
+   104→  const colorMap: Record<SocialNeedsRiskLevel, string> = {
+   105→    rendah: '#16A34A',
+   106→    sedang: '#CA8A04',
+   107→    tinggi: '#EA580C',
+   108→    sangat_tinggi: '#DC2626',
+   109→  };
+   110→
+   111→  return (
+   112→    <div className="flex flex-col items-center gap-1">
+   113→      <div className="relative" style={{ width: size, height: size }}>
+   114→        <svg width={size} height={size} className="-rotate-90">
+   115→          <circle
+   116→            cx={size / 2}
+   117→            cy={size / 2}
+   118→            r={radius}
+   119→            fill="none"
+   120→            stroke="#E5E7EB"
+   121→            strokeWidth={strokeWidth}
+   122→          />
+   123→          <circle
+   124→            cx={size / 2}
+   125→            cy={size / 2}
+   126→            r={radius}
+   127→            fill="none"
+   128→            stroke={colorMap[riskLevel]}
+   129→            strokeWidth={strokeWidth}
+   130→            strokeDasharray={circumference}
+   131→            strokeDashoffset={offset}
+   132→            strokeLinecap="round"
+   133→            className="transition-all duration-700 ease-out"
+   134→          />
+   135→        </svg>
+   136→        <div className="absolute inset-0 flex flex-col items-center justify-center">
+   137→          <span className="text-2xl font-bold" style={{ color: colorMap[riskLevel] }}>
+   138→            {percentage}%
+   139→          </span>
+   140→          <span className="text-xs text-muted-foreground">skor</span>
+   141→        </div>
+   142→      </div>
+   143→      {showLabel && label && (
+   144→        <span className="text-xs font-medium text-center mt-1 max-w-[100px]">{label}</span>
+   145→      )}
+   146→      {showLabel && (
+   147→        <Badge
+   148→          className="text-[10px] px-1.5 py-0"
+   149→          style={{
+   150→            backgroundColor: display.bgColor,
+   151→            color: display.color,
+   152→            borderColor: display.borderColor,
+   153→            border: `1px solid ${display.borderColor}`,
+   154→          }}
+   155→        >
+   156→          {display.label}
+   157→        </Badge>
+   158→      )}
+   159→    </div>
+   160→  );
+   161→}
+   162→
+   163→// ═══════════════════════════════════════════════════════════════════════════
+   164→// CATEGORY SCORE CARD
+   165→// ═══════════════════════════════════════════════════════════════════════════
+   166→
+   167→function CategoryScoreCard({ score }: { score: SocialNeedsCategoryScore }) {
+   168→  const meta = CATEGORY_META[score.category];
+   169→  const display = getRiskLevelDisplay(score.riskLevel);
+   170→
+   171→  return (
+   172→    <Card className="overflow-hidden">
+   173→      <CardContent className="p-4 space-y-3">
+   174→        <div className="flex items-center gap-2">
+   175→          <div
+   176→            className="w-8 h-8 rounded-lg flex items-center justify-center"
+   177→            style={{ backgroundColor: `${meta.color}20` }}
+   178→          >
+   179→            <CategoryIcon name={meta.icon} className="w-4 h-4" style={{ color: meta.color }} />
+   180→          </div>
+   181→          <div className="flex-1 min-w-0">
+   182→            <p className="text-sm font-medium truncate">{score.categoryLabel}</p>
+   183→            <p className="text-xs text-muted-foreground">
+   184→              {score.totalScore}/{score.maxScore} poin
+   185→            </p>
+   186→          </div>
+   187→          <Badge
+   188→            className="text-[10px] shrink-0"
+   189→            style={{
+   190→              backgroundColor: display.bgColor,
+   191→              color: display.color,
+   192→              borderColor: display.borderColor,
+   193→              border: `1px solid ${display.borderColor}`,
+   194→            }}
+   195→          >
+   196→            {display.label}
+   197→          </Badge>
+   198→        </div>
+   199→        <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+   200→          <div
+   201→            className="h-full rounded-full transition-all duration-700 ease-out"
+   202→            style={{
+   203→              width: `${score.percentage}%`,
+   204→              backgroundColor: display.color,
+   205→            }}
+   206→          />
+   207→        </div>
+   208→      </CardContent>
+   209→    </Card>
+   210→  );
+   211→}
+   212→
+   213→// ═══════════════════════════════════════════════════════════════════════════
+   214→// AI RISK SCORE CARD
+   215→// ═══════════════════════════════════════════════════════════════════════════
+   216→
+   217→function AIRiskScoreCard({
+   218→  title,
+   219→  icon: Icon,
+   220→  riskLevel,
+   221→}: {
+   222→  title: string;
+   223→  icon: React.ElementType;
+   224→  riskLevel: SocialNeedsRiskLevel;
+   225→}) {
+   226→  const display = getRiskLevelDisplay(riskLevel);
+   227→  const statusLabel = getAIStatusLabel(riskLevel);
+   228→
+   229→  const percentageMap: Record<SocialNeedsRiskLevel, number> = {
+   230→    rendah: 20,
+   231→    sedang: 45,
+   232→    tinggi: 70,
+   233→    sangat_tinggi: 90,
+   234→  };
+   235→
+   236→  return (
+   237→    <Card className="overflow-hidden">
+   238→      <CardContent className="p-4">
+   239→        <div className="flex items-center gap-3 mb-3">
+   240→          <div
+   241→            className="w-10 h-10 rounded-lg flex items-center justify-center"
+   242→            style={{ backgroundColor: `${display.color}15` }}
+   243→          >
+   244→            <Icon className="w-5 h-5" style={{ color: display.color }} />
+   245→          </div>
+   246→          <div className="flex-1">
+   247→            <p className="text-sm font-medium">{title}</p>
+   248→            <Badge
+   249→              className="mt-0.5 text-[10px]"
+   250→              style={{
+   251→                backgroundColor: display.bgColor,
+   252→                color: display.color,
+   253→                borderColor: display.borderColor,
+   254→                border: `1px solid ${display.borderColor}`,
+   255→              }}
+   256→            >
+   257→              {statusLabel}
+   258→            </Badge>
+   259→          </div>
+   260→        </div>
+   261→        <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+   262→          <div
+   263→            className="h-full rounded-full transition-all duration-700"
+   264→            style={{
+   265→              width: `${percentageMap[riskLevel]}%`,
+   266→              backgroundColor: display.color,
+   267→            }}
+   268→          />
+   269→        </div>
+   270→      </CardContent>
+   271→    </Card>
+   272→  );
+   273→}
+   274→
+   275→// ═══════════════════════════════════════════════════════════════════════════
+   276→// MONITORING GAUGE BAR (for Tab 3)
+   277→// ═══════════════════════════════════════════════════════════════════════════
+   278→
+   279→function MonitoringGaugeBar({
+   280→  title,
+   281→  icon: Icon,
+   282→  value,
+   283→  maxValue,
+   284→  riskLevel,
+   285→}: {
+   286→  title: string;
+   287→  icon: React.ElementType;
+   288→  value: number;
+   289→  maxValue: number;
+   290→  riskLevel: SocialNeedsRiskLevel;
+   291→}) {
+   292→  const display = getRiskLevelDisplay(riskLevel);
+   293→  const percentage = maxValue > 0 ? Math.round((value / maxValue) * 100) : 0;
+   294→
+   295→  return (
+   296→    <Card className="overflow-hidden">
+   297→      <CardContent className="p-4 space-y-2">
+   298→        <div className="flex items-center justify-between">
+   299→          <div className="flex items-center gap-2">
+   300→            <Icon className="w-4 h-4" style={{ color: display.color }} />
+   301→            <span className="text-sm font-medium">{title}</span>
+   302→          </div>
+   303→          <Badge
+   304→            className="text-[10px]"
+   305→            style={{
+   306→              backgroundColor: display.bgColor,
+   307→              color: display.color,
+   308→              borderColor: display.borderColor,
+   309→              border: `1px solid ${display.borderColor}`,
+   310→            }}
+   311→          >
+   312→            {display.label}
+   313→          </Badge>
+   314→        </div>
+   315→        <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+   316→          <div
+   317→            className="h-full rounded-full transition-all duration-700"
+   318→            style={{
+   319→              width: `${percentage}%`,
+   320→              backgroundColor: display.color,
+   321→            }}
+   322→          />
+   323→        </div>
+   324→        <div className="flex justify-between text-xs text-muted-foreground">
+   325→          <span>{value}/{maxValue}</span>
+   326→          <span>{percentage}%</span>
+   327→        </div>
+   328→      </CardContent>
+   329→    </Card>
+   330→  );
+   331→}
+   332→
+   333→// ═══════════════════════════════════════════════════════════════════════════
+   334→// MAIN COMPONENT
+   335→// ═══════════════════════════════════════════════════════════════════════════
+   336→
+   337→export function SocialNeedsScreeningPanel() {
+   338→  const { currentUser } = useStore();
+   339→  const { toast } = useToast();
+   340→
+   341→  // ── State ────────────────────────────────────────────────────────────────
+   342→  const [activeTab, setActiveTab] = useState<string>('screening');
+   343→  const [currentCategoryIndex, setCurrentCategoryIndex] = useState(0);
+   344→  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
+   345→  const [screeningResult, setScreeningResult] = useState<SocialNeedsScreeningResult | null>(null);
+   346→  const [aiResult, setAiResult] = useState<SocialNeedsAIResult | null>(null);
+   347→  const [aiLoading, setAiLoading] = useState(false);
+   348→  const [isCompleted, setIsCompleted] = useState(false);
+   349→
+   350→  // ── Derived data ─────────────────────────────────────────────────────────
+   351→  const questionsByCategory = useMemo(() => getQuestionsByCategory(), []);
+   352→  const currentCategory = CATEGORY_ORDER[currentCategoryIndex];
+   353→  const currentQuestions = questionsByCategory[currentCategory] || [];
+   354→  const totalQuestions = SOCIAL_NEEDS_QUESTIONS.length;
+   355→  const answeredCount = Object.keys(answers).length;
+   356→
+   357→  // Count answered required questions
+   358→  const answeredRequiredCount = useMemo(() => {
+   359→    return SOCIAL_NEEDS_QUESTIONS.filter(
+   360→      (q) => q.required && answers[q.id] !== undefined && answers[q.id] !== ''
+   361→    ).length;
+   362→  }, [answers]);
+   363→
+   364→  const totalRequiredCount = SOCIAL_NEEDS_QUESTIONS.filter((q) => q.required).length;
+   365→
+   366→  // Category progress
+   367→  const categoryProgress = useMemo(() => {
+   368→    const progress: Record<string, { answered: number; total: number }> = {};
+   369→    for (const cat of CATEGORY_ORDER) {
+   370→      const qs = questionsByCategory[cat] || [];
+   371→      const answered = qs.filter(
+   372→        (q) => answers[q.id] !== undefined && answers[q.id] !== ''
+   373→      ).length;
+   374→      progress[cat] = { answered, total: qs.length };
+   375→    }
+   376→    return progress;
+   377→  }, [answers, questionsByCategory]);
+   378→
+   379→  // Live screening result
+   380→  const liveResult = useMemo(() => {
+   381→    if (answeredCount === 0) return null;
+   382→    return calculateScreeningResult(answers);
+   383→  }, [answers, answeredCount]);
+   384→
+   385→  // ── Handlers ─────────────────────────────────────────────────────────────
+   386→  const handleSingleChoice = useCallback((questionId: string, value: string) => {
+   387→    setAnswers((prev) => ({ ...prev, [questionId]: value }));
+   388→  }, []);
+   389→
+   390→  const handleMultipleChoice = useCallback(
+   391→    (questionId: string, value: string, checked: boolean) => {
+   392→      setAnswers((prev) => {
+   393→        const current = (prev[questionId] as string[]) || [];
+   394→        if (checked) {
+   395→          return { ...prev, [questionId]: [...current, value] };
+   396→        } else {
+   397→          return { ...prev, [questionId]: current.filter((v) => v !== value) };
+   398→        }
+   399→      });
+   400→    },
+   401→    []
+   402→  );
+   403→
+   404→  const handleTextArea = useCallback((questionId: string, value: string) => {
+   405→    setAnswers((prev) => ({ ...prev, [questionId]: value }));
+   406→  }, []);
+   407→
+   408→  const handlePrevious = useCallback(() => {
+   409→    setCurrentCategoryIndex((prev) => Math.max(0, prev - 1));
+   410→  }, []);
+   411→
+   412→  const handleNext = useCallback(() => {
+   413→    setCurrentCategoryIndex((prev) =>
+   414→      Math.min(CATEGORY_ORDER.length - 1, prev + 1)
+   415→    );
+   416→  }, []);
+   417→
+   418→  const handleSaveDraft = useCallback(() => {
+   419→    toast({
+   420→      title: 'Draft Tersimpan',
+   421→      description: `${answeredCount} dari ${totalQuestions} pertanyaan telah disimpan.`,
+   422→    });
+   423→  }, [answeredCount, totalQuestions, toast]);
+   424→
+   425→  const handleCompleteScreening = useCallback(() => {
+   426→    // Check if all required questions are answered
+   427→    const unansweredRequired = SOCIAL_NEEDS_QUESTIONS.filter(
+   428→      (q) => q.required && (!answers[q.id] || answers[q.id] === '')
+   429→    );
+   430→
+   431→    if (unansweredRequired.length > 0) {
+   432→      toast({
+   433→        title: 'Pertanyaan Wajib Belum Lengkap',
+   434→        description: `Masih ada ${unansweredRequired.length} pertanyaan wajib yang belum dijawab.`,
+   435→        variant: 'destructive',
+   436→      });
+   437→      return;
+   438→    }
+   439→
+   440→    const result = calculateScreeningResult(answers);
+   441→    setScreeningResult(result);
+   442→    setIsCompleted(true);
+   443→    setActiveTab('results');
+   444→    toast({
+   445→      title: 'Skrining Selesai',
+   446→      description: `Skor keseluruhan: ${result.overallPercentage}% (${getRiskLevelDisplay(result.overallRiskLevel).label})`,
+   447→    });
+   448→  }, [answers, toast]);
+   449→
+   450→  const handleResetForm = useCallback(() => {
+   451→    setAnswers({});
+   452→    setScreeningResult(null);
+   453→    setAiResult(null);
+   454→    setIsCompleted(false);
+   455→    setCurrentCategoryIndex(0);
+   456→    setActiveTab('screening');
+   457→    toast({ title: 'Form Direset', description: 'Semua jawaban telah dihapus.' });
+   458→  }, [toast]);
+   459→
+   460→  const handleRunAI = useCallback(async () => {
+   461→    const result = screeningResult || liveResult;
+   462→    if (!result) return;
+   463→
+   464→    setAiLoading(true);
+   465→    setAiResult(null);
+   466→
+   467→    try {
+   468→      const response = await fetch('/api/social-needs-screening-ai', {
+   469→        method: 'POST',
+   470→        headers: { 'Content-Type': 'application/json' },
+   471→        body: JSON.stringify({
+   472→          screeningResult: result,
+   473→          answers,
+   474→          patientData: {
+   475→            name: currentUser?.name,
+   476→            role: currentUser?.role,
+   477→          },
+   478→        }),
+   479→      });
+   480→
+   481→      if (response.ok) {
+   482→        const data = await response.json();
+   483→        // Map API response to SocialNeedsAIResult format
+   484→        const mapped: SocialNeedsAIResult = {
+   485→          familySupportScore: data.familySupportScore || data.familySupportAnalysis?.familySupportScore > 70 ? 'tinggi' : 'rendah',
+   486→          socialRiskScore: result.overallRiskLevel,
+   487→          caregiverBurnoutScore: data.caregiverAnalysis?.status === 'berat' ? 'sangat_tinggi' : data.caregiverAnalysis?.status === 'sedang' ? 'tinggi' : data.caregiverAnalysis?.status === 'ringan' ? 'sedang' : 'rendah',
+   488→          accessToCareScore: data.transportAnalysis?.accessRiskLevel === 'tinggi' ? 'tinggi' : data.transportAnalysis?.accessRiskLevel === 'sedang' ? 'sedang' : 'rendah',
+   489→          financialRiskScore: data.financialAnalysis?.economicConstraintLevel === 'tinggi' ? 'tinggi' : data.financialAnalysis?.economicConstraintLevel === 'sedang' ? 'sedang' : 'rendah',
+   490→          socialIsolationScore: data.socialRisks?.some((r: { riskType: string }) => r.riskType === 'isolasi_sosial') ? 'tinggi' : 'rendah',
+   491→          recommendations: (data.actionPlan || []).map((a: { action: string; priority: string; reason?: string; category?: string }, i: number) => ({
+   492→            priority: i + 1,
+   493→            action: a.action,
+   494→            reason: a.reason || `Prioritas: ${a.priority}`,
+   495→            category: mapActionCategory(a.category),
+   496→          })),
+   497→          analysisSummary: data.socialConditionSummary || 'Analisis AI selesai.',
+   498→          earlyWarnings: (data.earlyWarnings || []).map((w: { type: string; severity: string; title: string; description: string }) => ({
+   499→            type: w.type,
+   500→            severity: w.severity || 'warning',
+   501→            title: w.title,
+   502→            description: w.description,
+   503→          })),
+   504→          generatedAt: data.generatedAt || new Date().toISOString(),
+   505→        };
+   506→        setAiResult(mapped);
+   507→      } else {
+   508→        throw new Error('API failed');
+   509→      }
+   510→    } catch {
+   511→      // Fallback to local AI analysis
+   512→      const localResult = generateLocalAIAnalysis(result, answers);
+   513→      setAiResult(localResult);
+   514→      toast({
+   515→        title: 'Menggunakan Analisis Lokal',
+   516→        description: 'API AI tidak tersedia, menggunakan analisis lokal sebagai fallback.',
+   517→      });
+   518→    } finally {
+   519→      setAiLoading(false);
+   520→    }
+   521→  }, [screeningResult, liveResult, answers, currentUser, toast]);
+   522→
+   523→  // ── Render: Question ─────────────────────────────────────────────────────
+   524→
+   525→  const renderQuestion = (question: SocialNeedsQuestion) => {
+   526→    const currentAnswer = answers[question.id];
+   527→
+   528→    return (
+   529→      <div key={question.id} className="space-y-3 pb-4">
+   530→        <div className="flex items-start gap-2">
+   531→          <span className="text-sm font-semibold text-[#2D8C7A] shrink-0">
+   532→            Q{question.questionNumber}.
+   533→          </span>
+   534→          <Label className="text-sm font-medium leading-snug">
+   535→            {question.questionText}
+   536→            {question.required && <span className="text-red-500 ml-1">*</span>}
+   537→          </Label>
+   538→        </div>
+   539→
+   540→        {/* Single Choice (Radio) */}
+   541→        {question.type === 'single_choice' && question.options && (
+   542→          <div className="space-y-2 pl-2">
+   543→            {question.options.map((option) => {
+   544→              const isSelected = currentAnswer === option.value;
+   545→              const hasTooltip = question.hasTooltip && option.tooltip;
+   546→
+   547→              return (
+   548→                <div
+   549→                  key={option.value}
+   550→                  className={cn(
+   551→                    'flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all duration-200',
+   552→                    isSelected
+   553→                      ? 'border-[#2D8C7A] bg-[#2D8C7A]/5 shadow-sm'
+   554→                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+   555→                  )}
+   556→                  onClick={() => handleSingleChoice(question.id, option.value)}
+   557→                >
+   558→                  <div
+   559→                    className={cn(
+   560→                      'w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
+   561→                      isSelected
+   562→                        ? 'border-[#2D8C7A] bg-[#2D8C7A]'
+   563→                        : 'border-gray-300'
+   564→                    )}
+   565→                  >
+   566→                    {isSelected && (
+   567→                      <div className="w-1.5 h-1.5 rounded-full bg-white" />
+   568→                    )}
+   569→                  </div>
+   570→                  <span
+   571→                    className={cn(
+   572→                      'text-sm flex-1',
+   573→                      isSelected ? 'font-medium text-[#2D8C7A]' : 'text-gray-700'
+   574→                    )}
+   575→                  >
+   576→                    {option.label}
+   577→                  </span>
+   578→                  {hasTooltip && (
+   579→                    <TooltipProvider delayDuration={200}>
+   580→                      <Tooltip>
+   581→                        <TooltipTrigger asChild>
+   582→                          <button
+   583→                            className="text-muted-foreground hover:text-[#2D8C7A] transition-colors p-1"
+   584→                            onClick={(e) => e.stopPropagation()}
+   585→                          >
+   586→                            <Info className="w-3.5 h-3.5" />
+   587→                          </button>
+   588→                        </TooltipTrigger>
+   589→                        <TooltipContent
+   590→                          side="left"
+   591→                          className="max-w-[280px] text-xs leading-relaxed"
+   592→                        >
+   593→                          {option.tooltip}
+   594→                        </TooltipContent>
+   595→                      </Tooltip>
+   596→                    </TooltipProvider>
+   597→                  )}
+   598→                </div>
+   599→              );
+   600→            })}
+   601→          </div>
+   602→        )}
+   603→
+   604→        {/* Multiple Choice (Checkbox) */}
+   605→        {question.type === 'multiple_choice' && question.options && (
+   606→          <div className="space-y-2 pl-2">
+   607→            {question.options.map((option) => {
+   608→              const selectedValues = (currentAnswer as string[]) || [];
+   609→              const isSelected = selectedValues.includes(option.value);
+   610→
+   611→              return (
+   612→                <div
+   613→                  key={option.value}
+   614→                  className={cn(
+   615→                    'flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all duration-200',
+   616→                    isSelected
+   617→                      ? 'border-[#2D8C7A] bg-[#2D8C7A]/5 shadow-sm'
+   618→                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+   619→                  )}
+   620→                  onClick={() =>
+   621→                    handleMultipleChoice(question.id, option.value, !isSelected)
+   622→                  }
+   623→                >
+   624→                  <div
+   625→                    className={cn(
+   626→                      'w-4 h-4 rounded-[4px] border-2 flex items-center justify-center shrink-0 transition-all',
+   627→                      isSelected
+   628→                        ? 'border-[#2D8C7A] bg-[#2D8C7A]'
+   629→                        : 'border-gray-300'
+   630→                    )}
+   631→                  >
+   632→                    {isSelected && (
+   633→                      <CheckCircle className="w-3 h-3 text-white" />
+   634→                    )}
+   635→                  </div>
+   636→                  <span
+   637→                    className={cn(
+   638→                      'text-sm flex-1',
+   639→                      isSelected ? 'font-medium text-[#2D8C7A]' : 'text-gray-700'
+   640→                    )}
+   641→                  >
+   642→                    {option.label}
+   643→                  </span>
+   644→                </div>
+   645→              );
+   646→            })}
+   647→          </div>
+   648→        )}
+   649→
+   650→        {/* Text Area */}
+   651→        {question.type === 'text_area' && (
+   652→          <div className="pl-2">
+   653→            <Textarea
+   654→              placeholder="Tulis jawaban Anda di sini..."
+   655→              value={(currentAnswer as string) || ''}
+   656→              onChange={(e) => handleTextArea(question.id, e.target.value)}
+   657→              className="min-h-[80px] resize-y"
+   658→            />
+   659→          </div>
+   660→        )}
+   661→      </div>
+   662→    );
+   663→  };
+   664→
+   665→  // ── Render: Category Navigation (Desktop) ────────────────────────────────
+   666→
+   667→  const renderDesktopCategoryNav = () => (
+   668→    <div className="w-56 shrink-0">
+   669→      <ScrollArea className="h-[calc(100vh-280px)]">
+   670→        <div className="space-y-1 pr-2">
+   671→          {CATEGORY_ORDER.map((cat, idx) => {
+   672→            const meta = CATEGORY_META[cat];
+   673→            const progress = categoryProgress[cat];
+   674→            const isActive = idx === currentCategoryIndex;
+   675→            const isComplete = progress && progress.answered === progress.total && progress.total > 0;
+   676→
+   677→            return (
+   678→              <button
+   679→                key={cat}
+   680→                onClick={() => setCurrentCategoryIndex(idx)}
+   681→                className={cn(
+   682→                  'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-all duration-200',
+   683→                  isActive
+   684→                    ? 'bg-[#2D8C7A]/10 border border-[#2D8C7A]/30'
+   685→                    : 'hover:bg-gray-50 border border-transparent'
+   686→                )}
+   687→              >
+   688→                <div
+   689→                  className={cn(
+   690→                    'w-7 h-7 rounded-md flex items-center justify-center shrink-0',
+   691→                    isActive ? 'bg-[#2D8C7A] text-white' : 'bg-gray-100 text-gray-500'
+   692→                  )}
+   693→                >
+   694→                  <CategoryIcon name={meta.icon} className="w-3.5 h-3.5" />
+   695→                </div>
+   696→                <div className="flex-1 min-w-0">
+   697→                  <p
+   698→                    className={cn(
+   699→                      'text-xs font-medium truncate',
+   700→                      isActive ? 'text-[#2D8C7A]' : 'text-gray-700'
+   701→                    )}
+   702→                  >
+   703→                    {meta.label}
+   704→                  </p>
+   705→                  {progress && (
+   706→                    <p className="text-[10px] text-muted-foreground">
+   707→                      {progress.answered}/{progress.total}
+   708→                    </p>
+   709→                  )}
+   710→                </div>
+   711→                {isComplete && (
+   712→                  <CheckCircle className="w-3.5 h-3.5 text-green-500 shrink-0" />
+   713→                )}
+   714→              </button>
+   715→            );
+   716→          })}
+   717→        </div>
+   718→      </ScrollArea>
+   719→    </div>
+   720→  );
+   721→
+   722→  // ── Render: Category Navigation (Mobile - Horizontal Scroll) ─────────────
+   723→
+   724→  const renderMobileCategoryNav = () => (
+   725→    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+   726→      {CATEGORY_ORDER.map((cat, idx) => {
+   727→        const meta = CATEGORY_META[cat];
+   728→        const progress = categoryProgress[cat];
+   729→        const isActive = idx === currentCategoryIndex;
+   730→        const isComplete = progress && progress.answered === progress.total && progress.total > 0;
+   731→
+   732→        return (
+   733→          <button
+   734→            key={cat}
+   735→            onClick={() => setCurrentCategoryIndex(idx)}
+   736→            className={cn(
+   737→              'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs whitespace-nowrap shrink-0 transition-all border',
+   738→              isActive
+   739→                ? 'bg-[#2D8C7A] text-white border-[#2D8C7A]'
+   740→                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+   741→            )}
+   742→          >
+   743→            <CategoryIcon name={meta.icon} className="w-3.5 h-3.5" />
+   744→            <span className="font-medium">{meta.label}</span>
+   745→            {isComplete && <CheckCircle className="w-3 h-3 text-green-300" />}
+   746→          </button>
+   747→        );
+   748→      })}
+   749→    </div>
+   750→  );
+   751→
+   752→  // ── Tab 1: Screening Form ────────────────────────────────────────────────
+   753→
+   754→  const renderScreeningTab = () => {
+   755→    const meta = CATEGORY_META[currentCategory];
+   756→
+   757→    return (
+   758→      <div className="space-y-4">
+   759→        {/* Progress Header */}
+   760→        <div className="flex items-center justify-between gap-4">
+   761→          <div className="flex-1">
+   762→            <p className="text-xs text-muted-foreground mb-1">
+   763→              Pertanyaan dijawab: {answeredCount}/{totalQuestions} (Wajib: {answeredRequiredCount}/{totalRequiredCount})
+   764→            </p>
+   765→            <Progress
+   766→              value={(answeredCount / totalQuestions) * 100}
+   767→              className="h-2"
+   768→            />
+   769→          </div>
+   770→          {liveResult && (
+   771→            <Badge
+   772→              variant="outline"
+   773→              className="shrink-0 text-[10px]"
+   774→              style={{
+   775→                borderColor: getRiskLevelDisplay(liveResult.overallRiskLevel).borderColor,
+   776→                color: getRiskLevelDisplay(liveResult.overallRiskLevel).color,
+   777→                backgroundColor: getRiskLevelDisplay(liveResult.overallRiskLevel).bgColor,
+   778→              }}
+   779→            >
+   780→              {liveResult.overallPercentage}% - {getRiskLevelDisplay(liveResult.overallRiskLevel).label}
+   781→            </Badge>
+   782→          )}
+   783→        </div>
+   784→
+   785→        {/* Main Content: Nav + Questions */}
+   786→        <div className="flex gap-4">
+   787→          {/* Desktop Category Navigation */}
+   788→          <div className="hidden md:block">{renderDesktopCategoryNav()}</div>
+   789→
+   790→          {/* Questions Area */}
+   791→          <div className="flex-1 min-w-0">
+   792→            {/* Mobile Category Navigation */}
+   793→            <div className="md:hidden mb-4">{renderMobileCategoryNav()}</div>
+   794→
+   795→            <Card>
+   796→              <CardHeader className="pb-3">
+   797→                <div className="flex items-center gap-3">
+   798→                  <div
+   799→                    className="w-10 h-10 rounded-xl flex items-center justify-center"
+   800→                    style={{ backgroundColor: `${meta.color}15` }}
+   801→                  >
+   802→                    <CategoryIcon name={meta.icon} className="w-5 h-5" style={{ color: meta.color }} />
+   803→                  </div>
+   804→                  <div>
+   805→                    <CardTitle className="text-base" style={{ color: meta.color }}>
+   806→                      {meta.label}
+   807→                    </CardTitle>
+   808→                    <CardDescription className="text-xs">{meta.description}</CardDescription>
+   809→                  </div>
+   810→                </div>
+   811→              </CardHeader>
+   812→              <Separator />
+   813→              <CardContent className="pt-4 space-y-1">
+   814→                <ScrollArea className="max-h-[calc(100vh-440px)]">
+   815→                  <div className="pr-2">
+   816→                    {currentQuestions.map(renderQuestion)}
+   817→                  </div>
+   818→                </ScrollArea>
+   819→              </CardContent>
+   820→            </Card>
+   821→          </div>
+   822→        </div>
+   823→
+   824→        {/* Navigation Buttons */}
+   825→        <div className="flex items-center justify-between gap-3">
+   826→          <Button
+   827→            variant="outline"
+   828→            onClick={handlePrevious}
+   829→            disabled={currentCategoryIndex === 0}
+   830→            className="gap-1"
+   831→          >
+   832→            <ChevronLeft className="w-4 h-4" />
+   833→            Sebelumnya
+   834→          </Button>
+   835→
+   836→          <div className="flex items-center gap-2">
+   837→            <Button
+   838→              variant="outline"
+   839→              onClick={handleSaveDraft}
+   840→              className="gap-1.5 text-[#2D8C7A] border-[#2D8C7A]/30 hover:bg-[#2D8C7A]/5"
+   841→            >
+   842→              <Save className="w-4 h-4" />
+   843→              Simpan Draft
+   844→            </Button>
+   845→            {!isCompleted ? (
+   846→              <Button
+   847→                onClick={handleCompleteScreening}
+   848→                className="gap-1.5 bg-[#2D8C7A] hover:bg-[#2D8C7A]/90"
+   849→              >
+   850→                <Send className="w-4 h-4" />
+   851→                Selesai Skrining
+   852→              </Button>
+   853→            ) : (
+   854→              <Button
+   855→                onClick={() => setActiveTab('results')}
+   856→                className="gap-1.5 bg-[#2D8C7A] hover:bg-[#2D8C7A]/90"
+   857→              >
+   858→                Lihat Hasil
+   859→                <ChevronRight className="w-4 h-4" />
+   860→              </Button>
+   861→            )}
+   862→          </div>
+   863→
+   864→          <Button
+   865→            variant="outline"
+   866→            onClick={handleNext}
+   867→            disabled={currentCategoryIndex === CATEGORY_ORDER.length - 1}
+   868→            className="gap-1"
+   869→          >
+   870→            Selanjutnya
+   871→            <ChevronRight className="w-4 h-4" />
+   872→          </Button>
+   873→        </div>
+   874→      </div>
+   875→    );
+   876→  };
+   877→
+   878→  // ── Tab 2: Results & AI Analysis ─────────────────────────────────────────
+   879→
+   880→  const renderResultsTab = () => {
+   881→    const result = screeningResult || liveResult;
+   882→
+   883→    if (!result) {
+   884→      return (
+   885→        <Card className="text-center py-12">
+   886→          <CardContent>
+   887→            <ClipboardList className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+   888→            <h3 className="text-lg font-semibold mb-2">Belum Ada Hasil Skrining</h3>
+   889→            <p className="text-sm text-muted-foreground mb-4">
+   890→              Silakan lengkapi skrining terlebih dahulu untuk melihat hasil analisis.
+   891→            </p>
+   892→            <Button
+   893→              onClick={() => setActiveTab('screening')}
+   894→              className="bg-[#2D8C7A] hover:bg-[#2D8C7A]/90"
+   895→            >
+   896→              Mulai Skrining
+   897→            </Button>
+   898→          </CardContent>
+   899→        </Card>
+   900→      );
+   901→    }
+   902→
+   903→    const overallDisplay = getRiskLevelDisplay(result.overallRiskLevel);
+   904→
+   905→    return (
+   906→      <div className="space-y-6">
+   907→        {/* Overall Score */}
+   908→        <Card>
+   909→          <CardContent className="p-6">
+   910→            <div className="flex flex-col sm:flex-row items-center gap-6">
+   911→              <RiskGauge
+   912→                percentage={result.overallPercentage}
+   913→                size={140}
+   914→                strokeWidth={12}
+   915→                riskLevel={result.overallRiskLevel}
+   916→                label="Risiko Keseluruhan"
+   917→              />
+   918→              <div className="flex-1 text-center sm:text-left">
+   919→                <h3 className="text-lg font-semibold mb-1">Hasil Skrining Kebutuhan Sosial</h3>
+   920→                <p className="text-sm text-muted-foreground mb-3">
+   921→                  Skor total: {result.totalScore}/{result.maxScore} poin
+   922→                </p>
+   923→                <Badge
+   924→                  className="text-sm px-3 py-1"
+   925→                  style={{
+   926→                    backgroundColor: overallDisplay.bgColor,
+   927→                    color: overallDisplay.color,
+   928→                    borderColor: overallDisplay.borderColor,
+   929→                    border: `1px solid ${overallDisplay.borderColor}`,
+   930→                  }}
+   931→                >
+   932→                  Risiko {overallDisplay.label}
+   933→                </Badge>
+   934→                <p className="text-xs text-muted-foreground mt-3">
+   935→                  Diselesaikan: {new Date(result.completedAt).toLocaleString('id-ID')}
+   936→                </p>
+   937→                <Button
+   938→                  variant="outline"
+   939→                  size="sm"
+   940→                  onClick={handleResetForm}
+   941→                  className="mt-3 gap-1.5"
+   942→                >
+   943→                  <RotateCcw className="w-3.5 h-3.5" />
+   944→                  Ulangi Skrining
+   945→                </Button>
+   946→              </div>
+   947→            </div>
+   948→          </CardContent>
+   949→        </Card>
+   950→
+   951→        {/* Category Scores Grid */}
+   952→        <div>
+   953→          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+   954→            <BarChart3 className="w-4 h-4 text-[#2D8C7A]" />
+   955→            Skor per Kategori
+   956→          </h3>
+   957→          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+   958→            {result.categoryScores.map((cs) => (
+   959→              <CategoryScoreCard key={cs.category} score={cs} />
+   960→            ))}
+   961→          </div>
+   962→        </div>
+   963→
+   964→        <Separator />
+   965→
+   966→        {/* AI Analysis Section */}
+   967→        <div className="space-y-4">
+   968→          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+   969→            <div>
+   970→              <h3 className="text-sm font-semibold flex items-center gap-2">
+   971→                <Sparkles className="w-4 h-4 text-[#D9B26F]" />
+   972→                Analisis AI Kebutuhan Sosial
+   973→              </h3>
+   974→              <p className="text-xs text-muted-foreground mt-0.5">
+   975→                Dapatkan analisis mendalam dan rekomendasi berbasis AI
+   976→              </p>
+   977→            </div>
+   978→            <Button
+   979→              onClick={handleRunAI}
+   980→              disabled={aiLoading}
+   981→              className="gap-2 bg-[#D9B26F] hover:bg-[#D9B26F]/90 text-white shrink-0"
+   982→            >
+   983→              {aiLoading ? (
+   984→                <>
+   985→                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+   986→                  Menganalisis...
+   987→                </>
+   988→              ) : (
+   989→                <>
+   990→                  <Sparkles className="w-4 h-4" />
+   991→                  Analisis AI Kebutuhan Sosial
+   992→                </>
+   993→              )}
+   994→            </Button>
+   995→          </div>
+   996→
+   997→          {/* AI Loading State */}
+   998→          {aiLoading && (
+   999→            <Card>
+  1000→              <CardContent className="p-8 text-center">
+  1001→                <div className="w-12 h-12 border-4 border-[#D9B26F]/30 border-t-[#D9B26F] rounded-full animate-spin mx-auto mb-4" />
+  1002→                <h4 className="font-semibold mb-1">AI Sedang Menganalisis</h4>
+  1003→                <p className="text-sm text-muted-foreground">
+  1004→                  Menganalisis data skrining kebutuhan sosial pasien...
+  1005→                </p>
+  1006→              </CardContent>
+  1007→            </Card>
+  1008→          )}
+  1009→
+  1010→          {/* AI Results */}
+  1011→          {aiResult && !aiLoading && (
+  1012→            <div className="space-y-4">
+  1013→              {/* Summary */}
+  1014→              <Card className="border-[#D9B26F]/30 bg-[#D9B26F]/5">
+  1015→                <CardContent className="p-4">
+  1016→                  <div className="flex items-start gap-3">
+  1017→                    <Sparkles className="w-5 h-5 text-[#D9B26F] shrink-0 mt-0.5" />
+  1018→                    <div>
+  1019→                      <h4 className="text-sm font-semibold mb-1">Ringkasan Analisis</h4>
+  1020→                      <p className="text-sm text-gray-700 leading-relaxed">
+  1021→                        {aiResult.analysisSummary}
+  1022→                      </p>
+  1023→                    </div>
+  1024→                  </div>
+  1025→                </CardContent>
+  1026→              </Card>
+  1027→
+  1028→              {/* 6 Risk Score Cards */}
+  1029→              <div>
+  1030→                <h4 className="text-sm font-semibold mb-3">Skor Risiko AI</h4>
+  1031→                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+  1032→                  <AIRiskScoreCard
+  1033→                    title="Dukungan Keluarga"
+  1034→                    icon={Heart}
+  1035→                    riskLevel={aiResult.familySupportScore}
+  1036→                  />
+  1037→                  <AIRiskScoreCard
+  1038→                    title="Risiko Sosial"
+  1039→                    icon={Shield}
+  1040→                    riskLevel={aiResult.socialRiskScore}
+  1041→                  />
+  1042→                  <AIRiskScoreCard
+  1043→                    title="Caregiver Burnout"
+  1044→                    icon={Users}
+  1045→                    riskLevel={aiResult.caregiverBurnoutScore}
+  1046→                  />
+  1047→                  <AIRiskScoreCard
+  1048→                    title="Akses Pelayanan"
+  1049→                    icon={Building2}
+  1050→                    riskLevel={aiResult.accessToCareScore}
+  1051→                  />
+  1052→                  <AIRiskScoreCard
+  1053→                    title="Risiko Finansial"
+  1054→                    icon={Wallet}
+  1055→                    riskLevel={aiResult.financialRiskScore}
+  1056→                  />
+  1057→                  <AIRiskScoreCard
+  1058→                    title="Isolasi Sosial"
+  1059→                    icon={MessageCircle}
+  1060→                    riskLevel={aiResult.socialIsolationScore}
+  1061→                  />
+  1062→                </div>
+  1063→              </div>
+  1064→
+  1065→              {/* Recommendations */}
+  1066→              {aiResult.recommendations.length > 0 && (
+  1067→                <div>
+  1068→                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+  1069→                    <ClipboardList className="w-4 h-4 text-[#2D8C7A]" />
+  1070→                    Rekomendasi Intervensi
+  1071→                  </h4>
+  1072→                  <div className="space-y-2">
+  1073→                    {aiResult.recommendations.map((rec, idx) => (
+  1074→                      <Card key={idx}>
+  1075→                        <CardContent className="p-3">
+  1076→                          <div className="flex items-start gap-3">
+  1077→                            <div className="w-7 h-7 rounded-full bg-[#2D8C7A]/10 flex items-center justify-center shrink-0">
+  1078→                              <span className="text-xs font-bold text-[#2D8C7A]">
+  1079→                                {rec.priority}
+  1080→                              </span>
+  1081→                            </div>
+  1082→                            <div className="flex-1 min-w-0">
+  1083→                              <div className="flex items-center gap-2 flex-wrap mb-1">
+  1084→                                <p className="text-sm font-medium">{rec.action}</p>
+  1085→                                <Badge
+  1086→                                  variant="outline"
+  1087→                                  className="text-[10px] shrink-0"
+  1088→                                  style={{
+  1089→                                    borderColor: '#2D8C7A40',
+  1090→                                    color: '#2D8C7A',
+  1091→                                  }}
+  1092→                                >
+  1093→                                  {getRecommendationCategoryLabel(rec.category)}
+  1094→                                </Badge>
+  1095→                              </div>
+  1096→                              <p className="text-xs text-muted-foreground leading-relaxed">
+  1097→                                {rec.reason}
+  1098→                              </p>
+  1099→                            </div>
+  1100→                          </div>
+  1101→                        </CardContent>
+  1102→                      </Card>
+  1103→                    ))}
+  1104→                  </div>
+  1105→                </div>
+  1106→              )}
+  1107→
+  1108→              {/* Early Warnings */}
+  1109→              {aiResult.earlyWarnings.length > 0 && (
+  1110→                <div>
+  1111→                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+  1112→                    <AlertTriangle className="w-4 h-4 text-orange-500" />
+  1113→                    Peringatan Dini
+  1114→                  </h4>
+  1115→                  <div className="space-y-2">
+  1116→                    {aiResult.earlyWarnings.map((warning, idx) => (
+  1117→                      <Card
+  1118→                        key={idx}
+  1119→                        className={cn(
+  1120→                          'border-l-4',
+  1121→                          warning.severity === 'critical'
+  1122→                            ? 'border-l-red-500 bg-red-50/50'
+  1123→                            : warning.severity === 'warning'
+  1124→                            ? 'border-l-orange-500 bg-orange-50/50'
+  1125→                            : 'border-l-blue-500 bg-blue-50/50'
+  1126→                        )}
+  1127→                      >
+  1128→                        <CardContent className="p-3">
+  1129→                          <div className="flex items-start gap-2">
+  1130→                            {warning.severity === 'critical' ? (
+  1131→                              <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+  1132→                            ) : warning.severity === 'warning' ? (
+  1133→                              <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
+  1134→                            ) : (
+  1135→                              <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+  1136→                            )}
+  1137→                            <div>
+  1138→                              <p className="text-sm font-medium">{warning.title}</p>
+  1139→                              <p className="text-xs text-muted-foreground mt-0.5">
+  1140→                                {warning.description}
+  1141→                              </p>
+  1142→                            </div>
+  1143→                          </div>
+  1144→                        </CardContent>
+  1145→                      </Card>
+  1146→                    ))}
+  1147→                  </div>
+  1148→                </div>
+  1149→              )}
+  1150→
+  1151→              {/* Generation Timestamp */}
+  1152→              <p className="text-[10px] text-muted-foreground text-center">
+  1153→                Dihasilkan pada: {new Date(aiResult.generatedAt).toLocaleString('id-ID')}
+  1154→              </p>
+  1155→            </div>
+  1156→          )}
+  1157→        </div>
+  1158→      </div>
+  1159→    );
+  1160→  };
+  1161→
+  1162→  // ── Tab 3: Monitoring Dashboard ──────────────────────────────────────────
+  1163→
+  1164→  const renderMonitoringTab = () => {
+  1165→    const result = screeningResult || liveResult;
+  1166→
+  1167→    // Mock data for monitoring
+  1168→    const mockMonitoringData = [
+  1169→      {
+  1170→        title: 'Social Risk Score',
+  1171→        icon: Shield,
+  1172→        value: result?.totalScore ?? 12,
+  1173→        maxValue: result?.maxScore ?? 30,
+  1174→        riskLevel: result?.overallRiskLevel ?? 'sedang',
+  1175→      },
+  1176→      {
+  1177→        title: 'Family Support',
+  1178→        icon: Heart,
+  1179→        value: result?.categoryScores.find((c) => c.category === 'dukungan_keluarga')?.totalScore ?? 5,
+  1180→        maxValue: result?.categoryScores.find((c) => c.category === 'dukungan_keluarga')?.maxScore ?? 15,
+  1181→        riskLevel: result?.categoryScores.find((c) => c.category === 'dukungan_keluarga')?.riskLevel ?? 'sedang',
+  1182→      },
+  1183→      {
+  1184→        title: 'Caregiver Burden',
+  1185→        icon: Users,
+  1186→        value: result?.categoryScores.find((c) => c.category === 'caregiver')?.totalScore ?? 7,
+  1187→        maxValue: result?.categoryScores.find((c) => c.category === 'caregiver')?.maxScore ?? 12,
+  1188→        riskLevel: result?.categoryScores.find((c) => c.category === 'caregiver')?.riskLevel ?? 'tinggi',
+  1189→      },
+  1190→      {
+  1191→        title: 'Financial Risk',
+  1192→        icon: Wallet,
+  1193→        value: result?.categoryScores.find((c) => c.category === 'ekonomi')?.totalScore ?? 4,
+  1194→        maxValue: result?.categoryScores.find((c) => c.category === 'ekonomi')?.maxScore ?? 12,
+  1195→        riskLevel: result?.categoryScores.find((c) => c.category === 'ekonomi')?.riskLevel ?? 'sedang',
+  1196→      },
+  1197→      {
+  1198→        title: 'Access to Care',
+  1199→        icon: Building2,
+  1200→        value: result?.categoryScores.find((c) => c.category === 'akses_layanan')?.totalScore ?? 3,
+  1201→        maxValue: result?.categoryScores.find((c) => c.category === 'akses_layanan')?.maxScore ?? 9,
+  1202→        riskLevel: result?.categoryScores.find((c) => c.category === 'akses_layanan')?.riskLevel ?? 'sedang',
+  1203→      },
+  1204→      {
+  1205→        title: 'Social Isolation',
+  1206→        icon: MessageCircle,
+  1207→        value: result?.categoryScores.find((c) => c.category === 'interaksi_sosial')?.totalScore ?? 2,
+  1208→        maxValue: result?.categoryScores.find((c) => c.category === 'interaksi_sosial')?.maxScore ?? 9,
+  1209→        riskLevel: result?.categoryScores.find((c) => c.category === 'interaksi_sosial')?.riskLevel ?? 'rendah',
+  1210→      },
+  1211→    ];
+  1212→
+  1213→    // Mock trend data
+  1214→    const trendData = [
+  1215→      { label: 'Minggu 1', value: 15 },
+  1216→      { label: 'Minggu 2', value: 22 },
+  1217→      { label: 'Minggu 3', value: 18 },
+  1218→      { label: 'Minggu 4', value: result?.overallPercentage ?? 25 },
+  1219→    ];
+  1220→    const maxTrendValue = Math.max(...trendData.map((d) => d.value), 1);
+  1221→
+  1222→    // Mock high-risk patients
+  1223→    const highRiskPatients = [
+  1224→      { name: 'Siti Rahayu', score: 78, risk: 'sangat_tinggi' as SocialNeedsRiskLevel, category: 'Caregiver Burnout' },
+  1225→      { name: 'Ahmad Hidayat', score: 65, risk: 'tinggi' as SocialNeedsRiskLevel, category: 'Risiko Finansial' },
+  1226→      { name: 'Dewi Lestari', score: 52, risk: 'tinggi' as SocialNeedsRiskLevel, category: 'Isolasi Sosial' },
+  1227→    ];
+  1228→
+  1229→    // Mock early warnings
+  1230→    const monitoringWarnings = aiResult?.earlyWarnings || [
+  1231→      { type: 'caregiver_burnout', severity: 'warning' as const, title: 'Risiko Caregiver Burnout', description: 'Caregiver menunjukkan tanda kelelahan. Pertimbangkan dukungan tambahan.' },
+  1232→      { type: 'financial_burden', severity: 'info' as const, title: 'Pemantauan Finansial', description: 'Biaya pengobatan meningkat. Evaluasi kebutuhan bantuan sosial.' },
+  1233→    ];
+  1234→
+  1235→    return (
+  1236→      <div className="space-y-6">
+  1237→        {/* Score Gauges Row */}
+  1238→        <div>
+  1239→          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+  1240→            <Activity className="w-4 h-4 text-[#2D8C7A]" />
+  1241→            Skor Monitoring Kebutuhan Sosial
+  1242→          </h3>
+  1243→          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+  1244→            {mockMonitoringData.map((item) => (
+  1245→              <RiskGauge
+  1246→                key={item.title}
+  1247→                percentage={item.maxValue > 0 ? Math.round((item.value / item.maxValue) * 100) : 0}
+  1248→                size={90}
+  1249→                strokeWidth={8}
+  1250→                label={item.title}
+  1251→                riskLevel={item.riskLevel}
+  1252→              />
+  1253→            ))}
+  1254→          </div>
+  1255→        </div>
+  1256→
+  1257→        {/* Gauge Bars */}
+  1258→        <div>
+  1259→          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+  1260→            <BarChart3 className="w-4 h-4 text-[#2D8C7A]" />
+  1261→            Detail Skor
+  1262→          </h3>
+  1263→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  1264→            {mockMonitoringData.map((item) => (
+  1265→              <MonitoringGaugeBar
+  1266→                key={item.title}
+  1267→                title={item.title}
+  1268→                icon={item.icon}
+  1269→                value={item.value}
+  1270→                maxValue={item.maxValue}
+  1271→                riskLevel={item.riskLevel}
+  1272→              />
+  1273→            ))}
+  1274→          </div>
+  1275→        </div>
+  1276→
+  1277→        {/* Trend Chart (CSS-based) */}
+  1278→        <Card>
+  1279→          <CardHeader className="pb-2">
+  1280→            <CardTitle className="text-sm flex items-center gap-2">
+  1281→              <TrendingUp className="w-4 h-4 text-[#2D8C7A]" />
+  1282→              Tren Risiko Sosial (4 Minggu Terakhir)
+  1283→            </CardTitle>
+  1284→          </CardHeader>
+  1285→          <CardContent>
+  1286→            <div className="flex items-end gap-3 h-32">
+  1287→              {trendData.map((item, idx) => {
+  1288→                const heightPct = (item.value / maxTrendValue) * 100;
+  1289→                const barColor = item.value <= 25 ? '#16A34A' : item.value <= 50 ? '#CA8A04' : item.value <= 75 ? '#EA580C' : '#DC2626';
+  1290→
+  1291→                return (
+  1292→                  <div key={idx} className="flex-1 flex flex-col items-center gap-1">
+  1293→                    <span className="text-[10px] font-medium" style={{ color: barColor }}>
+  1294→                      {item.value}%
+  1295→                    </span>
+  1296→                    <div
+  1297→                      className="w-full rounded-t-md transition-all duration-500 min-h-[4px]"
+  1298→                      style={{
+  1299→                        height: `${heightPct}%`,
+  1300→                        backgroundColor: barColor,
+  1301→                        opacity: idx === trendData.length - 1 ? 1 : 0.7,
+  1302→                      }}
+  1303→                    />
+  1304→                    <span className="text-[10px] text-muted-foreground">{item.label}</span>
+  1305→                  </div>
+  1306→                );
+  1307→              })}
+  1308→            </div>
+  1309→          </CardContent>
+  1310→        </Card>
+  1311→
+  1312→        {/* Bottom Row: High-Risk Patients + Early Warnings */}
+  1313→        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+  1314→          {/* High-Risk Patients */}
+  1315→          <Card>
+  1316→            <CardHeader className="pb-2">
+  1317→              <CardTitle className="text-sm flex items-center gap-2">
+  1318→                <Users className="w-4 h-4 text-red-500" />
+  1319→                Pasien Risiko Tinggi
+  1320→              </CardTitle>
+  1321→            </CardHeader>
+  1322→            <CardContent className="space-y-2">
+  1323→              {highRiskPatients.map((patient, idx) => {
+  1324→                const display = getRiskLevelDisplay(patient.risk);
+  1325→                return (
+  1326→                  <div
+  1327→                    key={idx}
+  1328→                    className="flex items-center gap-3 p-2 rounded-lg border"
+  1329→                    style={{ borderColor: display.borderColor, backgroundColor: display.bgColor }}
+  1330→                  >
+  1331→                    <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-xs font-bold border"
+  1332→                      style={{ color: display.color, borderColor: display.borderColor }}
+  1333→                    >
+  1334→                      {idx + 1}
+  1335→                    </div>
+  1336→                    <div className="flex-1 min-w-0">
+  1337→                      <p className="text-sm font-medium truncate">{patient.name}</p>
+  1338→                      <p className="text-xs text-muted-foreground">{patient.category}</p>
+  1339→                    </div>
+  1340→                    <div className="text-right shrink-0">
+  1341→                      <p className="text-sm font-bold" style={{ color: display.color }}>
+  1342→                        {patient.score}%
+  1343→                      </p>
+  1344→                      <Badge
+  1345→                        className="text-[9px]"
+  1346→                        style={{
+  1347→                          backgroundColor: display.bgColor,
+  1348→                          color: display.color,
+  1349→                          borderColor: display.borderColor,
+  1350→                          border: `1px solid ${display.borderColor}`,
+  1351→                        }}
+  1352→                      >
+  1353→                        {display.label}
+  1354→                      </Badge>
+  1355→                    </div>
+  1356→                  </div>
+  1357→                );
+  1358→              })}
+  1359→            </CardContent>
+  1360→          </Card>
+  1361→
+  1362→          {/* Early Warnings */}
+  1363→          <Card>
+  1364→            <CardHeader className="pb-2">
+  1365→              <CardTitle className="text-sm flex items-center gap-2">
+  1366→                <Bell className="w-4 h-4 text-orange-500" />
+  1367→                Notifikasi Peringatan Dini
+  1368→              </CardTitle>
+  1369→            </CardHeader>
+  1370→            <CardContent className="space-y-2">
+  1371→              {monitoringWarnings.map((warning, idx) => (
+  1372→                <div
+  1373→                  key={idx}
+  1374→                  className={cn(
+  1375→                    'flex items-start gap-2 p-2.5 rounded-lg border',
+  1376→                    warning.severity === 'critical'
+  1377→                      ? 'border-l-4 border-l-red-500 bg-red-50/50'
+  1378→                      : warning.severity === 'warning'
+  1379→                      ? 'border-l-4 border-l-orange-500 bg-orange-50/50'
+  1380→                      : 'border-l-4 border-l-blue-500 bg-blue-50/50'
+  1381→                  )}
+  1382→                >
+  1383→                  {warning.severity === 'critical' ? (
+  1384→                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+  1385→                  ) : warning.severity === 'warning' ? (
+  1386→                    <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
+  1387→                  ) : (
+  1388→                    <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+  1389→                  )}
+  1390→                  <div>
+  1391→                    <p className="text-sm font-medium">{warning.title}</p>
+  1392→                    <p className="text-xs text-muted-foreground mt-0.5">
+  1393→                      {warning.description}
+  1394→                    </p>
+  1395→                  </div>
+  1396→                </div>
+  1397→              ))}
+  1398→              {monitoringWarnings.length === 0 && (
+  1399→                <div className="text-center py-4">
+  1400→                  <CheckCircle className="w-8 h-8 text-green-500 mx-auto mb-2" />
+  1401→                  <p className="text-sm text-muted-foreground">Tidak ada peringatan saat ini</p>
+  1402→                </div>
+  1403→              )}
+  1404→            </CardContent>
+  1405→          </Card>
+  1406→        </div>
+  1407→      </div>
+  1408→    );
+  1409→  };
+  1410→
+  1411→  // ═══════════════════════════════════════════════════════════════════════════
+  1412→  // MAIN RENDER
+  1413→  // ═══════════════════════════════════════════════════════════════════════════
+  1414→
+  1415→  return (
+  1416→    <div className="p-4 space-y-4">
+  1417→      {/* Header */}
+  1418→      <div className="flex items-center justify-between">
+  1419→        <div>
+  1420→          <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: '#2D8C7A' }}>
+  1421→            <Heart className="w-5 h-5" />
+  1422→            Skrining Kebutuhan Sosial
+  1423→          </h2>
+  1424→          <p className="text-xs text-muted-foreground">
+  1425→            Penilaian kebutuhan sosial pasien paliatif berbasis skrining komprehensif
+  1426→          </p>
+  1427→        </div>
+  1428→        {currentUser && (
+  1429→          <Badge variant="outline" className="text-xs shrink-0">
+  1430→            {currentUser.name} ({currentUser.role})
+  1431→          </Badge>
+  1432→        )}
+  1433→      </div>
+  1434→
+  1435→      {/* Tabs */}
+  1436→      <Tabs value={activeTab} onValueChange={setActiveTab}>
+  1437→        <TabsList className="w-full grid grid-cols-3">
+  1438→          <TabsTrigger value="screening" className="gap-1.5 text-xs sm:text-sm">
+  1439→            <ClipboardList className="w-3.5 h-3.5" />
+  1440→            <span className="hidden sm:inline">Skrining</span>
+  1441→          </TabsTrigger>
+  1442→          <TabsTrigger value="results" className="gap-1.5 text-xs sm:text-sm">
+  1443→            <Eye className="w-3.5 h-3.5" />
+  1444→            <span className="hidden sm:inline">Hasil & Analisis AI</span>
+  1445→          </TabsTrigger>
+  1446→          <TabsTrigger value="monitoring" className="gap-1.5 text-xs sm:text-sm">
+  1447→            <Activity className="w-3.5 h-3.5" />
+  1448→            <span className="hidden sm:inline">Dashboard Monitoring</span>
+  1449→          </TabsTrigger>
+  1450→        </TabsList>
+  1451→
+  1452→        <TabsContent value="screening" className="mt-4">
+  1453→          {renderScreeningTab()}
+  1454→        </TabsContent>
+  1455→
+  1456→        <TabsContent value="results" className="mt-4">
+  1457→          {renderResultsTab()}
+  1458→        </TabsContent>
+  1459→
+  1460→        <TabsContent value="monitoring" className="mt-4">
+  1461→          {renderMonitoringTab()}
+  1462→        </TabsContent>
+  1463→      </Tabs>
+  1464→    </div>
+  1465→  );
+  1466→}
+  1467→
+  1468→// ─── Helper: Map API category strings to SocialNeedsAIRecommendation category ──
+  1469→
+  1470→function mapActionCategory(
+  1471→  category: string | undefined
+  1472→): 'edukasi_keluarga' | 'family_meeting' | 'home_visit' | 'konseling_psikososial'
+  1473→    | 'dukungan_caregiver' | 'bantuan_finansial' | 'bantuan_transportasi'
+  1474→    | 'rujukan_pekerja_sosial' | 'pendampingan_spiritual' | 'monitoring_intensif' {
+  1475→  const mapping: Record<string, string> = {
+  1476→    family_meeting: 'family_meeting',
+  1477→    caregiver_support: 'dukungan_caregiver',
+  1478→    home_visit: 'home_visit',
+  1479→    family_education: 'edukasi_keluarga',
+  1480→    monitoring: 'monitoring_intensif',
+  1481→    financial_support: 'bantuan_finansial',
+  1482→    transport_support: 'bantuan_transportasi',
+  1483→    psychosocial: 'konseling_psikososial',
+  1484→    other: 'rujukan_pekerja_sosial',
+  1485→  };
+  1486→  return (mapping[category || ''] || 'monitoring_intensif') as typeof mapActionCategory extends (...args: unknown[]) => infer R ? R : never;
+  1487→}
+  1488→

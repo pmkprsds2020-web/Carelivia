@@ -432,7 +432,8 @@ export type ActivePanel =
   | 'palliative-screening'
   | 'palliative-monitoring'
   | 'rvsm'
-  | 'patient-paliatif';
+  | 'patient-paliatif'
+  | 'social-needs-screening';
 
 // ── Palliative Monitoring Types ──────────────────────────────────────────
 
@@ -1600,4 +1601,87 @@ export interface PatientPaliatifChatMessage {
   documentUrl?: string;
   createdAt: string;
   readAt?: string;
+}
+
+// ── Social Needs Screening Types ──────────────────────────────────────────
+
+export type SocialNeedsCategory =
+  | 'dukungan_keluarga'
+  | 'caregiver'
+  | 'tempat_tinggal'
+  | 'akses_layanan'
+  | 'ekonomi'
+  | 'transportasi'
+  | 'interaksi_sosial'
+  | 'kebutuhan_informasi'
+  | 'pertanyaan_terbuka';
+
+export type SocialNeedsQuestionType = 'single_choice' | 'multiple_choice' | 'text_area';
+
+export type SocialNeedsRiskLevel = 'rendah' | 'sedang' | 'tinggi' | 'sangat_tinggi';
+
+export interface SocialNeedsQuestionOption {
+  label: string;
+  value: string;
+  score: number; // 0-3 risk weight
+  tooltip?: string;
+}
+
+export interface SocialNeedsQuestion {
+  id: string;
+  category: SocialNeedsCategory;
+  categoryLabel: string;
+  questionNumber: number;
+  questionText: string;
+  type: SocialNeedsQuestionType;
+  options?: SocialNeedsQuestionOption[];
+  required: boolean;
+  hasTooltip?: boolean;
+}
+
+export interface SocialNeedsCategoryScore {
+  category: SocialNeedsCategory;
+  categoryLabel: string;
+  totalScore: number;
+  maxScore: number;
+  percentage: number;
+  riskLevel: SocialNeedsRiskLevel;
+}
+
+export interface SocialNeedsScreeningResult {
+  totalScore: number;
+  maxScore: number;
+  overallPercentage: number;
+  overallRiskLevel: SocialNeedsRiskLevel;
+  categoryScores: SocialNeedsCategoryScore[];
+  completedAt: string;
+}
+
+export interface SocialNeedsAIResult {
+  familySupportScore: SocialNeedsRiskLevel;
+  socialRiskScore: SocialNeedsRiskLevel;
+  caregiverBurnoutScore: SocialNeedsRiskLevel;
+  accessToCareScore: SocialNeedsRiskLevel;
+  financialRiskScore: SocialNeedsRiskLevel;
+  socialIsolationScore: SocialNeedsRiskLevel;
+  recommendations: SocialNeedsAIRecommendation[];
+  analysisSummary: string;
+  earlyWarnings: SocialNeedsEarlyWarning[];
+  generatedAt: string;
+}
+
+export interface SocialNeedsAIRecommendation {
+  priority: number;
+  action: string;
+  reason: string;
+  category: 'edukasi_keluarga' | 'family_meeting' | 'home_visit' | 'konseling_psikososial'
+    | 'dukungan_caregiver' | 'bantuan_finansial' | 'bantuan_transportasi'
+    | 'rujukan_pekerja_sosial' | 'pendampingan_spiritual' | 'monitoring_intensif';
+}
+
+export interface SocialNeedsEarlyWarning {
+  type: string;
+  severity: 'info' | 'warning' | 'critical';
+  title: string;
+  description: string;
 }

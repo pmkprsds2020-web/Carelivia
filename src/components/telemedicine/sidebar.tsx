@@ -27,6 +27,7 @@ import {
   HeartPulse,
   Monitor,
   Watch,
+  ClipboardList,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -53,6 +54,7 @@ const allNavItems: NavItem[] = [
   { id: 'medical-records', label: 'Rekam Medis', icon: <FileText className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
   { id: 'screening', label: 'Skrining Kesehatan', icon: <ClipboardCheck className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
   { id: 'patient-paliatif', label: 'Pelayanan Paliatif', icon: <HeartPulse className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
+  { id: 'social-needs-screening', label: 'Skrining Sosial', icon: <ClipboardList className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
   { id: 'payments', label: 'Pembayaran', icon: <CreditCard className="w-5 h-5" />, roles: ['patient'], section: 'Lainnya' },
   { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['patient'] },
   { id: 'profile', label: 'Profil', icon: <User className="w-5 h-5" />, roles: ['patient'] },
@@ -66,6 +68,7 @@ const allNavItems: NavItem[] = [
   { id: 'palliative-screening', label: 'Skrining Paliatif', icon: <HeartPulse className="w-5 h-5" />, roles: ['doctor'], section: 'Kesehatan' },
   { id: 'palliative-monitoring', label: 'Monitoring Paliatif', icon: <Monitor className="w-5 h-5" />, roles: ['doctor'], section: 'Kesehatan' },
   { id: 'rvsm', label: 'Remote Vital Sign', icon: <Watch className="w-5 h-5" />, roles: ['doctor'], section: 'Kesehatan' },
+  { id: 'social-needs-screening', label: 'Skrining Kebutuhan Sosial', icon: <ClipboardList className="w-5 h-5" />, roles: ['doctor'], section: 'Kesehatan' },
   { id: 'payments', label: 'Pendapatan', icon: <CreditCard className="w-5 h-5" />, roles: ['doctor'], section: 'Lainnya' },
   { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['doctor'] },
   { id: 'profile', label: 'Profil', icon: <User className="w-5 h-5" />, roles: ['doctor'] },
