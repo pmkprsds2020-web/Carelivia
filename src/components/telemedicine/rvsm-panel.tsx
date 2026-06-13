@@ -916,53 +916,53 @@ export function RvsmPanel() {
       <div className="space-y-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
+          <Card className="min-w-0">
             <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-teal-100 text-teal-700">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 rounded-lg bg-teal-100 text-teal-700 shrink-0">
                   <Users className="w-5 h-5" />
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Pasien Dimonitor</p>
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground truncate">Pasien Dimonitor</p>
                   <p className="text-2xl font-bold">{dashboardStats.totalPatients}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="min-w-0">
             <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-green-100 text-green-700">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 rounded-lg bg-green-100 text-green-700 shrink-0">
                   <Watch className="w-5 h-5" />
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Perangkat Aktif</p>
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground truncate">Perangkat Aktif</p>
                   <p className="text-2xl font-bold">{dashboardStats.activeDevices}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="min-w-0">
             <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-red-100 text-red-700">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 rounded-lg bg-red-100 text-red-700 shrink-0">
                   <Siren className="w-5 h-5" />
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Alert Kritis</p>
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground truncate">Alert Kritis</p>
                   <p className="text-2xl font-bold text-red-600">{dashboardStats.criticalAlerts}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="min-w-0">
             <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-yellow-100 text-yellow-700">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 rounded-lg bg-yellow-100 text-yellow-700 shrink-0">
                   <ShieldAlert className="w-5 h-5" />
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Alert Perhatian</p>
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground truncate">Alert Perhatian</p>
                   <p className="text-2xl font-bold text-yellow-600">{dashboardStats.attentionAlerts}</p>
                 </div>
               </div>
@@ -992,7 +992,7 @@ export function RvsmPanel() {
         {/* Patient Cards Grid with Action Buttons */}
         <div className="space-y-3">
           <h3 className="text-lg font-semibold">Dashboard Pasien</h3>
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 min-w-0">
             {sortedPatientLatestVitals.map(({ patient, latestVital, device }) => {
               const hrStatus = getHRStatus(latestVital?.heartRate);
               const spo2Status = getSpO2Status(latestVital?.oxygenSat);
@@ -1133,18 +1133,18 @@ export function RvsmPanel() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 min-w-0">
         {rvsmDevices.map(device => {
           const patient = palliativePatients.find(p => p.id === device.patientId);
           const statusInfo = getDeviceStatusLabel(device.status);
           const BatteryIcon = getBatteryIcon(device.batteryLevel);
           return (
-            <Card key={device.id} className="border">
+            <Card key={device.id} className="border min-w-0">
               <CardHeader className="p-4 pb-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Watch className="w-5 h-5 text-muted-foreground" />
-                    <CardTitle className="text-sm font-medium">{device.deviceName}</CardTitle>
+                <div className="flex items-center justify-between min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Watch className="w-5 h-5 text-muted-foreground shrink-0" />
+                    <CardTitle className="text-sm font-medium truncate">{device.deviceName}</CardTitle>
                   </div>
                   <Badge variant="outline" className={cn('text-xs', statusInfo.className)}>
                     {statusInfo.label}
@@ -1153,21 +1153,21 @@ export function RvsmPanel() {
               </CardHeader>
               <CardContent className="p-4 pt-0 space-y-3">
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs text-muted-foreground">Tipe</p>
-                    <p className="font-medium">{getDeviceTypeLabel(device.deviceType)}</p>
+                    <p className="font-medium truncate">{getDeviceTypeLabel(device.deviceType)}</p>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs text-muted-foreground">Pasien</p>
-                    <p className="font-medium">{patient?.patientName || '-'}</p>
+                    <p className="font-medium truncate">{patient?.patientName || '-'}</p>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs text-muted-foreground">Integrasi</p>
-                    <p className="font-medium">{getIntegrationMethodLabel(device.integrationMethod)}</p>
+                    <p className="font-medium truncate">{getIntegrationMethodLabel(device.integrationMethod)}</p>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs text-muted-foreground">Serial</p>
-                    <p className="font-medium text-xs">{device.serialNumber || '-'}</p>
+                    <p className="font-medium text-xs truncate">{device.serialNumber || '-'}</p>
                   </div>
                 </div>
                 <Separator />
@@ -1211,12 +1211,12 @@ export function RvsmPanel() {
 
       {/* Add Device Dialog */}
       <Dialog open={showAddDevice} onOpenChange={setShowAddDevice}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Tambah Perangkat Wearable</DialogTitle>
             <DialogDescription>Daftarkan perangkat wearable baru untuk monitoring pasien.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
             <div>
               <Label>Nama Perangkat</Label>
               <Input
@@ -1267,7 +1267,7 @@ export function RvsmPanel() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setShowAddDevice(false)}>Batal</Button>
             <Button onClick={handleAddDevice}>Tambah</Button>
           </DialogFooter>
@@ -1524,15 +1524,16 @@ export function RvsmPanel() {
           <p>Tidak ada data tren. Pilih pasien terlebih dahulu.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 min-w-0">
           {/* Heart Rate Chart */}
-          <Card className="border">
+          <Card className="border min-w-0">
             <CardHeader className="p-4 pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <HeartPulse className="w-4 h-4 text-red-500" /> Denyut Jantung (bpm)
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">
+              <div className="w-full overflow-hidden">
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={trendChartData}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -1542,17 +1543,19 @@ export function RvsmPanel() {
                   <Line type="monotone" dataKey="heartRate" stroke="#ef4444" strokeWidth={2} dot={false} name="HR" />
                 </LineChart>
               </ResponsiveContainer>
+              </div>
             </CardContent>
           </Card>
 
           {/* SpO2 Chart */}
-          <Card className="border">
+          <Card className="border min-w-0">
             <CardHeader className="p-4 pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Droplets className="w-4 h-4 text-blue-500" /> SpO2 (%)
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">
+              <div className="w-full overflow-hidden">
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={trendChartData}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -1562,17 +1565,19 @@ export function RvsmPanel() {
                   <Line type="monotone" dataKey="oxygenSat" stroke="#0ea5e9" strokeWidth={2} dot={false} name="SpO2" />
                 </LineChart>
               </ResponsiveContainer>
+              </div>
             </CardContent>
           </Card>
 
           {/* Respiratory Rate Chart */}
-          <Card className="border">
+          <Card className="border min-w-0">
             <CardHeader className="p-4 pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Wind className="w-4 h-4 text-teal-500" /> Frekuensi Napas (/menit)
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">
+              <div className="w-full overflow-hidden">
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={trendChartData}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -1582,17 +1587,19 @@ export function RvsmPanel() {
                   <Line type="monotone" dataKey="respiratoryRate" stroke="#14b8a6" strokeWidth={2} dot={false} name="RR" />
                 </LineChart>
               </ResponsiveContainer>
+              </div>
             </CardContent>
           </Card>
 
           {/* Steps Chart */}
-          <Card className="border">
+          <Card className="border min-w-0">
             <CardHeader className="p-4 pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Footprints className="w-4 h-4 text-orange-500" /> Langkah
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">
+              <div className="w-full overflow-hidden">
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={trendChartData}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -1602,17 +1609,19 @@ export function RvsmPanel() {
                   <Line type="monotone" dataKey="steps" stroke="#f97316" strokeWidth={2} dot={false} name="Langkah" />
                 </LineChart>
               </ResponsiveContainer>
+              </div>
             </CardContent>
           </Card>
 
           {/* Sleep Duration Bar Chart */}
-          <Card className="border xl:col-span-2">
+          <Card className="border xl:col-span-2 min-w-0">
             <CardHeader className="p-4 pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Moon className="w-4 h-4 text-purple-500" /> Durasi Tidur (jam)
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">
+              <div className="w-full overflow-hidden">
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={trendChartData.filter(d => d.sleepDuration !== undefined)}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -1622,6 +1631,7 @@ export function RvsmPanel() {
                   <Bar dataKey="sleepDuration" fill="#a855f7" name="Tidur (jam)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -1867,7 +1877,7 @@ export function RvsmPanel() {
       </div>
 
       {/* Alerts List */}
-      <ScrollArea className="max-h-96">
+      <ScrollArea className="max-h-[400px]">
         <div className="space-y-3">
           {filteredAlerts.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
@@ -1955,7 +1965,7 @@ export function RvsmPanel() {
     <div className="space-y-6">
       <h3 className="text-lg font-semibold">Notifikasi Monitoring</h3>
 
-      <ScrollArea className="max-h-[600px]">
+      <ScrollArea className="max-h-[400px]">
         <div className="space-y-3">
           {rvsmAlerts
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -2042,7 +2052,7 @@ export function RvsmPanel() {
       {/* Daily Reports */}
       <div>
         <h4 className="text-sm font-semibold mb-3">Laporan Harian AI</h4>
-        <ScrollArea className="max-h-96">
+        <ScrollArea className="max-h-[400px]">
           <div className="space-y-3">
             {selectedPatientReports.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">Belum ada laporan harian</p>
@@ -2156,12 +2166,12 @@ export function RvsmPanel() {
 
       {/* Add Family Access Dialog */}
       <Dialog open={showAddFamily} onOpenChange={setShowAddFamily}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Tambah Akses Keluarga</DialogTitle>
             <DialogDescription>Berikan akses monitoring kepada anggota keluarga.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
             <div>
               <Label>Nama Anggota Keluarga</Label>
               <Input value={newFamily.familyMemberName} onChange={e => setNewFamily(prev => ({ ...prev, familyMemberName: e.target.value }))} placeholder="cth: Budi Rahayu" />
@@ -2216,7 +2226,7 @@ export function RvsmPanel() {
               </div>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setShowAddFamily(false)}>Batal</Button>
             <Button onClick={handleAddFamilyAccess}>Tambah</Button>
           </DialogFooter>
@@ -2255,6 +2265,7 @@ export function RvsmPanel() {
       <Card className="border">
         <CardContent className="p-0">
           <ScrollArea className="max-h-[500px]">
+            <div className="overflow-x-auto table-scroll-wrapper">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -2290,6 +2301,7 @@ export function RvsmPanel() {
                 )}
               </TableBody>
             </Table>
+            </div>
           </ScrollArea>
         </CardContent>
       </Card>
@@ -2406,7 +2418,7 @@ export function RvsmPanel() {
                 <CardTitle className="text-sm font-medium">Alert Tercatat</CardTitle>
               </CardHeader>
               <CardContent className="p-4 pt-0">
-                <ScrollArea className="max-h-48">
+                <ScrollArea className="max-h-[200px]">
                   <div className="space-y-2">
                     {selectedPatientAlerts.map(alert => (
                       <div key={alert.id} className="flex items-center gap-2 text-xs p-2 rounded border">
@@ -2476,17 +2488,17 @@ export function RvsmPanel() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
-          <TabsContent value="dashboard" className="mt-0">{renderDashboard()}</TabsContent>
-          <TabsContent value="devices" className="mt-0">{renderDevices()}</TabsContent>
-          <TabsContent value="realtime" className="mt-0">{renderRealtime()}</TabsContent>
-          <TabsContent value="trends" className="mt-0">{renderTrends()}</TabsContent>
-          <TabsContent value="palliative-scores" className="mt-0">{renderPalliativeScores()}</TabsContent>
-          <TabsContent value="early-warning" className="mt-0">{renderEarlyWarning()}</TabsContent>
-          <TabsContent value="notifications" className="mt-0">{renderNotifications()}</TabsContent>
-          <TabsContent value="ai-assistant" className="mt-0">{renderAiAssistant()}</TabsContent>
-          <TabsContent value="family" className="mt-0">{renderFamily()}</TabsContent>
-          <TabsContent value="audit" className="mt-0">{renderAudit()}</TabsContent>
-          <TabsContent value="medical-records" className="mt-0">{renderMedicalRecords()}</TabsContent>
+          <TabsContent value="dashboard" className="mt-0 overflow-y-auto custom-scrollbar">{renderDashboard()}</TabsContent>
+          <TabsContent value="devices" className="mt-0 overflow-y-auto custom-scrollbar">{renderDevices()}</TabsContent>
+          <TabsContent value="realtime" className="mt-0 overflow-y-auto custom-scrollbar">{renderRealtime()}</TabsContent>
+          <TabsContent value="trends" className="mt-0 overflow-y-auto custom-scrollbar">{renderTrends()}</TabsContent>
+          <TabsContent value="palliative-scores" className="mt-0 overflow-y-auto custom-scrollbar">{renderPalliativeScores()}</TabsContent>
+          <TabsContent value="early-warning" className="mt-0 overflow-y-auto custom-scrollbar">{renderEarlyWarning()}</TabsContent>
+          <TabsContent value="notifications" className="mt-0 overflow-y-auto custom-scrollbar">{renderNotifications()}</TabsContent>
+          <TabsContent value="ai-assistant" className="mt-0 overflow-y-auto custom-scrollbar">{renderAiAssistant()}</TabsContent>
+          <TabsContent value="family" className="mt-0 overflow-y-auto custom-scrollbar">{renderFamily()}</TabsContent>
+          <TabsContent value="audit" className="mt-0 overflow-y-auto custom-scrollbar">{renderAudit()}</TabsContent>
+          <TabsContent value="medical-records" className="mt-0 overflow-y-auto custom-scrollbar">{renderMedicalRecords()}</TabsContent>
         </div>
       </Tabs>
 
@@ -2494,7 +2506,7 @@ export function RvsmPanel() {
 
       {/* Real-Time Dialog */}
       <Dialog open={dashboardDialogType === 'realtime'} onOpenChange={(open) => { if (!open) setDashboardDialogType(null); }}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
           {(() => {
             const patient = palliativePatients.find(p => p.id === dashboardDialogPatientId);
             const device = rvsmDevices.find(d => d.patientId === dashboardDialogPatientId);
@@ -2514,7 +2526,7 @@ export function RvsmPanel() {
 
             return (
               <>
-                <DialogHeader>
+                <DialogHeader className="shrink-0">
                   <DialogTitle className="flex items-center gap-2">
                     <Activity className="w-5 h-5 text-green-600" />
                     Real-Time Monitoring — {patient.patientName}
@@ -2524,7 +2536,7 @@ export function RvsmPanel() {
                   </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-4">
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
                   {/* Connection Status */}
                   <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
                     <div className="flex items-center gap-3">
@@ -2624,7 +2636,7 @@ export function RvsmPanel() {
 
       {/* Tren (Trend) Dialog */}
       <Dialog open={dashboardDialogType === 'tren'} onOpenChange={(open) => { if (!open) setDashboardDialogType(null); }}>
-        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
           {(() => {
             const patient = palliativePatients.find(p => p.id === dashboardDialogPatientId);
             if (!patient) return <DialogHeader><DialogTitle>Pasien tidak ditemukan</DialogTitle></DialogHeader>;
@@ -2691,7 +2703,7 @@ export function RvsmPanel() {
 
             return (
               <>
-                <DialogHeader>
+                <DialogHeader className="shrink-0">
                   <DialogTitle className="flex items-center gap-2">
                     <TrendingUp className="w-5 h-5 text-teal-600" />
                     Tren Tanda Vital — {patient.patientName}
@@ -2701,7 +2713,7 @@ export function RvsmPanel() {
                   </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-4">
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
                   {/* Time Range Selector */}
                   <div className="flex items-center gap-2 flex-wrap">
                     {(['24h', '7d', '30d', '90d'] as RVSMTimeRange[]).map(range => (
@@ -2761,6 +2773,7 @@ export function RvsmPanel() {
                           </CardTitle>
                         </CardHeader>
                         <CardContent className="p-3 pt-0">
+                          <div className="w-full overflow-hidden">
                           <ResponsiveContainer width="100%" height={180}>
                             <LineChart data={chartData}>
                               <CartesianGrid strokeDasharray="3 3" />
@@ -2773,6 +2786,7 @@ export function RvsmPanel() {
                               {/* Normal range indicator */}
                             </LineChart>
                           </ResponsiveContainer>
+                          </div>
                           <div className="flex items-center gap-3 mt-1 text-[10px]">
                             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500" /> Normal (90-140/60-90)</span>
                             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500" /> Perhatian</span>
@@ -2790,6 +2804,7 @@ export function RvsmPanel() {
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="p-3 pt-0">
+                            <div className="w-full overflow-hidden">
                             <ResponsiveContainer width="100%" height={160}>
                               <LineChart data={chartData}>
                                 <CartesianGrid strokeDasharray="3 3" />
@@ -2799,6 +2814,7 @@ export function RvsmPanel() {
                                 <Line type="monotone" dataKey="heartRate" stroke="#ef4444" strokeWidth={2} dot={false} name="HR" />
                               </LineChart>
                             </ResponsiveContainer>
+                            </div>
                           </CardContent>
                         </Card>
                         <Card className="border">
@@ -2808,6 +2824,7 @@ export function RvsmPanel() {
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="p-3 pt-0">
+                            <div className="w-full overflow-hidden">
                             <ResponsiveContainer width="100%" height={160}>
                               <LineChart data={chartData}>
                                 <CartesianGrid strokeDasharray="3 3" />
@@ -2817,6 +2834,7 @@ export function RvsmPanel() {
                                 <Line type="monotone" dataKey="oxygenSat" stroke="#0ea5e9" strokeWidth={2} dot={false} name="SpO2" />
                               </LineChart>
                             </ResponsiveContainer>
+                            </div>
                           </CardContent>
                         </Card>
                       </div>
@@ -2830,6 +2848,7 @@ export function RvsmPanel() {
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="p-3 pt-0">
+                            <div className="w-full overflow-hidden">
                             <ResponsiveContainer width="100%" height={160}>
                               <LineChart data={chartData}>
                                 <CartesianGrid strokeDasharray="3 3" />
@@ -2839,6 +2858,7 @@ export function RvsmPanel() {
                                 <Line type="monotone" dataKey="respiratoryRate" stroke="#14b8a6" strokeWidth={2} dot={false} name="RR" />
                               </LineChart>
                             </ResponsiveContainer>
+                            </div>
                           </CardContent>
                         </Card>
                         <Card className="border">
@@ -2848,6 +2868,7 @@ export function RvsmPanel() {
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="p-3 pt-0">
+                            <div className="w-full overflow-hidden">
                             <ResponsiveContainer width="100%" height={160}>
                               <LineChart data={chartData}>
                                 <CartesianGrid strokeDasharray="3 3" />
@@ -2857,6 +2878,7 @@ export function RvsmPanel() {
                                 <Line type="monotone" dataKey="temperature" stroke="#f97316" strokeWidth={2} dot={false} name="Suhu" />
                               </LineChart>
                             </ResponsiveContainer>
+                            </div>
                           </CardContent>
                         </Card>
                       </div>
@@ -2870,6 +2892,7 @@ export function RvsmPanel() {
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="p-3 pt-0">
+                            <div className="w-full overflow-hidden">
                             <ResponsiveContainer width="100%" height={160}>
                               <LineChart data={chartData.filter(d => d.weight !== undefined)}>
                                 <CartesianGrid strokeDasharray="3 3" />
@@ -2879,6 +2902,7 @@ export function RvsmPanel() {
                                 <Line type="monotone" dataKey="weight" stroke="#a855f7" strokeWidth={2} dot={false} name="BB" />
                               </LineChart>
                             </ResponsiveContainer>
+                            </div>
                           </CardContent>
                         </Card>
                       )}
@@ -2900,7 +2924,7 @@ export function RvsmPanel() {
 
       {/* Skor Paliatif Dialog */}
       <Dialog open={dashboardDialogType === 'skor-paliatif'} onOpenChange={(open) => { if (!open) setDashboardDialogType(null); }}>
-        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
           {(() => {
             const patient = palliativePatients.find(p => p.id === dashboardDialogPatientId);
             if (!patient) return <DialogHeader><DialogTitle>Pasien tidak ditemukan</DialogTitle></DialogHeader>;
@@ -2969,7 +2993,7 @@ export function RvsmPanel() {
 
             return (
               <>
-                <DialogHeader>
+                <DialogHeader className="shrink-0">
                   <DialogTitle className="flex items-center gap-2">
                     <Brain className="w-5 h-5 text-purple-600" />
                     Skor Paliatif — {patient.patientName}
@@ -2979,7 +3003,7 @@ export function RvsmPanel() {
                   </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-4">
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
                   {/* Overall Interpretation */}
                   <div className={cn('flex items-center gap-3 p-4 rounded-lg border', interpretation.className)}>
                     {interpretation.icon}
@@ -3110,6 +3134,7 @@ export function RvsmPanel() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="p-3 pt-0">
+                        <div className="w-full overflow-hidden">
                         <ResponsiveContainer width="100%" height={200}>
                           <LineChart data={scoreTrendData.filter(d => d.type === 'pps' || d.type === 'esas')}>
                             <CartesianGrid strokeDasharray="3 3" />
@@ -3120,6 +3145,7 @@ export function RvsmPanel() {
                             <Line type="monotone" dataKey="score" stroke="#8b5cf6" strokeWidth={2} name="Skor" />
                           </LineChart>
                         </ResponsiveContainer>
+                        </div>
                       </CardContent>
                     </Card>
                   )}
@@ -3131,7 +3157,7 @@ export function RvsmPanel() {
                         <CardTitle className="text-xs font-medium">Riwayat Skrining</CardTitle>
                       </CardHeader>
                       <CardContent className="p-3 pt-0">
-                        <ScrollArea className="max-h-40">
+                        <ScrollArea className="max-h-[200px]">
                           <div className="space-y-1.5">
                             {screeningRecords.slice(0, 10).map(record => (
                               <div key={record.id} className="flex items-center gap-2 text-xs p-1.5 rounded border bg-muted/20">

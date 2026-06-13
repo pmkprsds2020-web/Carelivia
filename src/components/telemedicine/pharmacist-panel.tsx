@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -245,7 +246,7 @@ export function PharmacistPanel() {
         </TabsList>
 
         {/* ==================== DASHBOARD TAB ==================== */}
-        <TabsContent value="dashboard" className="space-y-6 mt-4">
+        <TabsContent value="dashboard" className="space-y-6 mt-4 overflow-y-auto custom-scrollbar">
           {/* Stats Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card className="border-0">
@@ -320,7 +321,7 @@ export function PharmacistPanel() {
         </TabsContent>
 
         {/* ==================== STOK OBAT TAB ==================== */}
-        <TabsContent value="stock" className="space-y-4 mt-4">
+        <TabsContent value="stock" className="space-y-4 mt-4 overflow-y-auto custom-scrollbar">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -411,7 +412,7 @@ export function PharmacistPanel() {
         </TabsContent>
 
         {/* ==================== RESEP MASUK TAB ==================== */}
-        <TabsContent value="prescriptions" className="space-y-4 mt-4">
+        <TabsContent value="prescriptions" className="space-y-4 mt-4 overflow-y-auto custom-scrollbar">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-foreground">Resep Masuk</h3>
             <Badge variant="secondary">{demoPrescriptions.filter((r) => r.status === 'pending').length} menunggu</Badge>
@@ -470,7 +471,7 @@ export function PharmacistPanel() {
         </TabsContent>
 
         {/* ==================== PESANAN TAB ==================== */}
-        <TabsContent value="orders" className="space-y-4 mt-4">
+        <TabsContent value="orders" className="space-y-4 mt-4 overflow-y-auto custom-scrollbar">
           {demoOrders.map((order) => {
             const sc = orderStatusConfig[order.status] || orderStatusConfig.pending;
 
@@ -528,11 +529,11 @@ export function PharmacistPanel() {
 
       {/* Add/Edit Medicine Dialog */}
       <Dialog open={medDialogOpen} onOpenChange={setMedDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{editingMedicine ? 'Edit Obat' : 'Tambah Obat Baru'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
             <div className="space-y-2">
               <Label>Nama Obat</Label>
               <Input value={medName} onChange={(e) => setMedName(e.target.value)} placeholder="Nama obat" />
@@ -575,10 +576,12 @@ export function PharmacistPanel() {
                 <Input value={medManufacturer} onChange={(e) => setMedManufacturer(e.target.value)} placeholder="Nama produsen" />
               </div>
             </div>
+          </div>
+          <DialogFooter className="shrink-0">
             <Button className="w-full" onClick={handleSaveMedicine} disabled={!medName || !medPrice || !medStock}>
               {editingMedicine ? 'Simpan Perubahan' : 'Tambah Obat'}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -1,0 +1,618 @@
+   501→            )}
+   502→          </div>
+   503→        </TabsContent>
+   504→
+   505→        {/* Tab 3: Chat Pasien */}
+   506→        <TabsContent value="chat" className="mt-4">
+   507→          <ChatPasienSection consultations={consultations} />
+   508→        </TabsContent>
+   509→
+   510→        {/* Tab 4: E-Resep */}
+   511→        <TabsContent value="eresep" className="space-y-4 mt-4">
+   512→          <div className="flex items-center justify-between">
+   513→            <h3 className="text-sm font-semibold">Resep Elektronik</h3>
+   514→            <Button size="sm" className="text-xs" onClick={() => setPrescriptionDialogOpen(true)}>
+   515→              <Plus className="w-3.5 h-3.5 mr-1" />
+   516→              Buat Resep Baru
+   517→            </Button>
+   518→          </div>
+   519→
+   520→          <div className="space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar">
+   521→            {prescriptions.map((prescription) => (
+   522→              <Card key={prescription.id} className="hover:shadow-sm transition-shadow">
+   523→                <CardContent className="p-4">
+   524→                  <div className="flex items-center justify-between gap-3">
+   525→                    <div className="flex-1 min-w-0">
+   526→                      <div className="flex items-center gap-2 mb-1">
+   527→                        <p className="text-sm font-semibold">
+   528→                          {consultations.find(c => c.patientId === prescription.patientId)?.patient?.name || 'Pasien'}
+   529→                        </p>
+   530→                        {getPrescriptionStatusBadge(prescription.status)}
+   531→                      </div>
+   532→                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+   533→                        <span className="flex items-center gap-1">
+   534→                          <CalendarIcon className="w-3 h-3" />
+   535→                          {new Date(prescription.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+   536→                        </span>
+   537→                        <span className="flex items-center gap-1">
+   538→                          <FileText className="w-3 h-3" />
+   539→                          {prescription.items?.length || 0} item
+   540→                        </span>
+   541→                      </div>
+   542→                      {prescription.notes && (
+   543→                        <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1">
+   544→                          <AlertCircle className="w-3 h-3" />
+   545→                          {prescription.notes}
+   546→                        </p>
+   547→                      )}
+   548→                    </div>
+   549→                    <Button variant="outline" size="sm" className="text-xs shrink-0">
+   550→                      Lihat
+   551→                    </Button>
+   552→                  </div>
+   553→
+   554→                  {/* Medicine items preview */}
+   555→                  {prescription.items && prescription.items.length > 0 && (
+   556→                    <div className="mt-3 pt-3 border-t border-border">
+   557→                      <div className="space-y-1.5">
+   558→                        {prescription.items.map((item) => (
+   559→                          <div key={item.id} className="flex items-start gap-2 text-xs">
+   560→                            <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
+   561→                            <div>
+   562→                              <span className="font-medium">{item.medicineName}</span>
+   563→                              <span className="text-muted-foreground ml-1">
+   564→                                - {item.dosage}, {item.quantity}x, {item.frequency}, {item.duration}
+   565→                              </span>
+   566→                            </div>
+   567→                          </div>
+   568→                        ))}
+   569→                      </div>
+   570→                    </div>
+   571→                  )}
+   572→                </CardContent>
+   573→              </Card>
+   574→            ))}
+   575→
+   576→            {prescriptions.length === 0 && (
+   577→              <div className="text-center py-12">
+   578→                <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+   579→                <p className="text-muted-foreground">Belum ada resep</p>
+   580→              </div>
+   581→            )}
+   582→          </div>
+   583→
+   584→          {/* Prescription Dialog */}
+   585→          <Dialog open={prescriptionDialogOpen} onOpenChange={setPrescriptionDialogOpen}>
+   586→            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+   587→              <DialogHeader>
+   588→                <DialogTitle>Buat Resep Baru</DialogTitle>
+   589→              </DialogHeader>
+   590→              <div className="space-y-4">
+   591→                {/* Patient Selection */}
+   592→                <div className="space-y-2">
+   593→                  <Label className="text-xs font-medium text-muted-foreground">Pilih Pasien</Label>
+   594→                  <Select value={selectedPatientId} onValueChange={setSelectedPatientId}>
+   595→                    <SelectTrigger>
+   596→                      <SelectValue placeholder="Pilih pasien" />
+   597→                    </SelectTrigger>
+   598→                    <SelectContent>
+   599→                      {patientOptions.map((patient) => (
+   600→                        <SelectItem key={patient.id} value={patient.id}>
+   601→                          {patient.name}
+   602→                        </SelectItem>
+   603→                      ))}
+   604→                      {patientOptions.length === 0 && (
+   605→                        <SelectItem value="demo-patient" disabled>
+   606→                          Tidak ada pasien tersedia
+   607→                        </SelectItem>
+   608→                      )}
+   609→                    </SelectContent>
+   610→                  </Select>
+   611→                </div>
+   612→
+   613→                <Separator />
+   614→
+   615→                {/* Medicine Items */}
+   616→                <div className="space-y-3">
+   617→                  <Label className="text-xs font-medium text-muted-foreground">Daftar Obat</Label>
+   618→                  {medicineItems.map((item, index) => (
+   619→                    <div key={index} className="p-3 bg-muted/30 rounded-lg space-y-3 relative">
+   620→                      <div className="flex items-center justify-between">
+   621→                        <span className="text-xs font-semibold text-muted-foreground">Obat #{index + 1}</span>
+   622→                        {medicineItems.length > 1 && (
+   623→                          <Button
+   624→                            variant="ghost"
+   625→                            size="sm"
+   626→                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+   627→                            onClick={() => removeMedicineItem(index)}
+   628→                          >
+   629→                            <Trash2 className="w-3.5 h-3.5" />
+   630→                          </Button>
+   631→                        )}
+   632→                      </div>
+   633→                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   634→                        <div className="space-y-1">
+   635→                          <Label className="text-[11px] text-muted-foreground">Nama Obat</Label>
+   636→                          <Input
+   637→                            value={item.medicineName}
+   638→                            onChange={(e) => updateMedicineItem(index, 'medicineName', e.target.value)}
+   639→                            placeholder="Nama obat"
+   640→                            className="text-xs h-8"
+   641→                          />
+   642→                        </div>
+   643→                        <div className="space-y-1">
+   644→                          <Label className="text-[11px] text-muted-foreground">Dosis</Label>
+   645→                          <Input
+   646→                            value={item.dosage}
+   647→                            onChange={(e) => updateMedicineItem(index, 'dosage', e.target.value)}
+   648→                            placeholder="Contoh: 500mg"
+   649→                            className="text-xs h-8"
+   650→                          />
+   651→                        </div>
+   652→                        <div className="space-y-1">
+   653→                          <Label className="text-[11px] text-muted-foreground">Jumlah</Label>
+   654→                          <Input
+   655→                            type="number"
+   656→                            value={item.quantity}
+   657→                            onChange={(e) => updateMedicineItem(index, 'quantity', parseInt(e.target.value) || 0)}
+   658→                            min={1}
+   659→                            className="text-xs h-8"
+   660→                          />
+   661→                        </div>
+   662→                        <div className="space-y-1">
+   663→                          <Label className="text-[11px] text-muted-foreground">Frekuensi</Label>
+   664→                          <Input
+   665→                            value={item.frequency}
+   666→                            onChange={(e) => updateMedicineItem(index, 'frequency', e.target.value)}
+   667→                            placeholder="Contoh: 3x sehari"
+   668→                            className="text-xs h-8"
+   669→                          />
+   670→                        </div>
+   671→                        <div className="space-y-1">
+   672→                          <Label className="text-[11px] text-muted-foreground">Durasi</Label>
+   673→                          <Input
+   674→                            value={item.duration}
+   675→                            onChange={(e) => updateMedicineItem(index, 'duration', e.target.value)}
+   676→                            placeholder="Contoh: 7 hari"
+   677→                            className="text-xs h-8"
+   678→                          />
+   679→                        </div>
+   680→                        <div className="space-y-1">
+   681→                          <Label className="text-[11px] text-muted-foreground">Instruksi</Label>
+   682→                          <Input
+   683→                            value={item.instructions}
+   684→                            onChange={(e) => updateMedicineItem(index, 'instructions', e.target.value)}
+   685→                            placeholder="Instruksi tambahan"
+   686→                            className="text-xs h-8"
+   687→                          />
+   688→                        </div>
+   689→                      </div>
+   690→                    </div>
+   691→                  ))}
+   692→                  <Button
+   693→                    variant="outline"
+   694→                    size="sm"
+   695→                    className="w-full text-xs"
+   696→                    onClick={addMedicineItem}
+   697→                  >
+   698→                    <Plus className="w-3.5 h-3.5 mr-1" />
+   699→                    Tambah Obat
+   700→                  </Button>
+   701→                </div>
+   702→
+   703→                <Separator />
+   704→
+   705→                {/* Notes */}
+   706→                <div className="space-y-2">
+   707→                  <Label className="text-xs font-medium text-muted-foreground">Catatan</Label>
+   708→                  <Textarea
+   709→                    value={prescriptionNotes}
+   710→                    onChange={(e) => setPrescriptionNotes(e.target.value)}
+   711→                    placeholder="Catatan tambahan untuk resep..."
+   712→                    className="text-sm resize-none"
+   713→                    rows={2}
+   714→                  />
+   715→                </div>
+   716→
+   717→                <Button
+   718→                  onClick={handleSavePrescription}
+   719→                  className="w-full"
+   720→                  disabled={!selectedPatientId || medicineItems.some(i => !i.medicineName || !i.dosage)}
+   721→                >
+   722→                  Simpan Resep
+   723→                </Button>
+   724→              </div>
+   725→            </DialogContent>
+   726→          </Dialog>
+   727→        </TabsContent>
+   728→
+   729→        {/* Tab 5: Jadwal Praktik */}
+   730→        <TabsContent value="jadwal" className="space-y-4 mt-4">
+   731→          <div className="flex items-center justify-between">
+   732→            <h3 className="text-sm font-semibold">Jadwal Praktik Mingguan</h3>
+   733→            <Button size="sm" className="text-xs" onClick={() => {
+   734→              setEditingSchedule({ dayOfWeek: 1, startTime: '08:00', endTime: '16:00', isActive: true });
+   735→              setScheduleDialogOpen(true);
+   736→            }}>
+   737→              <Plus className="w-3.5 h-3.5 mr-1" />
+   738→              Tambah Jadwal
+   739→            </Button>
+   740→          </div>
+   741→
+   742→          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+   743→            {[0, 1, 2, 3, 4, 5, 6].map((day) => {
+   744→              const daySlots = scheduleSlots
+   745→                .filter(s => s.dayOfWeek === day)
+   746→                .sort((a, b) => a.startTime.localeCompare(b.startTime));
+   747→              return (
+   748→                <Card key={day} className={cn(!daySlots.some(s => s.isActive) && 'opacity-60')}>
+   749→                  <CardHeader className="pb-2 pt-3 px-4">
+   750→                    <CardTitle className="text-sm font-semibold">{dayNames[day]}</CardTitle>
+   751→                  </CardHeader>
+   752→                  <CardContent className="px-4 pb-3">
+   753→                    {daySlots.length > 0 ? (
+   754→                      <div className="space-y-2">
+   755→                        {daySlots.map((slot, idx) => (
+   756→                          <div
+   757→                            key={idx}
+   758→                            className={cn(
+   759→                              'flex items-center justify-between p-2 rounded-md text-xs',
+   760→                              slot.isActive ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-muted/50 text-muted-foreground border border-border'
+   761→                            )}
+   762→                          >
+   763→                            <div className="flex items-center gap-1.5">
+   764→                              <Clock className="w-3 h-3" />
+   765→                              <span>{slot.startTime} - {slot.endTime}</span>
+   766→                            </div>
+   767→                            <Button
+   768→                              variant="ghost"
+   769→                              size="sm"
+   770→                              className="h-5 w-5 p-0"
+   771→                              onClick={() => {
+   772→                                setEditingSchedule({ ...slot });
+   773→                                setScheduleDialogOpen(true);
+   774→                              }}
+   775→                            >
+   776→                              <ChevronRight className="w-3 h-3" />
+   777→                            </Button>
+   778→                          </div>
+   779→                        ))}
+   780→                      </div>
+   781→                    ) : (
+   782→                      <p className="text-xs text-muted-foreground py-2">Tidak ada jadwal</p>
+   783→                    )}
+   784→                  </CardContent>
+   785→                </Card>
+   786→              );
+   787→            })}
+   788→          </div>
+   789→
+   790→          {/* Schedule Dialog */}
+   791→          <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
+   792→            <DialogContent className="sm:max-w-md">
+   793→              <DialogHeader>
+   794→                <DialogTitle>Tambah/Edit Jadwal</DialogTitle>
+   795→              </DialogHeader>
+   796→              <div className="space-y-4">
+   797→                <div className="space-y-2">
+   798→                  <Label className="text-xs font-medium text-muted-foreground">Hari</Label>
+   799→                  <Select
+   800→                    value={String(editingSchedule.dayOfWeek)}
+   801→                    onValueChange={(val) => setEditingSchedule({ ...editingSchedule, dayOfWeek: parseInt(val) })}
+   802→                  >
+   803→                    <SelectTrigger>
+   804→                      <SelectValue />
+   805→                    </SelectTrigger>
+   806→                    <SelectContent>
+   807→                      {dayNames.map((name, index) => (
+   808→                        <SelectItem key={index} value={String(index)}>{name}</SelectItem>
+   809→                      ))}
+   810→                    </SelectContent>
+   811→                  </Select>
+   812→                </div>
+   813→                <div className="grid grid-cols-2 gap-3">
+   814→                  <div className="space-y-2">
+   815→                    <Label className="text-xs font-medium text-muted-foreground">Jam Mulai</Label>
+   816→                    <Input
+   817→                      type="time"
+   818→                      value={editingSchedule.startTime}
+   819→                      onChange={(e) => setEditingSchedule({ ...editingSchedule, startTime: e.target.value })}
+   820→                      className="text-sm"
+   821→                    />
+   822→                  </div>
+   823→                  <div className="space-y-2">
+   824→                    <Label className="text-xs font-medium text-muted-foreground">Jam Selesai</Label>
+   825→                    <Input
+   826→                      type="time"
+   827→                      value={editingSchedule.endTime}
+   828→                      onChange={(e) => setEditingSchedule({ ...editingSchedule, endTime: e.target.value })}
+   829→                      className="text-sm"
+   830→                    />
+   831→                  </div>
+   832→                </div>
+   833→                <div className="flex items-center gap-2">
+   834→                  <input
+   835→                    type="checkbox"
+   836→                    checked={editingSchedule.isActive}
+   837→                    onChange={(e) => setEditingSchedule({ ...editingSchedule, isActive: e.target.checked })}
+   838→                    className="rounded border-border"
+   839→                  />
+   840→                  <Label className="text-sm">Aktif</Label>
+   841→                </div>
+   842→                <Button onClick={handleSaveSchedule} className="w-full">
+   843→                  Simpan Jadwal
+   844→                </Button>
+   845→              </div>
+   846→            </DialogContent>
+   847→          </Dialog>
+   848→        </TabsContent>
+   849→
+   850→        {/* Tab 6: Pendapatan */}
+   851→        <TabsContent value="pendapatan" className="space-y-6 mt-4">
+   852→          {/* Earnings Summary Cards */}
+   853→          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   854→            <Card>
+   855→              <CardContent className="p-4">
+   856→                <p className="text-xs text-muted-foreground">Bulan Ini</p>
+   857→                <p className="text-2xl font-bold text-primary mt-1">Rp {formatCurrency(monthlyEarning)}</p>
+   858→                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+   859→                  <Activity className="w-3 h-3" />
+   860→                  +12% dari bulan lalu
+   861→                </p>
+   862→              </CardContent>
+   863→            </Card>
+   864→            <Card>
+   865→              <CardContent className="p-4">
+   866→                <p className="text-xs text-muted-foreground">Total Pendapatan</p>
+   867→                <p className="text-2xl font-bold mt-1">
+   868→                  Rp {formatCurrency(monthlyEarnings.reduce((sum, m) => sum + m.amount, 0))}
+   869→                </p>
+   870→                <p className="text-xs text-muted-foreground mt-1">6 bulan terakhir</p>
+   871→              </CardContent>
+   872→            </Card>
+   873→            <Card>
+   874→              <CardContent className="p-4">
+   875→                <p className="text-xs text-muted-foreground">Rata-rata / Bulan</p>
+   876→                <p className="text-2xl font-bold mt-1">
+   877→                  Rp {formatCurrency(Math.round(monthlyEarnings.reduce((sum, m) => sum + m.amount, 0) / monthlyEarnings.length))}
+   878→                </p>
+   879→                <p className="text-xs text-muted-foreground mt-1">Konsultasi & home care</p>
+   880→              </CardContent>
+   881→            </Card>
+   882→          </div>
+   883→
+   884→          {/* Monthly Earnings Chart (Simple bar chart) */}
+   885→          <Card>
+   886→            <CardHeader className="pb-3">
+   887→              <CardTitle className="text-sm font-semibold">Pendapatan Bulanan</CardTitle>
+   888→            </CardHeader>
+   889→            <CardContent>
+   890→              <div className="space-y-3">
+   891→                {monthlyEarnings.map((item) => {
+   892→                  const maxAmount = Math.max(...monthlyEarnings.map(m => m.amount));
+   893→                  const percentage = (item.amount / maxAmount) * 100;
+   894→                  return (
+   895→                    <div key={item.month} className="flex items-center gap-3">
+   896→                      <span className="text-xs text-muted-foreground w-8 shrink-0">{item.month}</span>
+   897→                      <div className="flex-1 h-6 bg-muted/50 rounded-md overflow-hidden">
+   898→                        <div
+   899→                          className="h-full bg-primary/80 rounded-md flex items-center px-2 transition-all duration-500"
+   900→                          style={{ width: `${percentage}%` }}
+   901→                        >
+   902→                          <span className="text-[10px] text-primary-foreground font-medium whitespace-nowrap">
+   903→                            Rp {formatCurrency(item.amount)}
+   904→                          </span>
+   905→                        </div>
+   906→                      </div>
+   907→                    </div>
+   908→                  );
+   909→                })}
+   910→              </div>
+   911→            </CardContent>
+   912→          </Card>
+   913→
+   914→          {/* Transaction List */}
+   915→          <Card>
+   916→            <CardHeader className="pb-3">
+   917→              <CardTitle className="text-sm font-semibold">Riwayat Transaksi</CardTitle>
+   918→            </CardHeader>
+   919→            <CardContent className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+   920→              {consultations.filter(c => c.status === 'completed').slice(0, 10).map((consultation) => {
+   921→                const fee = consultation.doctor?.doctorProfile?.consultationFee || 75000;
+   922→                return (
+   923→                  <div key={consultation.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors">
+   924→                    <div className="flex items-center gap-2 min-w-0">
+   925→                      <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center shrink-0">
+   926→                        <DollarSign className="w-4 h-4" />
+   927→                      </div>
+   928→                      <div className="min-w-0">
+   929→                        <p className="text-xs font-medium truncate">
+   930→                          Konsultasi - {consultation.patient?.name || 'Pasien'}
+   931→                        </p>
+   932→                        <p className="text-[11px] text-muted-foreground">
+   933→                          {new Date(consultation.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+   934→                        </p>
+   935→                      </div>
+   936→                    </div>
+   937→                    <span className="text-sm font-semibold text-green-600 shrink-0">
+   938→                      +Rp {formatCurrency(fee)}
+   939→                    </span>
+   940→                  </div>
+   941→                );
+   942→              })}
+   943→              {consultations.filter(c => c.status === 'completed').length === 0 && (
+   944→                <div className="text-center py-6">
+   945→                  <DollarSign className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+   946→                  <p className="text-sm text-muted-foreground">Belum ada transaksi</p>
+   947→                </div>
+   948→              )}
+   949→            </CardContent>
+   950→          </Card>
+   951→        </TabsContent>
+   952→      </Tabs>
+   953→    </div>
+   954→  );
+   955→}
+   956→
+   957→// Chat Pasien Section Component
+   958→function ChatPasienSection({ consultations }: { consultations: Consultation[] }) {
+   959→  const [selectedPatient, setSelectedPatient] = useState<Consultation | null>(null);
+   960→  const [chatInput, setChatInput] = useState('');
+   961→  const { messages, setMessages } = useStore();
+   962→
+   963→  const chatConsultations = consultations.filter(c =>
+   964→    c.type === 'chat' && (c.status === 'active' || c.status === 'waiting' || c.status === 'completed')
+   965→  );
+   966→
+   967→  return (
+   968→    <div className="flex h-[calc(100vh-220px)] min-h-[400px] border rounded-lg overflow-hidden bg-card">
+   969→      {/* Chat List */}
+   970→      <div className={cn(
+   971→        'w-full md:w-80 border-r border-border flex flex-col',
+   972→        selectedPatient ? 'hidden md:flex' : 'flex'
+   973→      )}>
+   974→        <div className="p-3 border-b border-border">
+   975→          <h3 className="text-sm font-semibold">Chat Pasien</h3>
+   976→        </div>
+   977→        <div className="flex-1 overflow-y-auto custom-scrollbar">
+   978→          {chatConsultations.length > 0 ? (
+   979→            chatConsultations.map((consultation) => (
+   980→              <button
+   981→                key={consultation.id}
+   982→                onClick={() => setSelectedPatient(consultation)}
+   983→                className={cn(
+   984→                  'w-full flex items-center gap-3 p-3 text-left hover:bg-muted/50 transition-colors border-b border-border/50',
+   985→                  selectedPatient?.id === consultation.id && 'bg-muted'
+   986→                )}
+   987→              >
+   988→                <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold shrink-0">
+   989→                  {consultation.patient?.name?.charAt(0) || 'P'}
+   990→                </div>
+   991→                <div className="flex-1 min-w-0">
+   992→                  <div className="flex items-center justify-between">
+   993→                    <p className="text-sm font-medium truncate">{consultation.patient?.name || 'Pasien'}</p>
+   994→                    <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
+   995→                      {new Date(consultation.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+   996→                    </span>
+   997→                  </div>
+   998→                  <p className="text-xs text-muted-foreground truncate mt-0.5">
+   999→                    {consultation.notes || 'Konsultasi ' + consultation.type}
+  1000→                  </p>
+  1001→                </div>
+  1002→                {consultation.status === 'waiting' && (
+  1003→                  <div className="w-2 h-2 rounded-full bg-yellow-500 shrink-0" />
+  1004→                )}
+  1005→              </button>
+  1006→            ))
+  1007→          ) : (
+  1008→            <div className="text-center py-12">
+  1009→              <MessageCircle className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+  1010→              <p className="text-sm text-muted-foreground">Belum ada chat</p>
+  1011→            </div>
+  1012→          )}
+  1013→        </div>
+  1014→      </div>
+  1015→
+  1016→      {/* Chat Area */}
+  1017→      <div className={cn(
+  1018→        'flex-1 flex flex-col',
+  1019→        !selectedPatient ? 'hidden md:flex' : 'flex'
+  1020→      )}>
+  1021→        {selectedPatient ? (
+  1022→          <>
+  1023→            {/* Chat Header */}
+  1024→            <div className="p-3 border-b border-border flex items-center gap-3">
+  1025→              <Button
+  1026→                variant="ghost"
+  1027→                size="sm"
+  1028→                className="md:hidden h-8 w-8 p-0"
+  1029→                onClick={() => setSelectedPatient(null)}
+  1030→              >
+  1031→                <ChevronRight className="w-4 h-4 rotate-180" />
+  1032→              </Button>
+  1033→              <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold shrink-0">
+  1034→                {selectedPatient.patient?.name?.charAt(0) || 'P'}
+  1035→              </div>
+  1036→              <div>
+  1037→                <p className="text-sm font-semibold">{selectedPatient.patient?.name || 'Pasien'}</p>
+  1038→                <p className="text-[11px] text-muted-foreground">
+  1039→                  {selectedPatient.status === 'active' ? 'Online' : selectedPatient.status === 'waiting' ? 'Menunggu' : 'Offline'}
+  1040→                </p>
+  1041→              </div>
+  1042→              {getConsultationStatusBadge(selectedPatient.status)}
+  1043→            </div>
+  1044→
+  1045→            {/* Messages */}
+  1046→            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
+  1047→              {/* Demo messages */}
+  1048→              <div className="flex justify-start">
+  1049→                <div className="bg-muted rounded-lg rounded-tl-none p-3 max-w-[75%]">
+  1050→                  <p className="text-sm">Selamat pagi, Dok. Saya sudah merasakan gejala ini sejak 2 hari yang lalu.</p>
+  1051→                  <span className="text-[10px] text-muted-foreground mt-1 block">09:15</span>
+  1052→                </div>
+  1053→              </div>
+  1054→              <div className="flex justify-end">
+  1055→                <div className="bg-primary text-primary-foreground rounded-lg rounded-tr-none p-3 max-w-[75%]">
+  1056→                  <p className="text-sm">Selamat pagi. Bisa dijelaskan lebih detail mengenai gejalanya?</p>
+  1057→                  <span className="text-[10px] text-primary-foreground/70 mt-1 block">09:16</span>
+  1058→                </div>
+  1059→              </div>
+  1060→              <div className="flex justify-start">
+  1061→                <div className="bg-muted rounded-lg rounded-tl-none p-3 max-w-[75%]">
+  1062→                  <p className="text-sm">Saya mengalami demam, sakit kepala, dan batuk. Nafsu makan juga berkurang.</p>
+  1063→                  <span className="text-[10px] text-muted-foreground mt-1 block">09:17</span>
+  1064→                </div>
+  1065→              </div>
+  1066→              <div className="flex justify-end">
+  1067→                <div className="bg-primary text-primary-foreground rounded-lg rounded-tr-none p-3 max-w-[75%]">
+  1068→                  <p className="text-sm">Apakah ada riwayat kontak dengan pasien positif? Dan apakah ada gejala sesak napas?</p>
+  1069→                  <span className="text-[10px] text-primary-foreground/70 mt-1 block">09:18</span>
+  1070→                </div>
+  1071→              </div>
+  1072→              <div className="flex justify-start">
+  1073→                <div className="bg-muted rounded-lg rounded-tl-none p-3 max-w-[75%]">
+  1074→                  <p className="text-sm">Tidak ada kontak yang saya ketahui, dan tidak ada sesak napas, Dok.</p>
+  1075→                  <span className="text-[10px] text-muted-foreground mt-1 block">09:20</span>
+  1076→                </div>
+  1077→              </div>
+  1078→            </div>
+  1079→
+  1080→            {/* Chat Input */}
+  1081→            <div className="p-3 border-t border-border">
+  1082→              <div className="flex gap-2">
+  1083→                <Input
+  1084→                  value={chatInput}
+  1085→                  onChange={(e) => setChatInput(e.target.value)}
+  1086→                  placeholder="Ketik pesan..."
+  1087→                  className="text-sm"
+  1088→                  onKeyDown={(e) => {
+  1089→                    if (e.key === 'Enter' && chatInput.trim()) {
+  1090→                      setChatInput('');
+  1091→                    }
+  1092→                  }}
+  1093→                />
+  1094→                <Button
+  1095→                  size="sm"
+  1096→                  disabled={!chatInput.trim()}
+  1097→                  onClick={() => {
+  1098→                    if (chatInput.trim()) setChatInput('');
+  1099→                  }}
+  1100→                >
+  1101→                  <Megaphone className="w-4 h-4" />
+  1102→                </Button>
+  1103→              </div>
+  1104→            </div>
+  1105→          </>
+  1106→        ) : (
+  1107→          <div className="flex-1 flex items-center justify-center">
+  1108→            <div className="text-center">
+  1109→              <MessageCircle className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+  1110→              <p className="text-muted-foreground">Pilih percakapan untuk memulai chat</p>
+  1111→            </div>
+  1112→          </div>
+  1113→        )}
+  1114→      </div>
+  1115→    </div>
+  1116→  );
+  1117→}
+  1118→

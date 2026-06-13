@@ -210,7 +210,7 @@ export function PatientPaliatifPanel() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="dashboard">
+        <TabsContent value="dashboard" className="overflow-y-auto custom-scrollbar">
           <DashboardTab
             palliativePatient={palliativePatient}
             myTransportRequests={myTransportRequests}
@@ -223,27 +223,27 @@ export function PatientPaliatifPanel() {
           />
         </TabsContent>
 
-        <TabsContent value="meetings">
+        <TabsContent value="meetings" className="overflow-y-auto custom-scrollbar">
           <FamilyMeetingTab meetings={myMeetings} />
         </TabsContent>
 
-        <TabsContent value="education">
+        <TabsContent value="education" className="overflow-y-auto custom-scrollbar">
           <EducationTab materials={myEduMaterials} />
         </TabsContent>
 
-        <TabsContent value="care">
+        <TabsContent value="care" className="overflow-y-auto custom-scrollbar">
           <CareCoordinationTab patientId={patientId} updates={myCareUpdates} onSubmit={addPatientCareUpdate} />
         </TabsContent>
 
-        <TabsContent value="emergency">
+        <TabsContent value="emergency" className="overflow-y-auto custom-scrollbar">
           <EmergencyContactTab contacts={myEmergencyContacts} />
         </TabsContent>
 
-        <TabsContent value="transport">
+        <TabsContent value="transport" className="overflow-y-auto custom-scrollbar">
           <TransportTab patientId={patientId} requests={myTransportRequests} onSubmit={addPatientTransportRequest} />
         </TabsContent>
 
-        <TabsContent value="chat">
+        <TabsContent value="chat" className="overflow-y-auto custom-scrollbar">
           <ChatTab patientId={patientId} messages={myMessages} onSend={addPatientPaliatifMessage} currentUser={currentUser} />
         </TabsContent>
       </Tabs>

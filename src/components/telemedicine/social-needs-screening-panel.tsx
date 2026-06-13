@@ -832,7 +832,7 @@ export function SocialNeedsScreeningPanel({ embedded = false }: SocialNeedsScree
     const meta = CATEGORY_META[currentCategory];
 
     return (
-      <div className="flex flex-col h-full gap-2 sm:gap-3">
+      <div className="flex flex-col gap-2 sm:gap-3">
         {/* Progress Header */}
         <div className="flex items-center justify-between gap-3 shrink-0">
           <div className="flex-1">
@@ -860,16 +860,16 @@ export function SocialNeedsScreeningPanel({ embedded = false }: SocialNeedsScree
         </div>
 
         {/* Main Content: Nav + Questions */}
-        <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
+        <div className="flex gap-4">
           {/* Desktop Category Navigation */}
           <div className="hidden md:block shrink-0">{renderDesktopCategoryNav()}</div>
 
           {/* Questions Area */}
-          <div className="flex-1 min-w-0 flex flex-col min-h-0 overflow-hidden">
+          <div className="flex-1 min-w-0 flex flex-col">
             {/* Mobile Category Navigation */}
             <div className="md:hidden mb-3 shrink-0">{renderMobileCategoryNav()}</div>
 
-            <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <Card className="flex flex-col">
               <CardHeader className="py-2 sm:py-3 px-3 sm:px-6 shrink-0">
                 <div className="flex items-center gap-2 sm:gap-3">
                   <div
@@ -887,7 +887,7 @@ export function SocialNeedsScreeningPanel({ embedded = false }: SocialNeedsScree
                 </div>
               </CardHeader>
               <Separator />
-              <CardContent className="py-3 sm:pt-4 px-3 sm:px-6 flex-1 min-h-0 overflow-y-auto">
+              <CardContent className="py-3 sm:pt-4 px-3 sm:px-6 max-h-[60vh] overflow-y-auto custom-scrollbar">
                 <div className="pr-1 sm:pr-2 space-y-1">
                   {currentQuestions.map(renderQuestion)}
                 </div>
@@ -897,7 +897,7 @@ export function SocialNeedsScreeningPanel({ embedded = false }: SocialNeedsScree
         </div>
 
         {/* Navigation Buttons */}
-        <div className="flex items-center justify-between gap-3 shrink-0 pt-1">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 sticky bottom-0 py-2 bg-background/95 backdrop-blur-sm z-10">
           <Button
             variant="outline"
             onClick={handlePrevious}
@@ -1941,8 +1941,8 @@ export function SocialNeedsScreeningPanel({ embedded = false }: SocialNeedsScree
   // ═══════════════════════════════════════════════════════════════════════════
 
   const wrapperClass = embedded
-    ? 'flex flex-col h-full overflow-hidden'
-    : 'p-4 flex flex-col h-[calc(100vh-8rem)] overflow-hidden';
+    ? 'flex flex-col h-full min-h-0 overflow-y-auto'
+    : 'p-4 flex flex-col h-[calc(100vh-8rem)] min-h-0 overflow-y-auto';
 
   return (
     <div className={wrapperClass}>
@@ -1983,15 +1983,15 @@ export function SocialNeedsScreeningPanel({ embedded = false }: SocialNeedsScree
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="screening" className="mt-3 flex-1 min-h-0 overflow-hidden">
+        <TabsContent value="screening" className="mt-3 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
           {renderScreeningTab()}
         </TabsContent>
 
-        <TabsContent value="results" className="mt-3 flex-1 min-h-0 overflow-y-auto">
+        <TabsContent value="results" className="mt-3 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
           {renderResultsTab()}
         </TabsContent>
 
-        <TabsContent value="monitoring" className="mt-3 flex-1 min-h-0 overflow-y-auto">
+        <TabsContent value="monitoring" className="mt-3 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
           {renderMonitoringTab()}
         </TabsContent>
       </Tabs>

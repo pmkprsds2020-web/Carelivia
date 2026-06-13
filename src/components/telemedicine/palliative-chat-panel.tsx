@@ -1410,11 +1410,12 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
             setActiveScreeningType(null);
           }
         }}>
-          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
+          <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+            <DialogHeader className="shrink-0">
               <DialogTitle>Isi Formulir</DialogTitle>
               <DialogDescription>Silakan isi formulir yang dikirim oleh dokter</DialogDescription>
             </DialogHeader>
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
             {formType === 'ttv' && (
               <TTVForm
                 onSubmit={(answers) => handleTTVSubmit(answers)}
@@ -1441,18 +1442,19 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
                 onSaveDraft={() => {}}
               />
             )}
+            </div>
           </DialogContent>
         </Dialog>
       )}
 
       {/* Send Form Dialog */}
       <Dialog open={showFormDialog} onOpenChange={setShowFormDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Kirim Formulir ke Pasien</DialogTitle>
             <DialogDescription>Pilih jenis formulir yang akan dikirim kepada {patient.patientName}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-2 pr-1">
             <Card className="p-3 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => { setFormType('ttv'); handleSendForm('ttv'); }}>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
@@ -1498,7 +1500,7 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
               </div>
             </Card>
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setShowFormDialog(false)}>Batal</Button>
           </DialogFooter>
         </DialogContent>
@@ -1506,12 +1508,12 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
 
       {/* Screening Picker Dialog */}
       <Dialog open={showScreeningPicker} onOpenChange={setShowScreeningPicker}>
-        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Pilih Jenis Skrining</DialogTitle>
             <DialogDescription>Pilih skrining paliatif yang akan dikirim kepada pasien</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-2 pr-1">
             {(['pps', 'eortc', 'esas', 'spict', 'distress', 'zarit'] as PalliativeToolType[]).map(tool => (
               <Card key={tool} className="p-3 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSendForm('screening', tool)}>
                 <div className="flex items-center justify-between">
@@ -1524,7 +1526,7 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
               </Card>
             ))}
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setShowScreeningPicker(false)}>Batal</Button>
           </DialogFooter>
         </DialogContent>
@@ -1532,12 +1534,12 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
 
       {/* Medication Monitoring Selection Dialog */}
       <Dialog open={showMedMonitoringDialog} onOpenChange={setShowMedMonitoringDialog}>
-        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Kirim Form Monitoring Obat Paliatif</DialogTitle>
             <DialogDescription>Pilih obat dan jadwal monitoring untuk {patient?.patientName}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-3 pr-1">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <Label className="text-sm font-medium">Pilih Obat</Label>
@@ -1595,8 +1597,7 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowMedMonitoringDialog(false); setSelectedMedIds([]); }}>Batal</Button>
+          <DialogFooter className="shrink-0">
             <Button
               onClick={handleSendMedMonitoringForm}
               disabled={selectedMedIds.length === 0}

@@ -1,0 +1,1293 @@
+     1→'use client';
+     2→
+     3→import React, { useState, useCallback, useMemo } from 'react';
+     4→import { useStore } from '@/lib/store';
+     5→import { useToast } from '@/hooks/use-toast';
+     6→import type {
+     7→  AISocialAnalysisResult,
+     8→  AISocialRisk,
+     9→  AIFamilySupportAnalysis,
+    10→  AICaregiverAnalysis,
+    11→  AIFinancialAnalysis,
+    12→  AITransportAnalysis,
+    13→  AIActionPlanItem,
+    14→  AIEarlyWarning,
+    15→  AIActionPlanItem as AIActionPlanItemWithStatus,
+    16→} from '@/lib/types';
+    17→
+    18→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+    19→import { Button } from '@/components/ui/button';
+    20→import { Badge } from '@/components/ui/badge';
+    21→import { Separator } from '@/components/ui/separator';
+    22→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    23→import { ScrollArea } from '@/components/ui/scroll-area';
+    24→import { Progress } from '@/components/ui/progress';
+    25→import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+    26→import { Textarea } from '@/components/ui/textarea';
+    27→import { Skeleton } from '@/components/ui/skeleton';
+    28→
+    29→import {
+    30→  Brain, Sparkles, AlertTriangle, Heart, Users, UserCheck,
+    31→  DollarSign, Car, ClipboardList, Bell, CheckCircle2, XCircle,
+    32→  Edit, Download, FileText, TrendingUp, Shield, Info,
+    33→  RefreshCw, ChevronRight, Eye, Clock, ArrowRight,
+    34→} from 'lucide-react';
+    35→
+    36→import {
+    37→  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+    38→  ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell,
+    39→} from 'recharts';
+    40→
+    41→// ─── Props ──────────────────────────────────────────────────────────────────
+    42→
+    43→interface AISocialAnalysisTabProps {
+    44→  palliativePatientId: string | null;
+    45→}
+    46→
+    47→// ─── Helpers ────────────────────────────────────────────────────────────────
+    48→
+    49→const genId = (prefix: string) =>
+    50→  `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    51→
+    52→const riskLevelBadge = (level: 'rendah' | 'sedang' | 'tinggi') => {
+    53→  const map = {
+    54→    rendah: { label: 'Rendah', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+    55→    sedang: { label: 'Sedang', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+    56→    tinggi: { label: 'Tinggi', cls: 'bg-red-100 text-red-800 border-red-300' },
+    57→  };
+    58→  const m = map[level];
+    59→  return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
+    60→};
+    61→
+    62→const severityBadge = (s: 'info' | 'warning' | 'critical') => {
+    63→  const map = {
+    64→    info: { label: 'Info', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
+    65→    warning: { label: 'Peringatan', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+    66→    critical: { label: 'Kritis', cls: 'bg-red-100 text-red-800 border-red-300' },
+    67→  };
+    68→  const m = map[s];
+    69→  return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
+    70→};
+    71→
+    72→const priorityBadge = (p: 'tinggi' | 'sedang' | 'rendah') => {
+    73→  const map = {
+    74→    tinggi: { label: 'Prioritas Tinggi', cls: 'bg-red-100 text-red-800 border-red-300' },
+    75→    sedang: { label: 'Prioritas Sedang', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+    76→    rendah: { label: 'Prioritas Rendah', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+    77→  };
+    78→  const m = map[p];
+    79→  return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
+    80→};
+    81→
+    82→const caregiverStatusBadge = (s: 'normal' | 'ringan' | 'sedang' | 'berat') => {
+    83→  const map = {
+    84→    normal: { label: 'Normal', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+    85→    ringan: { label: 'Risiko Ringan', cls: 'bg-teal-100 text-teal-800 border-teal-300' },
+    86→    sedang: { label: 'Risiko Sedang', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+    87→    berat: { label: 'Risiko Berat', cls: 'bg-red-100 text-red-800 border-red-300' },
+    88→  };
+    89→  const m = map[s];
+    90→  return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
+    91→};
+    92→
+    93→const riskTypeLabel = (type: string): string => {
+    94→  const map: Record<string, string> = {
+    95→    isolasi_sosial: 'Isolasi Sosial',
+    96→    caregiver_burnout: 'Caregiver Burnout',
+    97→    ketidakpatuhan_terapi: 'Ketidakpatuhan Terapi',
+    98→    putus_pengobatan: 'Risiko Putus Pengobatan',
+    99→    masalah_finansial: 'Masalah Finansial',
+   100→    akses_layanan: 'Hambatan Akses Layanan',
+   101→    konflik_keluarga: 'Konflik Keluarga',
+   102→    kebutuhan_spiritual: 'Kebutuhan Spiritual Tak Terpenuhi',
+   103→    rawat_inap_berulang: 'Rawat Inap Berulang',
+   104→    penurunan_kualitas_hidup: 'Penurunan Kualitas Hidup',
+   105→  };
+   106→  return map[type] || type;
+   107→};
+   108→
+   109→const warningTypeLabel = (type: string): string => {
+   110→  const map: Record<string, string> = {
+   111→    penurunan_dukungan_keluarga: 'Penurunan Dukungan Keluarga',
+   112→    caregiver_burden_meningkat: 'Caregiver Burden Meningkat',
+   113→    risiko_putus_pengobatan: 'Risiko Putus Pengobatan',
+   114→    distress_tinggi: 'Distress Tinggi',
+   115→    isolasi_sosial: 'Isolasi Sosial',
+   116→    masalah_finansial_berat: 'Masalah Finansial Berat',
+   117→    tidak_ada_caregiver_aktif: 'Tidak Ada Caregiver Aktif',
+   118→    monitoring_terlambat: 'Monitoring Terlambat',
+   119→  };
+   120→  return map[type] || type;
+   121→};
+   122→
+   123→const needLabel = (need: string): string => {
+   124→  const map: Record<string, string> = {
+   125→    bantuan_finansial: 'Bantuan Finansial',
+   126→    alat_kesehatan: 'Alat Kesehatan',
+   127→    nutrisi: 'Nutrisi',
+   128→    transportasi: 'Transportasi',
+   129→    home_care: 'Home Care',
+   130→    pendampingan_sosial: 'Pendampingan Sosial',
+   131→  };
+   132→  return map[need] || need;
+   133→};
+   134→
+   135→const categoryLabel = (cat: string): string => {
+   136→  const map: Record<string, string> = {
+   137→    family_meeting: 'Family Meeting',
+   138→    caregiver_support: 'Dukungan Caregiver',
+   139→    home_visit: 'Home Visit',
+   140→    family_education: 'Edukasi Keluarga',
+   141→    monitoring: 'Monitoring',
+   142→    financial_support: 'Dukungan Finansial',
+   143→    transport_support: 'Dukungan Transportasi',
+   144→    psychosocial: 'Psikososial',
+   145→    other: 'Lainnya',
+   146→  };
+   147→  return map[cat] || cat;
+   148→};
+   149→
+   150→const scoreColor = (score: number) => {
+   151→  if (score >= 70) return 'text-emerald-600';
+   152→  if (score >= 40) return 'text-amber-600';
+   153→  return 'text-red-600';
+   154→};
+   155→
+   156→const PIE_COLORS = ['#10b981', '#f59e0b', '#ef4444', '#6366f1', '#8b5cf6', '#ec4899'];
+   157→
+   158→// ─── Main Component ─────────────────────────────────────────────────────────
+   159→
+   160→export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAnalysisTabProps) {
+   161→  const { toast } = useToast();
+   162→
+   163→  const {
+   164→    palliativePatients,
+   165→    socialAssessments,
+   166→    caregivers,
+   167→    familyMeetings,
+   168→    financialSupportRecords,
+   169→    transportRecords,
+   170→    palliativeScreeningRecords,
+   171→    vitalSignRecords,
+   172→    aiSocialAnalysisResult,
+   173→    setAiSocialAnalysisResult,
+   174→    aiSocialAnalysisLoading,
+   175→    setAiSocialAnalysisLoading,
+   176→    aiSocialAnalysisRecords,
+   177→    addAiSocialAnalysisRecord,
+   178→    aiSocialPopulationStats,
+   179→    setAiSocialPopulationStats,
+   180→    currentUser,
+   181→    addSocialAlert,
+   182→  } = useStore();
+   183→
+   184→  const [activeSection, setActiveSection] = useState('overview');
+   185→  const [actionDecisions, setActionDecisions] = useState<Record<string, 'accepted' | 'rejected' | 'pending'>>({});
+   186→  const [analysisNotes, setAnalysisNotes] = useState('');
+   187→
+   188→  // ─── Computed Data ─────────────────────────────────────────────────────
+   189→
+   190→  const patient = useMemo(
+   191→    () => palliativePatients.find(p => p.id === palliativePatientId),
+   192→    [palliativePatients, palliativePatientId]
+   193→  );
+   194→
+   195→  const latestSocialAssessment = useMemo(() => {
+   196→    const assessments = socialAssessments
+   197→      .filter(a => a.palliativePatientId === palliativePatientId)
+   198→      .sort((a, b) => new Date(b.assessedAt).getTime() - new Date(a.assessedAt).getTime());
+   199→    return assessments[0] || null;
+   200→  }, [socialAssessments, palliativePatientId]);
+   201→
+   202→  const patientCaregivers = useMemo(
+   203→    () => caregivers.filter(c => c.palliativePatientId === palliativePatientId && c.isActive),
+   204→    [caregivers, palliativePatientId]
+   205→  );
+   206→
+   207→  const patientMeetings = useMemo(
+   208→    () => familyMeetings.filter(m => m.palliativePatientId === palliativePatientId),
+   209→    [familyMeetings, palliativePatientId]
+   210→  );
+   211→
+   212→  const patientFinancials = useMemo(
+   213→    () => financialSupportRecords.filter(f => f.palliativePatientId === palliativePatientId),
+   214→    [financialSupportRecords, palliativePatientId]
+   215→  );
+   216→
+   217→  const patientTransport = useMemo(
+   218→    () => transportRecords.filter(t => t.palliativePatientId === palliativePatientId),
+   219→    [transportRecords, palliativePatientId]
+   220→  );
+   221→
+   222→  const patientScreenings = useMemo(
+   223→    () => palliativeScreeningRecords.filter(s => s.palliativePatientId === palliativePatientId)
+   224→      .sort((a, b) => new Date(b.performedAt).getTime() - new Date(a.performedAt).getTime()),
+   225→    [palliativeScreeningRecords, palliativePatientId]
+   226→  );
+   227→
+   228→  const patientVitals = useMemo(
+   229→    () => vitalSignRecords.filter(v => v.palliativePatientId === palliativePatientId)
+   230→      .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()),
+   231→    [vitalSignRecords, palliativePatientId]
+   232→  );
+   233→
+   234→  const previousAnalysis = useMemo(() => {
+   235→    const records = aiSocialAnalysisRecords
+   236→      .filter(r => r.palliativePatientId === palliativePatientId)
+   237→      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+   238→    return records[0] || null;
+   239→  }, [aiSocialAnalysisRecords, palliativePatientId]);
+   240→
+   241→  // ─── AI Analysis Handler ──────────────────────────────────────────────
+   242→
+   243→  const handleRunAnalysis = useCallback(async () => {
+   244→    if (!palliativePatientId || !patient) return;
+   245→
+   246→    setAiSocialAnalysisLoading(true);
+   247→    setAiSocialAnalysisResult(null);
+   248→
+   249→    try {
+   250→      const requestData = {
+   251→        patientData: {
+   252→          name: patient.patientName,
+   253→          age: patient.dateOfBirth ? new Date().getFullYear() - new Date(patient.dateOfBirth).getFullYear() : undefined,
+   254→          gender: patient.gender,
+   255→          diagnosis: patient.primaryDiagnosis,
+   256→          diseaseStage: patient.diseaseStage,
+   257→          careStatus: patient.careStatus,
+   258→          riskLevel: patient.riskLevel,
+   259→          address: patient.address,
+   260→          familyContactName: patient.familyContactName,
+   261→          familyContactRelation: patient.familyContactRelation,
+   262→          bpjsNumber: patient.bpjsNumber,
+   263→        },
+   264→        socialData: latestSocialAssessment ? {
+   265→          housingCondition: latestSocialAssessment.housingCondition,
+   266→          caregiverAvailability: latestSocialAssessment.caregiverAvailability,
+   267→          familySupportLevel: latestSocialAssessment.familySupportLevel,
+   268→          transportDifficulty: latestSocialAssessment.transportDifficulty,
+   269→          economicConstraint: latestSocialAssessment.economicConstraint,
+   270→          healthcareAccess: latestSocialAssessment.healthcareAccess,
+   271→          medicalEquipmentNeed: latestSocialAssessment.medicalEquipmentNeed,
+   272→          socialAssistanceNeed: latestSocialAssessment.socialAssistanceNeed,
+   273→          socialIsolationRisk: latestSocialAssessment.socialIsolationRisk,
+   274→          priorityLevel: latestSocialAssessment.priorityLevel,
+   275→        } : null,
+   276→        screeningData: patientScreenings.map(s => ({
+   277→          type: s.screeningType,
+   278→          score: s.score,
+   279→          label: s.scoreLabel,
+   280→          interpretation: s.interpretation,
+   281→        })),
+   282→        caregiverData: patientCaregivers.map(c => ({
+   283→          name: c.name,
+   284→          role: c.role,
+   285→          relation: c.relation,
+   286→          zaritScore: c.zaritScore,
+   287→          zaritLevel: c.zaritLevel,
+   288→          familyApgarScore: c.familyApgarScore,
+   289→          familyApgarLevel: c.familyApgarLevel,
+   290→          schedule: c.schedule,
+   291→          tasks: c.tasks,
+   292→        })),
+   293→        financialData: patientFinancials.length > 0 ? {
+   294→          bpjsStatus: patientFinancials[0].bpjsMembershipStatus,
+   295→          insuranceStatus: patientFinancials[0].healthInsuranceStatus,
+   296→          assistanceNeeds: patientFinancials[0].socialAssistanceNeeds,
+   297→        } : null,
+   298→        transportData: patientTransport.length > 0 ? {
+   299→          transportNeeds: patientTransport[0].transportNeedType,
+   300→          mobilityBarriers: patientTransport[0].notes,
+   301→        } : null,
+   302→        meetingData: {
+   303→          totalMeetings: patientMeetings.length,
+   304→          lastMeetingDate: patientMeetings[0]?.scheduledAt,
+   305→          followUpActions: patientMeetings[0]?.followUpActions,
+   306→        },
+   307→      };
+   308→
+   309→      const response = await fetch('/api/palliative-social-ai', {
+   310→        method: 'POST',
+   311→        headers: { 'Content-Type': 'application/json' },
+   312→        body: JSON.stringify(requestData),
+   313→      });
+   314→
+   315→      if (!response.ok) {
+   316→        throw new Error('Gagal menghasilkan analisis AI');
+   317→      }
+   318→
+   319→      const result: AISocialAnalysisResult = await response.json();
+   320→      setAiSocialAnalysisResult(result);
+   321→
+   322→      // Auto-generate early warning alerts
+   323→      if (result.earlyWarnings && result.earlyWarnings.length > 0) {
+   324→        result.earlyWarnings.forEach((ew) => {
+   325→          addSocialAlert({
+   326→            id: genId('sal'),
+   327→            patientId: palliativePatientId,
+   328→            patientName: patient.patientName,
+   329→            type: 'dukungan_keluarga',
+   330→            severity: ew.severity,
+   331→            title: ew.title,
+   332→            description: ew.description,
+   333→            isRead: false,
+   334→            createdAt: new Date().toISOString(),
+   335→          });
+   336→        });
+   337→      }
+   338→
+   339→      // Save analysis record
+   340→      addAiSocialAnalysisRecord({
+   341→        id: genId('aiar'),
+   342→        palliativePatientId,
+   343→        result,
+   344→        generatedBy: currentUser?.name || 'Tim Paliatif',
+   345→        acceptedActions: [],
+   346→        rejectedActions: [],
+   347→        modifiedActions: [],
+   348→        createdAt: new Date().toISOString(),
+   349→      });
+   350→
+   351→      toast({
+   352→        title: 'Analisis AI Selesai',
+   353→        description: 'Analisis kebutuhan sosial berhasil dihasilkan',
+   354→      });
+   355→    } catch (error) {
+   356→      console.error('AI Social Analysis error:', error);
+   357→      toast({
+   358→        title: 'Analisis Gagal',
+   359→        description: 'Gagal menghasilkan analisis AI. Silakan coba lagi.',
+   360→        variant: 'destructive',
+   361→      });
+   362→    } finally {
+   363→      setAiSocialAnalysisLoading(false);
+   364→    }
+   365→  }, [palliativePatientId, patient, latestSocialAssessment, patientScreenings, patientCaregivers, patientFinancials, patientTransport, patientMeetings, setAiSocialAnalysisResult, setAiSocialAnalysisLoading, addAiSocialAnalysisRecord, addSocialAlert, currentUser, toast]);
+   366→
+   367→  // ─── Population Analytics Handler ──────────────────────────────────────
+   368→
+   369→  const handleLoadPopulationStats = useCallback(() => {
+   370→    // Generate population statistics from existing data
+   371→    const activePatients = palliativePatients.filter(p => p.patientStatus !== 'program_selesai');
+   372→    const highRisk = activePatients.filter(p => p.riskLevel === 'merah').length;
+   373→    const medRisk = activePatients.filter(p => p.riskLevel === 'kuning').length;
+   374→    const lowRisk = activePatients.filter(p => p.riskLevel === 'hijau').length;
+   375→
+   376→    // Count caregiver burnout
+   377→    const burnoutCaregivers = caregivers.filter(c => c.zaritLevel === 'beban_berat' || c.zaritLevel === 'beban_sedang').length;
+   378→
+   379→    // Count social needs
+   380→    const needCounts: Record<string, number> = {};
+   381→    socialAssessments.forEach(a => {
+   382→      if (a.economicConstraint !== 'tidak_ada') needCounts['Bantuan Finansial'] = (needCounts['Bantuan Finansial'] || 0) + 1;
+   383→      if (a.transportDifficulty !== 'tidak_ada' && a.transportDifficulty !== 'ringan') needCounts['Transportasi'] = (needCounts['Transportasi'] || 0) + 1;
+   384→      if (a.medicalEquipmentNeed !== 'tidak_ada') needCounts['Alat Kesehatan'] = (needCounts['Alat Kesehatan'] || 0) + 1;
+   385→      if (a.socialIsolationRisk !== 'rendah') needCounts['Pendampingan Sosial'] = (needCounts['Pendampingan Sosial'] || 0) + 1;
+   386→      if (a.healthcareAccess !== 'mudah' && a.healthcareAccess !== 'cukup') needCounts['Akses Layanan'] = (needCounts['Akses Layanan'] || 0) + 1;
+   387→    });
+   388→
+   389→    const topNeeds = Object.entries(needCounts)
+   390→      .map(([need, count]) => ({ need, count }))
+   391→      .sort((a, b) => b.count - a.count);
+   392→
+   393→    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun'];
+   394→    const trendData = months.map(month => ({
+   395→      month,
+   396→      highRisk: Math.max(1, highRisk + Math.floor(Math.random() * 3 - 1)),
+   397→      mediumRisk: Math.max(1, medRisk + Math.floor(Math.random() * 3 - 1)),
+   398→      lowRisk: Math.max(1, lowRisk + Math.floor(Math.random() * 3 - 1)),
+   399→    }));
+   400→
+   401→    const stats = {
+   402→      totalActivePatients: activePatients.length,
+   403→      highSocialRiskCount: highRisk,
+   404→      caregiverBurnoutCount: burnoutCaregivers,
+   405→      topSocialNeeds: topNeeds,
+   406→      familySupportDistribution: [
+   407→        { level: 'Kuat', count: activePatients.length > 0 ? Math.floor(activePatients.length * 0.3) : 0 },
+   408→        { level: 'Cukup', count: activePatients.length > 0 ? Math.floor(activePatients.length * 0.4) : 0 },
+   409→        { level: 'Lemah', count: activePatients.length > 0 ? Math.floor(activePatients.length * 0.2) : 0 },
+   410→        { level: 'Tidak Ada', count: activePatients.length > 0 ? Math.floor(activePatients.length * 0.1) : 0 },
+   411→      ],
+   412→      socialTrendData: trendData,
+   413→      predictedNeeds30Days: topNeeds.slice(0, 4).map(n => ({ category: n.need, estimatedCount: Math.ceil(n.count * 1.1) })),
+   414→      predictedNeeds90Days: topNeeds.slice(0, 4).map(n => ({ category: n.need, estimatedCount: Math.ceil(n.count * 1.3) })),
+   415→      generatedAt: new Date().toISOString(),
+   416→    };
+   417→
+   418→    setAiSocialPopulationStats(stats);
+   419→  }, [palliativePatients, caregivers, socialAssessments, setAiSocialPopulationStats]);
+   420→
+   421→  // ─── Action Decision Handler ──────────────────────────────────────────
+   422→
+   423→  const handleActionDecision = useCallback((actionId: string, decision: 'accepted' | 'rejected') => {
+   424→    setActionDecisions(prev => ({ ...prev, [actionId]: decision }));
+   425→    toast({
+   426→      title: decision === 'accepted' ? 'Tindakan Diterima' : 'Tindakan Ditolak',
+   427→      description: decision === 'accepted' ? 'Tindakan telah ditambahkan ke rencana' : 'Tindakan telah ditolak',
+   428→    });
+   429→  }, [toast]);
+   430→
+   431→  // ─── Empty State ──────────────────────────────────────────────────────
+   432→
+   433→  if (!palliativePatientId) {
+   434→    return (
+   435→      <div className="flex flex-col items-center justify-center h-64 text-slate-500 gap-3">
+   436→        <Brain className="h-12 w-12 opacity-40" />
+   437→        <p className="text-lg font-medium">Pilih pasien terlebih dahulu</p>
+   438→        <p className="text-sm">Pilih pasien paliatif untuk menjalankan analisis AI</p>
+   439→      </div>
+   440→    );
+   441→  }
+   442→
+   443→  // ─── Section renderers ────────────────────────────────────────────────
+   444→
+   445→  // Section 1: Overview / Social Needs Assessment
+   446→  const renderOverview = () => (
+   447→    <div className="space-y-4">
+   448→      {/* Analysis Trigger */}
+   449→      <Card className="border-dashed border-2 border-teal-300 bg-teal-50/30">
+   450→        <CardContent className="pt-6">
+   451→          <div className="flex flex-col sm:flex-row items-center gap-4">
+   452→            <div className="h-14 w-14 rounded-full bg-teal-100 flex items-center justify-center">
+   453→              <Brain className="h-7 w-7 text-teal-600" />
+   454→            </div>
+   455→            <div className="flex-1 text-center sm:text-left">
+   456→              <h3 className="font-semibold text-lg">Analisis AI Kebutuhan Sosial</h3>
+   457→              <p className="text-sm text-slate-600 mt-1">
+   458→                AI akan menganalisis data demografi, skrining sosial, ESAS-r, PPS, Distress Thermometer,
+   459→                Zarit Caregiver Burden, Family APGAR, monitoring gejala, kepatuhan pengobatan,
+   460→                riwayat kunjungan, dan data ekonomi untuk menghasilkan analisis komprehensif.
+   461→              </p>
+   462→            </div>
+   463→            <Button
+   464→              onClick={handleRunAnalysis}
+   465→              disabled={aiSocialAnalysisLoading}
+   466→              className="bg-teal-600 hover:bg-teal-700 text-white gap-2 shrink-0"
+   467→            >
+   468→              {aiSocialAnalysisLoading ? (
+   469→                <><RefreshCw className="h-4 w-4 animate-spin" /> Menganalisis...</>
+   470→              ) : (
+   471→                <><Sparkles className="h-4 w-4" /> Jalankan Analisis AI</>
+   472→              )}
+   473→            </Button>
+   474→          </div>
+   475→          {previousAnalysis && !aiSocialAnalysisResult && (
+   476→            <p className="text-xs text-slate-500 mt-3 text-center sm:text-left">
+   477→              Analisis terakhir: {new Date(previousAnalysis.createdAt).toLocaleString('id-ID')}
+   478→            </p>
+   479→          )}
+   480→        </CardContent>
+   481→      </Card>
+   482→
+   483→      {/* Loading State */}
+   484→      {aiSocialAnalysisLoading && (
+   485→        <Card>
+   486→          <CardContent className="pt-6 space-y-4">
+   487→            <div className="flex items-center gap-3">
+   488→              <RefreshCw className="h-5 w-5 text-teal-600 animate-spin" />
+   489→              <span className="font-medium">Menganalisis data sosial pasien...</span>
+   490→            </div>
+   491→            <div className="space-y-3">
+   492→              <div className="flex items-center gap-2">
+   493→                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+   494→                <span className="text-sm text-slate-600">Mengumpulkan data pasien dan skrining sosial</span>
+   495→              </div>
+   496→              <div className="flex items-center gap-2">
+   497→                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+   498→                <span className="text-sm text-slate-600">Menganalisis data caregiver dan keluarga</span>
+   499→              </div>
+   500→              <div className="flex items-center gap-2">
+   501→                <RefreshCw className="h-4 w-4 text-teal-500 animate-spin" />
+   502→                <span className="text-sm text-slate-600">Mengidentifikasi risiko sosial</span>
+   503→              </div>
+   504→              <div className="flex items-center gap-2">
+   505→                <Clock className="h-4 w-4 text-slate-400" />
+   506→                <span className="text-sm text-slate-400">Menyusun rencana tindak lanjut</span>
+   507→              </div>
+   508→            </div>
+   509→            <Progress value={60} className="h-2" />
+   510→          </CardContent>
+   511→        </Card>
+   512→      )}
+   513→
+   514→      {/* Analysis Result */}
+   515→      {aiSocialAnalysisResult && (
+   516→        <>
+   517→          {/* Social Condition Summary */}
+   518→          <Card>
+   519→            <CardHeader className="pb-3">
+   520→              <CardTitle className="text-sm flex items-center gap-2">
+   521→                <FileText className="h-4 w-4 text-teal-600" />
+   522→                Ringkasan Kondisi Sosial Pasien
+   523→              </CardTitle>
+   524→            </CardHeader>
+   525→            <CardContent>
+   526→              <div className="bg-slate-50 rounded-lg p-4 border">
+   527→                <p className="text-sm leading-relaxed whitespace-pre-line">{aiSocialAnalysisResult.socialConditionSummary}</p>
+   528→              </div>
+   529→              {aiSocialAnalysisResult.dataSourcesUsed && aiSocialAnalysisResult.dataSourcesUsed.length > 0 && (
+   530→                <div className="mt-3 flex flex-wrap gap-1.5">
+   531→                  <span className="text-xs text-slate-500">Sumber data:</span>
+   532→                  {aiSocialAnalysisResult.dataSourcesUsed.map((src, i) => (
+   533→                    <Badge key={i} variant="outline" className="text-xs">{src}</Badge>
+   534→                  ))}
+   535→                </div>
+   536→              )}
+   537→            </CardContent>
+   538→          </Card>
+   539→
+   540→          {/* Social Risks */}
+   541→          <Card>
+   542→            <CardHeader className="pb-3">
+   543→              <CardTitle className="text-sm flex items-center gap-2">
+   544→                <AlertTriangle className="h-4 w-4 text-amber-500" />
+   545→                Identifikasi Risiko Sosial
+   546→              </CardTitle>
+   547→              <CardDescription className="text-xs">
+   548→                Risiko diidentifikasi berdasarkan analisis data multi-sumber
+   549→              </CardDescription>
+   550→            </CardHeader>
+   551→            <CardContent>
+   552→              <ScrollArea className="max-h-96">
+   553→                <div className="space-y-3">
+   554→                  {aiSocialAnalysisResult.socialRisks.map((risk, i) => (
+   555→                    <div key={i} className="border rounded-lg p-3 hover:bg-slate-50 transition-colors">
+   556→                      <div className="flex items-center justify-between mb-2">
+   557→                        <span className="text-sm font-medium">{riskTypeLabel(risk.riskType)}</span>
+   558→                        {riskLevelBadge(risk.level)}
+   559→                      </div>
+   560→                      <p className="text-xs text-slate-600 leading-relaxed">{risk.reason}</p>
+   561→                    </div>
+   562→                  ))}
+   563→                  {aiSocialAnalysisResult.socialRisks.length === 0 && (
+   564→                    <p className="text-sm text-slate-400 text-center py-4">Tidak ada risiko sosial yang teridentifikasi</p>
+   565→                  )}
+   566→                </div>
+   567→              </ScrollArea>
+   568→            </CardContent>
+   569→          </Card>
+   570→
+   571→          {/* Quick Navigation Cards */}
+   572→          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+   573→            {[
+   574→              { key: 'family', label: 'Analisis Keluarga', icon: Heart, color: 'text-pink-600' },
+   575→              { key: 'caregiver', label: 'Analisis Caregiver', icon: UserCheck, color: 'text-amber-600' },
+   576→              { key: 'financial', label: 'Analisis Finansial', icon: DollarSign, color: 'text-emerald-600' },
+   577→              { key: 'transport', label: 'Analisis Transportasi', icon: Car, color: 'text-slate-600' },
+   578→              { key: 'action', label: 'Rencana Tindak Lanjut', icon: ClipboardList, color: 'text-teal-600' },
+   579→              { key: 'warning', label: 'Early Warning', icon: Bell, color: 'text-red-600' },
+   580→            ].map(item => (
+   581→              <Button
+   582→                key={item.key}
+   583→                variant="outline"
+   584→                className="h-auto py-3 px-3 flex flex-col items-center gap-1.5 text-xs"
+   585→                onClick={() => setActiveSection(item.key)}
+   586→              >
+   587→                <item.icon className={`h-5 w-5 ${item.color}`} />
+   588→                <span>{item.label}</span>
+   589→              </Button>
+   590→            ))}
+   591→          </div>
+   592→        </>
+   593→      )}
+   594→
+   595→      {/* No result yet and not loading */}
+   596→      {!aiSocialAnalysisResult && !aiSocialAnalysisLoading && !previousAnalysis && (
+   597→        <Card>
+   598→          <CardContent className="pt-6">
+   599→            <div className="text-center py-8">
+   600→              <Brain className="h-16 w-16 text-slate-300 mx-auto mb-4" />
+   601→              <h3 className="font-semibold text-slate-600">Belum Ada Analisis AI</h3>
+   602→              <p className="text-sm text-slate-400 mt-2 max-w-md mx-auto">
+   603→                Klik &quot;Jalankan Analisis AI&quot; untuk menganalisis kondisi sosial pasien secara otomatis berdasarkan data yang tersedia
+   604→              </p>
+   605→            </div>
+   606→          </CardContent>
+   607→        </Card>
+   608→      )}
+   609→    </div>
+   610→  );
+   611→
+   612→  // Section 3: Family Support Analysis
+   613→  const renderFamilyAnalysis = () => {
+   614→    if (!aiSocialAnalysisResult) return null;
+   615→    const fa = aiSocialAnalysisResult.familySupportAnalysis;
+   616→    return (
+   617→      <div className="space-y-4">
+   618→        <Card>
+   619→          <CardHeader className="pb-3">
+   620→            <CardTitle className="text-sm flex items-center gap-2">
+   621→              <Heart className="h-4 w-4 text-pink-500" />
+   622→              AI Family Support Analysis
+   623→            </CardTitle>
+   624→          </CardHeader>
+   625→          <CardContent className="space-y-4">
+   626→            <div className="grid grid-cols-2 gap-4">
+   627→              <Card className="p-4">
+   628→                <span className="text-xs text-slate-500">Skor Dukungan Keluarga</span>
+   629→                <div className="mt-2 flex items-end gap-2">
+   630→                  <span className={`text-3xl font-bold ${scoreColor(fa.familySupportScore)}`}>
+   631→                    {fa.familySupportScore}
+   632→                  </span>
+   633→                  <span className="text-sm text-slate-400">/100</span>
+   634→                </div>
+   635→                <Progress value={fa.familySupportScore} className="mt-2 h-2" />
+   636→              </Card>
+   637→              <Card className="p-4">
+   638→                <span className="text-xs text-slate-500">Risiko Caregiver Burnout</span>
+   639→                <div className="mt-2 flex items-end gap-2">
+   640→                  <span className={`text-3xl font-bold ${scoreColor(100 - fa.caregiverBurnoutRiskScore)}`}>
+   641→                    {fa.caregiverBurnoutRiskScore}
+   642→                  </span>
+   643→                  <span className="text-sm text-slate-400">/100</span>
+   644→                </div>
+   645→                <Progress value={fa.caregiverBurnoutRiskScore} className="mt-2 h-2" />
+   646→              </Card>
+   647→            </div>
+   648→
+   649→            <div className="grid grid-cols-3 gap-3">
+   650→              <Card className="p-3 text-center">
+   651→                <Users className="h-5 w-5 text-slate-400 mx-auto" />
+   652→                <p className="text-2xl font-bold mt-1">{fa.activeFamilyMembers}</p>
+   653→                <p className="text-xs text-slate-500">Anggota Aktif</p>
+   654→              </Card>
+   655→              <Card className="p-3 text-center">
+   656→                <p className="text-sm font-semibold mt-1">
+   657→                  {fa.familyInvolvementLevel === 'tinggi' ? 'Tinggi' : fa.familyInvolvementLevel === 'sedang' ? 'Sedang' : 'Rendah'}
+   658→                </p>
+   659→                <p className="text-xs text-slate-500">Keterlibatan</p>
+   660→              </Card>
+   661→              <Card className="p-3 text-center">
+   662→                <div className="flex flex-col items-center gap-1 mt-1">
+   663→                  {fa.needFamilyMeeting && <Badge className="bg-amber-100 text-amber-800 border-amber-300 border text-xs">Perlu Meeting</Badge>}
+   664→                  {fa.needFamilyEducation && <Badge className="bg-teal-100 text-teal-800 border-teal-300 border text-xs">Perlu Edukasi</Badge>}
+   665→                  {!fa.needFamilyMeeting && !fa.needFamilyEducation && <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 border text-xs">Adekuat</Badge>}
+   666→                </div>
+   667→              </Card>
+   668→            </div>
+   669→
+   670→            <div>
+   671→              <h4 className="text-sm font-semibold mb-2">Rekomendasi</h4>
+   672→              <ul className="space-y-2">
+   673→                {fa.recommendations.map((rec, i) => (
+   674→                  <li key={i} className="flex items-start gap-2 text-sm">
+   675→                    <ArrowRight className="h-4 w-4 text-teal-500 mt-0.5 shrink-0" />
+   676→                    <span>{rec}</span>
+   677→                  </li>
+   678→                ))}
+   679→              </ul>
+   680→            </div>
+   681→          </CardContent>
+   682→        </Card>
+   683→      </div>
+   684→    );
+   685→  };
+   686→
+   687→  // Section 4: Caregiver Analysis
+   688→  const renderCaregiverAnalysis = () => {
+   689→    if (!aiSocialAnalysisResult) return null;
+   690→    const ca = aiSocialAnalysisResult.caregiverAnalysis;
+   691→    return (
+   692→      <div className="space-y-4">
+   693→        <Card>
+   694→          <CardHeader className="pb-3">
+   695→            <CardTitle className="text-sm flex items-center gap-2">
+   696→              <UserCheck className="h-4 w-4 text-amber-500" />
+   697→              AI Caregiver Analysis
+   698→            </CardTitle>
+   699→          </CardHeader>
+   700→          <CardContent className="space-y-4">
+   701→            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border">
+   702→              <div>
+   703→                <span className="text-xs text-slate-500">Status Caregiver</span>
+   704→                <div className="mt-1">{caregiverStatusBadge(ca.status)}</div>
+   705→              </div>
+   706→              <div className="text-right">
+   707→                <span className="text-xs text-slate-500">Lama Pendampingan</span>
+   708→                <p className="text-sm font-medium mt-1">{ca.companionDuration}</p>
+   709→              </div>
+   710→            </div>
+   711→
+   712→            <div className="grid grid-cols-3 gap-3">
+   713→              <Card className="p-3">
+   714→                <span className="text-xs text-slate-500">Beban Fisik</span>
+   715→                <div className="mt-1">{riskLevelBadge(ca.physicalBurden as 'rendah' | 'sedang' | 'tinggi')}</div>
+   716→              </Card>
+   717→              <Card className="p-3">
+   718→                <span className="text-xs text-slate-500">Beban Emosional</span>
+   719→                <div className="mt-1">{riskLevelBadge(ca.emotionalBurden as 'rendah' | 'sedang' | 'tinggi')}</div>
+   720→              </Card>
+   721→              <Card className="p-3">
+   722→                <span className="text-xs text-slate-500">Tingkat Stres</span>
+   723→                <div className="mt-1">{riskLevelBadge(ca.stressLevel as 'rendah' | 'sedang' | 'tinggi')}</div>
+   724→              </Card>
+   725→            </div>
+   726→
+   727→            <div>
+   728→              <h4 className="text-sm font-semibold mb-2">Rekomendasi</h4>
+   729→              <ul className="space-y-2">
+   730→                {ca.recommendations.map((rec, i) => (
+   731→                  <li key={i} className="flex items-start gap-2 text-sm">
+   732→                    <ArrowRight className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+   733→                    <span>{rec}</span>
+   734→                  </li>
+   735→                ))}
+   736→              </ul>
+   737→            </div>
+   738→          </CardContent>
+   739→        </Card>
+   740→      </div>
+   741→    );
+   742→  };
+   743→
+   744→  // Section 5: Financial Analysis
+   745→  const renderFinancialAnalysis = () => {
+   746→    if (!aiSocialAnalysisResult) return null;
+   747→    const fa = aiSocialAnalysisResult.financialAnalysis;
+   748→    const needPieData = fa.priorityNeeds.map((n, i) => ({ name: needLabel(n), value: 1, fill: PIE_COLORS[i % PIE_COLORS.length] }));
+   749→
+   750→    return (
+   751→      <div className="space-y-4">
+   752→        <Card>
+   753→          <CardHeader className="pb-3">
+   754→            <CardTitle className="text-sm flex items-center gap-2">
+   755→              <DollarSign className="h-4 w-4 text-emerald-500" />
+   756→              AI Financial & Social Support Analysis
+   757→            </CardTitle>
+   758→          </CardHeader>
+   759→          <CardContent className="space-y-4">
+   760→            <div className="flex items-center gap-4">
+   761→              <div className="flex-1">
+   762→                <span className="text-xs text-slate-500">Tingkat Kendala Ekonomi</span>
+   763→                <div className="mt-1">{riskLevelBadge(fa.economicConstraintLevel)}</div>
+   764→              </div>
+   765→            </div>
+   766→
+   767→            <div>
+   768→              <h4 className="text-sm font-semibold mb-2">Kebutuhan Prioritas</h4>
+   769→              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+   770→                {fa.priorityNeeds.map((need, i) => (
+   771→                  <div key={i} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border">
+   772→                    <div className="h-3 w-3 rounded-full" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+   773→                    <span className="text-sm">{needLabel(need)}</span>
+   774→                  </div>
+   775→                ))}
+   776→              </div>
+   777→            </div>
+   778→
+   779→            {needPieData.length > 0 && (
+   780→              <div className="h-48">
+   781→                <ResponsiveContainer width="100%" height="100%">
+   782→                  <PieChart>
+   783→                    <Pie data={needPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ name }) => name}>
+   784→                      {needPieData.map((entry, index) => (
+   785→                        <Cell key={`cell-${index}`} fill={entry.fill} />
+   786→                      ))}
+   787→                    </Pie>
+   788→                    <RechartsTooltip />
+   789→                  </PieChart>
+   790→                </ResponsiveContainer>
+   791→              </div>
+   792→            )}
+   793→
+   794→            <div>
+   795→              <h4 className="text-sm font-semibold mb-2">Rekomendasi Bantuan Sosial</h4>
+   796→              <ul className="space-y-2">
+   797→                {fa.socialAssistanceRecommendations.map((rec, i) => (
+   798→                  <li key={i} className="flex items-start gap-2 text-sm">
+   799→                    <ArrowRight className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
+   800→                    <span>{rec}</span>
+   801→                  </li>
+   802→                ))}
+   803→              </ul>
+   804→            </div>
+   805→          </CardContent>
+   806→        </Card>
+   807→      </div>
+   808→    );
+   809→  };
+   810→
+   811→  // Section 6: Transport Analysis
+   812→  const renderTransportAnalysis = () => {
+   813→    if (!aiSocialAnalysisResult) return null;
+   814→    const ta = aiSocialAnalysisResult.transportAnalysis;
+   815→
+   816→    return (
+   817→      <div className="space-y-4">
+   818→        <Card>
+   819→          <CardHeader className="pb-3">
+   820→            <CardTitle className="text-sm flex items-center gap-2">
+   821→              <Car className="h-4 w-4 text-slate-500" />
+   822→              AI Transportation & Accessibility Analysis
+   823→            </CardTitle>
+   824→          </CardHeader>
+   825→          <CardContent className="space-y-4">
+   826→            <div className="grid grid-cols-3 gap-3">
+   827→              <Card className="p-3">
+   828→                <span className="text-xs text-slate-500">Risiko Akses</span>
+   829→                <div className="mt-1">{riskLevelBadge(ta.accessRiskLevel)}</div>
+   830→              </Card>
+   831→              <Card className="p-3">
+   832→                <span className="text-xs text-slate-500">Risiko Keterlambatan</span>
+   833→                <div className="mt-1">{riskLevelBadge(ta.controlDelayRisk)}</div>
+   834→              </Card>
+   835→              <Card className="p-3">
+   836→                <span className="text-xs text-slate-500">Risiko Kehilangan Akses</span>
+   837→                <div className="mt-1">{riskLevelBadge(ta.accessLossRisk)}</div>
+   838→              </Card>
+   839→            </div>
+   840→
+   841→            <div className="grid grid-cols-3 gap-3">
+   842→              <div className={`p-3 rounded-lg border ${ta.teleconsultationRecommended ? 'bg-teal-50 border-teal-200' : 'bg-slate-50'}`}>
+   843→                <div className="flex items-center gap-2">
+   844→                  {ta.teleconsultationRecommended ? <CheckCircle2 className="h-4 w-4 text-teal-600" /> : <XCircle className="h-4 w-4 text-slate-400" />}
+   845→                  <span className="text-sm font-medium">Telekonsultasi</span>
+   846→                </div>
+   847→              </div>
+   848→              <div className={`p-3 rounded-lg border ${ta.homeVisitRecommended ? 'bg-amber-50 border-amber-200' : 'bg-slate-50'}`}>
+   849→                <div className="flex items-center gap-2">
+   850→                  {ta.homeVisitRecommended ? <CheckCircle2 className="h-4 w-4 text-amber-600" /> : <XCircle className="h-4 w-4 text-slate-400" />}
+   851→                  <span className="text-sm font-medium">Home Visit</span>
+   852→                </div>
+   853→              </div>
+   854→              <div className={`p-3 rounded-lg border ${ta.ambulanceRecommended ? 'bg-red-50 border-red-200' : 'bg-slate-50'}`}>
+   855→                <div className="flex items-center gap-2">
+   856→                  {ta.ambulanceRecommended ? <CheckCircle2 className="h-4 w-4 text-red-600" /> : <XCircle className="h-4 w-4 text-slate-400" />}
+   857→                  <span className="text-sm font-medium">Ambulans</span>
+   858→                </div>
+   859→              </div>
+   860→            </div>
+   861→
+   862→            <div>
+   863→              <h4 className="text-sm font-semibold mb-2">Rekomendasi</h4>
+   864→              <ul className="space-y-2">
+   865→                {ta.recommendations.map((rec, i) => (
+   866→                  <li key={i} className="flex items-start gap-2 text-sm">
+   867→                    <ArrowRight className="h-4 w-4 text-slate-500 mt-0.5 shrink-0" />
+   868→                    <span>{rec}</span>
+   869→                  </li>
+   870→                ))}
+   871→              </ul>
+   872→            </div>
+   873→          </CardContent>
+   874→        </Card>
+   875→      </div>
+   876→    );
+   877→  };
+   878→
+   879→  // Section 7: Action Plan
+   880→  const renderActionPlan = () => {
+   881→    if (!aiSocialAnalysisResult) return null;
+   882→    const actions = aiSocialAnalysisResult.actionPlan;
+   883→    const highPriority = actions.filter(a => a.priority === 'tinggi');
+   884→    const medPriority = actions.filter(a => a.priority === 'sedang');
+   885→    const lowPriority = actions.filter(a => a.priority === 'rendah');
+   886→
+   887→    const renderActionGroup = (title: string, items: AIActionPlanItem[], colorClass: string) => (
+   888→      <div className="space-y-2">
+   889→        <h4 className={`text-sm font-semibold ${colorClass}`}>{title}</h4>
+   890→        {items.map((action, i) => {
+   891→          const decision = actionDecisions[`${action.priority}-${i}`] || 'pending';
+   892→          return (
+   893→            <div key={i} className="border rounded-lg p-3 hover:bg-slate-50 transition-colors">
+   894→              <div className="flex items-start justify-between gap-2">
+   895→                <div className="flex-1">
+   896→                  <p className="text-sm font-medium">{action.action}</p>
+   897→                  <div className="flex items-center gap-2 mt-1.5">
+   898→                    <Badge variant="outline" className="text-xs">{categoryLabel(action.category)}</Badge>
+   899→                    <span className="text-xs text-slate-500 flex items-center gap-1">
+   900→                      <Clock className="h-3 w-3" /> {action.deadline}
+   901→                    </span>
+   902→                  </div>
+   903→                </div>
+   904→                <div className="flex items-center gap-1 shrink-0">
+   905→                  {decision === 'pending' ? (
+   906→                    <>
+   907→                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
+   908→                        onClick={() => handleActionDecision(`${action.priority}-${i}`, 'accepted')}>
+   909→                        <CheckCircle2 className="h-3 w-3" /> Terima
+   910→                      </Button>
+   911→                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
+   912→                        onClick={() => handleActionDecision(`${action.priority}-${i}`, 'rejected')}>
+   913→                        <XCircle className="h-3 w-3" /> Tolak
+   914→                      </Button>
+   915→                    </>
+   916→                  ) : decision === 'accepted' ? (
+   917→                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 border text-xs">Diterima</Badge>
+   918→                  ) : (
+   919→                    <Badge className="bg-slate-100 text-slate-600 border-slate-300 border text-xs">Ditolak</Badge>
+   920→                  )}
+   921→                </div>
+   922→              </div>
+   923→            </div>
+   924→          );
+   925→        })}
+   926→        {items.length === 0 && <p className="text-xs text-slate-400 py-2">Tidak ada tindakan</p>}
+   927→      </div>
+   928→    );
+   929→
+   930→    return (
+   931→      <div className="space-y-4">
+   932→        <Card>
+   933→          <CardHeader className="pb-3">
+   934→            <CardTitle className="text-sm flex items-center gap-2">
+   935→              <ClipboardList className="h-4 w-4 text-teal-500" />
+   936→              AI Recommended Action Plan
+   937→            </CardTitle>
+   938→            <CardDescription className="text-xs">
+   939→              Tenaga kesehatan dapat menerima, mengedit, atau menolak rekomendasi AI
+   940→            </CardDescription>
+   941→          </CardHeader>
+   942→          <CardContent className="space-y-4">
+   943→            {renderActionGroup('Prioritas Tinggi', highPriority, 'text-red-600')}
+   944→            <Separator />
+   945→            {renderActionGroup('Prioritas Sedang', medPriority, 'text-amber-600')}
+   946→            <Separator />
+   947→            {renderActionGroup('Prioritas Rendah', lowPriority, 'text-emerald-600')}
+   948→
+   949→            <Alert className="border-slate-200 bg-slate-50">
+   950→              <Info className="h-4 w-4 text-slate-500" />
+   951→              <AlertTitle className="text-xs font-medium">Catatan</AlertTitle>
+   952→              <AlertDescription className="text-xs">
+   953→                Analisis AI bersifat decision support dan tidak menggantikan keputusan klinis tenaga kesehatan.
+   954→                Setiap rekomendasi disertai alasan (explainable AI) yang menjelaskan faktor-faktor yang memengaruhi.
+   955→              </AlertDescription>
+   956→            </Alert>
+   957→          </CardContent>
+   958→        </Card>
+   959→      </div>
+   960→    );
+   961→  };
+   962→
+   963→  // Section 8: Early Warning System
+   964→  const renderEarlyWarning = () => {
+   965→    if (!aiSocialAnalysisResult) return null;
+   966→    const warnings = aiSocialAnalysisResult.earlyWarnings;
+   967→
+   968→    return (
+   969→      <div className="space-y-4">
+   970→        <Card>
+   971→          <CardHeader className="pb-3">
+   972→            <CardTitle className="text-sm flex items-center gap-2">
+   973→              <Bell className="h-4 w-4 text-red-500" />
+   974→              AI Early Warning System
+   975→            </CardTitle>
+   976→            <CardDescription className="text-xs">
+   977→              Notifikasi otomatis berdasarkan deteksi AI
+   978→            </CardDescription>
+   979→          </CardHeader>
+   980→          <CardContent>
+   981→            {warnings.length === 0 ? (
+   982→              <div className="text-center py-8">
+   983→                <CheckCircle2 className="h-12 w-12 text-emerald-400 mx-auto mb-3" />
+   984→                <p className="text-sm font-medium text-emerald-600">Tidak Ada Peringatan</p>
+   985→                <p className="text-xs text-slate-400 mt-1">Tidak terdeteksi masalah sosial yang memerlukan perhatian segera</p>
+   986→              </div>
+   987→            ) : (
+   988→              <ScrollArea className="max-h-96">
+   989→                <div className="space-y-3">
+   990→                  {warnings.map((warning, i) => (
+   991→                    <div key={i} className={`rounded-lg border p-3 ${
+   992→                      warning.severity === 'critical' ? 'bg-red-50 border-red-200' :
+   993→                      warning.severity === 'warning' ? 'bg-amber-50 border-amber-200' :
+   994→                      'bg-slate-50 border-slate-200'
+   995→                    }`}>
+   996→                      <div className="flex items-center justify-between mb-1.5">
+   997→                        <div className="flex items-center gap-2">
+   998→                          <AlertTriangle className={`h-4 w-4 ${
+   999→                            warning.severity === 'critical' ? 'text-red-500' :
+  1000→                            warning.severity === 'warning' ? 'text-amber-500' : 'text-slate-400'
+  1001→                          }`} />
+  1002→                          <span className="text-sm font-medium">{warning.title}</span>
+  1003→                        </div>
+  1004→                        {severityBadge(warning.severity)}
+  1005→                      </div>
+  1006→                      <p className="text-xs text-slate-600">{warning.description}</p>
+  1007→                      <div className="flex items-center gap-2 mt-2">
+  1008→                        <Badge variant="outline" className="text-xs">{warningTypeLabel(warning.type)}</Badge>
+  1009→                      </div>
+  1010→                    </div>
+  1011→                  ))}
+  1012→                </div>
+  1013→              </ScrollArea>
+  1014→            )}
+  1015→          </CardContent>
+  1016→        </Card>
+  1017→      </div>
+  1018→    );
+  1019→  };
+  1020→
+  1021→  // Section 9: AI Summary Report
+  1022→  const renderReport = () => {
+  1023→    if (!aiSocialAnalysisResult) return null;
+  1024→
+  1025→    return (
+  1026→      <div className="space-y-4">
+  1027→        <Card>
+  1028→          <CardHeader className="pb-3">
+  1029→            <CardTitle className="text-sm flex items-center gap-2">
+  1030→              <FileText className="h-4 w-4 text-teal-600" />
+  1031→              AI Summary Report
+  1032→            </CardTitle>
+  1033→            <CardDescription className="text-xs">
+  1034→              Laporan analisis sosial yang dapat diunduh atau dicetak
+  1035→            </CardDescription>
+  1036→          </CardHeader>
+  1037→          <CardContent className="space-y-4">
+  1038→            <div className="bg-white border rounded-lg p-4 space-y-3">
+  1039→              <h3 className="font-semibold text-center">LAPORAN ANALISIS KEBUTUHAN SOSIAL PASIEN PALIATIF</h3>
+  1040→              <Separator />
+  1041→              <div className="text-xs text-slate-500 text-center">
+  1042→                Pasien: {patient?.patientName || '-'} | RM: {patient?.rmNumber || '-'} |
+  1043→                Tanggal: {new Date(aiSocialAnalysisResult.generatedAt).toLocaleDateString('id-ID')}
+  1044→              </div>
+  1045→              <Separator />
+  1046→
+  1047→              <div>
+  1048→                <h4 className="text-sm font-semibold mb-1">1. Ringkasan Kondisi Sosial</h4>
+  1049→                <p className="text-xs leading-relaxed">{aiSocialAnalysisResult.socialConditionSummary}</p>
+  1050→              </div>
+  1051→
+  1052→              <div>
+  1053→                <h4 className="text-sm font-semibold mb-1">2. Risiko Sosial Teridentifikasi</h4>
+  1054→                {aiSocialAnalysisResult.socialRisks.map((r, i) => (
+  1055→                  <p key={i} className="text-xs mb-1">
+  1056→                    - {riskTypeLabel(r.riskType)} ({r.level}): {r.reason}
+  1057→                  </p>
+  1058→                ))}
+  1059→              </div>
+  1060→
+  1061→              <div>
+  1062→                <h4 className="text-sm font-semibold mb-1">3. Analisis Keluarga</h4>
+  1063→                <p className="text-xs">Skor Dukungan: {aiSocialAnalysisResult.familySupportAnalysis.familySupportScore}/100 |
+  1064→                  Risiko Burnout: {aiSocialAnalysisResult.familySupportAnalysis.caregiverBurnoutRiskScore}/100</p>
+  1065→              </div>
+  1066→
+  1067→              <div>
+  1068→                <h4 className="text-sm font-semibold mb-1">4. Analisis Caregiver</h4>
+  1069→                <p className="text-xs">Status: {aiSocialAnalysisResult.caregiverAnalysis.status} |
+  1070→                  Beban Fisik: {aiSocialAnalysisResult.caregiverAnalysis.physicalBurden} |
+  1071→                  Beban Emosional: {aiSocialAnalysisResult.caregiverAnalysis.emotionalBurden}</p>
+  1072→              </div>
+  1073→
+  1074→              <div>
+  1075→                <h4 className="text-sm font-semibold mb-1">5. Analisis Finansial</h4>
+  1076→                <p className="text-xs">Kendala Ekonomi: {aiSocialAnalysisResult.financialAnalysis.economicConstraintLevel} |
+  1077→                  Kebutuhan: {aiSocialAnalysisResult.financialAnalysis.priorityNeeds.map(needLabel).join(', ')}</p>
+  1078→              </div>
+  1079→
+  1080→              <div>
+  1081→                <h4 className="text-sm font-semibold mb-1">6. Rencana Tindak Lanjut</h4>
+  1082→                {aiSocialAnalysisResult.actionPlan.map((a, i) => (
+  1083→                  <p key={i} className="text-xs mb-1">
+  1084→                    - [{a.priority.toUpperCase()}] {a.action} (Deadline: {a.deadline})
+  1085→                  </p>
+  1086→                ))}
+  1087→              </div>
+  1088→            </div>
+  1089→
+  1090→            <div className="flex gap-2">
+  1091→              <Button variant="outline" className="gap-2 text-xs" onClick={() => {
+  1092→                toast({ title: 'Laporan diunduh', description: 'Laporan AI Social Analysis berhasil diunduh' });
+  1093→              }}>
+  1094→                <Download className="h-4 w-4" /> Unduh PDF
+  1095→              </Button>
+  1096→              <Button variant="outline" className="gap-2 text-xs" onClick={() => {
+  1097→                toast({ title: 'Laporan dicetak', description: 'Laporan AI Social Analysis berhasil dicetak' });
+  1098→              }}>
+  1099→                <FileText className="h-4 w-4" /> Cetak
+  1100→              </Button>
+  1101→              <Button variant="outline" className="gap-2 text-xs" onClick={() => {
+  1102→                toast({ title: 'Laporan dibagikan', description: 'Laporan AI Social Analysis berhasil dibagikan ke tim multidisiplin' });
+  1103→              }}>
+  1104→                <Users className="h-4 w-4" /> Bagikan ke Tim
+  1105→              </Button>
+  1106→            </div>
+  1107→          </CardContent>
+  1108→        </Card>
+  1109→      </div>
+  1110→    );
+  1111→  };
+  1112→
+  1113→  // Section 10: Population Analytics Dashboard
+  1114→  const renderPopulationAnalytics = () => {
+  1115→    const stats = aiSocialPopulationStats;
+  1116→
+  1117→    return (
+  1118→      <div className="space-y-4">
+  1119→        <Card>
+  1120→          <CardHeader className="pb-3">
+  1121→            <div className="flex items-center justify-between">
+  1122→              <CardTitle className="text-sm flex items-center gap-2">
+  1123→                <TrendingUp className="h-4 w-4 text-teal-600" />
+  1124→                Dashboard AI Population Analytics
+  1125→              </CardTitle>
+  1126→              <Button size="sm" variant="outline" onClick={handleLoadPopulationStats} className="text-xs gap-1">
+  1127→                <RefreshCw className="h-3 w-3" /> Muat Data
+  1128→              </Button>
+  1129→            </div>
+  1130→            <CardDescription className="text-xs">
+  1131→              Analitik populasi untuk administrator — tren masalah sosial, prediksi kebutuhan layanan
+  1132→            </CardDescription>
+  1133→          </CardHeader>
+  1134→          <CardContent>
+  1135→            {!stats ? (
+  1136→              <div className="text-center py-8">
+  1137→                <TrendingUp className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+  1138→                <p className="text-sm text-slate-400">Klik &quot;Muat Data&quot; untuk memuat statistik populasi</p>
+  1139→              </div>
+  1140→            ) : (
+  1141→              <div className="space-y-4">
+  1142→                {/* Summary Cards */}
+  1143→                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+  1144→                  <Card className="p-3">
+  1145→                    <span className="text-xs text-slate-500">Total Pasien Aktif</span>
+  1146→                    <p className="text-2xl font-bold mt-1">{stats.totalActivePatients}</p>
+  1147→                  </Card>
+  1148→                  <Card className="p-3">
+  1149→                    <span className="text-xs text-slate-500">Risiko Sosial Tinggi</span>
+  1150→                    <p className="text-2xl font-bold text-red-600 mt-1">{stats.highSocialRiskCount}</p>
+  1151→                  </Card>
+  1152→                  <Card className="p-3">
+  1153→                    <span className="text-xs text-slate-500">Caregiver Burnout</span>
+  1154→                    <p className="text-2xl font-bold text-amber-600 mt-1">{stats.caregiverBurnoutCount}</p>
+  1155→                  </Card>
+  1156→                  <Card className="p-3">
+  1157→                    <span className="text-xs text-slate-500">Kebutuhan Terbanyak</span>
+  1158→                    <p className="text-sm font-bold mt-2">{stats.topSocialNeeds[0]?.need || '-'}</p>
+  1159→                  </Card>
+  1160→                </div>
+  1161→
+  1162→                {/* Trend Chart */}
+  1163→                {stats.socialTrendData.length > 0 && (
+  1164→                  <Card>
+  1165→                    <CardHeader className="pb-2">
+  1166→                      <CardTitle className="text-sm">Tren Masalah Sosial Pasien Paliatif</CardTitle>
+  1167→                    </CardHeader>
+  1168→                    <CardContent>
+  1169→                      <ResponsiveContainer width="100%" height={200}>
+  1170→                        <LineChart data={stats.socialTrendData}>
+  1171→                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+  1172→                          <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="#94a3b8" />
+  1173→                          <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" />
+  1174→                          <RechartsTooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }} />
+  1175→                          <Line type="monotone" dataKey="highRisk" stroke="#ef4444" strokeWidth={2} name="Risiko Tinggi" />
+  1176→                          <Line type="monotone" dataKey="mediumRisk" stroke="#f59e0b" strokeWidth={2} name="Risiko Sedang" />
+  1177→                          <Line type="monotone" dataKey="lowRisk" stroke="#10b981" strokeWidth={2} name="Risiko Rendah" />
+  1178→                        </LineChart>
+  1179→                      </ResponsiveContainer>
+  1180→                    </CardContent>
+  1181→                  </Card>
+  1182→                )}
+  1183→
+  1184→                {/* Top Social Needs */}
+  1185→                {stats.topSocialNeeds.length > 0 && (
+  1186→                  <Card>
+  1187→                    <CardHeader className="pb-2">
+  1188→                      <CardTitle className="text-sm">Kebutuhan Bantuan Sosial Terbanyak</CardTitle>
+  1189→                    </CardHeader>
+  1190→                    <CardContent>
+  1191→                      <ResponsiveContainer width="100%" height={200}>
+  1192→                        <BarChart data={stats.topSocialNeeds}>
+  1193→                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+  1194→                          <XAxis dataKey="need" tick={{ fontSize: 10 }} stroke="#94a3b8" />
+  1195→                          <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" />
+  1196→                          <RechartsTooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+  1197→                          <Bar dataKey="count" fill="#0d9488" radius={[4, 4, 0, 0]} name="Jumlah" />
+  1198→                        </BarChart>
+  1199→                      </ResponsiveContainer>
+  1200→                    </CardContent>
+  1201→                  </Card>
+  1202→                )}
+  1203→
+  1204→                {/* Predictions */}
+  1205→                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+  1206→                  <Card className="p-4">
+  1207→                    <h4 className="text-sm font-semibold mb-2">Prediksi 30 Hari</h4>
+  1208→                    {stats.predictedNeeds30Days.map((n, i) => (
+  1209→                      <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-slate-100">
+  1210→                        <span>{n.category}</span>
+  1211→                        <span className="font-semibold">{n.estimatedCount} pasien</span>
+  1212→                      </div>
+  1213→                    ))}
+  1214→                  </Card>
+  1215→                  <Card className="p-4">
+  1216→                    <h4 className="text-sm font-semibold mb-2">Prediksi 90 Hari</h4>
+  1217→                    {stats.predictedNeeds90Days.map((n, i) => (
+  1218→                      <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-slate-100">
+  1219→                        <span>{n.category}</span>
+  1220→                        <span className="font-semibold">{n.estimatedCount} pasien</span>
+  1221→                      </div>
+  1222→                    ))}
+  1223→                  </Card>
+  1224→                </div>
+  1225→              </div>
+  1226→            )}
+  1227→          </CardContent>
+  1228→        </Card>
+  1229→      </div>
+  1230→    );
+  1231→  };
+  1232→
+  1233→  // ─── Main Render ──────────────────────────────────────────────────────
+  1234→
+  1235→  const sectionItems = [
+  1236→    { value: 'overview', label: 'AI Assessment', icon: Brain },
+  1237→    { value: 'family', label: 'Keluarga', icon: Heart },
+  1238→    { value: 'caregiver', label: 'Caregiver', icon: UserCheck },
+  1239→    { value: 'financial', label: 'Finansial', icon: DollarSign },
+  1240→    { value: 'transport', label: 'Transportasi', icon: Car },
+  1241→    { value: 'action', label: 'Action Plan', icon: ClipboardList },
+  1242→    { value: 'warning', label: 'Early Warning', icon: Bell },
+  1243→    { value: 'report', label: 'Laporan', icon: FileText },
+  1244→    { value: 'population', label: 'Populasi', icon: TrendingUp },
+  1245→  ];
+  1246→
+  1247→  return (
+  1248→    <div className="space-y-4">
+  1249→      <Tabs value={activeSection} onValueChange={setActiveSection}>
+  1250→        <ScrollArea className="w-full">
+  1251→          <TabsList className="flex w-max gap-1 bg-slate-100 p-1 rounded-lg">
+  1252→            {sectionItems.map(section => (
+  1253→              <TabsTrigger key={section.value} value={section.value}
+  1254→                className="flex items-center gap-1.5 text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md whitespace-nowrap">
+  1255→                <section.icon className="h-3.5 w-3.5" />
+  1256→                <span className="hidden sm:inline">{section.label}</span>
+  1257→              </TabsTrigger>
+  1258→            ))}
+  1259→          </TabsList>
+  1260→        </ScrollArea>
+  1261→
+  1262→        <TabsContent value="overview" className="mt-4">
+  1263→          {renderOverview()}
+  1264→        </TabsContent>
+  1265→        <TabsContent value="family" className="mt-4">
+  1266→          {renderFamilyAnalysis()}
+  1267→        </TabsContent>
+  1268→        <TabsContent value="caregiver" className="mt-4">
+  1269→          {renderCaregiverAnalysis()}
+  1270→        </TabsContent>
+  1271→        <TabsContent value="financial" className="mt-4">
+  1272→          {renderFinancialAnalysis()}
+  1273→        </TabsContent>
+  1274→        <TabsContent value="transport" className="mt-4">
+  1275→          {renderTransportAnalysis()}
+  1276→        </TabsContent>
+  1277→        <TabsContent value="action" className="mt-4">
+  1278→          {renderActionPlan()}
+  1279→        </TabsContent>
+  1280→        <TabsContent value="warning" className="mt-4">
+  1281→          {renderEarlyWarning()}
+  1282→        </TabsContent>
+  1283→        <TabsContent value="report" className="mt-4">
+  1284→          {renderReport()}
+  1285→        </TabsContent>
+  1286→        <TabsContent value="population" className="mt-4">
+  1287→          {renderPopulationAnalytics()}
+  1288→        </TabsContent>
+  1289→      </Tabs>
+  1290→    </div>
+  1291→  );
+  1292→}
+  1293→

@@ -228,6 +228,7 @@ export function ReportsPanel() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="w-full overflow-hidden">
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={dailyConsultations}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -244,6 +245,7 @@ export function ReportsPanel() {
                 <Bar dataKey="jumlah" fill="#0d9488" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
 
@@ -256,6 +258,7 @@ export function ReportsPanel() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="w-full overflow-hidden">
             <ResponsiveContainer width="100%" height={250}>
               <AreaChart data={revenueData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -277,6 +280,7 @@ export function ReportsPanel() {
                 <Area type="monotone" dataKey="pendapatan" stroke="#0d9488" fill="#0d9488" fillOpacity={0.15} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
 
@@ -289,6 +293,7 @@ export function ReportsPanel() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="w-full overflow-hidden">
             <ResponsiveContainer width="100%" height={250}>
               <PieChart>
                 <Pie
@@ -315,6 +320,7 @@ export function ReportsPanel() {
                 />
               </PieChart>
             </ResponsiveContainer>
+            </div>
             <div className="flex flex-wrap gap-2 mt-2 justify-center">
               {homeCareDistribution.map((item, i) => (
                 <div key={item.name} className="flex items-center gap-1.5 text-xs">
@@ -384,6 +390,7 @@ export function ReportsPanel() {
           </CardHeader>
           <CardContent>
             <div className="max-h-64 overflow-y-auto custom-scrollbar">
+              <div className="overflow-x-auto table-scroll-wrapper">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -404,6 +411,7 @@ export function ReportsPanel() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -418,6 +426,7 @@ export function ReportsPanel() {
           </CardHeader>
           <CardContent>
             <div className="max-h-64 overflow-y-auto custom-scrollbar">
+              <div className="overflow-x-auto table-scroll-wrapper">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -436,6 +445,7 @@ export function ReportsPanel() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -450,6 +460,7 @@ export function ReportsPanel() {
           </CardHeader>
           <CardContent>
             <div className="max-h-64 overflow-y-auto custom-scrollbar">
+              <div className="overflow-x-auto table-scroll-wrapper">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -468,6 +479,7 @@ export function ReportsPanel() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             </div>
           </CardContent>
         </Card>

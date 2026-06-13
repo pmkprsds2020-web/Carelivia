@@ -1,0 +1,1314 @@
+     1→'use client';
+     2→
+     3→import React, { useState, useMemo, useCallback, useRef } from 'react';
+     4→import { useStore } from '@/lib/store';
+     5→import type { ScreeningForm, ScreeningModuleId, RiskCategory, ScreeningAuditLog, Notification as AppNotification, ClinicalFile, TriageLevel } from '@/lib/types';
+     6→import {
+     7→  SCREENING_MODULES,
+     8→  MODULE_LABELS,
+     9→  MODULE_ICONS,
+    10→  calculateModuleScore,
+    11→  calculateProgress,
+    12→  getModuleById,
+    13→  getModulesForPatient,
+    14→  calculateTriage,
+    15→  generateClinicalSummary,
+    16→  TRIAGE_COLORS,
+    17→  TRIAGE_LABELS,
+    18→} from '@/lib/screening-templates';
+    19→import { cn } from '@/lib/utils';
+    20→import { useToast } from '@/hooks/use-toast';
+    21→import { Button } from '@/components/ui/button';
+    22→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    23→import { Badge } from '@/components/ui/badge';
+    24→import { Progress } from '@/components/ui/progress';
+    25→import { Input } from '@/components/ui/input';
+    26→import { Textarea } from '@/components/ui/textarea';
+    27→import { Label } from '@/components/ui/label';
+    28→import { Separator } from '@/components/ui/separator';
+    29→import { Checkbox } from '@/components/ui/checkbox';
+    30→import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+    31→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    32→import {
+    33→  Dialog,
+    34→  DialogContent,
+    35→  DialogHeader,
+    36→  DialogTitle,
+    37→  DialogFooter,
+    38→} from '@/components/ui/dialog';
+    39→import {
+    40→  Select,
+    41→  SelectContent,
+    42→  SelectItem,
+    43→  SelectTrigger,
+    44→  SelectValue,
+    45→} from '@/components/ui/select';
+    46→import {
+    47→  ClipboardCheck,
+    48→  Send,
+    49→  Eye,
+    50→  AlertTriangle,
+    51→  CheckCircle,
+    52→  Clock,
+    53→  Search,
+    54→  Activity,
+    55→  ChevronRight,
+    56→  ChevronLeft,
+    57→  Save,
+    58→  FileText,
+    59→  Brain,
+    60→  Sparkles,
+    61→  Shield,
+    62→  Upload,
+    63→  X,
+    64→  Camera,
+    65→  FileImage,
+    66→  Film,
+    67→  File,
+    68→  Heart,
+    69→  Stethoscope,
+    70→  Thermometer,
+    71→  TrendingUp,
+    72→  ArrowRight,
+    73→  AlertCircle,
+    74→  Pill,
+    75→  Flame,
+    76→  Apple,
+    77→  ShieldAlert,
+    78→  Accessibility,
+    79→  Home,
+    80→  Paperclip,
+    81→  Circle,
+    82→  User,
+    83→  Calendar,
+    84→  Syringe,
+    85→} from 'lucide-react';
+    86→
+    87→// ── Helpers ────────────────────────────────────────────────────────────────
+    88→
+    89→function generateId(): string {
+    90→  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    91→}
+    92→
+    93→function formatDate(dateStr: string): string {
+    94→  try {
+    95→    return new Date(dateStr).toLocaleDateString('id-ID', {
+    96→      day: 'numeric', month: 'long', year: 'numeric',
+    97→      hour: '2-digit', minute: '2-digit',
+    98→    });
+    99→  } catch { return ''; }
+   100→}
+   101→
+   102→const RISK_COLORS: Record<RiskCategory, { bg: string; text: string; border: string }> = {
+   103→  rendah: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+   104→  sedang: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+   105→  tinggi: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+   106→};
+   107→
+   108→const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+   109→  sent: { label: 'Terkirim', color: 'bg-blue-100 text-blue-700' },
+   110→  opened: { label: 'Dibuka', color: 'bg-purple-100 text-purple-700' },
+   111→  in_progress: { label: 'Sedang Diisi', color: 'bg-amber-100 text-amber-700' },
+   112→  draft: { label: 'Draft', color: 'bg-gray-100 text-gray-700' },
+   113→  completed: { label: 'Selesai', color: 'bg-emerald-100 text-emerald-700' },
+   114→  reviewed: { label: 'Ditinjau', color: 'bg-teal-100 text-teal-700' },
+   115→};
+   116→
+   117→// ── Module Icon Map (Lucide icons replacing emojis) ──
+   118→const MODULE_ICON_MAP: Record<ScreeningModuleId, React.ReactNode> = {
+   119→  keluhan_utama: <Stethoscope className="w-5 h-5" />,
+   120→  tanda_bahaya: <AlertTriangle className="w-5 h-5" />,
+   121→  tanda_vital: <Activity className="w-5 h-5" />,
+   122→  penyakit_kronis: <Pill className="w-5 h-5" />,
+   123→  nyeri: <Flame className="w-5 h-5" />,
+   124→  kesehatan_mental: <Brain className="w-5 h-5" />,
+   125→  nutrisi: <Apple className="w-5 h-5" />,
+   126→  risiko_jatuh: <ShieldAlert className="w-5 h-5" />,
+   127→  status_fungsional: <Accessibility className="w-5 h-5" />,
+   128→  home_care: <Home className="w-5 h-5" />,
+   129→  paliatif: <Heart className="w-5 h-5" />,
+   130→  bukti_klinis: <Paperclip className="w-5 h-5" />,
+   131→};
+   132→
+   133→const CLINICAL_FILE_TYPE_LABELS: Record<ClinicalFile['type'], { label: string; icon: React.ReactNode }> = {
+   134→  foto_luka: { label: 'Foto Luka', icon: <Camera className="w-4 h-4" /> },
+   135→  foto_obat: { label: 'Foto Obat', icon: <FileImage className="w-4 h-4" /> },
+   136→  foto_lab: { label: 'Foto Hasil Lab', icon: <FileText className="w-4 h-4" /> },
+   137→  foto_radiologi: { label: 'Foto Radiologi', icon: <FileImage className="w-4 h-4" /> },
+   138→  video_pernapasan: { label: 'Video Pernapasan', icon: <Film className="w-4 h-4" /> },
+   139→  video_mobilisasi: { label: 'Video Mobilisasi', icon: <Film className="w-4 h-4" /> },
+   140→  dokumen_medis: { label: 'Dokumen Medis', icon: <File className="w-4 h-4" /> },
+   141→};
+   142→
+   143→// ── Main Component ─────────────────────────────────────────────────────────
+   144→
+   145→export function ScreeningPanel() {
+   146→  const {
+   147→    currentUser,
+   148→    screeningForms,
+   149→    addScreeningForm,
+   150→    updateScreeningForm,
+   151→    addAuditLog,
+   152→    addClinicalAlert,
+   153→    consultations,
+   154→  } = useStore();
+   155→
+   156→  const { toast } = useToast();
+   157→
+   158→  const isDoctor = currentUser?.role === 'doctor';
+   159→  const isPatient = currentUser?.role === 'patient';
+   160→
+   161→  // ── Doctor State ──
+   162→  const [filterTriage, setFilterTriage] = useState<string>('all');
+   163→  const [filterRisk, setFilterRisk] = useState<string>('all');
+   164→  const [filterStatus, setFilterStatus] = useState<string>('all');
+   165→  const [searchQuery, setSearchQuery] = useState('');
+   166→  const [viewingForm, setViewingForm] = useState<ScreeningForm | null>(null);
+   167→  const [doctorNotes, setDoctorNotes] = useState('');
+   168→  const [doctorFollowUp, setDoctorFollowUp] = useState('');
+   169→  const [aiAnalysis, setAiAnalysis] = useState('');
+   170→  const [aiLoading, setAiLoading] = useState(false);
+   171→
+   172→  // ── Patient State ──
+   173→  const [activeFormId, setActiveFormId] = useState<string | null>(null);
+   174→  const [activeModuleIdx, setActiveModuleIdx] = useState(0);
+   175→  const [moduleAnswers, setModuleAnswers] = useState<Record<ScreeningModuleId, Record<string, string | number | string[]>>>({} as Record<ScreeningModuleId, Record<string, string | number | string[]>>);
+   176→  const [clinicalFiles, setClinicalFiles] = useState<ClinicalFile[]>([]);
+   177→
+   178→  // ── Computed Data ──
+   179→  const myScreeningForms = useMemo(() => {
+   180→    if (!currentUser) return [];
+   181→    if (isDoctor) return screeningForms.filter(f => f.doctorId === currentUser.id);
+   182→    return screeningForms.filter(f => f.patientId === currentUser.id);
+   183→  }, [screeningForms, currentUser, isDoctor]);
+   184→
+   185→  const filteredForms = useMemo(() => {
+   186→    let forms = myScreeningForms;
+   187→    if (filterTriage !== 'all') forms = forms.filter(f => f.triageResult?.level === filterTriage);
+   188→    if (filterRisk !== 'all') {
+   189→      forms = forms.filter(f => {
+   190→        const scores = Object.values(f.moduleScores || {});
+   191→        return scores.some(s => s.riskCategory === filterRisk);
+   192→      });
+   193→    }
+   194→    if (filterStatus !== 'all') forms = forms.filter(f => f.status === filterStatus);
+   195→    if (searchQuery) {
+   196→      const q = searchQuery.toLowerCase();
+   197→      forms = forms.filter(f => f.id.includes(q));
+   198→    }
+   199→    return forms.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+   200→  }, [myScreeningForms, filterTriage, filterRisk, filterStatus, searchQuery]);
+   201→
+   202→  const dashboardStats = useMemo(() => {
+   203→    const total = myScreeningForms.length;
+   204→    const completed = myScreeningForms.filter(f => f.status === 'completed' || f.status === 'reviewed').length;
+   205→    const pending = myScreeningForms.filter(f => f.status === 'sent' || f.status === 'opened' || f.status === 'in_progress').length;
+   206→    const triageCount = { hijau: 0, kuning: 0, oranye: 0, merah: 0 } as Record<TriageLevel, number>;
+   207→    myScreeningForms.forEach(f => { if (f.triageResult) triageCount[f.triageResult.level]++; });
+   208→    return { total, completed, pending, triageCount };
+   209→  }, [myScreeningForms]);
+   210→
+   211→  // ── Active form / modules for patient ──
+   212→  const activeForm = useMemo(() => {
+   213→    if (!activeFormId) return null;
+   214→    return screeningForms.find(f => f.id === activeFormId) || null;
+   215→  }, [activeFormId, screeningForms]);
+   216→
+   217→  const applicableModules = useMemo(() => {
+   218→    // Filter modules based on doctor's selection (selectedModules)
+   219→    // If no selectedModules set (backward compat), show all modules
+   220→    const allModules = getModulesForPatient();
+   221→    if (!activeForm?.selectedModules || activeForm.selectedModules.length === 0) {
+   222→      return allModules;
+   223→    }
+   224→    return allModules.filter(m => activeForm.selectedModules!.includes(m.id));
+   225→  }, [activeForm]);
+   226→
+   227→  const activeModule = applicableModules[activeModuleIdx] || null;
+   228→
+   229→  const overallProgress = useMemo(() => {
+   230→    return calculateProgress(applicableModules, moduleAnswers);
+   231→  }, [applicableModules, moduleAnswers]);
+   232→
+   233→  // ── Handlers ──
+   234→  const handleOpenForm = (form: ScreeningForm) => {
+   235→    setActiveFormId(form.id);
+   236→    setActiveModuleIdx(0);
+   237→    setModuleAnswers(form.moduleAnswers || {} as Record<ScreeningModuleId, Record<string, string | number | string[]>>);
+   238→    setClinicalFiles(form.clinicalFiles || []);
+   239→    if (form.status === 'sent') {
+   240→      updateScreeningForm(form.id, { status: 'opened' });
+   241→      addAuditLog({ id: generateId(), screeningId: form.id, action: 'opened', performedBy: currentUser?.id || '', timestamp: new Date().toISOString() });
+   242→    }
+   243→  };
+   244→
+   245→  const handleAnswerChange = (moduleId: ScreeningModuleId, questionId: string, value: string | number | string[]) => {
+   246→    setModuleAnswers(prev => ({
+   247→      ...prev,
+   248→      [moduleId]: { ...(prev[moduleId] || {}), [questionId]: value },
+   249→    }));
+   250→    // Auto-save as in_progress
+   251→    if (activeFormId) {
+   252→      const newAnswers = { ...moduleAnswers, [moduleId]: { ...(moduleAnswers[moduleId] || {}), [questionId]: value } };
+   253→      updateScreeningForm(activeFormId, { moduleAnswers: newAnswers as Record<ScreeningModuleId, Record<string, string | number | string[]>>, status: 'in_progress' });
+   254→    }
+   255→  };
+   256→
+   257→  const handleFileUpload = (questionId: string, type: ClinicalFile['type']) => {
+   258→    const input = document.createElement('input');
+   259→    input.type = 'file';
+   260→    input.accept = 'image/*,video/*,.pdf';
+   261→    input.onchange = (e) => {
+   262→      const file = (e.target as HTMLInputElement).files?.[0];
+   263→      if (!file) return;
+   264→      const reader = new FileReader();
+   265→      reader.onload = () => {
+   266→        const newFile: ClinicalFile = {
+   267→          id: generateId(),
+   268→          type,
+   269→          name: file.name,
+   270→          url: reader.result as string,
+   271→          uploadedAt: new Date().toISOString(),
+   272→        };
+   273→        setClinicalFiles(prev => [...prev, newFile]);
+   274→        // Mark the question as answered
+   275→        if (activeModule) {
+   276→          handleAnswerChange(activeModule.id, questionId, 'uploaded');
+   277→        }
+   278→      };
+   279→      reader.readAsDataURL(file);
+   280→    };
+   281→    input.click();
+   282→  };
+   283→
+   284→  const handleRemoveFile = (fileId: string) => {
+   285→    setClinicalFiles(prev => prev.filter(f => f.id !== fileId));
+   286→  };
+   287→
+   288→  const handleSaveDraft = () => {
+   289→    if (!activeFormId) return;
+   290→    updateScreeningForm(activeFormId, { moduleAnswers, clinicalFiles, status: 'draft' });
+   291→    addAuditLog({ id: generateId(), screeningId: activeFormId, action: 'draft_saved', performedBy: currentUser?.id || '', timestamp: new Date().toISOString() });
+   292→    toast({ title: 'Draft Disimpan', description: 'Jawaban Anda telah disimpan sementara.' });
+   293→  };
+   294→
+   295→  const handleSubmitForm = () => {
+   296→    if (!activeFormId) return;
+   297→
+   298→    // Calculate scores for each module
+   299→    const moduleScores: Record<string, { score: number; riskCategory: RiskCategory; label: string; recommendations: string[] }> = {};
+   300→    for (const mod of applicableModules) {
+   301→      const answers = moduleAnswers[mod.id] || {};
+   302→      if (mod.scoringAlgorithm && Object.keys(answers).length > 0) {
+   303→        moduleScores[mod.id] = calculateModuleScore(mod, answers);
+   304→      }
+   305→    }
+   306→
+   307→    // Calculate triage
+   308→    const triageResult = calculateTriage(moduleScores, moduleAnswers);
+   309→
+   310→    // Generate clinical summary
+   311→    const clinicalSummary = generateClinicalSummary(moduleAnswers, moduleScores as Record<string, { score: number; riskCategory: RiskCategory; label: string; recommendations: string[] }>);
+   312→
+   313→    updateScreeningForm(activeFormId, {
+   314→      moduleAnswers,
+   315→      moduleScores: moduleScores as Record<ScreeningModuleId, { score: number; riskCategory: RiskCategory; label: string; recommendations: string[] }>,
+   316→      clinicalFiles,
+   317→      triageResult,
+   318→      clinicalSummary,
+   319→      status: 'completed',
+   320→      completedAt: new Date().toISOString(),
+   321→    });
+   322→
+   323→    addAuditLog({
+   324→      id: generateId(), screeningId: activeFormId, action: 'completed',
+   325→      performedBy: currentUser?.id || '', timestamp: new Date().toISOString(),
+   326→      details: `Triase: ${triageResult.level}, Skor modul: ${Object.entries(moduleScores).map(([k, v]) => `${k}=${v.score}`).join(', ')}`,
+   327→    });
+   328→
+   329→    // Clinical alerts for merah/oranye
+   330→    if ((triageResult.level === 'merah' || triageResult.level === 'oranye') && activeForm) {
+   331→      const alert: AppNotification = {
+   332→        id: generateId(), userId: activeForm.doctorId,
+   333→        title: `Pasien Triase ${triageResult.label}`,
+   334→        message: `Hasil skrining menunjukkan triase ${triageResult.label}: ${triageResult.description}. Segera tinjau hasil skrining pasien.`,
+   335→        type: 'clinical_alert', isRead: false, referenceId: activeFormId, createdAt: new Date().toISOString(),
+   336→      };
+   337→      addClinicalAlert(alert);
+   338→    }
+   339→
+   340→    toast({ title: 'Skrining Selesai', description: `Triase: ${triageResult.label} — ${triageResult.description}` });
+   341→    setActiveFormId(null);
+   342→    setModuleAnswers({} as Record<ScreeningModuleId, Record<string, string | number | string[]>>);
+   343→    setClinicalFiles([]);
+   344→    setActiveModuleIdx(0);
+   345→  };
+   346→
+   347→  const handleReviewForm = () => {
+   348→    if (!viewingForm) return;
+   349→    updateScreeningForm(viewingForm.id, { status: 'reviewed', doctorNotes, followUp: doctorFollowUp, reviewedAt: new Date().toISOString() });
+   350→    addAuditLog({ id: generateId(), screeningId: viewingForm.id, action: 'reviewed', performedBy: currentUser?.id || '', timestamp: new Date().toISOString(), details: `Catatan: ${doctorNotes}, Tindak lanjut: ${doctorFollowUp}` });
+   351→    toast({ title: 'Skrining Ditinjau', description: 'Catatan dan tindak lanjut telah disimpan.' });
+   352→    setViewingForm(null);
+   353→  };
+   354→
+   355→  const handleAiAnalysis = async (form: ScreeningForm) => {
+   356→    setAiLoading(true);
+   357→    setAiAnalysis('');
+   358→    try {
+   359→      const res = await fetch('/api/screening-analysis', {
+   360→        method: 'POST',
+   361→        headers: { 'Content-Type': 'application/json' },
+   362→        body: JSON.stringify({
+   363→          screeningType: 'Skrining Komprehensif Telemedicine',
+   364→          triage: form.triageResult,
+   365→          clinicalSummary: form.clinicalSummary,
+   366→          moduleScores: form.moduleScores,
+   367→          moduleAnswers: form.moduleAnswers,
+   368→        }),
+   369→      });
+   370→      if (!res.ok) {
+   371→        throw new Error(`HTTP error: ${res.status}`);
+   372→      }
+   373→      const data = await res.json();
+   374→      const analysisText = data.analysis || 'Tidak dapat menganalisis hasil skrining.';
+   375→      setAiAnalysis(analysisText);
+   376→      // Persist AI analysis to the store
+   377→      updateScreeningForm(form.id, { aiAnalysis: analysisText });
+   378→    } catch {
+   379→      const errorMsg = 'Gagal menganalisis. Periksa koneksi internet dan coba lagi.';
+   380→      setAiAnalysis(errorMsg);
+   381→    }
+   382→    setAiLoading(false);
+   383→  };
+   384→
+   385→  // Simple Markdown renderer
+   386→  const renderMarkdown = (text: string) => {
+   387→    const lines = text.split('\n');
+   388→    const elements: React.ReactNode[] = [];
+   389→    let inList = false;
+   390→    let listItems: React.ReactNode[] = [];
+   391→    let listKey = 0;
+   392→
+   393→    const flushList = () => {
+   394→      if (listItems.length > 0) {
+   395→        elements.push(<ul key={`list-${listKey++}`} className="list-disc pl-5 space-y-1 my-2">{listItems}</ul>);
+   396→        listItems = [];
+   397→        inList = false;
+   398→      }
+   399→    };
+   400→
+   401→    lines.forEach((line, idx) => {
+   402→      // Headings
+   403→      if (line.startsWith('## ')) {
+   404→        flushList();
+   405→        elements.push(<h2 key={idx} className="text-base font-bold text-foreground mt-4 mb-2">{line.slice(3)}</h2>);
+   406→        return;
+   407→      }
+   408→      if (line.startsWith('### ')) {
+   409→        flushList();
+   410→        elements.push(<h3 key={idx} className="text-sm font-bold text-foreground mt-3 mb-1">{line.slice(4)}</h3>);
+   411→        return;
+   412→      }
+   413→
+   414→      // List items
+   415→      const listMatch = line.match(/^- (.+)/);
+   416→      if (listMatch) {
+   417→        inList = true;
+   418→        const content = listMatch[1];
+   419→        listItems.push(<li key={idx} className="text-sm text-foreground">{renderInlineMarkdown(content)}</li>);
+   420→        return;
+   421→      }
+   422→
+   423→      flushList();
+   424→
+   425→      // Horizontal rule
+   426→      if (line.match(/^---+$/)) {
+   427→        elements.push(<Separator key={idx} className="my-3" />);
+   428→        return;
+   429→      }
+   430→
+   431→      // Empty line
+   432→      if (line.trim() === '') {
+   433→        elements.push(<div key={idx} className="h-2" />);
+   434→        return;
+   435→      }
+   436→
+   437→      // Regular paragraph
+   438→      elements.push(<p key={idx} className="text-sm text-foreground leading-relaxed">{renderInlineMarkdown(line)}</p>);
+   439→    });
+   440→
+   441→    flushList();
+   442→    return elements;
+   443→  };
+   444→
+   445→  const renderInlineMarkdown = (text: string): React.ReactNode => {
+   446→    // Split by bold patterns first, then italic within each segment
+   447→    const segments: React.ReactNode[] = [];
+   448→    let key = 0;
+   449→
+   450→    // Process bold: **text**
+   451→    const boldParts = text.split(/(\*\*[^*]+\*\*)/g);
+   452→    for (const part of boldParts) {
+   453→      const boldMatch = part.match(/^\*\*(.+)\*\*$/);
+   454→      if (boldMatch) {
+   455→        segments.push(React.createElement('strong', { key: `b-${key++}`, className: 'font-semibold' }, boldMatch[1]));
+   456→      } else {
+   457→        // Process italic within non-bold parts: *text*
+   458→        const italicParts = part.split(/(\*[^*]+\*)/g);
+   459→        for (const ipart of italicParts) {
+   460→          const italicMatch = ipart.match(/^\*(.+)\*$/);
+   461→          if (italicMatch) {
+   462→            segments.push(React.createElement('em', { key: `i-${key++}`, className: 'italic' }, italicMatch[1]));
+   463→          } else {
+   464→            segments.push(ipart);
+   465→          }
+   466→        }
+   467→      }
+   468→    }
+   469→
+   470→    if (segments.length === 0) return text;
+   471→    if (segments.length === 1) return segments[0];
+   472→    return React.createElement(React.Fragment, { key: `frag-${key++}` }, ...segments);
+   473→  };
+   474→
+   475→  // ── Render: Patient Form Filling ───────────────────────────────────────
+   476→
+   477→  const renderPatientForm = () => {
+   478→    if (!activeForm || !activeModule) return null;
+   479→
+   480→    const answers = moduleAnswers[activeModule.id] || {};
+   481→    const modQuestions = activeModule.questions;
+   482→    const filledCount = modQuestions.filter(q => {
+   483→      const a = answers[q.id];
+   484→      return a !== undefined && a !== '' && !(Array.isArray(a) && a.length === 0);
+   485→    }).length;
+   486→
+   487→    return (
+   488→      <div className="max-w-2xl mx-auto p-4 space-y-4">
+   489→        {/* Header */}
+   490→        <div className="flex items-center gap-3">
+   491→          <Button variant="ghost" size="icon" onClick={() => { setActiveFormId(null); setModuleAnswers({} as Record<ScreeningModuleId, Record<string, string | number | string[]>>); setActiveModuleIdx(0); }}>
+   492→            ←
+   493→          </Button>
+   494→          <div className="flex-1">
+   495→            <h2 className="text-lg font-semibold text-foreground">Skrining Komprehensif Telemedicine</h2>
+   496→            <p className="text-sm text-muted-foreground">Modul {activeModuleIdx + 1} dari {applicableModules.length}</p>
+   497→          </div>
+   498→        </div>
+   499→
+   500→        {/* Overall Progress */}
+   501→        <Card className="border-primary/20">
+   502→          <CardContent className="p-4">
+   503→            <div className="flex justify-between items-center mb-2">
+   504→              <span className="text-sm font-medium">Progress Keseluruhan</span>
+   505→              <span className="text-sm font-bold text-primary">{overallProgress}%</span>
+   506→            </div>
+   507→            <Progress value={overallProgress} className="h-2" />
+   508→          </CardContent>
+   509→        </Card>
+   510→
+   511→        {/* Module Navigation List */}
+   512→        <Card>
+   513→          <CardContent className="p-3">
+   514→            <p className="text-xs font-medium text-muted-foreground mb-2">Navigasi Modul (klik untuk membuka):</p>
+   515→            <div className="grid grid-cols-1 gap-1 max-h-64 overflow-y-auto">
+   516→              {applicableModules.map((mod, idx) => {
+   517→                const modAnswers = moduleAnswers[mod.id] || {};
+   518→                const modProgress = mod.questions.filter(q => {
+   519→                  const a = modAnswers[q.id];
+   520→                  return a !== undefined && a !== '' && !(Array.isArray(a) && a.length === 0);
+   521→                }).length;
+   522→                const modTotal = mod.questions.length;
+   523→                const pct = modTotal > 0 ? Math.round((modProgress / modTotal) * 100) : 0;
+   524→                return (
+   525→                  <button
+   526→                    key={mod.id}
+   527→                    className={cn(
+   528→                      'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all border-2',
+   529→                      idx === activeModuleIdx
+   530→                        ? 'border-primary bg-primary/10'
+   531→                        : pct >= 100
+   532→                        ? 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100'
+   533→                        : pct > 0
+   534→                        ? 'border-amber-300 bg-amber-50 hover:bg-amber-100'
+   535→                        : 'border-transparent bg-muted/50 hover:bg-muted',
+   536→                    )}
+   537→                    onClick={() => setActiveModuleIdx(idx)}
+   538→                  >
+   539→                    <span className="text-lg shrink-0">{MODULE_ICON_MAP[mod.id]}</span>
+   540→                    <div className="flex-1 min-w-0">
+   541→                      <p className={cn('text-xs font-medium truncate', idx === activeModuleIdx ? 'text-primary' : 'text-foreground')}>
+   542→                        {mod.name}
+   543→                      </p>
+   544→                      <div className="flex items-center gap-2 mt-0.5">
+   545→                        <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+   546→                          <div className={cn('h-full rounded-full transition-all', pct >= 100 ? 'bg-emerald-500' : pct > 0 ? 'bg-amber-500' : 'bg-transparent')} style={{ width: `${pct}%` }} />
+   547→                        </div>
+   548→                        <span className="text-[10px] text-muted-foreground shrink-0">{pct}%</span>
+   549→                      </div>
+   550→                    </div>
+   551→                    <div className="shrink-0">
+   552→                      {pct >= 100 ? (
+   553→                        <CheckCircle className="w-4 h-4 text-emerald-500" />
+   554→                      ) : mod.isRequired ? (
+   555→                        <Badge variant="destructive" className="text-[10px] px-1 py-0">Wajib</Badge>
+   556→                      ) : null}
+   557→                    </div>
+   558→                  </button>
+   559→                );
+   560→              })}
+   561→            </div>
+   562→          </CardContent>
+   563→        </Card>
+   564→
+   565→        {/* Module Title */}
+   566→        <Card className={cn('border-2', activeModule.isRequired ? 'border-primary/30' : 'border-border')}>
+   567→          <CardContent className="p-4">
+   568→            <div className="flex items-center gap-3">
+   569→              <span className="text-3xl">{MODULE_ICON_MAP[activeModule.id]}</span>
+   570→              <div className="flex-1">
+   571→                <div className="flex items-center gap-2">
+   572→                  <h3 className="text-base font-semibold text-foreground">{activeModule.name}</h3>
+   573→                  {activeModule.isRequired ? (
+   574→                    <Badge className="text-[10px] bg-primary text-primary-foreground">Wajib</Badge>
+   575→                  ) : (
+   576→                    <Badge variant="secondary" className="text-[10px]">Opsional</Badge>
+   577→                  )}
+   578→                </div>
+   579→                <p className="text-sm text-muted-foreground">{activeModule.description}</p>
+   580→                <div className="flex items-center gap-2 mt-1">
+   581→                  <Badge variant="secondary" className="text-xs">
+   582→                    {filledCount}/{modQuestions.length} diisi
+   583→                  </Badge>
+   584→                  <span className="text-xs text-muted-foreground">~{activeModule.estimatedMinutes} menit</span>
+   585→                </div>
+   586→              </div>
+   587→            </div>
+   588→          </CardContent>
+   589→        </Card>
+   590→
+   591→        {/* Instructions */}
+   592→        {activeForm.instructions && (
+   593→          <Card className="border-primary/30 bg-primary/5">
+   594→            <CardContent className="p-4">
+   595→              <div className="flex gap-2">
+   596→                <FileText className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+   597→                <div>
+   598→                  <p className="text-sm font-medium text-primary">Instruksi Dokter</p>
+   599→                  <p className="text-sm text-foreground mt-1">{activeForm.instructions}</p>
+   600→                </div>
+   601→              </div>
+   602→            </CardContent>
+   603→          </Card>
+   604→        )}
+   605→
+   606→        {/* Questions */}
+   607→        {modQuestions.map((question, idx) => {
+   608→          // Check conditional logic
+   609→          if (question.conditionalLogic) {
+   610→            const parentAnswer = answers[question.conditionalLogic.showIfQuestionId];
+   611→            if (String(parentAnswer) !== String(question.conditionalLogic.showIfValue)) return null;
+   612→          }
+   613→
+   614→          return (
+   615→            <Card key={question.id} className="border-border">
+   616→              <CardContent className="p-4">
+   617→                <Label className="text-sm font-medium text-foreground">
+   618→                  {idx + 1}. {question.text}
+   619→                  {question.required && <span className="text-red-500 ml-1">*</span>}
+   620→                  {question.unit && <span className="text-muted-foreground ml-1 text-xs">({question.unit})</span>}
+   621→                </Label>
+   622→
+   623→                {question.type === 'radio' && question.options && (
+   624→                  <RadioGroup
+   625→                    value={String(answers[question.id] ?? '')}
+   626→                    onValueChange={(val) => handleAnswerChange(activeModule.id, question.id, val)}
+   627→                    className="mt-3 space-y-2"
+   628→                  >
+   629→                    {question.options.map((opt) => (
+   630→                      <div key={String(opt.value)} className="flex items-center space-x-2">
+   631→                        <RadioGroupItem value={String(opt.value)} id={`${question.id}-${opt.value}`} />
+   632→                        <Label htmlFor={`${question.id}-${opt.value}`} className="text-sm font-normal cursor-pointer">
+   633→                          {opt.label}
+   634→                        </Label>
+   635→                      </div>
+   636→                    ))}
+   637→                  </RadioGroup>
+   638→                )}
+   639→
+   640→                {question.type === 'checkbox' && question.options && (
+   641→                  <div className="mt-3 space-y-2">
+   642→                    {question.options.map((opt) => {
+   643→                      const selected = (answers[question.id] as string[]) || [];
+   644→                      const isChecked = selected.includes(String(opt.value));
+   645→                      return (
+   646→                        <div key={String(opt.value)} className="flex items-center space-x-2">
+   647→                          <Checkbox
+   648→                            id={`${question.id}-${opt.value}`}
+   649→                            checked={isChecked}
+   650→                            onCheckedChange={(checked) => {
+   651→                              const current = (answers[question.id] as string[]) || [];
+   652→                              const newSelected = checked
+   653→                                ? [...current, String(opt.value)]
+   654→                                : current.filter((v: string) => v !== String(opt.value));
+   655→                              handleAnswerChange(activeModule.id, question.id, newSelected);
+   656→                            }}
+   657→                          />
+   658→                          <Label htmlFor={`${question.id}-${opt.value}`} className="text-sm font-normal cursor-pointer">
+   659→                            {opt.label}
+   660→                          </Label>
+   661→                        </div>
+   662→                      );
+   663→                    })}
+   664→                  </div>
+   665→                )}
+   666→
+   667→                {question.type === 'number' && (
+   668→                  <div className="mt-3 flex items-center gap-2">
+   669→                    <Input
+   670→                      type="number"
+   671→                      min={question.min}
+   672→                      max={question.max}
+   673→                      placeholder={question.placeholder || `Masukkan angka${question.unit ? ` (${question.unit})` : ''}`}
+   674→                      value={answers[question.id] ?? ''}
+   675→                      onChange={(e) => handleAnswerChange(activeModule.id, question.id, Number(e.target.value) || 0)}
+   676→                      className="max-w-[200px]"
+   677→                    />
+   678→                    {question.unit && <span className="text-sm text-muted-foreground">{question.unit}</span>}
+   679→                  </div>
+   680→                )}
+   681→
+   682→                {question.type === 'text' && (
+   683→                  <Textarea
+   684→                    className="mt-3"
+   685→                    placeholder={question.placeholder || 'Masukkan jawaban'}
+   686→                    value={String(answers[question.id] ?? '')}
+   687→                    onChange={(e) => handleAnswerChange(activeModule.id, question.id, e.target.value)}
+   688→                  />
+   689→                )}
+   690→
+   691→                {question.type === 'scale' && (
+   692→                  <div className="mt-3 flex flex-wrap gap-1.5">
+   693→                    {Array.from({ length: (question.max || 10) - (question.min || 0) + 1 }, (_, i) => {
+   694→                      const val = (question.min || 0) + i;
+   695→                      return (
+   696→                        <Button
+   697→                          key={val}
+   698→                          size="sm"
+   699→                          variant={Number(answers[question.id]) === val ? 'default' : 'outline'}
+   700→                          className={cn(
+   701→                            'w-10 h-10 text-sm',
+   702→                            Number(answers[question.id]) === val && 'ring-2 ring-primary ring-offset-1',
+   703→                          )}
+   704→                          onClick={() => handleAnswerChange(activeModule.id, question.id, val)}
+   705→                        >
+   706→                          {val}
+   707→                        </Button>
+   708→                      );
+   709→                    })}
+   710→                  </div>
+   711→                )}
+   712→
+   713→                {question.type === 'file_upload' && (
+   714→                  <div className="mt-3">
+   715→                    <div className="flex flex-wrap gap-2 mb-2">
+   716→                      {clinicalFiles
+   717→                        .filter(f => {
+   718→                          const qIdToFileType: Record<string, ClinicalFile['type']> = {
+   719→                            'bk-fotoluka': 'foto_luka', 'bk-fotoobat': 'foto_obat',
+   720→                            'bk-fotolab': 'foto_lab', 'bk-fotoradio': 'foto_radiologi',
+   721→                            'bk-videopernapasan': 'video_pernapasan', 'bk-videomobilisasi': 'video_mobilisasi',
+   722→                            'bk-dokmedis': 'dokumen_medis',
+   723→                          };
+   724→                          return f.type === qIdToFileType[question.id];
+   725→                        })
+   726→                        .map(file => (
+   727→                          <div key={file.id} className="relative group">
+   728→                            {file.url.startsWith('data:image') ? (
+   729→                              <img src={file.url} alt={file.name} className="w-16 h-16 object-cover rounded-lg border" />
+   730→                            ) : (
+   731→                              <div className="w-16 h-16 rounded-lg border bg-muted flex items-center justify-center">
+   732→                                <File className="w-6 h-6 text-muted-foreground" />
+   733→                              </div>
+   734→                            )}
+   735→                            <button
+   736→                              className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+   737→                              onClick={() => handleRemoveFile(file.id)}
+   738→                            >
+   739→                              <X className="w-3 h-3" />
+   740→                            </button>
+   741→                          </div>
+   742→                        ))}
+   743→                    </div>
+   744→                    <Button
+   745→                      variant="outline"
+   746→                      size="sm"
+   747→                      onClick={() => {
+   748→                        const qIdToFileType: Record<string, ClinicalFile['type']> = {
+   749→                          'bk-fotoluka': 'foto_luka', 'bk-fotoobat': 'foto_obat',
+   750→                          'bk-fotolab': 'foto_lab', 'bk-fotoradio': 'foto_radiologi',
+   751→                          'bk-videopernapasan': 'video_pernapasan', 'bk-videomobilisasi': 'video_mobilisasi',
+   752→                          'bk-dokmedis': 'dokumen_medis',
+   753→                        };
+   754→                        handleFileUpload(question.id, qIdToFileType[question.id] || 'dokumen_medis');
+   755→                      }}
+   756→                    >
+   757→                      <Upload className="w-4 h-4 mr-2" />
+   758→                      Upload File
+   759→                    </Button>
+   760→                  </div>
+   761→                )}
+   762→              </CardContent>
+   763→            </Card>
+   764→          );
+   765→        })}
+   766→
+   767→        {/* Navigation Buttons */}
+   768→        <div className="flex gap-3 pt-2">
+   769→          <Button variant="outline" onClick={handleSaveDraft}>
+   770→            <Save className="w-4 h-4 mr-2" /> Simpan Draft
+   771→          </Button>
+   772→          <div className="flex-1" />
+   773→          {activeModuleIdx > 0 && (
+   774→            <Button variant="outline" onClick={() => setActiveModuleIdx(prev => prev - 1)}>
+   775→              <ChevronLeft className="w-4 h-4 mr-1" /> Sebelumnya
+   776→            </Button>
+   777→          )}
+   778→          {activeModuleIdx < applicableModules.length - 1 ? (
+   779→            <Button onClick={() => setActiveModuleIdx(prev => prev + 1)}>
+   780→              Selanjutnya <ChevronRight className="w-4 h-4 ml-1" />
+   781→            </Button>
+   782→          ) : (
+   783→            <Button onClick={handleSubmitForm} disabled={overallProgress < 50}>
+   784→              <Send className="w-4 h-4 mr-2" /> Kirim Hasil Skrining
+   785→            </Button>
+   786→          )}
+   787→        </div>
+   788→      </div>
+   789→    );
+   790→  };
+   791→
+   792→  // ── Render: Clinical Summary for Doctor ──────────────────────────────────
+   793→
+   794→  const renderClinicalSummary = (form: ScreeningForm) => {
+   795→    const summary = form.clinicalSummary;
+   796→    const triage = form.triageResult;
+   797→    if (!summary && !triage) return null;
+   798→
+   799→    return (
+   800→      <div className="space-y-4">
+   801→        {/* Triage Badge */}
+   802→        {triage && (
+   803→          <Card className={cn('border-2', TRIAGE_COLORS[triage.level].border)}>
+   804→            <CardContent className="p-4">
+   805→              <div className="flex items-center gap-3">
+   806→                <div className={cn('w-14 h-14 rounded-xl flex items-center justify-center text-2xl font-black', TRIAGE_COLORS[triage.level].bg, TRIAGE_COLORS[triage.level].text)}>
+   807→                  <Circle className={cn('w-8 h-8', triage.level === 'hijau' ? 'text-emerald-500 fill-emerald-500' : triage.level === 'kuning' ? 'text-amber-500 fill-amber-500' : triage.level === 'oranye' ? 'text-orange-500 fill-orange-500' : 'text-red-500 fill-red-500')} />
+   808→                </div>
+   809→                <div>
+   810→                  <p className={cn('text-lg font-bold', TRIAGE_COLORS[triage.level].text)}>{triage.label}</p>
+   811→                  <p className="text-sm text-foreground">{triage.description}</p>
+   812→                  <p className="text-xs text-muted-foreground mt-1">{triage.recommendation}</p>
+   813→                </div>
+   814→              </div>
+   815→            </CardContent>
+   816→          </Card>
+   817→        )}
+   818→
+   819→        {summary && (
+   820→          <>
+   821→            {/* Chief Complaint */}
+   822→            <Card>
+   823→              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Stethoscope className="w-4 h-4" /> Keluhan Utama</CardTitle></CardHeader>
+   824→              <CardContent className="p-4 pt-0">
+   825→                <p className="text-sm font-medium text-foreground">{summary.chiefComplaint}</p>
+   826→              </CardContent>
+   827→            </Card>
+   828→
+   829→            {/* Red Flags */}
+   830→            {summary.redFlags.length > 0 && (
+   831→              <Card className="border-red-200 bg-red-50/50">
+   832→                <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-red-700"><AlertTriangle className="w-4 h-4" /> Tanda Bahaya</CardTitle></CardHeader>
+   833→                <CardContent className="p-4 pt-0">
+   834→                  <div className="flex flex-wrap gap-2">
+   835→                    {summary.redFlags.map((flag, i) => (
+   836→                      <Badge key={i} variant="destructive" className="text-xs">{flag}</Badge>
+   837→                    ))}
+   838→                  </div>
+   839→                </CardContent>
+   840→              </Card>
+   841→            )}
+   842→
+   843→            {/* Vital Signs */}
+   844→            <Card>
+   845→              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Thermometer className="w-4 h-4" /> Tanda Vital</CardTitle></CardHeader>
+   846→              <CardContent className="p-4 pt-0">
+   847→                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   848→                  {summary.vitalSigns.weight && <div><p className="text-xs text-muted-foreground">Berat Badan</p><p className="text-sm font-bold">{summary.vitalSigns.weight} kg</p></div>}
+   849→                  {summary.vitalSigns.height && <div><p className="text-xs text-muted-foreground">Tinggi Badan</p><p className="text-sm font-bold">{summary.vitalSigns.height} cm</p></div>}
+   850→                  {summary.vitalSigns.temperature && <div><p className="text-xs text-muted-foreground">Suhu</p><p className="text-sm font-bold">{summary.vitalSigns.temperature}°C</p></div>}
+   851→                  {summary.vitalSigns.bloodPressure && <div><p className="text-xs text-muted-foreground">Tekanan Darah</p><p className="text-sm font-bold">{summary.vitalSigns.bloodPressure} mmHg</p></div>}
+   852→                  {summary.vitalSigns.heartRate && <div><p className="text-xs text-muted-foreground">Denyut Nadi</p><p className="text-sm font-bold">{summary.vitalSigns.heartRate} bpm</p></div>}
+   853→                  {summary.vitalSigns.oxygenSat && <div><p className="text-xs text-muted-foreground">SpO2</p><p className="text-sm font-bold">{summary.vitalSigns.oxygenSat}%</p></div>}
+   854→                  {summary.vitalSigns.bloodSugar && <div><p className="text-xs text-muted-foreground">GDS</p><p className="text-sm font-bold">{summary.vitalSigns.bloodSugar} mg/dL</p></div>}
+   855→                </div>
+   856→              </CardContent>
+   857→            </Card>
+   858→
+   859→            {/* Clinical Summary Grid */}
+   860→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   861→              {summary.chronicDiseases.length > 0 && (
+   862→                <Card>
+   863→                  <CardContent className="p-3">
+   864→                    <p className="text-xs text-muted-foreground">Penyakit Kronis</p>
+   865→                    <div className="flex flex-wrap gap-1 mt-1">
+   866→                      {summary.chronicDiseases.map((d, i) => <Badge key={i} variant="secondary" className="text-xs">{d}</Badge>)}
+   867→                    </div>
+   868→                  </CardContent>
+   869→                </Card>
+   870→              )}
+   871→              {summary.painScore !== null && (
+   872→                <Card>
+   873→                  <CardContent className="p-3">
+   874→                    <p className="text-xs text-muted-foreground">Skor Nyeri (NRS)</p>
+   875→                    <p className={cn('text-lg font-bold', summary.painScore >= 7 ? 'text-red-600' : summary.painScore >= 4 ? 'text-amber-600' : 'text-emerald-600')}>
+   876→                      {summary.painScore}/10
+   877→                    </p>
+   878→                  </CardContent>
+   879→                </Card>
+   880→              )}
+   881→              <Card>
+   882→                <CardContent className="p-3">
+   883→                  <p className="text-xs text-muted-foreground">Status Mental</p>
+   884→                  <p className={cn('text-sm font-medium', summary.mentalStatus === 'KRISIS MENTAL' ? 'text-red-600' : summary.mentalStatus !== 'Normal' ? 'text-amber-600' : 'text-emerald-600')}>
+   885→                    {summary.mentalStatus}
+   886→                  </p>
+   887→                </CardContent>
+   888→              </Card>
+   889→              <Card>
+   890→                <CardContent className="p-3">
+   891→                  <p className="text-xs text-muted-foreground">Status Fungsional</p>
+   892→                  <p className="text-sm font-medium">{summary.functionalStatus}</p>
+   893→                </CardContent>
+   894→              </Card>
+   895→              <Card>
+   896→                <CardContent className="p-3">
+   897→                  <p className="text-xs text-muted-foreground">Kebutuhan Home Care</p>
+   898→                  <p className={cn('text-sm font-medium', summary.homeCareNeed === 'Diperlukan Segera' ? 'text-red-600' : summary.homeCareNeed === 'Direkomendasikan' ? 'text-amber-600' : 'text-emerald-600')}>
+   899→                    {summary.homeCareNeed}
+   900→                  </p>
+   901→                </CardContent>
+   902→              </Card>
+   903→              <Card>
+   904→                <CardContent className="p-3">
+   905→                  <p className="text-xs text-muted-foreground">Status Paliatif</p>
+   906→                  <p className="text-sm font-medium">{summary.palliativeStatus}</p>
+   907→                </CardContent>
+   908→              </Card>
+   909→            </div>
+   910→          </>
+   911→        )}
+   912→      </div>
+   913→    );
+   914→  };
+   915→
+   916→  // ── Render: Module Results Detail ───────────────────────────────────────
+   917→
+   918→  const renderModuleResults = (form: ScreeningForm) => {
+   919→    const scores = form.moduleScores || {};
+   920→    const answers = form.moduleAnswers || {};
+   921→
+   922→    return (
+   923→      <div className="space-y-3">
+   924→        {SCREENING_MODULES.map(mod => {
+   925→          const modAnswers = answers[mod.id];
+   926→          const modScore = scores[mod.id];
+   927→          if (!modAnswers || Object.keys(modAnswers).length === 0) return null;
+   928→
+   929→          return (
+   930→            <Card key={mod.id}>
+   931→              <CardContent className="p-4">
+   932→                <div className="flex items-center justify-between">
+   933→                  <div className="flex items-center gap-2">
+   934→                    <span className="text-xl">{MODULE_ICON_MAP[mod.id]}</span>
+   935→                    <div>
+   936→                      <h4 className="text-sm font-semibold">{mod.name}</h4>
+   937→                      {modScore && (
+   938→                        <div className="flex items-center gap-2 mt-0.5">
+   939→                          <Badge className={cn('text-xs', RISK_COLORS[modScore.riskCategory].bg, RISK_COLORS[modScore.riskCategory].text, RISK_COLORS[modScore.riskCategory].border, 'border')}>
+   940→                            {modScore.label}
+   941→                          </Badge>
+   942→                          <span className="text-xs text-muted-foreground">Skor: {modScore.score}</span>
+   943→                        </div>
+   944→                      )}
+   945→                    </div>
+   946→                  </div>
+   947→                </div>
+   948→                {modScore?.recommendations && modScore.recommendations.length > 0 && (
+   949→                  <div className="mt-2 pt-2 border-t border-border">
+   950→                    <ul className="space-y-1">
+   951→                      {modScore.recommendations.map((rec, i) => (
+   952→                        <li key={i} className="text-xs text-foreground flex items-start gap-1">
+   953→                          <ChevronRight className="w-3 h-3 text-primary shrink-0 mt-0.5" />{rec}
+   954→                        </li>
+   955→                      ))}
+   956→                    </ul>
+   957→                  </div>
+   958→                )}
+   959→              </CardContent>
+   960→            </Card>
+   961→          );
+   962→        })}
+   963→
+   964→        {/* Clinical Files */}
+   965→        {form.clinicalFiles && form.clinicalFiles.length > 0 && (
+   966→          <Card>
+   967→            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Upload className="w-4 h-4" /> Bukti Klinis ({form.clinicalFiles.length})</CardTitle></CardHeader>
+   968→            <CardContent className="p-4 pt-0">
+   969→              <div className="flex flex-wrap gap-2">
+   970→                {form.clinicalFiles.map(file => (
+   971→                  <div key={file.id} className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
+   972→                    {CLINICAL_FILE_TYPE_LABELS[file.type]?.icon}
+   973→                    <div>
+   974→                      <p className="text-xs font-medium">{CLINICAL_FILE_TYPE_LABELS[file.type]?.label}</p>
+   975→                      <p className="text-[10px] text-muted-foreground">{file.name}</p>
+   976→                    </div>
+   977→                  </div>
+   978→                ))}
+   979→              </div>
+   980→            </CardContent>
+   981→          </Card>
+   982→        )}
+   983→      </div>
+   984→    );
+   985→  };
+   986→
+   987→  // ── Render: Doctor Dashboard ──────────────────────────────────────────
+   988→
+   989→  const renderDoctorDashboard = () => (
+   990→    <div className="space-y-6 p-4">
+   991→      {/* Triage Stats */}
+   992→      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+   993→        {[
+   994→          { label: 'Total Skrining', value: dashboardStats.total, icon: <ClipboardCheck className="w-5 h-5" />, color: 'text-primary' },
+   995→          { label: 'Selesai', value: dashboardStats.completed, icon: <CheckCircle className="w-5 h-5" />, color: 'text-emerald-600' },
+   996→          { label: 'Menunggu', value: dashboardStats.pending, icon: <Clock className="w-5 h-5" />, color: 'text-amber-600' },
+   997→          ...([
+   998→            { level: 'merah' as TriageLevel, label: 'Triase Merah' },
+   999→            { level: 'oranye' as TriageLevel, label: 'Triase Oranye' },
+  1000→          ].map(t => ({
+  1001→            label: t.label, value: dashboardStats.triageCount[t.level],
+  1002→            icon: <AlertTriangle className="w-5 h-5" />, color: TRIAGE_COLORS[t.level].text,
+  1003→          }))),
+  1004→        ].map(stat => (
+  1005→          <Card key={stat.label}>
+  1006→            <CardContent className="p-4 text-center">
+  1007→              <div className={cn('flex justify-center mb-2', stat.color)}>{stat.icon}</div>
+  1008→              <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+  1009→              <p className="text-xs text-muted-foreground">{stat.label}</p>
+  1010→            </CardContent>
+  1011→          </Card>
+  1012→        ))}
+  1013→      </div>
+  1014→
+  1015→      {/* Filters */}
+  1016→      <div className="flex flex-wrap gap-3 items-center">
+  1017→        <div className="relative flex-1 min-w-[200px]">
+  1018→          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+  1019→          <Input placeholder="Cari skrining..." className="pl-9" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+  1020→        </div>
+  1021→        <Select value={filterTriage} onValueChange={setFilterTriage}>
+  1022→          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Triase" /></SelectTrigger>
+  1023→          <SelectContent>
+  1024→            <SelectItem value="all">Semua Triase</SelectItem>
+  1025→            <SelectItem value="hijau">Hijau</SelectItem>
+  1026→            <SelectItem value="kuning">Kuning</SelectItem>
+  1027→            <SelectItem value="oranye">Oranye</SelectItem>
+  1028→            <SelectItem value="merah">Merah</SelectItem>
+  1029→          </SelectContent>
+  1030→        </Select>
+  1031→        <Select value={filterStatus} onValueChange={setFilterStatus}>
+  1032→          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
+  1033→          <SelectContent>
+  1034→            <SelectItem value="all">Semua Status</SelectItem>
+  1035→            {Object.entries(STATUS_LABELS).map(([key, { label }]) => (
+  1036→              <SelectItem key={key} value={key}>{label}</SelectItem>
+  1037→            ))}
+  1038→          </SelectContent>
+  1039→        </Select>
+  1040→      </div>
+  1041→
+  1042→      {/* Screening List */}
+  1043→      {filteredForms.length === 0 ? (
+  1044→        <Card>
+  1045→          <CardContent className="p-8 text-center">
+  1046→            <ClipboardCheck className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+  1047→            <p className="text-muted-foreground">Belum ada data skrining</p>
+  1048→            <p className="text-sm text-muted-foreground mt-1">Kirim form skrining melalui chat konsultasi</p>
+  1049→          </CardContent>
+  1050→        </Card>
+  1051→      ) : (
+  1052→        <div className="space-y-3">
+  1053→          {filteredForms.map(form => {
+  1054→            const statusInfo = STATUS_LABELS[form.status] || STATUS_LABELS.sent;
+  1055→            const triage = form.triageResult;
+  1056→            const patientName = consultations.find(c => c.id === form.consultationId)?.patient?.name || 'Pasien';
+  1057→            return (
+  1058→              <Card
+  1059→                key={form.id}
+  1060→                className={cn('hover:shadow-md transition-shadow cursor-pointer',
+  1061→                  triage?.level === 'merah' ? 'border-red-200 border-l-4 border-l-red-500' :
+  1062→                  triage?.level === 'oranye' ? 'border-orange-200 border-l-4 border-l-orange-500' : '')}
+  1063→                onClick={() => {
+  1064→                  setViewingForm(form);
+  1065→                  setDoctorNotes(form.doctorNotes || '');
+  1066→                  setDoctorFollowUp(form.followUp || '');
+  1067→                  setAiAnalysis(form.aiAnalysis || '');
+  1068→                  setAiLoading(false);
+  1069→                }}
+  1070→              >
+  1071→                <CardContent className="p-4">
+  1072→                  <div className="flex items-start justify-between gap-3">
+  1073→                    <div className="flex-1 min-w-0">
+  1074→                      <h4 className="font-semibold text-sm text-foreground">Skrining Komprehensif</h4>
+  1075→                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+  1076→                        <span className="text-xs text-muted-foreground flex items-center gap-1"><User className="w-3 h-3" /> {patientName}</span>
+  1077→                        <span className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(form.createdAt)}</span>
+  1078→                        {form.completedAt && <span className="text-xs text-muted-foreground flex items-center gap-1"><CheckCircle className="w-3 h-3" /> {formatDate(form.completedAt)}</span>}
+  1079→                      </div>
+  1080→                    </div>
+  1081→                    <div className="flex items-center gap-2 shrink-0">
+  1082→                      {triage && (
+  1083→                        <Badge className={cn('text-xs', TRIAGE_COLORS[triage.level].bg, TRIAGE_COLORS[triage.level].text, TRIAGE_COLORS[triage.level].border, 'border')}>
+  1084→                          {triage.label}
+  1085→                        </Badge>
+  1086→                      )}
+  1087→                      <Badge className={cn('text-xs', statusInfo.color)}>{statusInfo.label}</Badge>
+  1088→                      {form.aiAnalysis && (
+  1089→                        <Badge variant="secondary" className="text-xs flex items-center gap-1 bg-primary/10 text-primary">
+  1090→                          <Sparkles className="w-3 h-3" /> AI
+  1091→                        </Badge>
+  1092→                      )}
+  1093→                    </div>
+  1094→                  </div>
+  1095→                </CardContent>
+  1096→              </Card>
+  1097→            );
+  1098→          })}
+  1099→        </div>
+  1100→      )}
+  1101→
+  1102→      {/* View Detail Dialog */}
+  1103→      <Dialog open={!!viewingForm} onOpenChange={(open) => { if (!open) { setViewingForm(null); setAiAnalysis(''); setAiLoading(false); } }}>
+  1104→        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+  1105→          <DialogHeader>
+  1106→            <DialogTitle className="flex items-center gap-2">
+  1107→              <ClipboardCheck className="w-5 h-5" />
+  1108→              Hasil Skrining Komprehensif Telemedicine
+  1109→            </DialogTitle>
+  1110→          </DialogHeader>
+  1111→          {viewingForm && (
+  1112→            <Tabs defaultValue="ringkasan">
+  1113→              <TabsList className="flex flex-wrap h-auto gap-1">
+  1114→                <TabsTrigger value="ringkasan" className="text-xs">Ringkasan Klinis</TabsTrigger>
+  1115→                <TabsTrigger value="modul" className="text-xs">Detail Modul</TabsTrigger>
+  1116→                <TabsTrigger value="ai" className="text-xs flex items-center gap-1"><Sparkles className="w-3 h-3" /> AI Analysis</TabsTrigger>
+  1117→                <TabsTrigger value="catatan" className="text-xs">Catatan Dokter</TabsTrigger>
+  1118→              </TabsList>
+  1119→              <TabsContent value="ringkasan" className="mt-4">
+  1120→                {renderClinicalSummary(viewingForm)}
+  1121→              </TabsContent>
+  1122→              <TabsContent value="modul" className="mt-4">
+  1123→                {renderModuleResults(viewingForm)}
+  1124→              </TabsContent>
+  1125→              <TabsContent value="ai" className="mt-4 space-y-4">
+  1126→                <div className="flex items-center justify-between">
+  1127→                  <div className="flex items-center gap-2">
+  1128→                    <Sparkles className="w-5 h-5 text-primary" />
+  1129→                    <h3 className="text-sm font-semibold">AI Clinical Assistant</h3>
+  1130→                  </div>
+  1131→                  <Button
+  1132→                    variant="outline"
+  1133→                    size="sm"
+  1134→                    onClick={() => handleAiAnalysis(viewingForm)}
+  1135→                    disabled={aiLoading}
+  1136→                  >
+  1137→                    {aiLoading ? (
+  1138→                      <><Activity className="w-4 h-4 mr-2 animate-spin" /> Menganalisis...</>
+  1139→                    ) : (
+  1140→                      <><Brain className="w-4 h-4 mr-2" /> {aiAnalysis ? 'Analisis Ulang' : 'Mulai AI Analysis'}</>
+  1141→                    )}
+  1142→                  </Button>
+  1143→                </div>
+  1144→
+  1145→                {aiLoading && (
+  1146→                  <Card className="border-primary/30 bg-primary/5">
+  1147→                    <CardContent className="p-6">
+  1148→                      <div className="flex flex-col items-center justify-center gap-3">
+  1149→                        <div className="relative">
+  1150→                          <Brain className="w-12 h-12 text-primary animate-pulse" />
+  1151→                          <Sparkles className="w-5 h-5 text-primary absolute -top-1 -right-1 animate-bounce" />
+  1152→                        </div>
+  1153→                        <div className="text-center">
+  1154→                          <p className="text-sm font-medium text-foreground">AI sedang menganalisis hasil skrining...</p>
+  1155→                          <p className="text-xs text-muted-foreground mt-1">Proses ini memerlukan waktu sekitar 30-90 detik</p>
+  1156→                        </div>
+  1157→                        <div className="w-full max-w-xs">
+  1158→                          <Progress value={undefined} className="h-2 animate-pulse" />
+  1159→                        </div>
+  1160→                      </div>
+  1161→                    </CardContent>
+  1162→                  </Card>
+  1163→                )}
+  1164→
+  1165→                {aiAnalysis && !aiLoading && (
+  1166→                  <Card className="border-primary/30 bg-primary/5">
+  1167→                    <CardContent className="p-4">
+  1168→                      <div className="prose prose-sm max-w-none">
+  1169→                        {renderMarkdown(aiAnalysis)}
+  1170→                      </div>
+  1171→                    </CardContent>
+  1172→                  </Card>
+  1173→                )}
+  1174→
+  1175→                {!aiAnalysis && !aiLoading && !viewingForm.aiAnalysis && (
+  1176→                  <Card>
+  1177→                    <CardContent className="p-6 text-center">
+  1178→                      <Brain className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+  1179→                      <p className="text-sm text-muted-foreground">Klik "Mulai AI Analysis" untuk mendapatkan analisis klinis AI berdasarkan hasil skrining.</p>
+  1180→                      <p className="text-xs text-muted-foreground mt-2">AI akan menganalisis seluruh modul skrining dan menghasilkan Ringkasan Klinis, Faktor Risiko, Rekomendasi Tindak Lanjut, dan SOAP Note.</p>
+  1181→                    </CardContent>
+  1182→                  </Card>
+  1183→                )}
+  1184→              </TabsContent>
+  1185→              <TabsContent value="catatan" className="mt-4 space-y-4">
+  1186→                <div>
+  1187→                  <Label className="text-sm font-medium">Catatan Dokter</Label>
+  1188→                  <Textarea className="mt-1" placeholder="Tambahkan catatan klinis..." value={doctorNotes} onChange={e => setDoctorNotes(e.target.value)} />
+  1189→                </div>
+  1190→                <div>
+  1191→                  <Label className="text-sm font-medium">Tindak Lanjut</Label>
+  1192→                  <Textarea className="mt-1" placeholder="Rencana tindak lanjut..." value={doctorFollowUp} onChange={e => setDoctorFollowUp(e.target.value)} />
+  1193→                </div>
+  1194→                <div className="flex gap-2">
+  1195→                  <Button onClick={handleReviewForm} className="flex-1">
+  1196→                    <CheckCircle className="w-4 h-4 mr-2" /> Simpan & Tandai Ditinjau
+  1197→                  </Button>
+  1198→                </div>
+  1199→              </TabsContent>
+  1200→            </Tabs>
+  1201→          )}
+  1202→        </DialogContent>
+  1203→      </Dialog>
+  1204→    </div>
+  1205→  );
+  1206→
+  1207→  // ── Render: Patient View ───────────────────────────────────────────────
+  1208→
+  1209→  const renderPatientView = () => {
+  1210→    if (activeFormId && activeForm) return renderPatientForm();
+  1211→
+  1212→    const pendingForms = myScreeningForms.filter(f => f.status === 'sent' || f.status === 'opened' || f.status === 'in_progress' || f.status === 'draft');
+  1213→    const completedForms = myScreeningForms.filter(f => f.status === 'completed' || f.status === 'reviewed');
+  1214→
+  1215→    return (
+  1216→      <div className="space-y-6 p-4">
+  1217→        {/* Pending Forms */}
+  1218→        {pendingForms.length > 0 && (
+  1219→          <div>
+  1220→            <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
+  1221→              <Clock className="w-5 h-5 text-amber-600" /> Perlu Diisi
+  1222→            </h2>
+  1223→            <div className="space-y-3">
+  1224→              {pendingForms.map(form => (
+  1225→                <Card key={form.id} className="hover:shadow-md transition-shadow cursor-pointer border-amber-200" onClick={() => handleOpenForm(form)}>
+  1226→                  <CardContent className="p-4">
+  1227→                    <div className="flex items-start justify-between">
+  1228→                      <div>
+  1229→                        <h4 className="font-semibold text-sm text-foreground">Skrining Komprehensif Telemedicine</h4>
+  1230→                        <p className="text-xs text-muted-foreground mt-1">Form skrining pra-konsultasi dari dokter</p>
+  1231→                        {form.instructions && <p className="text-xs text-primary mt-1">📋 {form.instructions}</p>}
+  1232→                        {form.deadline && <p className="text-xs text-amber-600 mt-1">⏰ Batas: {formatDate(form.deadline)}</p>}
+  1233→                      </div>
+  1234→                      <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />
+  1235→                    </div>
+  1236→                    {form.moduleAnswers && Object.keys(form.moduleAnswers).length > 0 && (
+  1237→                      <div className="mt-3">
+  1238→                        <div className="flex justify-between text-xs mb-1">
+  1239→                          <span className="text-muted-foreground">Progress</span>
+  1240→                          <span className="font-medium">{calculateProgress(applicableModules, form.moduleAnswers)}%</span>
+  1241→                        </div>
+  1242→                        <Progress value={calculateProgress(applicableModules, form.moduleAnswers)} className="h-1.5" />
+  1243→                      </div>
+  1244→                    )}
+  1245→                  </CardContent>
+  1246→                </Card>
+  1247→              ))}
+  1248→            </div>
+  1249→          </div>
+  1250→        )}
+  1251→
+  1252→        {/* Completed Forms */}
+  1253→        {completedForms.length > 0 && (
+  1254→          <div>
+  1255→            <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
+  1256→              <CheckCircle className="w-5 h-5 text-emerald-600" /> Riwayat Skrining
+  1257→            </h2>
+  1258→            <div className="space-y-3">
+  1259→              {completedForms.map(form => {
+  1260→                const triage = form.triageResult;
+  1261→                return (
+  1262→                  <Card key={form.id} className="hover:shadow-md transition-shadow">
+  1263→                    <CardContent className="p-4">
+  1264→                      <div className="flex items-start justify-between">
+  1265→                        <div>
+  1266→                          <h4 className="font-semibold text-sm text-foreground">Skrining Komprehensif</h4>
+  1267→                          <p className="text-xs text-muted-foreground mt-1">{formatDate(form.completedAt || form.createdAt)}</p>
+  1268→                        </div>
+  1269→                        <div className="flex items-center gap-2">
+  1270→                          {triage && (
+  1271→                            <Badge className={cn('text-xs', TRIAGE_COLORS[triage.level].bg, TRIAGE_COLORS[triage.level].text, TRIAGE_COLORS[triage.level].border, 'border')}>
+  1272→                              {triage.label}
+  1273→                            </Badge>
+  1274→                          )}
+  1275→                          <Badge variant="secondary" className="text-xs">
+  1276→                            {form.status === 'reviewed' ? 'Ditinjau' : 'Selesai'}
+  1277→                          </Badge>
+  1278→                        </div>
+  1279→                      </div>
+  1280→                      {form.clinicalSummary && (
+  1281→                        <div className="mt-2 text-xs text-muted-foreground">
+  1282→                          Keluhan: {form.clinicalSummary.chiefComplaint}
+  1283→                        </div>
+  1284→                      )}
+  1285→                      {form.doctorNotes && (
+  1286→                        <div className="mt-2 p-2 bg-primary/5 rounded text-xs">
+  1287→                          <span className="font-medium text-primary">Catatan Dokter:</span> {form.doctorNotes}
+  1288→                        </div>
+  1289→                      )}
+  1290→                    </CardContent>
+  1291→                  </Card>
+  1292→                );
+  1293→              })}
+  1294→            </div>
+  1295→          </div>
+  1296→        )}
+  1297→
+  1298→        {pendingForms.length === 0 && completedForms.length === 0 && (
+  1299→          <Card>
+  1300→            <CardContent className="p-8 text-center">
+  1301→              <ClipboardCheck className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+  1302→              <p className="text-muted-foreground">Belum ada skrining</p>
+  1303→              <p className="text-sm text-muted-foreground mt-1">Dokter akan mengirim form skrining melalui chat</p>
+  1304→            </CardContent>
+  1305→          </Card>
+  1306→        )}
+  1307→      </div>
+  1308→    );
+  1309→  };
+  1310→
+  1311→  // ── Main Render ──
+  1312→  return isDoctor ? renderDoctorDashboard() : renderPatientView();
+  1313→}
+  1314→

@@ -441,8 +441,8 @@ export function PaymentsPanel() {
           if (!open) setCheckoutPrescription(null);
         }
       }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <ClipboardList className="w-5 h-5 text-primary" />
               Pembayaran E-Resep
@@ -452,7 +452,7 @@ export function PaymentsPanel() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
             {/* Prescription Summary */}
             <div className="border border-border rounded-xl overflow-hidden">
               <div className="bg-primary/10 px-4 py-2.5 flex items-center justify-between">
@@ -607,15 +607,15 @@ export function PaymentsPanel() {
         if (!open) setSelectedPayment(null);
       }
     }}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle>Pembayaran</DialogTitle>
           <DialogDescription className="sr-only">
             Dialog pembayaran transaksi
           </DialogDescription>
         </DialogHeader>
         {selectedPayment && (
-          <div className="space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
             <div className="bg-muted/50 rounded-lg p-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Total Pembayaran</span>
@@ -784,7 +784,7 @@ export function PaymentsPanel() {
           <TabsTrigger value="refunded">Kembali</TabsTrigger>
         </TabsList>
 
-        <TabsContent value={activeFilter} className="mt-4 space-y-3">
+        <TabsContent value={activeFilter} className="mt-4 space-y-3 overflow-y-auto custom-scrollbar">
           {filteredPayments.length === 0 ? (
             <Card className="border-0 bg-muted/50">
               <CardContent className="p-12 text-center">
@@ -864,8 +864,8 @@ export function PaymentsPanel() {
 
       {/* Payment Proof Dialog */}
       <Dialog open={proofDialogOpen} onOpenChange={setProofDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="w-5 h-5 text-primary" />
               Bukti Pembayaran
@@ -875,7 +875,7 @@ export function PaymentsPanel() {
             </DialogDescription>
           </DialogHeader>
           {proofPayment && (
-            <div className="space-y-4">
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
               {/* Status Banner */}
               <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center shrink-0">

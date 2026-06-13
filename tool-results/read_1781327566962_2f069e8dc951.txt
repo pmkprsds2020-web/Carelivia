@@ -1,0 +1,997 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+     4→import { useStore } from '@/lib/store';
+     5→import type { PaymentStatus, PaymentMethod, Payment, Prescription } from '@/lib/types';
+     6→import { Card, CardContent } from '@/components/ui/card';
+     7→import { Button } from '@/components/ui/button';
+     8→import { Badge } from '@/components/ui/badge';
+     9→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    10→import {
+    11→  Dialog,
+    12→  DialogContent,
+    13→  DialogHeader,
+    14→  DialogTitle,
+    15→  DialogDescription,
+    16→} from '@/components/ui/dialog';
+    17→import { Label } from '@/components/ui/label';
+    18→import { useToast } from '@/hooks/use-toast';
+    19→import {
+    20→  CreditCard,
+    21→  Wallet,
+    22→  CheckCircle2,
+    23→  XCircle,
+    24→  RotateCcw,
+    25→  Clock,
+    26→  QrCode,
+    27→  Building2,
+    28→  Smartphone,
+    29→  Download,
+    30→  Eye,
+    31→  Stethoscope,
+    32→  Pill,
+    33→  Heart,
+    34→  Receipt,
+    35→  ClipboardList,
+    36→  CheckCheck,
+    37→  ArrowRight,
+    38→  Hash,
+    39→  ShoppingCart,
+    40→  Calendar,
+    41→  Stamp,
+    42→} from 'lucide-react';
+    43→import { cn } from '@/lib/utils';
+    44→
+    45→// ---------------------------------------------------------------------------
+    46→// Types
+    47→// ---------------------------------------------------------------------------
+    48→
+    49→type PaymentType = 'Konsultasi' | 'Farmasi' | 'Home Care' | 'E-Resep';
+    50→
+    51→interface MergedPayment {
+    52→  id: string;
+    53→  invoiceNumber: string;
+    54→  type: PaymentType;
+    55→  amount: number;
+    56→  method: PaymentMethod;
+    57→  status: PaymentStatus;
+    58→  date: string;
+    59→  description: string;
+    60→  referenceId?: string;
+    61→  paidAt?: string;
+    62→  // For prescription-linked payments
+    63→  prescriptionId?: string;
+    64→  prescriptionItems?: { name: string; dosage: string; quantity: number; price?: number }[];
+    65→}
+    66→
+    67→// ---------------------------------------------------------------------------
+    68→// Demo data
+    69→// ---------------------------------------------------------------------------
+    70→
+    71→const demoPayments: MergedPayment[] = [
+    72→  {
+    73→    id: 'pay1',
+    74→    invoiceNumber: 'INV-2025-001',
+    75→    type: 'Konsultasi',
+    76→    amount: 200000,
+    77→    method: 'qris',
+    78→    status: 'success',
+    79→    date: '2025-01-10T10:30:00Z',
+    80→    description: 'Konsultasi Video Call - dr. Andi Pratama',
+    81→  },
+    82→  {
+    83→    id: 'pay2',
+    84→    invoiceNumber: 'INV-2025-002',
+    85→    type: 'Farmasi',
+    86→    amount: 85000,
+    87→    method: 'gopay',
+    88→    status: 'success',
+    89→    date: '2025-01-09T14:20:00Z',
+    90→    description: 'Pembelian Obat - Antasida, Omeprazole',
+    91→  },
+    92→  {
+    93→    id: 'pay3',
+    94→    invoiceNumber: 'INV-2025-003',
+    95→    type: 'Home Care',
+    96→    amount: 150000,
+    97→    method: 'bank_transfer',
+    98→    status: 'pending',
+    99→    date: '2025-01-12T09:00:00Z',
+   100→    description: 'Home Care - Perawatan Luka',
+   101→  },
+   102→  {
+   103→    id: 'pay4',
+   104→    invoiceNumber: 'INV-2025-004',
+   105→    type: 'Konsultasi',
+   106→    amount: 175000,
+   107→    method: 'qris',
+   108→    status: 'pending',
+   109→    date: '2025-01-13T11:00:00Z',
+   110→    description: 'Konsultasi Chat - dr. Siti Rahayu',
+   111→  },
+   112→  {
+   113→    id: 'pay5',
+   114→    invoiceNumber: 'INV-2024-048',
+   115→    type: 'Farmasi',
+   116→    amount: 320000,
+   117→    method: 'ovo',
+   118→    status: 'failed',
+   119→    date: '2024-12-28T16:45:00Z',
+   120→    description: 'Pembelian Obat - Metformin, Vitamin B6',
+   121→  },
+   122→  {
+   123→    id: 'pay6',
+   124→    invoiceNumber: 'INV-2024-045',
+   125→    type: 'Home Care',
+   126→    amount: 200000,
+   127→    method: 'bank_transfer',
+   128→    status: 'refunded',
+   129→    date: '2024-12-20T08:30:00Z',
+   130→    description: 'Home Care - Kunjungan Dokter (Dibatalkan)',
+   131→  },
+   132→  {
+   133→    id: 'pay7',
+   134→    invoiceNumber: 'INV-2024-042',
+   135→    type: 'Konsultasi',
+   136→    amount: 150000,
+   137→    method: 'dana',
+   138→    status: 'success',
+   139→    date: '2024-12-15T13:15:00Z',
+   140→    description: 'Konsultasi Audio - dr. Budi Santoso',
+   141→  },
+   142→];
+   143→
+   144→// ---------------------------------------------------------------------------
+   145→// Constants
+   146→// ---------------------------------------------------------------------------
+   147→
+   148→const statusConfig: Record<PaymentStatus, { label: string; variant: 'default' | 'secondary' | 'destructive'; className: string }> = {
+   149→  pending: { label: 'Menunggu', variant: 'secondary', className: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400' },
+   150→  success: { label: 'Berhasil', variant: 'default', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400' },
+   151→  failed: { label: 'Gagal', variant: 'destructive', className: 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400' },
+   152→  refunded: { label: 'Dikembalikan', variant: 'secondary', className: 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400' },
+   153→};
+   154→
+   155→const methodLabels: Record<PaymentMethod, { label: string; icon: React.ReactNode }> = {
+   156→  qris: { label: 'QRIS', icon: <QrCode className="w-4 h-4" /> },
+   157→  bank_transfer: { label: 'Transfer Bank', icon: <Building2 className="w-4 h-4" /> },
+   158→  va: { label: 'Virtual Account', icon: <Building2 className="w-4 h-4" /> },
+   159→  gopay: { label: 'GoPay', icon: <Smartphone className="w-4 h-4" /> },
+   160→  ovo: { label: 'OVO', icon: <Smartphone className="w-4 h-4" /> },
+   161→  dana: { label: 'DANA', icon: <Smartphone className="w-4 h-4" /> },
+   162→  shopeepay: { label: 'ShopeePay', icon: <Smartphone className="w-4 h-4" /> },
+   163→};
+   164→
+   165→const typeIcons: Record<PaymentType, React.ReactNode> = {
+   166→  Konsultasi: <Stethoscope className="w-4 h-4" />,
+   167→  Farmasi: <Pill className="w-4 h-4" />,
+   168→  'Home Care': <Heart className="w-4 h-4" />,
+   169→  'E-Resep': <ClipboardList className="w-4 h-4" />,
+   170→};
+   171→
+   172→const typeColors: Record<PaymentType, string> = {
+   173→  Konsultasi: 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400',
+   174→  Farmasi: 'bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400',
+   175→  'Home Care': 'bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400',
+   176→  'E-Resep': 'bg-violet-100 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400',
+   177→};
+   178→
+   179→const paymentMethods = [
+   180→  { key: 'qris' as PaymentMethod, label: 'QRIS', icon: <QrCode className="w-6 h-6" /> },
+   181→  { key: 'bank_transfer' as PaymentMethod, label: 'Transfer Bank', icon: <Building2 className="w-6 h-6" /> },
+   182→  { key: 'va' as PaymentMethod, label: 'Virtual Account', icon: <Building2 className="w-6 h-6" /> },
+   183→  { key: 'gopay' as PaymentMethod, label: 'GoPay', icon: <Smartphone className="w-6 h-6" /> },
+   184→  { key: 'ovo' as PaymentMethod, label: 'OVO', icon: <Smartphone className="w-6 h-6" /> },
+   185→  { key: 'dana' as PaymentMethod, label: 'DANA', icon: <Smartphone className="w-6 h-6" /> },
+   186→  { key: 'shopeepay' as PaymentMethod, label: 'ShopeePay', icon: <Smartphone className="w-6 h-6" /> },
+   187→];
+   188→
+   189→// ---------------------------------------------------------------------------
+   190→// Helpers
+   191→// ---------------------------------------------------------------------------
+   192→
+   193→function formatCurrency(amount: number): string {
+   194→  return `Rp ${new Intl.NumberFormat('id-ID').format(amount)}`;
+   195→}
+   196→
+   197→function formatDate(dateStr: string): string {
+   198→  return new Date(dateStr).toLocaleDateString('id-ID', {
+   199→    day: 'numeric',
+   200→    month: 'short',
+   201→    year: 'numeric',
+   202→    hour: '2-digit',
+   203→    minute: '2-digit',
+   204→  });
+   205→}
+   206→
+   207→function generateInvoiceNumber(): string {
+   208→  return `INV-${Date.now()}`;
+   209→}
+   210→
+   211→// ---------------------------------------------------------------------------
+   212→// Build merged payments from demo + store
+   213→// ---------------------------------------------------------------------------
+   214→
+   215→function buildMergedPayments(storePayments: Payment[]): MergedPayment[] {
+   216→  const payMap = new Map<string, MergedPayment>();
+   217→
+   218→  // Add demo payments
+   219→  for (const dp of demoPayments) {
+   220→    payMap.set(dp.id, dp);
+   221→  }
+   222→
+   223→  // Add store payments
+   224→  for (const sp of storePayments) {
+   225→    const typeLabel = sp.type === 'prescription' ? 'E-Resep' : sp.type === 'consultation' ? 'Konsultasi' : sp.type === 'pharmacy' ? 'Farmasi' : sp.type === 'homecare' ? 'Home Care' : 'Konsultasi';
+   226→    payMap.set(sp.id, {
+   227→      id: sp.id,
+   228→      invoiceNumber: sp.invoiceNumber || `INV-${sp.id}`,
+   229→      type: typeLabel as PaymentType,
+   230→      amount: sp.amount,
+   231→      method: sp.method,
+   232→      status: sp.status,
+   233→      date: sp.paidAt || sp.createdAt,
+   234→      description: sp.type === 'prescription' ? `Pembayaran E-Resep - INV-${sp.id.slice(-6)}` : `Pembayaran ${typeLabel}`,
+   235→      referenceId: sp.referenceId,
+   236→      paidAt: sp.paidAt,
+   237→    });
+   238→  }
+   239→
+   240→  return Array.from(payMap.values()).sort(
+   241→    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+   242→  );
+   243→}
+   244→
+   245→// ---------------------------------------------------------------------------
+   246→// PaymentsPanel
+   247→// ---------------------------------------------------------------------------
+   248→
+   249→export function PaymentsPanel() {
+   250→  const { toast } = useToast();
+   251→  const { payments, setPayments, updatePrescriptionStatus, prescriptions } = useStore();
+   252→  const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
+   253→  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+   254→  const [selectedPayment, setSelectedPayment] = useState<MergedPayment | null>(null);
+   255→  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('qris');
+   256→  const [processingPayment, setProcessingPayment] = useState(false);
+   257→
+   258→  // Payment proof dialog
+   259→  const [proofDialogOpen, setProofDialogOpen] = useState(false);
+   260→  const [proofPayment, setProofPayment] = useState<MergedPayment | null>(null);
+   261→
+   262→  // Prescription checkout dialog (launched from Bayar Sekarang)
+   263→  const [prescriptionCheckoutOpen, setPrescriptionCheckoutOpen] = useState(false);
+   264→  const [checkoutPrescription, setCheckoutPrescription] = useState<Prescription | null>(null);
+   265→  const [checkoutMethod, setCheckoutMethod] = useState<PaymentMethod>('qris');
+   266→
+   267→  // Listen for prescription checkout from store
+   268→  const pendingCheckout = useStore((s) => s.pendingPrescriptionCheckout);
+   269→  const clearPendingCheckout = useStore((s) => s.setPendingPrescriptionCheckout);
+   270→  const lastProcessedId = useRef<string>('');
+   271→
+   272→  // Use a callback ref pattern to avoid setState in useEffect
+   273→  const handlePendingCheckout = useCallback(() => {
+   274→    if (pendingCheckout && pendingCheckout.id !== lastProcessedId.current) {
+   275→      lastProcessedId.current = pendingCheckout.id;
+   276→      setCheckoutPrescription(pendingCheckout);
+   277→      setPrescriptionCheckoutOpen(true);
+   278→      clearPendingCheckout(null);
+   279→    }
+   280→  }, [pendingCheckout, clearPendingCheckout]);
+   281→
+   282→  // Subscribe to store changes outside of render
+   283→  useEffect(() => {
+   284→    if (pendingCheckout && pendingCheckout.id !== lastProcessedId.current) {
+   285→      // Use requestAnimationFrame to defer setState outside of the effect's synchronous phase
+   286→      requestAnimationFrame(() => handlePendingCheckout());
+   287→    }
+   288→  }, [pendingCheckout, handlePendingCheckout]);
+   289→
+   290→  // Build merged payments
+   291→  const allPayments = useMemo(
+   292→    () => buildMergedPayments(payments),
+   293→    [payments],
+   294→  );
+   295→
+   296→  const filteredPayments = useMemo(() => {
+   297→    if (activeFilter === 'all') return allPayments;
+   298→    return allPayments.filter((p) => p.status === activeFilter);
+   299→  }, [allPayments, activeFilter]);
+   300→
+   301→  const stats = useMemo(() => {
+   302→    const total = allPayments.reduce((s, p) => s + p.amount, 0);
+   303→    const pending = allPayments.filter((p) => p.status === 'pending').reduce((s, p) => s + p.amount, 0);
+   304→    const success = allPayments.filter((p) => p.status === 'success').reduce((s, p) => s + p.amount, 0);
+   305→    const refunded = allPayments.filter((p) => p.status === 'refunded').reduce((s, p) => s + p.amount, 0);
+   306→    return { total, pending, success, refunded };
+   307→  }, [allPayments]);
+   308→
+   309→  // ── Handle pay from prescription checkout ────────────────────────────
+   310→  const handlePrescriptionCheckout = useCallback(() => {
+   311→    console.log('[DEBUG] handlePrescriptionCheckout called, checkoutPrescription:', checkoutPrescription?.id);
+   312→    if (!checkoutPrescription) {
+   313→      console.log('[DEBUG] checkoutPrescription is null, returning early');
+   314→      return;
+   315→    }
+   316→
+   317→    setProcessingPayment(true);
+   318→    const rx = checkoutPrescription;
+   319→    const totalAmount = (rx.items || []).reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
+   320→    console.log('[DEBUG] Processing payment, totalAmount:', totalAmount, 'rx.id:', rx.id);
+   321→
+   322→    // Simulate processing delay
+   323→    setTimeout(() => {
+   324→      const paymentId = `pay-rx-${Date.now()}`;
+   325→      const newPayment: Payment = {
+   326→        id: paymentId,
+   327→        userId: rx.patientId,
+   328→        amount: totalAmount,
+   329→        method: checkoutMethod,
+   330→        status: 'success',
+   331→        type: 'prescription',
+   332→        referenceId: rx.id,
+   333→        invoiceNumber: generateInvoiceNumber(),
+   334→        paidAt: new Date().toISOString(),
+   335→        createdAt: new Date().toISOString(),
+   336→        updatedAt: new Date().toISOString(),
+   337→      };
+   338→
+   339→      setPayments([newPayment, ...useStore.getState().payments]);
+   340→      updatePrescriptionStatus(rx.id, 'paid');
+   341→
+   342→      setProcessingPayment(false);
+   343→      setPrescriptionCheckoutOpen(false);
+   344→      setCheckoutPrescription(null);
+   345→
+   346→      toast({
+   347→        title: 'Pembayaran Berhasil! ✅',
+   348→        description: `Pembayaran E-Resep ${formatCurrency(totalAmount)} via ${methodLabels[checkoutMethod].label} berhasil.`,
+   349→      });
+   350→    }, 1500);
+   351→  }, [checkoutPrescription, checkoutMethod, setPayments, updatePrescriptionStatus, toast]);
+   352→
+   353→  // ── Handle pay from existing pending payment ─────────────────────────
+   354→  const handlePayNow = (payment: MergedPayment) => {
+   355→    setSelectedPayment(payment);
+   356→    setPaymentDialogOpen(true);
+   357→  };
+   358→
+   359→  const handleConfirmPayment = useCallback(() => {
+   360→    if (!selectedPayment) return;
+   361→
+   362→    setProcessingPayment(true);
+   363→
+   364→    // Simulate processing
+   365→    setTimeout(() => {
+   366→      // Update the store payment status
+   367→      const updatedPayments = useStore.getState().payments.map((p) =>
+   368→        p.id === selectedPayment.id ? { ...p, status: 'success' as const, paidAt: new Date().toISOString() } : p,
+   369→      );
+   370→      setPayments(updatedPayments);
+   371→
+   372→      // If linked to prescription, update that too
+   373→      if (selectedPayment.referenceId) {
+   374→        updatePrescriptionStatus(selectedPayment.referenceId, 'paid');
+   375→      }
+   376→
+   377→      setProcessingPayment(false);
+   378→      setPaymentDialogOpen(false);
+   379→      setSelectedPayment(null);
+   380→
+   381→      toast({
+   382→        title: 'Pembayaran Berhasil! ✅',
+   383→        description: `Pembayaran ${selectedPayment.description} ${formatCurrency(selectedPayment.amount)} berhasil.`,
+   384→      });
+   385→    }, 1500);
+   386→  }, [selectedPayment, setPayments, updatePrescriptionStatus, toast]);
+   387→
+   388→  const handleViewDetail = (payment: MergedPayment) => {
+   389→    if (payment.status === 'success') {
+   390→      setProofPayment(payment);
+   391→      setProofDialogOpen(true);
+   392→    } else {
+   393→      toast({
+   394→        title: 'Detail Pembayaran',
+   395→        description: `Invoice: ${payment.invoiceNumber} - ${formatCurrency(payment.amount)}`,
+   396→      });
+   397→    }
+   398→  };
+   399→
+   400→  const handleDownload = (payment: MergedPayment) => {
+   401→    if (payment.status === 'success') {
+   402→      // Open the payment proof API endpoint in a new tab for download
+   403→      const items = payment.prescriptionItems || [];
+   404→      const params = new URLSearchParams({
+   405→        invoiceNumber: payment.invoiceNumber,
+   406→        amount: String(payment.amount),
+   407→        method: payment.method,
+   408→        paidAt: payment.paidAt || payment.date,
+   409→        patientName: '',
+   410→        doctorName: '',
+   411→        prescriptionId: payment.prescriptionId || '',
+   412→        items: JSON.stringify(items.map((item) => ({
+   413→          name: item.name,
+   414→          dosage: item.dosage,
+   415→          quantity: item.quantity,
+   416→          price: item.price || 0,
+   417→        }))),
+   418→      });
+   419→      window.open(`/api/payment-proof?${params.toString()}`, '_blank');
+   420→    } else {
+   421→      toast({
+   422→        title: 'Bukti Pembayaran',
+   423→        description: `Bukti pembayaran hanya tersedia untuk pembayaran yang berhasil`,
+   424→        variant: 'destructive',
+   425→      });
+   426→    }
+   427→  };
+   428→
+   429→  // ── Render Prescription Checkout Dialog ──────────────────────────────
+   430→  const renderPrescriptionCheckout = () => {
+   431→    if (!checkoutPrescription) return null;
+   432→
+   433→    const rx = checkoutPrescription;
+   434→    const items = rx.items || [];
+   435→    const totalAmount = items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
+   436→
+   437→    return (
+   438→      <Dialog open={prescriptionCheckoutOpen} onOpenChange={(open) => {
+   439→        if (!processingPayment) {
+   440→          setPrescriptionCheckoutOpen(open);
+   441→          if (!open) setCheckoutPrescription(null);
+   442→        }
+   443→      }}>
+   444→        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   445→          <DialogHeader>
+   446→            <DialogTitle className="flex items-center gap-2">
+   447→              <ClipboardList className="w-5 h-5 text-primary" />
+   448→              Pembayaran E-Resep
+   449→            </DialogTitle>
+   450→            <DialogDescription className="sr-only">
+   451→              Dialog pembayaran e-resep dokter
+   452→            </DialogDescription>
+   453→          </DialogHeader>
+   454→
+   455→          <div className="space-y-4">
+   456→            {/* Prescription Summary */}
+   457→            <div className="border border-border rounded-xl overflow-hidden">
+   458→              <div className="bg-primary/10 px-4 py-2.5 flex items-center justify-between">
+   459→                <div className="flex items-center gap-2">
+   460→                  <ClipboardList className="w-4 h-4 text-primary" />
+   461→                  <span className="font-semibold text-sm text-primary">Detail E-Resep</span>
+   462→                </div>
+   463→                <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border-0 text-[10px]">
+   464→                  Menunggu Pembayaran
+   465→                </Badge>
+   466→              </div>
+   467→
+   468→              <div className="px-4 py-3">
+   469→                {/* Medicine Table */}
+   470→                <div className="overflow-x-auto">
+   471→                  <table className="w-full text-xs">
+   472→                    <thead>
+   473→                      <tr className="border-b border-border">
+   474→                        <th className="text-left py-1.5 text-muted-foreground font-medium">Obat</th>
+   475→                        <th className="text-center py-1.5 text-muted-foreground font-medium">Qty</th>
+   476→                        <th className="text-right py-1.5 text-muted-foreground font-medium">Harga</th>
+   477→                      </tr>
+   478→                    </thead>
+   479→                    <tbody>
+   480→                      {items.map((item) => (
+   481→                        <tr key={item.id} className="border-b border-border/50 last:border-0">
+   482→                          <td className="py-1.5">
+   483→                            <p className="font-medium text-foreground">{item.medicineName}</p>
+   484→                            <p className="text-muted-foreground">{item.dosage}</p>
+   485→                          </td>
+   486→                          <td className="py-1.5 text-center text-foreground">{item.quantity}</td>
+   487→                          <td className="py-1.5 text-right text-foreground">{formatCurrency(item.price || 0)}</td>
+   488→                        </tr>
+   489→                      ))}
+   490→                    </tbody>
+   491→                  </table>
+   492→                </div>
+   493→
+   494→                {/* Total */}
+   495→                <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
+   496→                  <span className="font-semibold text-sm">Total Pembayaran</span>
+   497→                  <span className="font-bold text-lg text-primary">{formatCurrency(totalAmount)}</span>
+   498→                </div>
+   499→              </div>
+   500→            </div>
+   501→
+   502→            {/* Payment Method Selection */}
+   503→            <div className="space-y-2">
+   504→              <Label className="text-sm font-medium">Pilih Metode Pembayaran</Label>
+   505→              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+   506→                {paymentMethods.map((pm) => (
+   507→                  <Button
+   508→                    key={pm.key}
+   509→                    variant={checkoutMethod === pm.key ? 'default' : 'outline'}
+   510→                    size="sm"
+   511→                    className={cn(
+   512→                      'h-auto py-2.5 flex flex-col items-center gap-1',
+   513→                      checkoutMethod === pm.key && 'ring-2 ring-primary',
+   514→                    )}
+   515→                    onClick={() => setCheckoutMethod(pm.key)}
+   516→                    disabled={processingPayment}
+   517→                  >
+   518→                    {pm.icon}
+   519→                    <span className="text-[10px]">{pm.label}</span>
+   520→                  </Button>
+   521→                ))}
+   522→              </div>
+   523→            </div>
+   524→
+   525→            {/* QR Code */}
+   526→            {checkoutMethod === 'qris' && (
+   527→              <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6 text-center">
+   528→                <QrCode className="w-28 h-28 mx-auto text-gray-400 mb-3" />
+   529→                <p className="text-sm text-muted-foreground">Scan QR Code untuk membayar</p>
+   530→                <p className="text-xs text-muted-foreground mt-1">
+   531→                  Batas waktu pembayaran 15 menit
+   532→                </p>
+   533→              </div>
+   534→            )}
+   535→
+   536→            {/* Bank Transfer */}
+   537→            {(checkoutMethod === 'bank_transfer' || checkoutMethod === 'va') && (
+   538→              <div className="bg-muted/50 rounded-xl p-4 space-y-2.5">
+   539→                <p className="text-sm font-semibold flex items-center gap-2">
+   540→                  <Building2 className="w-4 h-4" />
+   541→                  Detail Transfer
+   542→                </p>
+   543→                <div className="space-y-2 text-sm">
+   544→                  <div className="flex justify-between">
+   545→                    <span className="text-muted-foreground">Bank</span>
+   546→                    <span className="font-medium">BCA</span>
+   547→                  </div>
+   548→                  <div className="flex justify-between items-center">
+   549→                    <span className="text-muted-foreground">No. Rekening</span>
+   550→                    <span className="font-mono font-bold">8720-3456-7890</span>
+   551→                  </div>
+   552→                  <div className="flex justify-between">
+   553→                    <span className="text-muted-foreground">Atas Nama</span>
+   554→                    <span className="font-medium">PT CareLivia Indonesia</span>
+   555→                  </div>
+   556→                  <div className="flex justify-between">
+   557→                    <span className="text-muted-foreground">Jumlah</span>
+   558→                    <span className="font-bold text-primary">{formatCurrency(totalAmount)}</span>
+   559→                  </div>
+   560→                </div>
+   561→              </div>
+   562→            )}
+   563→
+   564→            {/* E-Wallet */}
+   565→            {(checkoutMethod === 'gopay' || checkoutMethod === 'ovo' || checkoutMethod === 'dana' || checkoutMethod === 'shopeepay') && (
+   566→              <div className="bg-muted/50 rounded-xl p-6 text-center">
+   567→                <Smartphone className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+   568→                <p className="text-sm text-muted-foreground">
+   569→                  Anda akan diarahkan ke aplikasi {methodLabels[checkoutMethod].label}
+   570→                </p>
+   571→                <p className="text-xs text-muted-foreground mt-1">
+   572→                  Pastikan aplikasi {methodLabels[checkoutMethod].label} sudah terinstall
+   573→                </p>
+   574→              </div>
+   575→            )}
+   576→
+   577→            {/* Confirm Button */}
+   578→            <Button
+   579→              className="w-full"
+   580→              size="lg"
+   581→              onClick={handlePrescriptionCheckout}
+   582→              disabled={processingPayment}
+   583→            >
+   584→              {processingPayment ? (
+   585→                <>
+   586→                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+   587→                  Memproses Pembayaran...
+   588→                </>
+   589→              ) : (
+   590→                <>
+   591→                  <CreditCard className="w-4 h-4 mr-2" />
+   592→                  Bayar {formatCurrency(totalAmount)}
+   593→                </>
+   594→              )}
+   595→            </Button>
+   596→          </div>
+   597→        </DialogContent>
+   598→      </Dialog>
+   599→    );
+   600→  };
+   601→
+   602→  // ── Render Payment Detail Dialog ─────────────────────────────────────
+   603→  const renderPaymentDialog = () => (
+   604→    <Dialog open={paymentDialogOpen} onOpenChange={(open) => {
+   605→      if (!processingPayment) {
+   606→        setPaymentDialogOpen(open);
+   607→        if (!open) setSelectedPayment(null);
+   608→      }
+   609→    }}>
+   610→      <DialogContent className="max-w-md">
+   611→        <DialogHeader>
+   612→          <DialogTitle>Pembayaran</DialogTitle>
+   613→          <DialogDescription className="sr-only">
+   614→            Dialog pembayaran transaksi
+   615→          </DialogDescription>
+   616→        </DialogHeader>
+   617→        {selectedPayment && (
+   618→          <div className="space-y-4">
+   619→            <div className="bg-muted/50 rounded-lg p-3">
+   620→              <div className="flex items-center justify-between">
+   621→                <span className="text-sm text-muted-foreground">Total Pembayaran</span>
+   622→                <span className="text-lg font-bold text-primary">{formatCurrency(selectedPayment.amount)}</span>
+   623→              </div>
+   624→              <p className="text-xs text-muted-foreground mt-1">{selectedPayment.description}</p>
+   625→            </div>
+   626→
+   627→            <div className="space-y-2">
+   628→              <Label>Pilih Metode Pembayaran</Label>
+   629→              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+   630→                {paymentMethods.map((pm) => (
+   631→                  <Button
+   632→                    key={pm.key}
+   633→                    variant={selectedMethod === pm.key ? 'default' : 'outline'}
+   634→                    size="sm"
+   635→                    className={cn(
+   636→                      'h-auto py-2 flex flex-col items-center gap-1',
+   637→                      selectedMethod === pm.key && 'ring-2 ring-primary',
+   638→                    )}
+   639→                    onClick={() => setSelectedMethod(pm.key)}
+   640→                    disabled={processingPayment}
+   641→                  >
+   642→                    {pm.icon}
+   643→                    <span className="text-[10px]">{pm.label}</span>
+   644→                  </Button>
+   645→                ))}
+   646→              </div>
+   647→            </div>
+   648→
+   649→            {selectedMethod === 'qris' && (
+   650→              <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-8 text-center">
+   651→                <QrCode className="w-32 h-32 mx-auto text-gray-400 mb-2" />
+   652→                <p className="text-sm text-muted-foreground">Scan QR Code untuk membayar</p>
+   653→              </div>
+   654→            )}
+   655→
+   656→            {(selectedMethod === 'bank_transfer' || selectedMethod === 'va') && (
+   657→              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+   658→                <p className="text-sm font-medium">Detail Transfer Bank</p>
+   659→                <div className="space-y-1.5 text-sm">
+   660→                  <div className="flex justify-between">
+   661→                    <span className="text-muted-foreground">Bank</span>
+   662→                    <span className="font-medium">BCA</span>
+   663→                  </div>
+   664→                  <div className="flex justify-between">
+   665→                    <span className="text-muted-foreground">No. Rekening</span>
+   666→                    <span className="font-mono font-medium">8720-3456-7890</span>
+   667→                  </div>
+   668→                  <div className="flex justify-between">
+   669→                    <span className="text-muted-foreground">Atas Nama</span>
+   670→                    <span className="font-medium">PT CareLivia Indonesia</span>
+   671→                  </div>
+   672→                  <div className="flex justify-between">
+   673→                    <span className="text-muted-foreground">Jumlah</span>
+   674→                    <span className="font-bold text-primary">{formatCurrency(selectedPayment.amount)}</span>
+   675→                  </div>
+   676→                </div>
+   677→              </div>
+   678→            )}
+   679→
+   680→            {(selectedMethod === 'gopay' || selectedMethod === 'ovo' || selectedMethod === 'dana' || selectedMethod === 'shopeepay') && (
+   681→              <div className="bg-muted/50 rounded-lg p-4 text-center">
+   682→                <Smartphone className="w-10 h-10 mx-auto text-muted-foreground mb-2" />
+   683→                <p className="text-sm text-muted-foreground">
+   684→                  Anda akan diarahkan ke aplikasi {methodLabels[selectedMethod].label}
+   685→                </p>
+   686→              </div>
+   687→            )}
+   688→
+   689→            <Button className="w-full" size="lg" onClick={handleConfirmPayment} disabled={processingPayment}>
+   690→              {processingPayment ? (
+   691→                <>
+   692→                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+   693→                  Memproses...
+   694→                </>
+   695→              ) : (
+   696→                'Konfirmasi Pembayaran'
+   697→              )}
+   698→            </Button>
+   699→          </div>
+   700→        )}
+   701→      </DialogContent>
+   702→    </Dialog>
+   703→  );
+   704→
+   705→  type FilterKey = 'all' | PaymentStatus;
+   706→
+   707→  return (
+   708→    <div className="p-4 md:p-6 space-y-6">
+   709→      {/* Header */}
+   710→      <div className="flex items-center justify-between">
+   711→        <div>
+   712→          <h2 className="text-xl font-bold text-foreground">Pembayaran</h2>
+   713→          <p className="text-sm text-muted-foreground">Kelola pembayaran dan riwayat transaksi</p>
+   714→        </div>
+   715→        <Badge className="bg-primary/10 text-primary border-0">
+   716→          <Receipt className="w-3.5 h-3.5 mr-1" />
+   717→          {allPayments.length} Transaksi
+   718→        </Badge>
+   719→      </div>
+   720→
+   721→      {/* Summary Cards */}
+   722→      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   723→        <Card className="border-0">
+   724→          <CardContent className="p-4">
+   725→            <div className="flex items-center gap-3">
+   726→              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+   727→                <CreditCard className="w-5 h-5 text-primary" />
+   728→              </div>
+   729→              <div>
+   730→                <p className="text-xs text-muted-foreground">Total Pembayaran</p>
+   731→                <p className="text-sm font-bold text-foreground">{formatCurrency(stats.total)}</p>
+   732→              </div>
+   733→            </div>
+   734→          </CardContent>
+   735→        </Card>
+   736→        <Card className="border-0">
+   737→          <CardContent className="p-4">
+   738→            <div className="flex items-center gap-3">
+   739→              <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/50 flex items-center justify-center">
+   740→                <Clock className="w-5 h-5 text-amber-600" />
+   741→              </div>
+   742→              <div>
+   743→                <p className="text-xs text-muted-foreground">Menunggu</p>
+   744→                <p className="text-sm font-bold text-foreground">{formatCurrency(stats.pending)}</p>
+   745→              </div>
+   746→            </div>
+   747→          </CardContent>
+   748→        </Card>
+   749→        <Card className="border-0">
+   750→          <CardContent className="p-4">
+   751→            <div className="flex items-center gap-3">
+   752→              <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 flex items-center justify-center">
+   753→                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+   754→              </div>
+   755→              <div>
+   756→                <p className="text-xs text-muted-foreground">Berhasil</p>
+   757→                <p className="text-sm font-bold text-foreground">{formatCurrency(stats.success)}</p>
+   758→              </div>
+   759→            </div>
+   760→          </CardContent>
+   761→        </Card>
+   762→        <Card className="border-0">
+   763→          <CardContent className="p-4">
+   764→            <div className="flex items-center gap-3">
+   765→              <div className="w-10 h-10 rounded-xl bg-sky-100 dark:bg-sky-950/50 flex items-center justify-center">
+   766→                <RotateCcw className="w-5 h-5 text-sky-600" />
+   767→              </div>
+   768→              <div>
+   769→                <p className="text-xs text-muted-foreground">Dikembalikan</p>
+   770→                <p className="text-sm font-bold text-foreground">{formatCurrency(stats.refunded)}</p>
+   771→              </div>
+   772→            </div>
+   773→          </CardContent>
+   774→        </Card>
+   775→      </div>
+   776→
+   777→      {/* Filter Tabs */}
+   778→      <Tabs value={activeFilter} onValueChange={(v) => setActiveFilter(v as FilterKey)}>
+   779→        <TabsList className="grid w-full max-w-lg grid-cols-5">
+   780→          <TabsTrigger value="all">Semua</TabsTrigger>
+   781→          <TabsTrigger value="pending">Menunggu</TabsTrigger>
+   782→          <TabsTrigger value="success">Berhasil</TabsTrigger>
+   783→          <TabsTrigger value="failed">Gagal</TabsTrigger>
+   784→          <TabsTrigger value="refunded">Kembali</TabsTrigger>
+   785→        </TabsList>
+   786→
+   787→        <TabsContent value={activeFilter} className="mt-4 space-y-3">
+   788→          {filteredPayments.length === 0 ? (
+   789→            <Card className="border-0 bg-muted/50">
+   790→              <CardContent className="p-12 text-center">
+   791→                <CreditCard className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
+   792→                <p className="text-muted-foreground font-medium">Tidak ada pembayaran</p>
+   793→              </CardContent>
+   794→            </Card>
+   795→          ) : (
+   796→            <div className="max-h-[calc(100vh-360px)] overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+   797→              {filteredPayments.map((payment) => {
+   798→                const sc = statusConfig[payment.status];
+   799→                const mc = methodLabels[payment.method];
+   800→                const pType = payment.type;
+   801→
+   802→                return (
+   803→                  <Card key={payment.id} className="border-0 hover:shadow-sm transition-shadow">
+   804→                    <CardContent className="p-4">
+   805→                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   806→                        <div className="flex items-start gap-3">
+   807→                          <div className={cn(
+   808→                            'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
+   809→                            typeColors[pType] || 'bg-gray-100 text-gray-600',
+   810→                          )}>
+   811→                            {typeIcons[pType] || <CreditCard className="w-4 h-4" />}
+   812→                          </div>
+   813→                          <div>
+   814→                            <div className="flex items-center gap-2 flex-wrap">
+   815→                              <p className="font-mono text-xs text-muted-foreground">{payment.invoiceNumber}</p>
+   816→                              <Badge variant="outline" className="text-[10px]">{pType}</Badge>
+   817→                            </div>
+   818→                            <p className="font-semibold text-sm text-foreground mt-0.5">{payment.description}</p>
+   819→                            <div className="flex items-center gap-3 mt-1">
+   820→                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+   821→                                {mc.icon}
+   822→                                {mc.label}
+   823→                              </span>
+   824→                              <span className="text-xs text-muted-foreground">{formatDate(payment.date)}</span>
+   825→                            </div>
+   826→                          </div>
+   827→                        </div>
+   828→                        <div className="flex items-center gap-3 sm:flex-col sm:items-end">
+   829→                          <p className="text-base font-bold text-foreground">{formatCurrency(payment.amount)}</p>
+   830→                          <Badge className={cn('text-[10px] border-0', sc.className)}>{sc.label}</Badge>
+   831→                        </div>
+   832→                      </div>
+   833→
+   834→                      {/* Action Buttons */}
+   835→                      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
+   836→                        {payment.status === 'pending' && (
+   837→                          <Button size="sm" onClick={() => handlePayNow(payment)}>
+   838→                            <Wallet className="w-3.5 h-3.5 mr-1" />
+   839→                            Bayar
+   840→                          </Button>
+   841→                        )}
+   842→                        <Button variant="outline" size="sm" onClick={() => handleViewDetail(payment)}>
+   843→                          <Eye className="w-3.5 h-3.5 mr-1" />
+   844→                          Lihat Detail
+   845→                        </Button>
+   846→                        {payment.status === 'success' && (
+   847→                          <Button variant="outline" size="sm" onClick={() => handleDownload(payment)}>
+   848→                            <Download className="w-3.5 h-3.5 mr-1" />
+   849→                            Unduh Bukti
+   850→                          </Button>
+   851→                        )}
+   852→                      </div>
+   853→                    </CardContent>
+   854→                  </Card>
+   855→                );
+   856→              })}
+   857→            </div>
+   858→          )}
+   859→        </TabsContent>
+   860→      </Tabs>
+   861→
+   862→      {renderPrescriptionCheckout()}
+   863→      {renderPaymentDialog()}
+   864→
+   865→      {/* Payment Proof Dialog */}
+   866→      <Dialog open={proofDialogOpen} onOpenChange={setProofDialogOpen}>
+   867→        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   868→          <DialogHeader>
+   869→            <DialogTitle className="flex items-center gap-2">
+   870→              <Receipt className="w-5 h-5 text-primary" />
+   871→              Bukti Pembayaran
+   872→            </DialogTitle>
+   873→            <DialogDescription className="sr-only">
+   874→              Dialog bukti pembayaran yang telah berhasil
+   875→            </DialogDescription>
+   876→          </DialogHeader>
+   877→          {proofPayment && (
+   878→            <div className="space-y-4">
+   879→              {/* Status Banner */}
+   880→              <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 flex items-center gap-3">
+   881→                <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center shrink-0">
+   882→                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+   883→                </div>
+   884→                <div>
+   885→                  <p className="font-semibold text-emerald-700 dark:text-emerald-400">Pembayaran Berhasil</p>
+   886→                  <p className="text-xs text-emerald-600 dark:text-emerald-500">
+   887→                    {proofPayment.paidAt ? formatDate(proofPayment.paidAt) : formatDate(proofPayment.date)}
+   888→                  </p>
+   889→                </div>
+   890→              </div>
+   891→
+   892→              {/* Invoice Info */}
+   893→              <div className="border border-border rounded-xl overflow-hidden">
+   894→                <div className="bg-primary/5 px-4 py-3">
+   895→                  <p className="font-semibold text-sm text-primary">Detail Pembayaran</p>
+   896→                </div>
+   897→                <div className="px-4 py-3 space-y-3">
+   898→                  <div className="flex justify-between text-sm">
+   899→                    <span className="text-muted-foreground">No. Invoice</span>
+   900→                    <span className="font-mono font-semibold">{proofPayment.invoiceNumber}</span>
+   901→                  </div>
+   902→                  <div className="flex justify-between text-sm">
+   903→                    <span className="text-muted-foreground">Tipe</span>
+   904→                    <span className="flex items-center gap-1.5 font-medium">
+   905→                      {typeIcons[proofPayment.type]}
+   906→                      {proofPayment.type}
+   907→                    </span>
+   908→                  </div>
+   909→                  <div className="flex justify-between text-sm">
+   910→                    <span className="text-muted-foreground">Deskripsi</span>
+   911→                    <span className="font-medium text-right max-w-[200px]">{proofPayment.description}</span>
+   912→                  </div>
+   913→                  <div className="flex justify-between text-sm">
+   914→                    <span className="text-muted-foreground">Metode Bayar</span>
+   915→                    <span className="flex items-center gap-1.5 font-medium">
+   916→                      {methodLabels[proofPayment.method].icon}
+   917→                      {methodLabels[proofPayment.method].label}
+   918→                    </span>
+   919→                  </div>
+   920→                  <div className="flex justify-between text-sm">
+   921→                    <span className="text-muted-foreground">Tanggal Bayar</span>
+   922→                    <span className="font-medium">
+   923→                      {proofPayment.paidAt ? formatDate(proofPayment.paidAt) : formatDate(proofPayment.date)}
+   924→                    </span>
+   925→                  </div>
+   926→                </div>
+   927→              </div>
+   928→
+   929→              {/* Prescription Items (if e-resep) */}
+   930→              {proofPayment.prescriptionItems && proofPayment.prescriptionItems.length > 0 && (
+   931→                <div className="border border-border rounded-xl overflow-hidden">
+   932→                  <div className="bg-violet-50 dark:bg-violet-950/30 px-4 py-3">
+   933→                    <p className="font-semibold text-sm text-violet-700 dark:text-violet-400">Detail Obat</p>
+   934→                  </div>
+   935→                  <div className="px-4 py-3">
+   936→                    <table className="w-full text-xs">
+   937→                      <thead>
+   938→                        <tr className="border-b border-border">
+   939→                          <th className="text-left py-1.5 text-muted-foreground font-medium">Obat</th>
+   940→                          <th className="text-center py-1.5 text-muted-foreground font-medium">Qty</th>
+   941→                          <th className="text-right py-1.5 text-muted-foreground font-medium">Harga</th>
+   942→                          <th className="text-right py-1.5 text-muted-foreground font-medium">Subtotal</th>
+   943→                        </tr>
+   944→                      </thead>
+   945→                      <tbody>
+   946→                        {proofPayment.prescriptionItems.map((item, i) => (
+   947→                          <tr key={i} className="border-b border-border/50 last:border-0">
+   948→                            <td className="py-1.5">
+   949→                              <p className="font-medium text-foreground">{item.name}</p>
+   950→                              <p className="text-muted-foreground">{item.dosage}</p>
+   951→                            </td>
+   952→                            <td className="py-1.5 text-center text-foreground">{item.quantity}</td>
+   953→                            <td className="py-1.5 text-right text-foreground">{formatCurrency(item.price || 0)}</td>
+   954→                            <td className="py-1.5 text-right font-medium text-foreground">
+   955→                              {formatCurrency((item.price || 0) * item.quantity)}
+   956→                            </td>
+   957→                          </tr>
+   958→                        ))}
+   959→                      </tbody>
+   960→                    </table>
+   961→                  </div>
+   962→                </div>
+   963→              )}
+   964→
+   965→              {/* Total Amount */}
+   966→              <div className="flex items-center justify-between p-4 bg-primary/5 rounded-xl">
+   967→                <span className="font-semibold text-sm">Total Pembayaran</span>
+   968→                <span className="font-bold text-lg text-primary">{formatCurrency(proofPayment.amount)}</span>
+   969→              </div>
+   970→
+   971→              {/* Stamp */}
+   972→              <div className="flex items-center justify-center">
+   973→                <div className="w-20 h-20 rounded-full border-2 border-emerald-500 flex items-center justify-center opacity-60 -rotate-12">
+   974→                  <div className="text-center">
+   975→                    <Stamp className="w-4 h-4 text-emerald-600 mx-auto" />
+   976→                    <span className="text-[8px] font-bold text-emerald-600 uppercase tracking-wider">Dibayar</span>
+   977→                  </div>
+   978→                </div>
+   979→              </div>
+   980→
+   981→              {/* Download Button */}
+   982→              <Button
+   983→                className="w-full"
+   984→                size="lg"
+   985→                onClick={() => handleDownload(proofPayment)}
+   986→              >
+   987→                <Download className="w-4 h-4 mr-2" />
+   988→                Unduh Bukti Pembayaran
+   989→              </Button>
+   990→            </div>
+   991→          )}
+   992→        </DialogContent>
+   993→      </Dialog>
+   994→    </div>
+   995→  );
+   996→}
+   997→

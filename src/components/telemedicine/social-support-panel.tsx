@@ -609,6 +609,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
             <CardDescription className="text-xs">Skor semakin rendah = kondisi semakin baik (maks 24)</CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="w-full overflow-hidden">
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={trendData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -622,6 +623,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
                   dot={{ fill: '#0d9488', r: 4 }} activeDot={{ r: 6 }} />
               </LineChart>
             </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -2521,37 +2523,37 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
           </ScrollArea>
         </div>
 
-        <TabsContent value="dashboard" className="mt-4">
+        <TabsContent value="dashboard" className="mt-4 overflow-y-auto custom-scrollbar">
           {renderDashboard()}
         </TabsContent>
-        <TabsContent value="screening" className="mt-4">
+        <TabsContent value="screening" className="mt-4 overflow-y-auto custom-scrollbar">
           <ScreeningTab />
         </TabsContent>
-        <TabsContent value="family" className="mt-4">
+        <TabsContent value="family" className="mt-4 overflow-y-auto custom-scrollbar">
           <FamilyDashboardTab />
         </TabsContent>
-        <TabsContent value="meetings" className="mt-4">
+        <TabsContent value="meetings" className="mt-4 overflow-y-auto custom-scrollbar">
           <MeetingTab />
         </TabsContent>
-        <TabsContent value="edu-tools" className="mt-4">
+        <TabsContent value="edu-tools" className="mt-4 overflow-y-auto custom-scrollbar">
           <EduToolsTab />
         </TabsContent>
-        <TabsContent value="caregiver" className="mt-4">
+        <TabsContent value="caregiver" className="mt-4 overflow-y-auto custom-scrollbar">
           <CaregiverTab />
         </TabsContent>
-        <TabsContent value="coordination" className="mt-4">
+        <TabsContent value="coordination" className="mt-4 overflow-y-auto custom-scrollbar">
           <CoordinationTab />
         </TabsContent>
-        <TabsContent value="emergency" className="mt-4">
+        <TabsContent value="emergency" className="mt-4 overflow-y-auto custom-scrollbar">
           <EmergencyContactTab />
         </TabsContent>
-        <TabsContent value="financial" className="mt-4">
+        <TabsContent value="financial" className="mt-4 overflow-y-auto custom-scrollbar">
           <FinancialTab />
         </TabsContent>
-        <TabsContent value="transport" className="mt-4">
+        <TabsContent value="transport" className="mt-4 overflow-y-auto custom-scrollbar">
           <TransportTab />
         </TabsContent>
-        <TabsContent value="ai-analysis" className="mt-4">
+        <TabsContent value="ai-analysis" className="mt-4 overflow-y-auto custom-scrollbar">
           <AISocialAnalysisTab palliativePatientId={palliativePatientId} />
         </TabsContent>
       </Tabs>

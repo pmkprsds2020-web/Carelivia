@@ -1046,7 +1046,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
         </TabsList>
 
         {/* Resume Medis Tab */}
-        <TabsContent value="resume" className="mt-4">
+        <TabsContent value="resume" className="mt-4 overflow-y-auto custom-scrollbar">
           {selectedResume ? (
             <div className="space-y-4" ref={resumeContentRef}>
               {/* Resume Actions */}
@@ -1251,7 +1251,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
         </TabsContent>
 
         {/* Surat Rujukan Tab */}
-        <TabsContent value="referral" className="mt-4">
+        <TabsContent value="referral" className="mt-4 overflow-y-auto custom-scrollbar">
           {selectedReferral ? (
             <div className="space-y-4" ref={referralContentRef}>
               {/* Referral Actions */}
@@ -1433,7 +1433,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
         </TabsContent>
 
         {/* History Tab */}
-        <TabsContent value="history" className="mt-4">
+        <TabsContent value="history" className="mt-4 overflow-y-auto custom-scrollbar">
           <div className="space-y-4">
             {/* Resume History */}
             <div>
@@ -1576,14 +1576,14 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
 
       {/* ── Dialog: Referral Department Selection ── */}
       <Dialog open={showReferralDeptDialog} onOpenChange={setShowReferralDeptDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Generate Surat Rujukan AI</DialogTitle>
             <DialogDescription>
               Pilih departemen tujuan rujukan untuk {patient.patientName || 'Pasien'}.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
             <div>
               <Label>Departemen Tujuan</Label>
               <Select value={targetDept} onValueChange={(v) => setTargetDept(v as ReferralTargetDepartment)}>
@@ -1627,8 +1627,8 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
 
       {/* ── Dialog: Send Document ── */}
       <Dialog open={showSendDialog} onOpenChange={setShowSendDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Kirim Dokumen</DialogTitle>
             <DialogDescription>
               Pilih metode pengiriman {sendDocType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'}.
@@ -1725,8 +1725,8 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
 
       {/* ── Dialog: Sign Document ── */}
       <Dialog open={showSignDialog} onOpenChange={setShowSignDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Tanda Tangan Elektronik</DialogTitle>
             <DialogDescription>
               Konfirmasi tanda tangan elektronik untuk {signDocType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'}.

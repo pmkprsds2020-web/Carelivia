@@ -485,7 +485,7 @@ export function ScreeningPanel() {
     }).length;
 
     return (
-      <div className="max-w-2xl mx-auto p-4 space-y-4">
+      <div className="max-w-2xl mx-auto p-4 space-y-4 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
         {/* Header */}
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => { setActiveFormId(null); setModuleAnswers({} as Record<ScreeningModuleId, Record<string, string | number | string[]>>); setActiveModuleIdx(0); }}>
@@ -1049,7 +1049,7 @@ export function ScreeningPanel() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar">
           {filteredForms.map(form => {
             const statusInfo = STATUS_LABELS[form.status] || STATUS_LABELS.sent;
             const triage = form.triageResult;
@@ -1101,14 +1101,15 @@ export function ScreeningPanel() {
 
       {/* View Detail Dialog */}
       <Dialog open={!!viewingForm} onOpenChange={(open) => { if (!open) { setViewingForm(null); setAiAnalysis(''); setAiLoading(false); } }}>
-        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <ClipboardCheck className="w-5 h-5" />
               Hasil Skrining Komprehensif Telemedicine
             </DialogTitle>
           </DialogHeader>
           {viewingForm && (
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
             <Tabs defaultValue="ringkasan">
               <TabsList className="flex flex-wrap h-auto gap-1">
                 <TabsTrigger value="ringkasan" className="text-xs">Ringkasan Klinis</TabsTrigger>
@@ -1116,13 +1117,13 @@ export function ScreeningPanel() {
                 <TabsTrigger value="ai" className="text-xs flex items-center gap-1"><Sparkles className="w-3 h-3" /> AI Analysis</TabsTrigger>
                 <TabsTrigger value="catatan" className="text-xs">Catatan Dokter</TabsTrigger>
               </TabsList>
-              <TabsContent value="ringkasan" className="mt-4">
+              <TabsContent value="ringkasan" className="mt-4 overflow-y-auto custom-scrollbar">
                 {renderClinicalSummary(viewingForm)}
               </TabsContent>
-              <TabsContent value="modul" className="mt-4">
+              <TabsContent value="modul" className="mt-4 overflow-y-auto custom-scrollbar">
                 {renderModuleResults(viewingForm)}
               </TabsContent>
-              <TabsContent value="ai" className="mt-4 space-y-4">
+              <TabsContent value="ai" className="mt-4 space-y-4 overflow-y-auto custom-scrollbar">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-5 h-5 text-primary" />
@@ -1182,7 +1183,7 @@ export function ScreeningPanel() {
                   </Card>
                 )}
               </TabsContent>
-              <TabsContent value="catatan" className="mt-4 space-y-4">
+              <TabsContent value="catatan" className="mt-4 space-y-4 overflow-y-auto custom-scrollbar">
                 <div>
                   <Label className="text-sm font-medium">Catatan Dokter</Label>
                   <Textarea className="mt-1" placeholder="Tambahkan catatan klinis..." value={doctorNotes} onChange={e => setDoctorNotes(e.target.value)} />
@@ -1198,6 +1199,7 @@ export function ScreeningPanel() {
                 </div>
               </TabsContent>
             </Tabs>
+            </div>
           )}
         </DialogContent>
       </Dialog>

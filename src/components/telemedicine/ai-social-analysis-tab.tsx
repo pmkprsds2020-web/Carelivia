@@ -777,7 +777,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
             </div>
 
             {needPieData.length > 0 && (
-              <div className="h-48">
+              <div className="h-48 w-full overflow-hidden">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={needPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ name }) => name}>
@@ -1166,6 +1166,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
                       <CardTitle className="text-sm">Tren Masalah Sosial Pasien Paliatif</CardTitle>
                     </CardHeader>
                     <CardContent>
+                      <div className="w-full overflow-hidden">
                       <ResponsiveContainer width="100%" height={200}>
                         <LineChart data={stats.socialTrendData}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -1177,6 +1178,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
                           <Line type="monotone" dataKey="lowRisk" stroke="#10b981" strokeWidth={2} name="Risiko Rendah" />
                         </LineChart>
                       </ResponsiveContainer>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
@@ -1188,6 +1190,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
                       <CardTitle className="text-sm">Kebutuhan Bantuan Sosial Terbanyak</CardTitle>
                     </CardHeader>
                     <CardContent>
+                      <div className="w-full overflow-hidden">
                       <ResponsiveContainer width="100%" height={200}>
                         <BarChart data={stats.topSocialNeeds}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -1197,6 +1200,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
                           <Bar dataKey="count" fill="#0d9488" radius={[4, 4, 0, 0]} name="Jumlah" />
                         </BarChart>
                       </ResponsiveContainer>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
@@ -1259,31 +1263,31 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
           </TabsList>
         </ScrollArea>
 
-        <TabsContent value="overview" className="mt-4">
+        <TabsContent value="overview" className="mt-4 overflow-y-auto custom-scrollbar">
           {renderOverview()}
         </TabsContent>
-        <TabsContent value="family" className="mt-4">
+        <TabsContent value="family" className="mt-4 overflow-y-auto custom-scrollbar">
           {renderFamilyAnalysis()}
         </TabsContent>
-        <TabsContent value="caregiver" className="mt-4">
+        <TabsContent value="caregiver" className="mt-4 overflow-y-auto custom-scrollbar">
           {renderCaregiverAnalysis()}
         </TabsContent>
-        <TabsContent value="financial" className="mt-4">
+        <TabsContent value="financial" className="mt-4 overflow-y-auto custom-scrollbar">
           {renderFinancialAnalysis()}
         </TabsContent>
-        <TabsContent value="transport" className="mt-4">
+        <TabsContent value="transport" className="mt-4 overflow-y-auto custom-scrollbar">
           {renderTransportAnalysis()}
         </TabsContent>
-        <TabsContent value="action" className="mt-4">
+        <TabsContent value="action" className="mt-4 overflow-y-auto custom-scrollbar">
           {renderActionPlan()}
         </TabsContent>
-        <TabsContent value="warning" className="mt-4">
+        <TabsContent value="warning" className="mt-4 overflow-y-auto custom-scrollbar">
           {renderEarlyWarning()}
         </TabsContent>
-        <TabsContent value="report" className="mt-4">
+        <TabsContent value="report" className="mt-4 overflow-y-auto custom-scrollbar">
           {renderReport()}
         </TabsContent>
-        <TabsContent value="population" className="mt-4">
+        <TabsContent value="population" className="mt-4 overflow-y-auto custom-scrollbar">
           {renderPopulationAnalytics()}
         </TabsContent>
       </Tabs>

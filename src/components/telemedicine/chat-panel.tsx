@@ -2063,15 +2063,15 @@ export function ChatPanel() {
 
   const renderPrescriptionDialog = () => (
     <Dialog open={showPrescriptionDialog} onOpenChange={setShowPrescriptionDialog}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Stethoscope className="w-5 h-5 text-primary" />
             Buat E-Resep
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
           {rxItems.length === 0 && (
             <div className="text-center py-4 text-muted-foreground text-sm">
               Belum ada obat ditambahkan. Klik tombol di bawah untuk menambahkan.
@@ -2163,7 +2163,7 @@ export function ChatPanel() {
           </Button>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => setShowPrescriptionDialog(false)}>
             Batal
           </Button>
@@ -2187,8 +2187,8 @@ export function ChatPanel() {
 
     return (
       <Dialog open={showMedicalRecordDialog} onOpenChange={setShowMedicalRecordDialog}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5 text-primary" />
               Rekam Medis
@@ -2198,7 +2198,7 @@ export function ChatPanel() {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
             <div className="space-y-2">
               <Label className="text-sm font-medium">Diagnosis</Label>
               <Textarea
@@ -2249,7 +2249,7 @@ export function ChatPanel() {
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setShowMedicalRecordDialog(false)}>
               Batal
             </Button>
@@ -2266,15 +2266,15 @@ export function ChatPanel() {
 
   const renderScreeningDialogUI = () => (
     <Dialog open={showScreeningDialog} onOpenChange={setShowScreeningDialog}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <ClipboardCheck className="w-5 h-5 text-teal-600" />
             Kirim Skrining Komprehensif Telemedicine
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
           <p className="text-sm text-muted-foreground">
             Pilih modul skrining yang akan dikirim kepada pasien. Modul wajib sudah terpilih secara default.
           </p>
@@ -2341,7 +2341,7 @@ export function ChatPanel() {
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => setShowScreeningDialog(false)}>
             Batal
           </Button>
@@ -2416,15 +2416,15 @@ export function ChatPanel() {
 
   const renderPalliativeDialogUI = () => (
     <Dialog open={showPalliativeDialog} onOpenChange={setShowPalliativeDialog}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <HeartPulse className="w-5 h-5 text-rose-600" />
             Kirim Skrining Paliatif
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
           <div>
             <Label className="text-sm font-medium mb-2 block">Pilih Alat Skrining Paliatif</Label>
             <p className="text-xs text-muted-foreground mb-3">Pilih alat skrining yang ingin dikirim ke pasien:</p>
@@ -2467,7 +2467,7 @@ export function ChatPanel() {
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button
             variant="outline"
             size="sm"
@@ -2545,15 +2545,15 @@ export function ChatPanel() {
 
   const renderPalliativeMarkingDialog = () => (
     <Dialog open={showPalliativeMarkingDialog} onOpenChange={setShowPalliativeMarkingDialog}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-rose-600" />
             Jadikan Pasien Monitoring Paliatif
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
           <div className="p-3 rounded-lg bg-rose-50 border border-rose-200">
             <p className="text-xs text-rose-700">
               Dengan menandai pasien ini sebagai pasien monitoring paliatif, data pasien akan otomatis tersinkronisasi dengan Modul Monitoring Paliatif. Pasien akan menerima pemantauan berkala dan skrining rutin.
@@ -2641,7 +2641,7 @@ export function ChatPanel() {
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => setShowPalliativeMarkingDialog(false)}>
             Batal
           </Button>

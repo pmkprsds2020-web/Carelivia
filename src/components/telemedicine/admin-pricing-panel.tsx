@@ -484,7 +484,7 @@ export function AdminPricingPanel() {
           </TabsList>
 
           {/* ─── Tab 1: Harga Home Care ──────────────────────────────────── */}
-          <TabsContent value="homecare" className="mt-4 space-y-4">
+          <TabsContent value="homecare" className="mt-4 space-y-4 overflow-y-auto custom-scrollbar">
             {/* Search / Filter Bar */}
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
@@ -515,7 +515,7 @@ export function AdminPricingPanel() {
             {/* Table */}
             <Card>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto table-scroll-wrapper">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -606,7 +606,7 @@ export function AdminPricingPanel() {
           </TabsContent>
 
           {/* ─── Tab 2: Tarif Dokter ─────────────────────────────────────── */}
-          <TabsContent value="doctors" className="mt-4 space-y-4">
+          <TabsContent value="doctors" className="mt-4 space-y-4 overflow-y-auto custom-scrollbar">
             {/* Search / Filter Bar */}
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
@@ -637,7 +637,7 @@ export function AdminPricingPanel() {
             {/* Table */}
             <Card>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto table-scroll-wrapper">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -748,6 +748,7 @@ export function AdminPricingPanel() {
               </div>
             ) : (
               <div className="max-h-96 overflow-y-auto custom-scrollbar">
+                <div className="overflow-x-auto table-scroll-wrapper">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -800,6 +801,7 @@ export function AdminPricingPanel() {
                     })}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             )}
           </CardContent>
@@ -807,8 +809,8 @@ export function AdminPricingPanel() {
 
         {/* ─── Edit Homecare Dialog ──────────────────────────────────────── */}
         <Dialog open={hcEditOpen} onOpenChange={(open) => { if (!open) setHcEditOpen(false); }}>
-          <DialogContent className="sm:max-w-[460px]">
-            <DialogHeader>
+          <DialogContent className="sm:max-w-[460px] max-h-[90vh] flex flex-col">
+            <DialogHeader className="shrink-0">
               <DialogTitle className="flex items-center gap-2">
                 <Pencil className="w-4 h-4 text-teal-600" />
                 Edit Harga Layanan
@@ -816,7 +818,7 @@ export function AdminPricingPanel() {
             </DialogHeader>
 
             {editingService && (
-              <div className="space-y-4 py-2">
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
                 {/* Service name (read-only) */}
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Nama Layanan</Label>
@@ -941,8 +943,8 @@ export function AdminPricingPanel() {
 
         {/* ─── Edit Doctor Dialog ────────────────────────────────────────── */}
         <Dialog open={docEditOpen} onOpenChange={(open) => { if (!open) setDocEditOpen(false); }}>
-          <DialogContent className="sm:max-w-[460px]">
-            <DialogHeader>
+          <DialogContent className="sm:max-w-[460px] max-h-[90vh] flex flex-col">
+            <DialogHeader className="shrink-0">
               <DialogTitle className="flex items-center gap-2">
                 <Pencil className="w-4 h-4 text-teal-600" />
                 Edit Tarif Konsultasi
@@ -950,7 +952,7 @@ export function AdminPricingPanel() {
             </DialogHeader>
 
             {editingDoctor && (
-              <div className="space-y-4 py-2">
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
                 {/* Doctor name (read-only) */}
                 <div className="flex items-center gap-3">
                   <div className="w-11 h-11 rounded-full bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center text-teal-700 dark:text-teal-300 font-semibold shrink-0">

@@ -13,6 +13,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -295,7 +296,7 @@ export function DoctorPanel() {
         </TabsList>
 
         {/* Tab 1: Dashboard */}
-        <TabsContent value="dashboard" className="space-y-6 mt-4">
+        <TabsContent value="dashboard" className="space-y-6 mt-4 overflow-y-auto custom-scrollbar">
           {/* Stats Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
@@ -433,7 +434,7 @@ export function DoctorPanel() {
         </TabsContent>
 
         {/* Tab 2: Konsultasi */}
-        <TabsContent value="konsultasi" className="space-y-4 mt-4">
+        <TabsContent value="konsultasi" className="space-y-4 mt-4 overflow-y-auto custom-scrollbar">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">Daftar Konsultasi</h3>
             <Select defaultValue="all">
@@ -508,7 +509,7 @@ export function DoctorPanel() {
         </TabsContent>
 
         {/* Tab 4: E-Resep */}
-        <TabsContent value="eresep" className="space-y-4 mt-4">
+        <TabsContent value="eresep" className="space-y-4 mt-4 overflow-y-auto custom-scrollbar">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">Resep Elektronik</h3>
             <Button size="sm" className="text-xs" onClick={() => setPrescriptionDialogOpen(true)}>
@@ -583,11 +584,11 @@ export function DoctorPanel() {
 
           {/* Prescription Dialog */}
           <Dialog open={prescriptionDialogOpen} onOpenChange={setPrescriptionDialogOpen}>
-            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
+            <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
+              <DialogHeader className="shrink-0">
                 <DialogTitle>Buat Resep Baru</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
                 {/* Patient Selection */}
                 <div className="space-y-2">
                   <Label className="text-xs font-medium text-muted-foreground">Pilih Pasien</Label>
@@ -714,6 +715,8 @@ export function DoctorPanel() {
                   />
                 </div>
 
+              </div>
+              <DialogFooter className="shrink-0">
                 <Button
                   onClick={handleSavePrescription}
                   className="w-full"
@@ -721,13 +724,13 @@ export function DoctorPanel() {
                 >
                   Simpan Resep
                 </Button>
-              </div>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         </TabsContent>
 
         {/* Tab 5: Jadwal Praktik */}
-        <TabsContent value="jadwal" className="space-y-4 mt-4">
+        <TabsContent value="jadwal" className="space-y-4 mt-4 overflow-y-auto custom-scrollbar">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">Jadwal Praktik Mingguan</h3>
             <Button size="sm" className="text-xs" onClick={() => {
@@ -789,11 +792,11 @@ export function DoctorPanel() {
 
           {/* Schedule Dialog */}
           <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
+            <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
+              <DialogHeader className="shrink-0">
                 <DialogTitle>Tambah/Edit Jadwal</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
                 <div className="space-y-2">
                   <Label className="text-xs font-medium text-muted-foreground">Hari</Label>
                   <Select
@@ -839,16 +842,18 @@ export function DoctorPanel() {
                   />
                   <Label className="text-sm">Aktif</Label>
                 </div>
+              </div>
+              <DialogFooter className="shrink-0">
                 <Button onClick={handleSaveSchedule} className="w-full">
                   Simpan Jadwal
                 </Button>
-              </div>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         </TabsContent>
 
         {/* Tab 6: Pendapatan */}
-        <TabsContent value="pendapatan" className="space-y-6 mt-4">
+        <TabsContent value="pendapatan" className="space-y-6 mt-4 overflow-y-auto custom-scrollbar">
           {/* Earnings Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Card>

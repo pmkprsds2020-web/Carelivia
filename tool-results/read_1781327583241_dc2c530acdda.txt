@@ -1,0 +1,788 @@
+     1→'use client';
+     2→
+     3→import { useState, useCallback, useMemo } from 'react';
+     4→import type { PalliativeToolType, PalliativeEwsLevel } from '@/lib/types';
+     5→import {
+     6→  TOOL_META,
+     7→  ESAS_ITEMS,
+     8→  DT_PROBLEMS,
+     9→  SPICT_QUESTIONS,
+    10→  SPICT_DISEASES,
+    11→  PPS_QUESTIONS,
+    12→  PPS_EXTRA_QUESTIONS,
+    13→  ZARIT_QUESTIONS,
+    14→  ZARIT_OPTIONS,
+    15→  EORTC_QUESTIONS,
+    16→  EORTC_OPTIONS_4,
+    17→  calcESAS,
+    18→  calcDistress,
+    19→  calcSPICT,
+    20→  calcPPS,
+    21→  calcZarit,
+    22→  calcEORTC,
+    23→  getEwsLevel,
+    24→  calculateScreeningResult,
+    25→  vasColor,
+    26→  vasBg,
+    27→  getEwsBadge,
+    28→  ScreeningScoreResult,
+    29→} from '@/lib/palliative-screening-data';
+    30→import { cn } from '@/lib/utils';
+    31→import { Badge } from '@/components/ui/badge';
+    32→import { Button } from '@/components/ui/button';
+    33→import { Progress } from '@/components/ui/progress';
+    34→import { Label } from '@/components/ui/label';
+    35→import { Checkbox } from '@/components/ui/checkbox';
+    36→import {
+    37→  ChevronLeft,
+    38→  ChevronRight,
+    39→  Save,
+    40→  Send,
+    41→  CheckCircle2,
+    42→  AlertTriangle,
+    43→} from 'lucide-react';
+    44→
+    45→// ── Types ──────────────────────────────────────────────────────────────────
+    46→
+    47→export interface InlineScreeningFormProps {
+    48→  screeningType: PalliativeToolType;
+    49→  onSubmit: (result: ScreeningScoreResult, answers: Record<string, number | string | string[]>) => void;
+    50→  onSaveDraft: (answers: Record<string, number | string | string[]>) => void;
+    51→  initialAnswers?: Record<string, number | string | string[]>;
+    52→}
+    53→
+    54→// ── Component ──────────────────────────────────────────────────────────────
+    55→
+    56→export function InlineScreeningForm({
+    57→  screeningType,
+    58→  onSubmit,
+    59→  onSaveDraft,
+    60→  initialAnswers,
+    61→}: InlineScreeningFormProps) {
+    62→  const toolDef = TOOL_META[screeningType];
+    63→  const [currentStep, setCurrentStep] = useState(0);
+    64→  const [showResult, setShowResult] = useState(false);
+    65→  const [answers, setAnswers] = useState<Record<string, number | string | string[]>>(initialAnswers || {});
+    66→
+    67→  const totalSteps = toolDef.totalSteps;
+    68→
+    69→  const progressPercent = useMemo(() => {
+    70→    if (showResult) return 100;
+    71→    if (totalSteps === 0) return 0;
+    72→    return Math.round((currentStep / (totalSteps + 1)) * 100);
+    73→  }, [currentStep, totalSteps, showResult]);
+    74→
+    75→  // Answer helpers
+    76→  const setAnswer = useCallback((key: string, value: number | string | string[]) => {
+    77→    setAnswers(prev => ({ ...prev, [key]: value }));
+    78→  }, []);
+    79→
+    80→  const toggleCheck = useCallback((key: string, item: string) => {
+    81→    setAnswers(prev => {
+    82→      const current = (prev[key] as string[]) || [];
+    83→      const next = current.includes(item) ? current.filter(i => i !== item) : [...current, item];
+    84→      return { ...prev, [key]: next };
+    85→    });
+    86→  }, []);
+    87→
+    88→  const isChecked = useCallback((key: string, item: string): boolean => {
+    89→    return ((answers[key] as string[]) || []).includes(item);
+    90→  }, [answers]);
+    91→
+    92→  // Navigation
+    93→  const handleNext = useCallback(() => {
+    94→    if (currentStep < totalSteps - 1) {
+    95→      setCurrentStep(prev => prev + 1);
+    96→    } else {
+    97→      setShowResult(true);
+    98→    }
+    99→  }, [currentStep, totalSteps]);
+   100→
+   101→  const handlePrev = useCallback(() => {
+   102→    if (showResult) {
+   103→      setShowResult(false);
+   104→    } else if (currentStep > 0) {
+   105→      setCurrentStep(prev => prev - 1);
+   106→    }
+   107→  }, [currentStep, showResult]);
+   108→
+   109→  const handleSubmit = useCallback(() => {
+   110→    const result = calculateScreeningResult(screeningType, answers);
+   111→    onSubmit(result, { ...answers });
+   112→  }, [screeningType, answers, onSubmit]);
+   113→
+   114→  // ── VAS Slider ──
+   115→  const renderVasSlider = (id: string, label: string) => {
+   116→    const value = Number(answers[id]) || 0;
+   117→    return (
+   118→      <div key={id} className="space-y-2 py-2 border-b border-border last:border-b-0">
+   119→        <div className="flex items-center justify-between">
+   120→          <Label className="text-xs font-medium text-foreground">{label}</Label>
+   121→          <span className={cn('text-lg font-bold tabular-nums', vasColor(value))}>{value}</span>
+   122→        </div>
+   123→        <input
+   124→          type="range"
+   125→          min={0}
+   126→          max={10}
+   127→          step={1}
+   128→          value={value}
+   129→          onChange={(e) => setAnswer(id, Number(e.target.value))}
+   130→          className="sk-vas-slider w-full"
+   131→          style={{ background: 'linear-gradient(to right, #10b981 0%, #f59e0b 40%, #ef4444 70%, #dc2626 100%)' }}
+   132→        />
+   133→        <div className="flex justify-between">
+   134→          <span className="text-[9px] text-emerald-600">0</span>
+   135→          <span className="text-[9px] text-amber-600">5</span>
+   136→          <span className="text-[9px] text-red-600">10</span>
+   137→        </div>
+   138→      </div>
+   139→    );
+   140→  };
+   141→
+   142→  // ── ESAS Step ──
+   143→  const renderESAS = () => (
+   144→    <div className="space-y-1">
+   145→      <p className="text-xs text-muted-foreground mb-2">
+   146→        Berikan skor 0 (tidak ada gejala) sampai 10 (gejala terburuk) untuk setiap item:
+   147→      </p>
+   148→      {ESAS_ITEMS.map(item => renderVasSlider(item.id, item.label))}
+   149→      <div className="mt-3 p-2 rounded-lg bg-muted/50">
+   150→        <p className="text-xs font-medium text-foreground">
+   151→          Skor Total: <span className={cn('text-sm font-bold', vasColor(calcESAS(answers).total > 27 ? 7 : calcESAS(answers).total > 18 ? 4 : 0))}>
+   152→            {calcESAS(answers).total}/90
+   153→          </span>
+   154→        </p>
+   155→      </div>
+   156→    </div>
+   157→  );
+   158→
+   159→  // ── Distress Steps ──
+   160→  const renderDistress = () => {
+   161→    if (currentStep === 0) {
+   162→      const value = Number(answers['dt-score']) || 0;
+   163→      return (
+   164→        <div className="space-y-3">
+   165→          <p className="text-xs text-muted-foreground mb-2">
+   166→            Pilih angka yang paling menggambarkan tingkat tekanan/stres Anda selama 1 minggu terakhir:
+   167→          </p>
+   168→          <div className="text-center">
+   169→            <span className={cn('text-5xl font-black', vasColor(value))}>{value}</span>
+   170→            <p className="text-xs text-muted-foreground mt-1">dari 10</p>
+   171→          </div>
+   172→          <input
+   173→            type="range"
+   174→            min={0}
+   175→            max={10}
+   176→            step={1}
+   177→            value={value}
+   178→            onChange={(e) => setAnswer('dt-score', Number(e.target.value))}
+   179→            className="sk-vas-slider w-full"
+   180→            style={{ background: 'linear-gradient(to right, #10b981 0%, #f59e0b 40%, #ef4444 70%, #dc2626 100%)' }}
+   181→          />
+   182→          <div className="flex justify-between">
+   183→            <span className="text-[9px] text-emerald-600">Tidak ada tekanan</span>
+   184→            <span className="text-[9px] text-red-600">Tekanan sangat berat</span>
+   185→          </div>
+   186→        </div>
+   187→      );
+   188→    }
+   189→
+   190→    const catIdx = currentStep - 1;
+   191→    const cat = DT_PROBLEMS[catIdx];
+   192→    if (!cat) return null;
+   193→
+   194→    return (
+   195→      <div className="space-y-2">
+   196→        <p className="text-xs text-muted-foreground mb-2">
+   197→          Centang masalah yang Anda alami dalam kategori <strong>{cat.category}</strong>:
+   198→        </p>
+   199→        {cat.items.map((item, idx) => (
+   200→          <div key={idx} className="flex items-center space-x-2 py-1">
+   201→            <Checkbox
+   202→              id={`dt-${cat.category}-${idx}`}
+   203→              checked={isChecked(`dt-${cat.category}`, item)}
+   204→              onCheckedChange={() => toggleCheck(`dt-${cat.category}`, item)}
+   205→            />
+   206→            <Label htmlFor={`dt-${cat.category}-${idx}`} className="text-xs font-normal cursor-pointer">
+   207→              {item}
+   208→            </Label>
+   209→          </div>
+   210→        ))}
+   211→      </div>
+   212→    );
+   213→  };
+   214→
+   215→  // ── SPICT Steps ──
+   216→  const renderSPICT = () => {
+   217→    if (currentStep === 0) {
+   218→      return (
+   219→        <div className="space-y-3">
+   220→          <p className="text-xs text-muted-foreground italic mb-2">
+   221→            Alat bantu ini digunakan untuk mengidentifikasi pasien yang mungkin memerlukan penilaian paliatif. Ini bukan diagnosis medis.
+   222→          </p>
+   223→          {SPICT_QUESTIONS.map((q, idx) => {
+   224→            const currentVal = answers[q.id] as number | undefined;
+   225→            return (
+   226→              <div key={q.id} className="border-b border-border pb-3 last:border-b-0">
+   227→                <p className="text-xs font-semibold text-foreground mb-1">
+   228→                  {idx + 1}. {q.text}
+   229→                </p>
+   230→                <p className="text-[10px] text-muted-foreground italic mb-2 underline decoration-primary/20 decoration-1">
+   231→                  {q.help}
+   232→                </p>
+   233→                <div className="flex gap-3">
+   234→                  <button
+   235→                    type="button"
+   236→                    onClick={(e) => { e.stopPropagation(); setAnswer(q.id, 1); }}
+   237→                    className={cn(
+   238→                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+   239→                      currentVal === 1
+   240→                        ? 'bg-red-100 text-red-700 border-red-300'
+   241→                        : 'bg-card text-foreground border-border hover:border-red-300',
+   242→                    )}
+   243→                  >
+   244→                    Ya
+   245→                  </button>
+   246→                  <button
+   247→                    type="button"
+   248→                    onClick={(e) => { e.stopPropagation(); setAnswer(q.id, 0); }}
+   249→                    className={cn(
+   250→                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+   251→                      currentVal === 0
+   252→                        ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+   253→                        : 'bg-card text-foreground border-border hover:border-emerald-300',
+   254→                    )}
+   255→                  >
+   256→                    Tidak
+   257→                  </button>
+   258→                </div>
+   259→              </div>
+   260→            );
+   261→          })}
+   262→        </div>
+   263→      );
+   264→    }
+   265→
+   266→    if (currentStep === 1) {
+   267→      return (
+   268→        <div className="space-y-3">
+   269→          <div className="p-3 bg-primary/5 rounded-lg">
+   270→            <h3 className="text-xs font-semibold text-foreground mb-2">C. Penyakit Kronis atau Berat</h3>
+   271→            <p className="text-[10px] text-muted-foreground mb-2">Pilih salah satu atau lebih jika ada:</p>
+   272→            <div className="grid grid-cols-1 gap-1.5">
+   273→              {SPICT_DISEASES.map((disease) => (
+   274→                <div key={disease} className="flex items-center space-x-2">
+   275→                  <Checkbox
+   276→                    id={`spict-disease-${disease}`}
+   277→                    checked={isChecked('spict-diseases', disease)}
+   278→                    onCheckedChange={() => toggleCheck('spict-diseases', disease)}
+   279→                  />
+   280→                  <Label htmlFor={`spict-disease-${disease}`} className="text-xs font-normal cursor-pointer">
+   281→                    {disease}
+   282→                  </Label>
+   283→                </div>
+   284→              ))}
+   285→            </div>
+   286→          </div>
+   287→        </div>
+   288→      );
+   289→    }
+   290→
+   291→    if (currentStep === 2) {
+   292→      const surpriseVal = (answers['spict-surprise'] as string) || '';
+   293→      return (
+   294→        <div className="space-y-3">
+   295→          <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+   296→            <h3 className="text-xs font-semibold text-foreground mb-2">Pertanyaan Kejutan (Surprise Question)</h3>
+   297→            <p className="text-xs text-foreground mb-3">
+   298→              &quot;Apakah Anda akan terkejut jika pasien meninggal dalam 12 bulan ke depan?&quot;
+   299→            </p>
+   300→            <div className="space-y-2">
+   301→              <button
+   302→                type="button"
+   303→                onClick={(e) => { e.stopPropagation(); setAnswer('spict-surprise', 'yes'); }}
+   304→                className={cn(
+   305→                  'w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all border-2',
+   306→                  surpriseVal === 'yes'
+   307→                    ? 'border-emerald-400 bg-emerald-50 text-emerald-800'
+   308→                    : 'border-border bg-card text-foreground hover:border-emerald-300',
+   309→                )}
+   310→              >
+   311→                <div className="flex items-center gap-2">
+   312→                  <div className={cn(
+   313→                    'w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0',
+   314→                    surpriseVal === 'yes' ? 'border-emerald-500 bg-emerald-500' : 'border-muted-foreground/40',
+   315→                  )}>
+   316→                    {surpriseVal === 'yes' && <div className="w-1 h-1 rounded-full bg-white" />}
+   317→                  </div>
+   318→                  <span>Ya, saya akan terkejut</span>
+   319→                </div>
+   320→              </button>
+   321→              <button
+   322→                type="button"
+   323→                onClick={(e) => { e.stopPropagation(); setAnswer('spict-surprise', 'no'); }}
+   324→                className={cn(
+   325→                  'w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all border-2',
+   326→                  surpriseVal === 'no'
+   327→                    ? 'border-red-400 bg-red-50 text-red-800'
+   328→                    : 'border-border bg-card text-foreground hover:border-red-300',
+   329→                )}
+   330→              >
+   331→                <div className="flex items-center gap-2">
+   332→                  <div className={cn(
+   333→                    'w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0',
+   334→                    surpriseVal === 'no' ? 'border-red-500 bg-red-500' : 'border-muted-foreground/40',
+   335→                  )}>
+   336→                    {surpriseVal === 'no' && <div className="w-1 h-1 rounded-full bg-white" />}
+   337→                  </div>
+   338→                  <span>Tidak, saya tidak akan terkejut</span>
+   339→                </div>
+   340→              </button>
+   341→            </div>
+   342→          </div>
+   343→        </div>
+   344→      );
+   345→    }
+   346→
+   347→    return null;
+   348→  };
+   349→
+   350→  // ── PPS Steps ──
+   351→  const renderPPS = () => {
+   352→    if (currentStep === 0) {
+   353→      return (
+   354→        <div className="space-y-4">
+   355→          <p className="text-xs text-muted-foreground italic mb-2">
+   356→            Pilih jawaban yang paling sesuai dengan kondisi pasien dalam 1 minggu terakhir.
+   357→          </p>
+   358→          {PPS_QUESTIONS.map(q => {
+   359→            const selectedValue = Number(answers[q.id]) ?? -1;
+   360→            return (
+   361→              <div key={q.id} className="mb-3">
+   362→                <p className="text-xs font-medium text-foreground mb-2">{q.title}</p>
+   363→                <div className="grid grid-cols-1 gap-1.5">
+   364→                  {q.options.map(opt => {
+   365→                    const isSelected = selectedValue === opt.score;
+   366→                    return (
+   367→                      <button
+   368→                        key={opt.score}
+   369→                        type="button"
+   370→                        onClick={(e) => { e.stopPropagation(); setAnswer(q.id, opt.score); }}
+   371→                        className={cn(
+   372→                          'w-full text-left border-2 rounded-lg p-2 cursor-pointer transition-all',
+   373→                          isSelected
+   374→                            ? 'border-primary bg-primary/5'
+   375→                            : 'border-border hover:border-primary/40 hover:bg-primary/5',
+   376→                        )}
+   377→                      >
+   378→                        <div className="flex items-center">
+   379→                          <div className={cn(
+   380→                            'w-3.5 h-3.5 rounded-full border-2 mr-2 flex items-center justify-center shrink-0 transition-all',
+   381→                            isSelected ? 'border-primary bg-primary' : 'border-muted-foreground/40',
+   382→                          )}>
+   383→                            {isSelected && <div className="w-1 h-1 rounded-full bg-primary-foreground" />}
+   384→                          </div>
+   385→                          <span className="text-xs font-semibold text-foreground">{opt.text}</span>
+   386→                        </div>
+   387→                        <p className="text-[10px] text-muted-foreground mt-0.5 ml-5">{opt.desc}</p>
+   388→                      </button>
+   389→                    );
+   390→                  })}
+   391→                </div>
+   392→              </div>
+   393→            );
+   394→          })}
+   395→          {PPS_QUESTIONS.every(q => answers[q.id] !== undefined) && (
+   396→            <div className="p-2 rounded-lg bg-primary/10 text-center">
+   397→              <p className="text-sm font-bold text-primary">PPS {calcPPS(answers).pps}%</p>
+   398→              <p className="text-[10px] text-muted-foreground">Rata-rata dari 5 dimensi</p>
+   399→            </div>
+   400→          )}
+   401→        </div>
+   402→      );
+   403→    }
+   404→
+   405→    // Step 2: Extra questions
+   406→    return (
+   407→      <div className="space-y-3">
+   408→        <div className="border-t pt-3">
+   409→          <p className="text-xs font-semibold text-foreground mb-3">Pertanyaan Tambahan</p>
+   410→        </div>
+   411→        {PPS_EXTRA_QUESTIONS.map((q, idx) => {
+   412→          const currentVal = Number(answers[`pps-extra-${idx}`]) ?? 0;
+   413→          return (
+   414→            <div key={idx} className="p-3 rounded-lg bg-muted/30 border border-border">
+   415→              <p className="text-xs font-medium text-foreground mb-2">{q}</p>
+   416→              <div className="flex gap-3">
+   417→                <button
+   418→                  type="button"
+   419→                  onClick={(e) => { e.stopPropagation(); setAnswer(`pps-extra-${idx}`, 1); }}
+   420→                  className={cn(
+   421→                    'px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+   422→                    currentVal === 1
+   423→                      ? 'bg-red-100 text-red-700 border-red-300'
+   424→                      : 'bg-card text-foreground border-border hover:border-red-300',
+   425→                  )}
+   426→                >
+   427→                  Ya
+   428→                </button>
+   429→                <button
+   430→                  type="button"
+   431→                  onClick={(e) => { e.stopPropagation(); setAnswer(`pps-extra-${idx}`, 0); }}
+   432→                  className={cn(
+   433→                    'px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+   434→                    currentVal === 0
+   435→                      ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+   436→                      : 'bg-card text-foreground border-border hover:border-emerald-300',
+   437→                  )}
+   438→                >
+   439→                  Tidak
+   440→                </button>
+   441→              </div>
+   442→            </div>
+   443→          );
+   444→        })}
+   445→      </div>
+   446→    );
+   447→  };
+   448→
+   449→  // ── Zarit Steps ──
+   450→  const renderZarit = () => {
+   451→    const page = currentStep;
+   452→    const startIdx = page * 6;
+   453→    const endIdx = Math.min(startIdx + 6, 22);
+   454→    const pageQuestions = ZARIT_QUESTIONS.slice(startIdx, endIdx);
+   455→
+   456→    return (
+   457→      <div className="space-y-3">
+   458→        <p className="text-xs text-muted-foreground mb-2">
+   459→          Seberapa sering Anda merasa hal berikut ini? (Pertanyaan {startIdx + 1}-{endIdx} dari 22)
+   460→        </p>
+   461→        {pageQuestions.map((question, qIdx) => {
+   462→          const globalIdx = startIdx + qIdx;
+   463→          const currentVal = Number(answers[`zarit-${globalIdx}`]);
+   464→          return (
+   465→            <div key={globalIdx} className="space-y-1.5 py-2 border-b border-border last:border-b-0">
+   466→              <p className="text-xs font-medium text-foreground">
+   467→                {globalIdx + 1}. {question}
+   468→              </p>
+   469→              <div className="flex flex-wrap gap-1.5">
+   470→                {ZARIT_OPTIONS.map(opt => (
+   471→                  <button
+   472→                    key={opt.value}
+   473→                    onClick={(e) => { e.stopPropagation(); setAnswer(`zarit-${globalIdx}`, opt.value); }}
+   474→                    className={cn(
+   475→                      'px-2 py-1 rounded-lg text-[10px] font-medium transition-all border',
+   476→                      currentVal === opt.value
+   477→                        ? 'bg-primary text-primary-foreground border-primary'
+   478→                        : 'bg-card text-foreground border-border hover:border-primary/50 hover:bg-primary/5',
+   479→                    )}
+   480→                  >
+   481→                    {opt.label}
+   482→                  </button>
+   483→                ))}
+   484→              </div>
+   485→            </div>
+   486→          );
+   487→        })}
+   488→      </div>
+   489→    );
+   490→  };
+   491→
+   492→  // ── EORTC Steps ──
+   493→  const renderEORTC = () => {
+   494→    if (currentStep === 2) {
+   495→      const value = Number(answers['eortc-q15']) || 1;
+   496→      return (
+   497→        <div className="space-y-3">
+   498→          <p className="text-xs text-muted-foreground mb-2">
+   499→            Pertanyaan terakhir tentang kualitas hidup Anda secara keseluruhan:
+   500→          </p>
+   501→          <div className="p-3 rounded-lg border border-border">
+   502→            <p className="text-xs font-medium text-foreground mb-3">
+   503→              {EORTC_QUESTIONS[14].text}
+   504→            </p>
+   505→            <div className="space-y-1.5">
+   506→              {['Sangat buruk', 'Sangat jelek', 'Jelek', 'Cukup', 'Baik', 'Sangat baik', 'Sempurna'].map((label, idx) => {
+   507→                const val = idx + 1;
+   508→                return (
+   509→                  <button
+   510→                    key={val}
+   511→                    onClick={(e) => { e.stopPropagation(); setAnswer('eortc-q15', val); }}
+   512→                    className={cn(
+   513→                      'w-full px-3 py-2 rounded-lg text-xs font-medium transition-all border text-left flex items-center gap-2',
+   514→                      value === val
+   515→                        ? 'bg-primary text-primary-foreground border-primary'
+   516→                        : 'bg-card text-foreground border-border hover:border-primary/50 hover:bg-primary/5',
+   517→                    )}
+   518→                  >
+   519→                    <span className={cn(
+   520→                      'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0',
+   521→                      value === val ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground',
+   522→                    )}>
+   523→                      {val}
+   524→                    </span>
+   525→                    {label}
+   526→                  </button>
+   527→                );
+   528→              })}
+   529→            </div>
+   530→          </div>
+   531→        </div>
+   532→      );
+   533→    }
+   534→
+   535→    const section = currentStep === 0 ? 'physical' : 'symptom';
+   536→    const sectionLabel = section === 'physical' ? 'Fungsi Fisik & Aktivitas' : 'Gejala';
+   537→    const sectionQuestions = EORTC_QUESTIONS.filter(q => q.section === section);
+   538→
+   539→    return (
+   540→      <div className="space-y-3">
+   541→        <p className="text-xs text-muted-foreground mb-2">
+   542→          Bagian: <strong>{sectionLabel}</strong> — Pilih jawaban yang paling sesuai selama 1 minggu terakhir:
+   543→        </p>
+   544→        {sectionQuestions.map((question, qIdx) => {
+   545→          const currentVal = Number(answers[question.id]);
+   546→          return (
+   547→            <div key={question.id} className="space-y-1.5 py-2 border-b border-border last:border-b-0">
+   548→              <p className="text-xs font-medium text-foreground">
+   549→                {qIdx + 1}. {question.text}
+   550→              </p>
+   551→              <div className="flex flex-wrap gap-1.5">
+   552→                {EORTC_OPTIONS_4.map(opt => (
+   553→                  <button
+   554→                    key={opt.value}
+   555→                    onClick={(e) => { e.stopPropagation(); setAnswer(question.id, opt.value); }}
+   556→                    className={cn(
+   557→                      'px-2 py-1 rounded-lg text-[10px] font-medium transition-all border',
+   558→                      currentVal === opt.value
+   559→                        ? 'bg-primary text-primary-foreground border-primary'
+   560→                        : 'bg-card text-foreground border-border hover:border-primary/50 hover:bg-primary/5',
+   561→                    )}
+   562→                  >
+   563→                    {opt.label}
+   564→                  </button>
+   565→                ))}
+   566→              </div>
+   567→            </div>
+   568→          );
+   569→        })}
+   570→      </div>
+   571→    );
+   572→  };
+   573→
+   574→  // ── Result Renderer ──
+   575→  const renderResult = () => {
+   576→    const result = calculateScreeningResult(screeningType, answers);
+   577→    const ews = getEwsBadge(result.ewsLevel);
+   578→
+   579→    return (
+   580→      <div className="space-y-3">
+   581→        <div className="text-center">
+   582→          <p className={cn('text-3xl font-black', result.ewsLevel === 'merah' ? 'text-red-600' : result.ewsLevel === 'kuning' ? 'text-amber-600' : 'text-emerald-600')}>
+   583→            {result.scoreLabel}
+   584→          </p>
+   585→        </div>
+   586→        <div className={cn('rounded-lg border-2 px-3 py-2 text-center', ews.bg)}>
+   587→          <span className={cn('text-xs font-bold', ews.color)}>{ews.label}</span>
+   588→        </div>
+   589→
+   590→        {/* Tool-specific result details */}
+   591→        {screeningType === 'esas' && (() => {
+   592→          const { items, total } = calcESAS(answers);
+   593→          return (
+   594→            <div className="grid grid-cols-3 gap-1.5">
+   595→              {items.map((item, idx) => (
+   596→                <div key={idx} className="text-center p-1.5 rounded border border-border bg-card">
+   597→                  <div className="h-10 flex items-end justify-center mb-0.5">
+   598→                    <div className={cn('w-4 rounded-t-md transition-all', vasBg(item.value))} style={{ height: `${Math.max(item.value * 10, 4)}%` }} />
+   599→                  </div>
+   600→                  <p className="text-[9px] text-muted-foreground truncate">{item.label}</p>
+   601→                  <p className={cn('text-xs font-bold', vasColor(item.value))}>{item.value}</p>
+   602→                </div>
+   603→              ))}
+   604→            </div>
+   605→          );
+   606→        })()}
+   607→
+   608→        {screeningType === 'distress' && (() => {
+   609→          const { score, problems } = calcDistress(answers);
+   610→          return (
+   611→            <div className="space-y-2">
+   612→              <p className="text-xs font-medium">Skor Distress: <span className={cn('font-bold', vasColor(score))}>{score}/10</span></p>
+   613→              {Object.entries(problems).map(([cat, items]) => (
+   614→                <div key={cat} className="text-xs">
+   615→                  <span className="font-medium">{cat}:</span> {items.join(', ')}
+   616→                </div>
+   617→              ))}
+   618→            </div>
+   619→          );
+   620→        })()}
+   621→
+   622→        {screeningType === 'spict' && (() => {
+   623→          const { yesCount, riskCategory, checkedDiseases, surpriseAnswer } = calcSPICT(answers);
+   624→          return (
+   625→            <div className="space-y-2 text-xs">
+   626→              <p>Indikator terdeteksi: <span className="font-bold">{yesCount} poin</span></p>
+   627→              <p>Kategori: <Badge variant="outline" className="text-[10px]">{riskCategory}</Badge></p>
+   628→              {checkedDiseases.length > 0 && <p>Penyakit: {checkedDiseases.join(', ')}</p>}
+   629→              {surpriseAnswer && <p>Surprise Question: <Badge variant="outline" className={cn('text-[10px]', surpriseAnswer === 'no' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700')}>{surpriseAnswer === 'no' ? 'Tidak terkejut' : 'Terkejut'}</Badge></p>}
+   630→            </div>
+   631→          );
+   632→        })()}
+   633→
+   634→        {screeningType === 'pps' && (() => {
+   635→          const { pps, dimensionDetails, extraYesCount } = calcPPS(answers);
+   636→          return (
+   637→            <div className="space-y-2 text-xs">
+   638→              <p className="text-lg font-bold text-center text-primary">PPS {pps}%</p>
+   639→              {dimensionDetails.map(d => (
+   640→                <div key={d.id} className="flex justify-between items-center py-1 border-b border-border">
+   641→                  <span>{d.title}</span>
+   642→                  <span className="font-medium">{d.label} ({d.score}%)</span>
+   643→                </div>
+   644→              ))}
+   645→              {extraYesCount > 0 && <p className="text-red-600 font-medium">{extraYesCount} indikator perburukan terdeteksi</p>}
+   646→            </div>
+   647→          );
+   648→        })()}
+   649→
+   650→        {screeningType === 'zarit' && (() => {
+   651→          const { total, category, needReferral } = calcZarit(answers);
+   652→          return (
+   653→            <div className="space-y-2 text-xs text-center">
+   654→              <p className="text-lg font-bold">{total}/88</p>
+   655→              <p>Kategori: <Badge variant="outline" className="text-[10px]">{category}</Badge></p>
+   656→              {needReferral && <p className="text-red-600 font-medium">Perlu rujukan psikolog/psikiater</p>}
+   657→            </div>
+   658→          );
+   659→        })()}
+   660→
+   661→        {screeningType === 'eortc' && (() => {
+   662→          const { physicalFunction, symptomBurden, globalQol } = calcEORTC(answers);
+   663→          return (
+   664→            <div className="space-y-2 text-xs">
+   665→              <div className="flex justify-between"><span>Fungsi Fisik</span><span className="font-bold">{physicalFunction}%</span></div>
+   666→              <div className="flex justify-between"><span>Beban Gejala</span><span className="font-bold">{symptomBurden}%</span></div>
+   667→              <div className="flex justify-between"><span>Kualitas Hidup Global</span><span className="font-bold">{globalQol}%</span></div>
+   668→            </div>
+   669→          );
+   670→        })()}
+   671→
+   672→        <div className="p-2 rounded-lg bg-muted/50">
+   673→          <p className="text-[10px] text-muted-foreground italic">{result.interpretation}</p>
+   674→        </div>
+   675→      </div>
+   676→    );
+   677→  };
+   678→
+   679→  // ── Step Render ──
+   680→  const renderStep = () => {
+   681→    if (showResult) return renderResult();
+   682→
+   683→    switch (screeningType) {
+   684→      case 'esas': return renderESAS();
+   685→      case 'distress': return renderDistress();
+   686→      case 'spict': return renderSPICT();
+   687→      case 'pps': return renderPPS();
+   688→      case 'zarit': return renderZarit();
+   689→      case 'eortc': return renderEORTC();
+   690→    }
+   691→  };
+   692→
+   693→  // ── Step Label ──
+   694→  const stepLabel = useMemo(() => {
+   695→    if (showResult) return 'Hasil';
+   696→    switch (screeningType) {
+   697→      case 'esas': return 'ESAS-r';
+   698→      case 'distress': {
+   699→        if (currentStep === 0) return 'Skor Distress';
+   700→        const cat = DT_PROBLEMS[currentStep - 1];
+   701→        return cat ? `Masalah: ${cat.category}` : '';
+   702→      }
+   703→      case 'spict': {
+   704→        if (currentStep === 0) return 'Pertanyaan Indikator';
+   705→        if (currentStep === 1) return 'Penyakit Kronis';
+   706→        return 'Surprise Question';
+   707→      }
+   708→      case 'pps': {
+   709→        if (currentStep === 0) return '5 Dimensi Kondisi';
+   710→        return 'Pertanyaan Tambahan';
+   711→      }
+   712→      case 'zarit': {
+   713→        const start = currentStep * 6 + 1;
+   714→        const end = Math.min((currentStep + 1) * 6, 22);
+   715→        return `Pertanyaan ${start}-${end}`;
+   716→      }
+   717→      case 'eortc': {
+   718→        if (currentStep === 0) return 'Fungsi Fisik & Aktivitas';
+   719→        if (currentStep === 1) return 'Gejala';
+   720→        return 'Kualitas Hidup Global';
+   721→      }
+   722→    }
+   723→  }, [screeningType, currentStep, showResult]);
+   724→
+   725→  return (
+   726→    <div className="space-y-3">
+   727→      {/* Header */}
+   728→      <div className="flex items-center justify-between">
+   729→        <h3 className="font-semibold text-sm">{toolDef.name}</h3>
+   730→        <Badge variant="outline" className="text-[10px]">
+   731→          {showResult ? 'Hasil' : `Langkah ${currentStep + 1}/${totalSteps}`}
+   732→        </Badge>
+   733→      </div>
+   734→
+   735→      {/* Progress */}
+   736→      <Progress value={progressPercent} className="h-1.5" />
+   737→
+   738→      {/* Step label */}
+   739→      {!showResult && (
+   740→        <p className="text-xs font-medium text-primary">{stepLabel}</p>
+   741→      )}
+   742→
+   743→      {/* Content */}
+   744→      <div className="max-h-[50vh] overflow-y-auto pr-1">
+   745→        {renderStep()}
+   746→      </div>
+   747→
+   748→      {/* Navigation */}
+   749→      <div className="flex items-center justify-between pt-2 border-t">
+   750→        <div className="flex gap-2">
+   751→          <Button
+   752→            variant="outline"
+   753→            size="sm"
+   754→            onClick={handlePrev}
+   755→            disabled={currentStep === 0 && !showResult}
+   756→          >
+   757→            <ChevronLeft className="w-3 h-3 mr-1" /> Kembali
+   758→          </Button>
+   759→          {!showResult && (
+   760→            <Button
+   761→              variant="outline"
+   762→              size="sm"
+   763→              onClick={() => onSaveDraft(answers)}
+   764→            >
+   765→              <Save className="w-3 h-3 mr-1" /> Draft
+   766→            </Button>
+   767→          )}
+   768→        </div>
+   769→        <div className="flex gap-2">
+   770→          {!showResult ? (
+   771→            <Button size="sm" onClick={handleNext}>
+   772→              {currentStep < totalSteps - 1 ? (
+   773→                <>Lanjut <ChevronRight className="w-3 h-3 ml-1" /></>
+   774→              ) : (
+   775→                <>Lihat Hasil <CheckCircle2 className="w-3 h-3 ml-1" /></>
+   776→              )}
+   777→            </Button>
+   778→          ) : (
+   779→            <Button size="sm" onClick={handleSubmit}>
+   780→              <Send className="w-3 h-3 mr-1" /> Kirim Hasil
+   781→            </Button>
+   782→          )}
+   783→        </div>
+   784→      </div>
+   785→    </div>
+   786→  );
+   787→}
+   788→

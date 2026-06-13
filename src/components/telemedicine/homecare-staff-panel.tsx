@@ -157,7 +157,7 @@ export function HomeCareStaffPanel() {
         </TabsList>
 
         {/* ==================== JADWAL TAB ==================== */}
-        <TabsContent value="schedule" className="space-y-4 mt-4">
+        <TabsContent value="schedule" className="space-y-4 mt-4 overflow-y-auto custom-scrollbar">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-foreground">Jadwal Hari Ini</h3>
@@ -249,7 +249,7 @@ export function HomeCareStaffPanel() {
         </TabsContent>
 
         {/* ==================== NAVIGASI TAB ==================== */}
-        <TabsContent value="navigation" className="space-y-4 mt-4">
+        <TabsContent value="navigation" className="space-y-4 mt-4 overflow-y-auto custom-scrollbar">
           {currentVisit ? (
             <>
               <Card className="border-0">
@@ -356,7 +356,7 @@ export function HomeCareStaffPanel() {
         </TabsContent>
 
         {/* ==================== RIWAYAT TAB ==================== */}
-        <TabsContent value="history" className="space-y-4 mt-4">
+        <TabsContent value="history" className="space-y-4 mt-4 overflow-y-auto custom-scrollbar">
           <h3 className="font-semibold text-foreground">Riwayat Kunjungan</h3>
 
           {demoHistory.length === 0 ? (

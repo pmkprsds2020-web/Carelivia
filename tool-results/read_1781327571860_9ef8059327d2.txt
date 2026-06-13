@@ -1,0 +1,1057 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useCallback } from 'react';
+     4→import { useStore } from '@/lib/store';
+     5→import { toast } from 'sonner';
+     6→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+     7→import { Button } from '@/components/ui/button';
+     8→import { Badge } from '@/components/ui/badge';
+     9→import { Input } from '@/components/ui/input';
+    10→import { Label } from '@/components/ui/label';
+    11→import { Switch } from '@/components/ui/switch';
+    12→import { Separator } from '@/components/ui/separator';
+    13→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    14→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+    15→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+    16→import {
+    17→  Table,
+    18→  TableBody,
+    19→  TableCell,
+    20→  TableHead,
+    21→  TableHeader,
+    22→  TableRow,
+    23→} from '@/components/ui/table';
+    24→import {
+    25→  Tooltip,
+    26→  TooltipContent,
+    27→  TooltipProvider,
+    28→  TooltipTrigger,
+    29→} from '@/components/ui/tooltip';
+    30→import {
+    31→  Pencil,
+    32→  Save,
+    33→  X,
+    34→  Search,
+    35→  Filter,
+    36→  DollarSign,
+    37→  Clock,
+    38→  Star,
+    39→  Activity,
+    40→  TrendingUp,
+    41→  AlertCircle,
+    42→  CheckCircle2,
+    43→} from 'lucide-react';
+    44→
+    45→// ─── Types ───────────────────────────────────────────────────────────────────
+    46→
+    47→interface HomeCareServiceItem {
+    48→  id: string;
+    49→  name: string;
+    50→  category: string;
+    51→  price: number;
+    52→  duration: number;
+    53→  isActive: boolean;
+    54→}
+    55→
+    56→interface DoctorItem {
+    57→  id: string;
+    58→  name: string;
+    59→  specialization: string;
+    60→  hospital: string;
+    61→  consultationFee: number;
+    62→  rating: number;
+    63→  isOnline: boolean;
+    64→  isAvailable: boolean;
+    65→}
+    66→
+    67→interface PriceChangeRecord {
+    68→  id: string;
+    69→  itemName: string;
+    70→  type: 'homecare' | 'doctor';
+    71→  oldPrice: number;
+    72→  newPrice: number;
+    73→  changedAt: string;
+    74→  changedBy: string;
+    75→}
+    76→
+    77→// ─── Category Labels ─────────────────────────────────────────────────────────
+    78→
+    79→const CATEGORY_LABELS: Record<string, string> = {
+    80→  perawatan_luka: 'Perawatan Luka',
+    81→  infus: 'Infus',
+    82→  injeksi: 'Injeksi',
+    83→  pemeriksaan_lansia: 'Pemeriksaan Lansia',
+    84→  kunjungan_dokter: 'Kunjungan Dokter',
+    85→  kunjungan_bidan: 'Kunjungan Bidan',
+    86→  lab_sample: 'Sampel Lab',
+    87→  fisioterapi: 'Fisioterapi',
+    88→};
+    89→
+    90→// ─── Demo Data ───────────────────────────────────────────────────────────────
+    91→
+    92→const INITIAL_HOME_CARE_SERVICES: HomeCareServiceItem[] = [
+    93→  { id: 'hc1', name: 'Perawatan Luka', category: 'perawatan_luka', price: 150000, duration: 45, isActive: true },
+    94→  { id: 'hc2', name: 'Pemasangan Infus', category: 'infus', price: 200000, duration: 30, isActive: true },
+    95→  { id: 'hc3', name: 'Injeksi/Injeksi IM', category: 'injeksi', price: 100000, duration: 20, isActive: true },
+    96→  { id: 'hc4', name: 'Pemeriksaan Lansia', category: 'pemeriksaan_lansia', price: 175000, duration: 60, isActive: true },
+    97→  { id: 'hc5', name: 'Kunjungan Dokter', category: 'kunjungan_dokter', price: 350000, duration: 45, isActive: true },
+    98→  { id: 'hc6', name: 'Kunjungan Bidan', category: 'kunjungan_bidan', price: 250000, duration: 45, isActive: true },
+    99→  { id: 'hc7', name: 'Pengambilan Sampel Lab', category: 'lab_sample', price: 125000, duration: 30, isActive: true },
+   100→  { id: 'hc8', name: 'Fisioterapi', category: 'fisioterapi', price: 300000, duration: 60, isActive: true },
+   101→];
+   102→
+   103→const INITIAL_DOCTORS: DoctorItem[] = [
+   104→  { id: 'doc1', name: 'dr. Sarah Wijaya', specialization: 'Umum', hospital: 'RS Medika Utama', consultationFee: 75000, rating: 4.8, isOnline: true, isAvailable: true },
+   105→  { id: 'doc2', name: 'dr. Ahmad Rizki', specialization: 'Anak', hospital: 'RS Anak Harapan', consultationFee: 100000, rating: 4.9, isOnline: true, isAvailable: true },
+   106→  { id: 'doc3', name: 'dr. Lisa Permata', specialization: 'Penyakit Dalam', hospital: 'RS Penyakit Dalam Nasional', consultationFee: 125000, rating: 4.7, isOnline: false, isAvailable: true },
+   107→  { id: 'doc4', name: 'dr. Dewi Sartika', specialization: 'Kebidanan', hospital: 'RS Ibu dan Anak Sejahtera', consultationFee: 100000, rating: 4.9, isOnline: true, isAvailable: true },
+   108→  { id: 'doc5', name: 'drg. Budi Santoso', specialization: 'Gigi', hospital: 'Klinik Gigi Sehat Medika', consultationFee: 85000, rating: 4.6, isOnline: true, isAvailable: true },
+   109→];
+   110→
+   111→// ─── Helpers ─────────────────────────────────────────────────────────────────
+   112→
+   113→function formatCurrency(amount: number): string {
+   114→  return `Rp ${new Intl.NumberFormat('id-ID').format(amount)}`;
+   115→}
+   116→
+   117→function formatDate(isoString: string): string {
+   118→  return new Date(isoString).toLocaleDateString('id-ID', {
+   119→    day: '2-digit',
+   120→    month: 'short',
+   121→    year: 'numeric',
+   122→    hour: '2-digit',
+   123→    minute: '2-digit',
+   124→  });
+   125→}
+   126→
+   127→// ─── Main Component ──────────────────────────────────────────────────────────
+   128→
+   129→export function AdminPricingPanel() {
+   130→  const { currentUser } = useStore();
+   131→
+   132→  // Data state
+   133→  const [homeCareServices, setHomeCareServices] = useState<HomeCareServiceItem[]>(INITIAL_HOME_CARE_SERVICES);
+   134→  const [doctors, setDoctors] = useState<DoctorItem[]>(INITIAL_DOCTORS);
+   135→  const [priceHistory, setPriceHistory] = useState<PriceChangeRecord[]>([]);
+   136→
+   137→  // Filter state
+   138→  const [hcSearch, setHcSearch] = useState('');
+   139→  const [hcCategoryFilter, setHcCategoryFilter] = useState<string>('all');
+   140→  const [docSearch, setDocSearch] = useState('');
+   141→  const [docSpecFilter, setDocSpecFilter] = useState<string>('all');
+   142→
+   143→  // Dialog state
+   144→  const [hcEditOpen, setHcEditOpen] = useState(false);
+   145→  const [docEditOpen, setDocEditOpen] = useState(false);
+   146→  const [editingService, setEditingService] = useState<HomeCareServiceItem | null>(null);
+   147→  const [editingDoctor, setEditingDoctor] = useState<DoctorItem | null>(null);
+   148→
+   149→  // Form state
+   150→  const [editPrice, setEditPrice] = useState('');
+   151→  const [editDuration, setEditDuration] = useState('');
+   152→  const [editIsActive, setEditIsActive] = useState(true);
+   153→  const [editConsultationFee, setEditConsultationFee] = useState('');
+   154→  const [editIsAvailable, setEditIsAvailable] = useState(true);
+   155→  const [formError, setFormError] = useState('');
+   156→  const [isSaving, setIsSaving] = useState(false);
+   157→
+   158→  // ─── Filtered data ───────────────────────────────────────────────────────
+   159→
+   160→  const filteredServices = useMemo(() => {
+   161→    return homeCareServices.filter((s) => {
+   162→      const matchesSearch = s.name.toLowerCase().includes(hcSearch.toLowerCase());
+   163→      const matchesCategory = hcCategoryFilter === 'all' || s.category === hcCategoryFilter;
+   164→      return matchesSearch && matchesCategory;
+   165→    });
+   166→  }, [homeCareServices, hcSearch, hcCategoryFilter]);
+   167→
+   168→  const filteredDoctors = useMemo(() => {
+   169→    return doctors.filter((d) => {
+   170→      const matchesSearch =
+   171→        d.name.toLowerCase().includes(docSearch.toLowerCase()) ||
+   172→        d.hospital.toLowerCase().includes(docSearch.toLowerCase());
+   173→      const matchesSpec = docSpecFilter === 'all' || d.specialization === docSpecFilter;
+   174→      return matchesSearch && matchesSpec;
+   175→    });
+   176→  }, [doctors, docSearch, docSpecFilter]);
+   177→
+   178→  // ─── Summary stats ───────────────────────────────────────────────────────
+   179→
+   180→  const hcSummary = useMemo(() => {
+   181→    const active = homeCareServices.filter((s) => s.isActive).length;
+   182→    const avgPrice =
+   183→      homeCareServices.length > 0
+   184→        ? Math.round(homeCareServices.reduce((sum, s) => sum + s.price, 0) / homeCareServices.length)
+   185→        : 0;
+   186→    const minPrice = homeCareServices.length > 0 ? Math.min(...homeCareServices.map((s) => s.price)) : 0;
+   187→    const maxPrice = homeCareServices.length > 0 ? Math.max(...homeCareServices.map((s) => s.price)) : 0;
+   188→    return { total: homeCareServices.length, active, avgPrice, minPrice, maxPrice };
+   189→  }, [homeCareServices]);
+   190→
+   191→  const docSummary = useMemo(() => {
+   192→    const online = doctors.filter((d) => d.isOnline).length;
+   193→    const available = doctors.filter((d) => d.isAvailable).length;
+   194→    const avgFee =
+   195→      doctors.length > 0
+   196→        ? Math.round(doctors.reduce((sum, d) => sum + d.consultationFee, 0) / doctors.length)
+   197→        : 0;
+   198→    const avgRating =
+   199→      doctors.length > 0
+   200→        ? (doctors.reduce((sum, d) => sum + d.rating, 0) / doctors.length).toFixed(1)
+   201→        : '0.0';
+   202→    return { total: doctors.length, online, available, avgFee, avgRating };
+   203→  }, [doctors]);
+   204→
+   205→  // ─── Unique specs for filter ─────────────────────────────────────────────
+   206→
+   207→  const uniqueSpecs = useMemo(() => {
+   208→    const specs = new Set(doctors.map((d) => d.specialization));
+   209→    return Array.from(specs).sort();
+   210→  }, [doctors]);
+   211→
+   212→  // ─── Edit handlers ───────────────────────────────────────────────────────
+   213→
+   214→  const handleEditService = useCallback((service: HomeCareServiceItem) => {
+   215→    setEditingService(service);
+   216→    setEditPrice(service.price.toString());
+   217→    setEditDuration(service.duration.toString());
+   218→    setEditIsActive(service.isActive);
+   219→    setFormError('');
+   220→    setHcEditOpen(true);
+   221→  }, []);
+   222→
+   223→  const handleEditDoctor = useCallback((doctor: DoctorItem) => {
+   224→    setEditingDoctor(doctor);
+   225→    setEditConsultationFee(doctor.consultationFee.toString());
+   226→    setEditIsAvailable(doctor.isAvailable);
+   227→    setFormError('');
+   228→    setDocEditOpen(true);
+   229→  }, []);
+   230→
+   231→  const handleSaveService = useCallback(async () => {
+   232→    if (!editingService) return;
+   233→
+   234→    const newPrice = Number(editPrice);
+   235→    const newDuration = Number(editDuration);
+   236→
+   237→    if (!editPrice || isNaN(newPrice) || newPrice <= 0) {
+   238→      setFormError('Harga harus lebih dari 0');
+   239→      return;
+   240→    }
+   241→    if (!editDuration || isNaN(newDuration) || newDuration <= 0) {
+   242→      setFormError('Durasi harus lebih dari 0 menit');
+   243→      return;
+   244→    }
+   245→
+   246→    setIsSaving(true);
+   247→
+   248→    // Update local state immediately
+   249→    setHomeCareServices((prev) =>
+   250→      prev.map((s) =>
+   251→        s.id === editingService.id
+   252→          ? { ...s, price: newPrice, duration: newDuration, isActive: editIsActive }
+   253→          : s
+   254→      )
+   255→    );
+   256→
+   257→    // Log price change if price changed
+   258→    if (newPrice !== editingService.price) {
+   259→      const changeRecord: PriceChangeRecord = {
+   260→        id: `ch-${Date.now()}`,
+   261→        itemName: editingService.name,
+   262→        type: 'homecare',
+   263→        oldPrice: editingService.price,
+   264→        newPrice,
+   265→        changedAt: new Date().toISOString(),
+   266→        changedBy: currentUser?.name || 'Admin',
+   267→      };
+   268→      setPriceHistory((prev) => [changeRecord, ...prev]);
+   269→    }
+   270→
+   271→    // Try to save to API
+   272→    try {
+   273→      const res = await fetch('/api/admin/pricing', {
+   274→        method: 'PUT',
+   275→        headers: { 'Content-Type': 'application/json' },
+   276→        body: JSON.stringify({
+   277→          type: 'homecare',
+   278→          id: editingService.id,
+   279→          price: newPrice,
+   280→          duration: newDuration,
+   281→          isActive: editIsActive,
+   282→        }),
+   283→      });
+   284→      if (!res.ok) throw new Error('API error');
+   285→      toast.success('Harga layanan berhasil diperbarui', {
+   286→        description: `${editingService.name}: ${formatCurrency(newPrice)}`,
+   287→        icon: <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
+   288→      });
+   289→    } catch {
+   290→      toast.success('Harga layanan berhasil diperbarui (lokal)', {
+   291→        description: `${editingService.name}: ${formatCurrency(newPrice)} — perubahan disimpan secara lokal`,
+   292→        icon: <AlertCircle className="w-4 h-4 text-amber-500" />,
+   293→      });
+   294→    } finally {
+   295→      setIsSaving(false);
+   296→      setHcEditOpen(false);
+   297→      setEditingService(null);
+   298→    }
+   299→  }, [editingService, editPrice, editDuration, editIsActive, currentUser]);
+   300→
+   301→  const handleSaveDoctor = useCallback(async () => {
+   302→    if (!editingDoctor) return;
+   303→
+   304→    const newFee = Number(editConsultationFee);
+   305→
+   306→    if (!editConsultationFee || isNaN(newFee) || newFee <= 0) {
+   307→      setFormError('Tarif konsultasi harus lebih dari 0');
+   308→      return;
+   309→    }
+   310→
+   311→    setIsSaving(true);
+   312→
+   313→    // Update local state immediately
+   314→    setDoctors((prev) =>
+   315→      prev.map((d) =>
+   316→        d.id === editingDoctor.id
+   317→          ? { ...d, consultationFee: newFee, isAvailable: editIsAvailable }
+   318→          : d
+   319→      )
+   320→    );
+   321→
+   322→    // Log price change if fee changed
+   323→    if (newFee !== editingDoctor.consultationFee) {
+   324→      const changeRecord: PriceChangeRecord = {
+   325→        id: `ch-${Date.now()}`,
+   326→        itemName: editingDoctor.name,
+   327→        type: 'doctor',
+   328→        oldPrice: editingDoctor.consultationFee,
+   329→        newPrice: newFee,
+   330→        changedAt: new Date().toISOString(),
+   331→        changedBy: currentUser?.name || 'Admin',
+   332→      };
+   333→      setPriceHistory((prev) => [changeRecord, ...prev]);
+   334→    }
+   335→
+   336→    // Try to save to API
+   337→    try {
+   338→      const res = await fetch('/api/admin/pricing', {
+   339→        method: 'PUT',
+   340→        headers: { 'Content-Type': 'application/json' },
+   341→        body: JSON.stringify({
+   342→          type: 'doctor',
+   343→          id: editingDoctor.id,
+   344→          consultationFee: newFee,
+   345→          isAvailable: editIsAvailable,
+   346→        }),
+   347→      });
+   348→      if (!res.ok) throw new Error('API error');
+   349→      toast.success('Tarif dokter berhasil diperbarui', {
+   350→        description: `${editingDoctor.name}: ${formatCurrency(newFee)}`,
+   351→        icon: <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
+   352→      });
+   353→    } catch {
+   354→      toast.success('Tarif dokter berhasil diperbarui (lokal)', {
+   355→        description: `${editingDoctor.name}: ${formatCurrency(newFee)} — perubahan disimpan secara lokal`,
+   356→        icon: <AlertCircle className="w-4 h-4 text-amber-500" />,
+   357→      });
+   358→    } finally {
+   359→      setIsSaving(false);
+   360→      setDocEditOpen(false);
+   361→      setEditingDoctor(null);
+   362→    }
+   363→  }, [editingDoctor, editConsultationFee, editIsAvailable, currentUser]);
+   364→
+   365→  // ─── Category badge color ────────────────────────────────────────────────
+   366→
+   367→  const getCategoryBadgeVariant = (category: string): 'default' | 'secondary' | 'outline' => {
+   368→    const map: Record<string, 'default' | 'secondary' | 'outline'> = {
+   369→      perawatan_luka: 'default',
+   370→      infus: 'secondary',
+   371→      injeksi: 'outline',
+   372→      pemeriksaan_lansia: 'default',
+   373→      kunjungan_dokter: 'secondary',
+   374→      kunjungan_bidan: 'outline',
+   375→      lab_sample: 'default',
+   376→      fisioterapi: 'secondary',
+   377→    };
+   378→    return map[category] || 'outline';
+   379→  };
+   380→
+   381→  // ─── Render ──────────────────────────────────────────────────────────────
+   382→
+   383→  return (
+   384→    <TooltipProvider>
+   385→      <div className="p-4 md:p-6 space-y-6">
+   386→        {/* Header */}
+   387→        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+   388→          <div>
+   389→            <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+   390→              <DollarSign className="w-5 h-5 text-teal-600" />
+   391→              Manajemen Harga & Tarif
+   392→            </h2>
+   393→            <p className="text-sm text-muted-foreground mt-1">
+   394→              Kelola harga layanan home care dan tarif konsultasi dokter
+   395→            </p>
+   396→          </div>
+   397→          <Badge variant="outline" className="w-fit text-xs">
+   398→            <Activity className="w-3 h-3 mr-1" />
+   399→            Admin Panel
+   400→          </Badge>
+   401→        </div>
+   402→
+   403→        {/* Summary Cards */}
+   404→        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+   405→          <Card className="hover:shadow-md transition-shadow">
+   406→            <CardContent className="p-4">
+   407→              <div className="flex items-center gap-2 mb-1">
+   408→                <div className="p-1.5 rounded-md bg-teal-50 text-teal-600">
+   409→                  <Activity className="w-3.5 h-3.5" />
+   410→                </div>
+   411→                <span className="text-[11px] text-muted-foreground font-medium">Total Layanan</span>
+   412→              </div>
+   413→              <p className="text-lg font-bold text-foreground">{hcSummary.total}</p>
+   414→            </CardContent>
+   415→          </Card>
+   416→          <Card className="hover:shadow-md transition-shadow">
+   417→            <CardContent className="p-4">
+   418→              <div className="flex items-center gap-2 mb-1">
+   419→                <div className="p-1.5 rounded-md bg-emerald-50 text-emerald-600">
+   420→                  <CheckCircle2 className="w-3.5 h-3.5" />
+   421→                </div>
+   422→                <span className="text-[11px] text-muted-foreground font-medium">Aktif</span>
+   423→              </div>
+   424→              <p className="text-lg font-bold text-foreground">{hcSummary.active}</p>
+   425→            </CardContent>
+   426→          </Card>
+   427→          <Card className="hover:shadow-md transition-shadow">
+   428→            <CardContent className="p-4">
+   429→              <div className="flex items-center gap-2 mb-1">
+   430→                <div className="p-1.5 rounded-md bg-teal-50 text-teal-600">
+   431→                  <TrendingUp className="w-3.5 h-3.5" />
+   432→                </div>
+   433→                <span className="text-[11px] text-muted-foreground font-medium">Rata-rata HC</span>
+   434→              </div>
+   435→              <p className="text-lg font-bold text-foreground">{formatCurrency(hcSummary.avgPrice)}</p>
+   436→            </CardContent>
+   437→          </Card>
+   438→          <Card className="hover:shadow-md transition-shadow">
+   439→            <CardContent className="p-4">
+   440→              <div className="flex items-center gap-2 mb-1">
+   441→                <div className="p-1.5 rounded-md bg-teal-50 text-teal-600">
+   442→                  <DollarSign className="w-3.5 h-3.5" />
+   443→                </div>
+   444→                <span className="text-[11px] text-muted-foreground font-medium">Rata-rata Dokter</span>
+   445→              </div>
+   446→              <p className="text-lg font-bold text-foreground">{formatCurrency(docSummary.avgFee)}</p>
+   447→            </CardContent>
+   448→          </Card>
+   449→          <Card className="hover:shadow-md transition-shadow">
+   450→            <CardContent className="p-4">
+   451→              <div className="flex items-center gap-2 mb-1">
+   452→                <div className="p-1.5 rounded-md bg-emerald-50 text-emerald-600">
+   453→                  <Star className="w-3.5 h-3.5" />
+   454→                </div>
+   455→                <span className="text-[11px] text-muted-foreground font-medium">Rating Rata-rata</span>
+   456→              </div>
+   457→              <p className="text-lg font-bold text-foreground">{docSummary.avgRating}</p>
+   458→            </CardContent>
+   459→          </Card>
+   460→          <Card className="hover:shadow-md transition-shadow">
+   461→            <CardContent className="p-4">
+   462→              <div className="flex items-center gap-2 mb-1">
+   463→                <div className="p-1.5 rounded-md bg-teal-50 text-teal-600">
+   464→                  <Clock className="w-3.5 h-3.5" />
+   465→                </div>
+   466→                <span className="text-[11px] text-muted-foreground font-medium">Perubahan Harga</span>
+   467→              </div>
+   468→              <p className="text-lg font-bold text-foreground">{priceHistory.length}</p>
+   469→            </CardContent>
+   470→          </Card>
+   471→        </div>
+   472→
+   473→        {/* Main Tabs */}
+   474→        <Tabs defaultValue="homecare" className="w-full">
+   475→          <TabsList className="w-full sm:w-auto">
+   476→            <TabsTrigger value="homecare" className="flex-1 sm:flex-none">
+   477→              <DollarSign className="w-4 h-4 mr-1.5" />
+   478→              Harga Home Care
+   479→            </TabsTrigger>
+   480→            <TabsTrigger value="doctors" className="flex-1 sm:flex-none">
+   481→              <Star className="w-4 h-4 mr-1.5" />
+   482→              Tarif Dokter
+   483→            </TabsTrigger>
+   484→          </TabsList>
+   485→
+   486→          {/* ─── Tab 1: Harga Home Care ──────────────────────────────────── */}
+   487→          <TabsContent value="homecare" className="mt-4 space-y-4">
+   488→            {/* Search / Filter Bar */}
+   489→            <div className="flex flex-col sm:flex-row gap-3">
+   490→              <div className="relative flex-1">
+   491→                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   492→                <Input
+   493→                  placeholder="Cari layanan home care..."
+   494→                  value={hcSearch}
+   495→                  onChange={(e) => setHcSearch(e.target.value)}
+   496→                  className="pl-9"
+   497→                />
+   498→              </div>
+   499→              <Select value={hcCategoryFilter} onValueChange={setHcCategoryFilter}>
+   500→                <SelectTrigger className="w-full sm:w-[200px]">
+   501→                  <Filter className="w-4 h-4 mr-2 text-muted-foreground" />
+   502→                  <SelectValue placeholder="Filter kategori" />
+   503→                </SelectTrigger>
+   504→                <SelectContent>
+   505→                  <SelectItem value="all">Semua Kategori</SelectItem>
+   506→                  {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
+   507→                    <SelectItem key={key} value={key}>
+   508→                      {label}
+   509→                    </SelectItem>
+   510→                  ))}
+   511→                </SelectContent>
+   512→              </Select>
+   513→            </div>
+   514→
+   515→            {/* Table */}
+   516→            <Card>
+   517→              <CardContent className="p-0">
+   518→                <div className="overflow-x-auto">
+   519→                  <Table>
+   520→                    <TableHeader>
+   521→                      <TableRow>
+   522→                        <TableHead className="text-xs font-semibold">Layanan</TableHead>
+   523→                        <TableHead className="text-xs font-semibold">Kategori</TableHead>
+   524→                        <TableHead className="text-xs font-semibold text-right">Harga</TableHead>
+   525→                        <TableHead className="text-xs font-semibold text-center">Durasi</TableHead>
+   526→                        <TableHead className="text-xs font-semibold text-center">Status</TableHead>
+   527→                        <TableHead className="text-xs font-semibold text-center">Aksi</TableHead>
+   528→                      </TableRow>
+   529→                    </TableHeader>
+   530→                    <TableBody>
+   531→                      {filteredServices.length === 0 ? (
+   532→                        <TableRow>
+   533→                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground text-sm">
+   534→                            Tidak ada layanan ditemukan
+   535→                          </TableCell>
+   536→                        </TableRow>
+   537→                      ) : (
+   538→                        filteredServices.map((service) => (
+   539→                          <TableRow key={service.id} className="hover:bg-accent/50 transition-colors">
+   540→                            <TableCell className="font-medium text-sm">{service.name}</TableCell>
+   541→                            <TableCell>
+   542→                              <Badge variant={getCategoryBadgeVariant(service.category)} className="text-[10px]">
+   543→                                {CATEGORY_LABELS[service.category] || service.category}
+   544→                              </Badge>
+   545→                            </TableCell>
+   546→                            <TableCell className="text-right font-semibold text-sm text-teal-700 dark:text-teal-400">
+   547→                              {formatCurrency(service.price)}
+   548→                            </TableCell>
+   549→                            <TableCell className="text-center text-sm text-muted-foreground">
+   550→                              <div className="flex items-center justify-center gap-1">
+   551→                                <Clock className="w-3 h-3" />
+   552→                                {service.duration} mnt
+   553→                              </div>
+   554→                            </TableCell>
+   555→                            <TableCell className="text-center">
+   556→                              <div className="flex items-center justify-center">
+   557→                                <Tooltip>
+   558→                                  <TooltipTrigger asChild>
+   559→                                    <div>
+   560→                                      <Switch
+   561→                                        checked={service.isActive}
+   562→                                        disabled
+   563→                                        className="data-[state=checked]:bg-teal-600"
+   564→                                      />
+   565→                                    </div>
+   566→                                  </TooltipTrigger>
+   567→                                  <TooltipContent>
+   568→                                    {service.isActive ? 'Layanan aktif' : 'Layanan nonaktif'}
+   569→                                  </TooltipContent>
+   570→                                </Tooltip>
+   571→                              </div>
+   572→                            </TableCell>
+   573→                            <TableCell className="text-center">
+   574→                              <Tooltip>
+   575→                                <TooltipTrigger asChild>
+   576→                                  <Button
+   577→                                    variant="outline"
+   578→                                    size="sm"
+   579→                                    onClick={() => handleEditService(service)}
+   580→                                    className="h-8 gap-1.5 text-xs"
+   581→                                  >
+   582→                                    <Pencil className="w-3.5 h-3.5" />
+   583→                                    Edit
+   584→                                  </Button>
+   585→                                </TooltipTrigger>
+   586→                                <TooltipContent>Edit harga layanan</TooltipContent>
+   587→                              </Tooltip>
+   588→                            </TableCell>
+   589→                          </TableRow>
+   590→                        ))
+   591→                      )}
+   592→                    </TableBody>
+   593→                  </Table>
+   594→                </div>
+   595→              </CardContent>
+   596→            </Card>
+   597→
+   598→            {/* Price range info */}
+   599→            <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+   600→              <span>Harga terendah: <strong className="text-foreground">{formatCurrency(hcSummary.minPrice)}</strong></span>
+   601→              <Separator orientation="vertical" className="h-4" />
+   602→              <span>Harga tertinggi: <strong className="text-foreground">{formatCurrency(hcSummary.maxPrice)}</strong></span>
+   603→              <Separator orientation="vertical" className="h-4" />
+   604→              <span>Menampilkan: <strong className="text-foreground">{filteredServices.length}</strong> dari {homeCareServices.length} layanan</span>
+   605→            </div>
+   606→          </TabsContent>
+   607→
+   608→          {/* ─── Tab 2: Tarif Dokter ─────────────────────────────────────── */}
+   609→          <TabsContent value="doctors" className="mt-4 space-y-4">
+   610→            {/* Search / Filter Bar */}
+   611→            <div className="flex flex-col sm:flex-row gap-3">
+   612→              <div className="relative flex-1">
+   613→                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   614→                <Input
+   615→                  placeholder="Cari dokter atau rumah sakit..."
+   616→                  value={docSearch}
+   617→                  onChange={(e) => setDocSearch(e.target.value)}
+   618→                  className="pl-9"
+   619→                />
+   620→              </div>
+   621→              <Select value={docSpecFilter} onValueChange={setDocSpecFilter}>
+   622→                <SelectTrigger className="w-full sm:w-[200px]">
+   623→                  <Filter className="w-4 h-4 mr-2 text-muted-foreground" />
+   624→                  <SelectValue placeholder="Filter spesialisasi" />
+   625→                </SelectTrigger>
+   626→                <SelectContent>
+   627→                  <SelectItem value="all">Semua Spesialisasi</SelectItem>
+   628→                  {uniqueSpecs.map((spec) => (
+   629→                    <SelectItem key={spec} value={spec}>
+   630→                      {spec}
+   631→                    </SelectItem>
+   632→                  ))}
+   633→                </SelectContent>
+   634→              </Select>
+   635→            </div>
+   636→
+   637→            {/* Table */}
+   638→            <Card>
+   639→              <CardContent className="p-0">
+   640→                <div className="overflow-x-auto">
+   641→                  <Table>
+   642→                    <TableHeader>
+   643→                      <TableRow>
+   644→                        <TableHead className="text-xs font-semibold">Dokter</TableHead>
+   645→                        <TableHead className="text-xs font-semibold">Spesialisasi</TableHead>
+   646→                        <TableHead className="text-xs font-semibold">Rumah Sakit</TableHead>
+   647→                        <TableHead className="text-xs font-semibold text-right">Tarif Konsultasi</TableHead>
+   648→                        <TableHead className="text-xs font-semibold text-center">Rating</TableHead>
+   649→                        <TableHead className="text-xs font-semibold text-center">Status</TableHead>
+   650→                        <TableHead className="text-xs font-semibold text-center">Aksi</TableHead>
+   651→                      </TableRow>
+   652→                    </TableHeader>
+   653→                    <TableBody>
+   654→                      {filteredDoctors.length === 0 ? (
+   655→                        <TableRow>
+   656→                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground text-sm">
+   657→                            Tidak ada dokter ditemukan
+   658→                          </TableCell>
+   659→                        </TableRow>
+   660→                      ) : (
+   661→                        filteredDoctors.map((doctor) => (
+   662→                          <TableRow key={doctor.id} className="hover:bg-accent/50 transition-colors">
+   663→                            <TableCell>
+   664→                              <div className="flex items-center gap-3">
+   665→                                <div className="w-9 h-9 rounded-full bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center text-teal-700 dark:text-teal-300 font-semibold text-sm shrink-0">
+   666→                                  {doctor.name.charAt(0)}
+   667→                                </div>
+   668→                                <span className="font-medium text-sm">{doctor.name}</span>
+   669→                              </div>
+   670→                            </TableCell>
+   671→                            <TableCell>
+   672→                              <Badge variant="secondary" className="text-[10px]">
+   673→                                {doctor.specialization}
+   674→                              </Badge>
+   675→                            </TableCell>
+   676→                            <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+   677→                              {doctor.hospital}
+   678→                            </TableCell>
+   679→                            <TableCell className="text-right font-semibold text-sm text-teal-700 dark:text-teal-400">
+   680→                              {formatCurrency(doctor.consultationFee)}
+   681→                            </TableCell>
+   682→                            <TableCell className="text-center">
+   683→                              <div className="flex items-center justify-center gap-1">
+   684→                                <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+   685→                                <span className="text-sm font-medium">{doctor.rating.toFixed(1)}</span>
+   686→                              </div>
+   687→                            </TableCell>
+   688→                            <TableCell className="text-center">
+   689→                              <div className="flex flex-col items-center gap-1">
+   690→                                <Badge
+   691→                                  variant={doctor.isOnline ? 'default' : 'outline'}
+   692→                                  className={`text-[10px] ${doctor.isOnline ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+   693→                                >
+   694→                                  {doctor.isOnline ? 'Online' : 'Offline'}
+   695→                                </Badge>
+   696→                              </div>
+   697→                            </TableCell>
+   698→                            <TableCell className="text-center">
+   699→                              <Tooltip>
+   700→                                <TooltipTrigger asChild>
+   701→                                  <Button
+   702→                                    variant="outline"
+   703→                                    size="sm"
+   704→                                    onClick={() => handleEditDoctor(doctor)}
+   705→                                    className="h-8 gap-1.5 text-xs"
+   706→                                  >
+   707→                                    <Pencil className="w-3.5 h-3.5" />
+   708→                                    Edit
+   709→                                  </Button>
+   710→                                </TooltipTrigger>
+   711→                                <TooltipContent>Edit tarif konsultasi</TooltipContent>
+   712→                              </Tooltip>
+   713→                            </TableCell>
+   714→                          </TableRow>
+   715→                        ))
+   716→                      )}
+   717→                    </TableBody>
+   718→                  </Table>
+   719→                </div>
+   720→              </CardContent>
+   721→            </Card>
+   722→
+   723→            {/* Doctor summary info */}
+   724→            <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+   725→              <span>Dokter online: <strong className="text-foreground">{docSummary.online}</strong></span>
+   726→              <Separator orientation="vertical" className="h-4" />
+   727→              <span>Tersedia: <strong className="text-foreground">{docSummary.available}</strong></span>
+   728→              <Separator orientation="vertical" className="h-4" />
+   729→              <span>Menampilkan: <strong className="text-foreground">{filteredDoctors.length}</strong> dari {doctors.length} dokter</span>
+   730→            </div>
+   731→          </TabsContent>
+   732→        </Tabs>
+   733→
+   734→        {/* ─── Price Change History ──────────────────────────────────────── */}
+   735→        <Card>
+   736→          <CardHeader className="pb-3">
+   737→            <CardTitle className="text-base flex items-center gap-2">
+   738→              <Clock className="w-4 h-4 text-teal-600" />
+   739→              Riwayat Perubahan Harga
+   740→            </CardTitle>
+   741→          </CardHeader>
+   742→          <CardContent>
+   743→            {priceHistory.length === 0 ? (
+   744→              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+   745→                <Activity className="w-8 h-8 mb-2 opacity-30" />
+   746→                <p className="text-sm">Belum ada perubahan harga</p>
+   747→                <p className="text-xs mt-1">Perubahan akan tercatat saat Anda mengedit harga</p>
+   748→              </div>
+   749→            ) : (
+   750→              <div className="max-h-96 overflow-y-auto custom-scrollbar">
+   751→                <Table>
+   752→                  <TableHeader>
+   753→                    <TableRow>
+   754→                      <TableHead className="text-xs font-semibold">Item</TableHead>
+   755→                      <TableHead className="text-xs font-semibold">Tipe</TableHead>
+   756→                      <TableHead className="text-xs font-semibold text-right">Harga Lama</TableHead>
+   757→                      <TableHead className="text-xs font-semibold text-right">Harga Baru</TableHead>
+   758→                      <TableHead className="text-xs font-semibold text-center">Perubahan</TableHead>
+   759→                      <TableHead className="text-xs font-semibold">Tanggal</TableHead>
+   760→                      <TableHead className="text-xs font-semibold">Admin</TableHead>
+   761→                    </TableRow>
+   762→                  </TableHeader>
+   763→                  <TableBody>
+   764→                    {priceHistory.map((record) => {
+   765→                      const diff = record.newPrice - record.oldPrice;
+   766→                      const percentChange = ((diff / record.oldPrice) * 100).toFixed(1);
+   767→                      const isIncrease = diff > 0;
+   768→                      return (
+   769→                        <TableRow key={record.id}>
+   770→                          <TableCell className="font-medium text-sm">{record.itemName}</TableCell>
+   771→                          <TableCell>
+   772→                            <Badge variant={record.type === 'homecare' ? 'default' : 'secondary'} className="text-[10px]">
+   773→                              {record.type === 'homecare' ? 'Home Care' : 'Dokter'}
+   774→                            </Badge>
+   775→                          </TableCell>
+   776→                          <TableCell className="text-right text-sm text-muted-foreground">
+   777→                            {formatCurrency(record.oldPrice)}
+   778→                          </TableCell>
+   779→                          <TableCell className="text-right text-sm font-semibold">
+   780→                            {formatCurrency(record.newPrice)}
+   781→                          </TableCell>
+   782→                          <TableCell className="text-center">
+   783→                            <span
+   784→                              className={`inline-flex items-center gap-1 text-xs font-semibold ${
+   785→                                isIncrease ? 'text-red-600' : 'text-emerald-600'
+   786→                              }`}
+   787→                            >
+   788→                              <TrendingUp className={`w-3 h-3 ${!isIncrease ? 'rotate-180' : ''}`} />
+   789→                              {isIncrease ? '+' : ''}{percentChange}%
+   790→                            </span>
+   791→                          </TableCell>
+   792→                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+   793→                            {formatDate(record.changedAt)}
+   794→                          </TableCell>
+   795→                          <TableCell className="text-xs text-muted-foreground">
+   796→                            {record.changedBy}
+   797→                          </TableCell>
+   798→                        </TableRow>
+   799→                      );
+   800→                    })}
+   801→                  </TableBody>
+   802→                </Table>
+   803→              </div>
+   804→            )}
+   805→          </CardContent>
+   806→        </Card>
+   807→
+   808→        {/* ─── Edit Homecare Dialog ──────────────────────────────────────── */}
+   809→        <Dialog open={hcEditOpen} onOpenChange={(open) => { if (!open) setHcEditOpen(false); }}>
+   810→          <DialogContent className="sm:max-w-[460px]">
+   811→            <DialogHeader>
+   812→              <DialogTitle className="flex items-center gap-2">
+   813→                <Pencil className="w-4 h-4 text-teal-600" />
+   814→                Edit Harga Layanan
+   815→              </DialogTitle>
+   816→            </DialogHeader>
+   817→
+   818→            {editingService && (
+   819→              <div className="space-y-4 py-2">
+   820→                {/* Service name (read-only) */}
+   821→                <div className="space-y-2">
+   822→                  <Label className="text-sm font-medium">Nama Layanan</Label>
+   823→                  <Input value={editingService.name} readOnly className="bg-muted" />
+   824→                </div>
+   825→
+   826→                {/* Category (read-only info) */}
+   827→                <div className="space-y-2">
+   828→                  <Label className="text-sm font-medium">Kategori</Label>
+   829→                  <div>
+   830→                    <Badge variant={getCategoryBadgeVariant(editingService.category)}>
+   831→                      {CATEGORY_LABELS[editingService.category] || editingService.category}
+   832→                    </Badge>
+   833→                  </div>
+   834→                </div>
+   835→
+   836→                <Separator />
+   837→
+   838→                {/* Price input */}
+   839→                <div className="space-y-2">
+   840→                  <Label htmlFor="edit-price" className="text-sm font-medium">
+   841→                    Harga (Rp)
+   842→                  </Label>
+   843→                  <div className="relative">
+   844→                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">Rp</span>
+   845→                    <Input
+   846→                      id="edit-price"
+   847→                      type="number"
+   848→                      min="1"
+   849→                      value={editPrice}
+   850→                      onChange={(e) => {
+   851→                        setEditPrice(e.target.value);
+   852→                        if (formError) setFormError('');
+   853→                      }}
+   854→                      className="pl-10"
+   855→                      placeholder="Masukkan harga baru"
+   856→                    />
+   857→                  </div>
+   858→                  {Number(editPrice) > 0 && (
+   859→                    <p className="text-xs text-muted-foreground">
+   860→                      Format: {formatCurrency(Number(editPrice))}
+   861→                    </p>
+   862→                  )}
+   863→                </div>
+   864→
+   865→                {/* Duration input */}
+   866→                <div className="space-y-2">
+   867→                  <Label htmlFor="edit-duration" className="text-sm font-medium">
+   868→                    Durasi (menit)
+   869→                  </Label>
+   870→                  <div className="relative">
+   871→                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   872→                    <Input
+   873→                      id="edit-duration"
+   874→                      type="number"
+   875→                      min="1"
+   876→                      value={editDuration}
+   877→                      onChange={(e) => {
+   878→                        setEditDuration(e.target.value);
+   879→                        if (formError) setFormError('');
+   880→                      }}
+   881→                      className="pl-9"
+   882→                      placeholder="Durasi dalam menit"
+   883→                    />
+   884→                  </div>
+   885→                </div>
+   886→
+   887→                {/* Active toggle */}
+   888→                <div className="flex items-center justify-between rounded-lg border p-3">
+   889→                  <div className="space-y-0.5">
+   890→                    <Label className="text-sm font-medium">Status Aktif</Label>
+   891→                    <p className="text-xs text-muted-foreground">
+   892→                      {editIsActive ? 'Layanan tersedia untuk dipesan' : 'Layanan tidak tersedia'}
+   893→                    </p>
+   894→                  </div>
+   895→                  <Switch
+   896→                    checked={editIsActive}
+   897→                    onCheckedChange={setEditIsActive}
+   898→                    className="data-[state=checked]:bg-teal-600"
+   899→                  />
+   900→                </div>
+   901→
+   902→                {/* Error */}
+   903→                {formError && (
+   904→                  <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/5 p-3">
+   905→                    <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
+   906→                    <p className="text-sm text-destructive">{formError}</p>
+   907→                  </div>
+   908→                )}
+   909→              </div>
+   910→            )}
+   911→
+   912→            <DialogFooter className="gap-2">
+   913→              <Button
+   914→                variant="outline"
+   915→                onClick={() => { setHcEditOpen(false); setEditingService(null); }}
+   916→                disabled={isSaving}
+   917→              >
+   918→                <X className="w-4 h-4 mr-1.5" />
+   919→                Batal
+   920→              </Button>
+   921→              <Button
+   922→                onClick={handleSaveService}
+   923→                disabled={isSaving}
+   924→                className="bg-teal-600 hover:bg-teal-700 text-white"
+   925→              >
+   926→                {isSaving ? (
+   927→                  <div className="flex items-center gap-2">
+   928→                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+   929→                    Menyimpan...
+   930→                  </div>
+   931→                ) : (
+   932→                  <>
+   933→                    <Save className="w-4 h-4 mr-1.5" />
+   934→                    Simpan
+   935→                  </>
+   936→                )}
+   937→              </Button>
+   938→            </DialogFooter>
+   939→          </DialogContent>
+   940→        </Dialog>
+   941→
+   942→        {/* ─── Edit Doctor Dialog ────────────────────────────────────────── */}
+   943→        <Dialog open={docEditOpen} onOpenChange={(open) => { if (!open) setDocEditOpen(false); }}>
+   944→          <DialogContent className="sm:max-w-[460px]">
+   945→            <DialogHeader>
+   946→              <DialogTitle className="flex items-center gap-2">
+   947→                <Pencil className="w-4 h-4 text-teal-600" />
+   948→                Edit Tarif Konsultasi
+   949→              </DialogTitle>
+   950→            </DialogHeader>
+   951→
+   952→            {editingDoctor && (
+   953→              <div className="space-y-4 py-2">
+   954→                {/* Doctor name (read-only) */}
+   955→                <div className="flex items-center gap-3">
+   956→                  <div className="w-11 h-11 rounded-full bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center text-teal-700 dark:text-teal-300 font-semibold shrink-0">
+   957→                    {editingDoctor.name.charAt(0)}
+   958→                  </div>
+   959→                  <div className="space-y-1">
+   960→                    <Label className="text-sm font-medium">{editingDoctor.name}</Label>
+   961→                    <div className="flex items-center gap-2">
+   962→                      <Badge variant="secondary" className="text-[10px]">
+   963→                        {editingDoctor.specialization}
+   964→                      </Badge>
+   965→                      <span className="text-xs text-muted-foreground">{editingDoctor.hospital}</span>
+   966→                    </div>
+   967→                  </div>
+   968→                </div>
+   969→
+   970→                <Separator />
+   971→
+   972→                {/* Consultation fee input */}
+   973→                <div className="space-y-2">
+   974→                  <Label htmlFor="edit-fee" className="text-sm font-medium">
+   975→                    Tarif Konsultasi (Rp)
+   976→                  </Label>
+   977→                  <div className="relative">
+   978→                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">Rp</span>
+   979→                    <Input
+   980→                      id="edit-fee"
+   981→                      type="number"
+   982→                      min="1"
+   983→                      value={editConsultationFee}
+   984→                      onChange={(e) => {
+   985→                        setEditConsultationFee(e.target.value);
+   986→                        if (formError) setFormError('');
+   987→                      }}
+   988→                      className="pl-10"
+   989→                      placeholder="Masukkan tarif baru"
+   990→                    />
+   991→                  </div>
+   992→                  {Number(editConsultationFee) > 0 && (
+   993→                    <p className="text-xs text-muted-foreground">
+   994→                      Format: {formatCurrency(Number(editConsultationFee))}
+   995→                    </p>
+   996→                  )}
+   997→                </div>
+   998→
+   999→                {/* Available toggle */}
+  1000→                <div className="flex items-center justify-between rounded-lg border p-3">
+  1001→                  <div className="space-y-0.5">
+  1002→                    <Label className="text-sm font-medium">Tersedia untuk Konsultasi</Label>
+  1003→                    <p className="text-xs text-muted-foreground">
+  1004→                      {editIsAvailable ? 'Dokter menerima pasien baru' : 'Dokter tidak menerima pasien'}
+  1005→                    </p>
+  1006→                  </div>
+  1007→                  <Switch
+  1008→                    checked={editIsAvailable}
+  1009→                    onCheckedChange={setEditIsAvailable}
+  1010→                    className="data-[state=checked]:bg-teal-600"
+  1011→                  />
+  1012→                </div>
+  1013→
+  1014→                {/* Error */}
+  1015→                {formError && (
+  1016→                  <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/5 p-3">
+  1017→                    <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
+  1018→                    <p className="text-sm text-destructive">{formError}</p>
+  1019→                  </div>
+  1020→                )}
+  1021→              </div>
+  1022→            )}
+  1023→
+  1024→            <DialogFooter className="gap-2">
+  1025→              <Button
+  1026→                variant="outline"
+  1027→                onClick={() => { setDocEditOpen(false); setEditingDoctor(null); }}
+  1028→                disabled={isSaving}
+  1029→              >
+  1030→                <X className="w-4 h-4 mr-1.5" />
+  1031→                Batal
+  1032→              </Button>
+  1033→              <Button
+  1034→                onClick={handleSaveDoctor}
+  1035→                disabled={isSaving}
+  1036→                className="bg-teal-600 hover:bg-teal-700 text-white"
+  1037→              >
+  1038→                {isSaving ? (
+  1039→                  <div className="flex items-center gap-2">
+  1040→                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+  1041→                    Menyimpan...
+  1042→                  </div>
+  1043→                ) : (
+  1044→                  <>
+  1045→                    <Save className="w-4 h-4 mr-1.5" />
+  1046→                    Simpan
+  1047→                  </>
+  1048→                )}
+  1049→              </Button>
+  1050→            </DialogFooter>
+  1051→          </DialogContent>
+  1052→        </Dialog>
+  1053→      </div>
+  1054→    </TooltipProvider>
+  1055→  );
+  1056→}
+  1057→

@@ -194,8 +194,10 @@ export default function TelemedicineApp() {
         </header>
 
         {/* Panel content */}
-        <main className="flex-1 overflow-y-auto custom-scrollbar">
-          {renderPanel()}
+        <main className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
+          <div className="min-h-full">
+            {renderPanel()}
+          </div>
         </main>
 
         {/* Footer */}

@@ -1,0 +1,1769 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+     4→import { useStore } from '@/lib/store';
+     5→import { cn } from '@/lib/utils';
+     6→import type {
+     7→  PalliativePatientInfo,
+     8→  PalliativeResumeMedis,
+     9→  PalliativeReferralLetter,
+    10→  PalliativeDocumentAuditEntry,
+    11→  PalliativeAuditEntry,
+    12→  PalliativeChatMessage,
+    13→  ReferralTargetDepartment,
+    14→  ReferralStatus,
+    15→} from '@/lib/types';
+    16→import { Button } from '@/components/ui/button';
+    17→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+    18→import { Label } from '@/components/ui/label';
+    19→import { Textarea } from '@/components/ui/textarea';
+    20→import {
+    21→  Select,
+    22→  SelectContent,
+    23→  SelectItem,
+    24→  SelectTrigger,
+    25→  SelectValue,
+    26→} from '@/components/ui/select';
+    27→import {
+    28→  Dialog,
+    29→  DialogContent,
+    30→  DialogHeader,
+    31→  DialogTitle,
+    32→  DialogDescription,
+    33→  DialogFooter,
+    34→} from '@/components/ui/dialog';
+    35→import {
+    36→  Tabs,
+    37→  TabsContent,
+    38→  TabsList,
+    39→  TabsTrigger,
+    40→} from '@/components/ui/tabs';
+    41→import { Badge } from '@/components/ui/badge';
+    42→import { Separator } from '@/components/ui/separator';
+    43→import { ScrollArea } from '@/components/ui/scroll-area';
+    44→import {
+    45→  Table,
+    46→  TableBody,
+    47→  TableCell,
+    48→  TableHead,
+    49→  TableHeader,
+    50→  TableRow,
+    51→} from '@/components/ui/table';
+    52→import { Input } from '@/components/ui/input';
+    53→import {
+    54→  FileText,
+    55→  Sparkles,
+    56→  Download,
+    57→  Printer,
+    58→  Send,
+    59→  Eye,
+    60→  RefreshCw,
+    61→  Stethoscope,
+    62→  Building2,
+    63→  CheckCircle2,
+    64→  Clock,
+    65→  History,
+    66→  FileCheck,
+    67→  QrCode,
+    68→  Mail,
+    69→  MessageCircle,
+    70→  Shield,
+    71→  Archive,
+    72→  ChevronDown,
+    73→  AlertCircle,
+    74→} from 'lucide-react';
+    75→import { useToast } from '@/hooks/use-toast';
+    76→import QRCode from 'qrcode';
+    77→
+    78→// ── Types ────────────────────────────────────────────────────────────────
+    79→
+    80→type DocTab = 'resume' | 'referral' | 'history';
+    81→
+    82→// ── Helper Functions ─────────────────────────────────────────────────────
+    83→
+    84→function formatDate(dateStr: string): string {
+    85→  try {
+    86→    return new Date(dateStr).toLocaleDateString('id-ID', {
+    87→      day: 'numeric',
+    88→      month: 'long',
+    89→      year: 'numeric',
+    90→    });
+    91→  } catch {
+    92→    return dateStr;
+    93→  }
+    94→}
+    95→
+    96→function formatDateTime(dateStr: string): string {
+    97→  try {
+    98→    return new Date(dateStr).toLocaleDateString('id-ID', {
+    99→      day: 'numeric',
+   100→      month: 'short',
+   101→      year: 'numeric',
+   102→      hour: '2-digit',
+   103→      minute: '2-digit',
+   104→    });
+   105→  } catch {
+   106→    return dateStr;
+   107→  }
+   108→}
+   109→
+   110→function genId(prefix: string): string {
+   111→  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+   112→}
+   113→
+   114→function genDocNumber(prefix: string): string {
+   115→  const now = new Date();
+   116→  const y = now.getFullYear();
+   117→  const m = String(now.getMonth() + 1).padStart(2, '0');
+   118→  const seq = String(Math.floor(Math.random() * 9000) + 1000);
+   119→  return `${prefix}/${y}/${m}/${seq}`;
+   120→}
+   121→
+   122→function getDeptLabel(dept: ReferralTargetDepartment): string {
+   123→  const map: Record<ReferralTargetDepartment, string> = {
+   124→    penyakit_dalam: 'Penyakit Dalam',
+   125→    onkologi: 'Onkologi',
+   126→    neurologi: 'Neurologi',
+   127→    jantung: 'Jantung / Kardiologi',
+   128→    pulmonologi: 'Pulmonologi',
+   129→    geriatri: 'Geriatri',
+   130→    kedokteran_paliatif: 'Kedokteran Paliatif',
+   131→    rehabilitasi_medik: 'Rehabilitasi Medik',
+   132→    rumah_sakit_rujukan_lanjutan: 'RS Rujukan Lanjutan',
+   133→  };
+   134→  return map[dept] || dept;
+   135→}
+   136→
+   137→function getReferralStatusLabel(status: ReferralStatus): { label: string; className: string } {
+   138→  switch (status) {
+   139→    case 'belum_dirujuk':
+   140→      return { label: 'Belum Dirujuk', className: 'bg-slate-100 text-slate-700 border-slate-300' };
+   141→    case 'menunggu':
+   142→      return { label: 'Menunggu', className: 'bg-amber-100 text-amber-800 border-amber-300' };
+   143→    case 'sudah_dirujuk':
+   144→      return { label: 'Sudah Dirujuk', className: 'bg-blue-100 text-blue-800 border-blue-300' };
+   145→    case 'selesai':
+   146→      return { label: 'Selesai', className: 'bg-green-100 text-green-800 border-green-300' };
+   147→  }
+   148→}
+   149→
+   150→// ── Main Component ───────────────────────────────────────────────────────
+   151→
+   152→interface Props {
+   153→  patient: PalliativePatientInfo | null;
+   154→  onBack?: () => void;
+   155→}
+   156→
+   157→export function PalliativeResumeReferralPanel({ patient }: Props) {
+   158→  const [docTab, setDocTab] = useState<DocTab>('resume');
+   159→  const [resumeLoading, setResumeLoading] = useState(false);
+   160→  const [referralLoading, setReferralLoading] = useState(false);
+   161→  const [selectedResume, setSelectedResume] = useState<PalliativeResumeMedis | null>(null);
+   162→  const [selectedReferral, setSelectedReferral] = useState<PalliativeReferralLetter | null>(null);
+   163→  const [showReferralDeptDialog, setShowReferralDeptDialog] = useState(false);
+   164→  const [targetDept, setTargetDept] = useState<ReferralTargetDepartment>('kedokteran_paliatif');
+   165→  const [showSendDialog, setShowSendDialog] = useState(false);
+   166→  const [sendDocType, setSendDocType] = useState<'resume' | 'referral'>('resume');
+   167→  const [sendDocId, setSendDocId] = useState('');
+   168→  const [doctorSip, setDoctorSip] = useState('');
+   169→  const [showSignDialog, setShowSignDialog] = useState(false);
+   170→  const [signDocType, setSignDocType] = useState<'resume' | 'referral'>('resume');
+   171→  const [signDocId, setSignDocId] = useState('');
+   172→  const [resumeQrDataUrl, setResumeQrDataUrl] = useState<string | null>(null);
+   173→  const [referralQrDataUrl, setReferralQrDataUrl] = useState<string | null>(null);
+   174→  const [downloading, setDownloading] = useState(false);
+   175→  const resumeContentRef = useRef<HTMLDivElement>(null);
+   176→  const referralContentRef = useRef<HTMLDivElement>(null);
+   177→
+   178→  const {
+   179→    palliativeResumes,
+   180→    addPalliativeResume,
+   181→    updatePalliativeResume,
+   182→    palliativeReferralLetters,
+   183→    addPalliativeReferralLetter,
+   184→    updatePalliativeReferralLetter,
+   185→    addPalliativeDocumentAuditEntry,
+   186→    addPalliativeAuditEntry,
+   187→    addPalliativeChatMessage,
+   188→    currentUser,
+   189→  } = useStore();
+   190→
+   191→  const { toast } = useToast();
+   192→
+   193→  // ── Patient-specific data ──
+   194→  const patientResumes = useMemo(
+   195→    () =>
+   196→      palliativeResumes
+   197→        .filter((r) => r.palliativePatientId === patient?.id)
+   198→        .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()),
+   199→    [palliativeResumes, patient]
+   200→  );
+   201→
+   202→  const patientReferrals = useMemo(
+   203→    () =>
+   204→      palliativeReferralLetters
+   205→        .filter((l) => l.palliativePatientId === patient?.id)
+   206→        .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()),
+   207→    [palliativeReferralLetters, patient]
+   208→  );
+   209→
+   210→  const latestResume = patientResumes[0] || null;
+   211→  const latestReferral = patientReferrals[0] || null;
+   212→
+   213→  // ── QR Code Generation ──
+   214→  useEffect(() => {
+   215→    if (selectedResume?.isSigned) {
+   216→      const qrData = JSON.stringify({
+   217→        docId: selectedResume.id,
+   218→        docNumber: selectedResume.documentNumber,
+   219→        timestamp: selectedResume.signedAt || selectedResume.generatedAt,
+   220→        doctor: selectedResume.doctorName || '-',
+   221→        sip: selectedResume.doctorSip || '-',
+   222→        signed: true,
+   223→        type: 'resume_medis',
+   224→      });
+   225→      QRCode.toDataURL(qrData, { width: 120, margin: 1, color: { dark: '#1a1a2e', light: '#ffffff' } })
+   226→        .then((url) => setResumeQrDataUrl(url))
+   227→        .catch(() => setResumeQrDataUrl(null));
+   228→    } else {
+   229→      setResumeQrDataUrl(null);
+   230→    }
+   231→  }, [selectedResume?.isSigned, selectedResume?.id, selectedResume?.documentNumber, selectedResume?.signedAt, selectedResume?.generatedAt, selectedResume?.doctorName, selectedResume?.doctorSip]);
+   232→
+   233→  useEffect(() => {
+   234→    if (selectedReferral?.isSigned) {
+   235→      const qrData = JSON.stringify({
+   236→        docId: selectedReferral.id,
+   237→        docNumber: selectedReferral.documentNumber,
+   238→        timestamp: selectedReferral.signedAt || selectedReferral.generatedAt,
+   239→        doctor: selectedReferral.doctorName || '-',
+   240→        sip: selectedReferral.doctorSip || '-',
+   241→        signed: true,
+   242→        type: 'surat_rujukan',
+   243→      });
+   244→      QRCode.toDataURL(qrData, { width: 120, margin: 1, color: { dark: '#1a1a2e', light: '#ffffff' } })
+   245→        .then((url) => setReferralQrDataUrl(url))
+   246→        .catch(() => setReferralQrDataUrl(null));
+   247→    } else {
+   248→      setReferralQrDataUrl(null);
+   249→    }
+   250→  }, [selectedReferral?.isSigned, selectedReferral?.id, selectedReferral?.documentNumber, selectedReferral?.signedAt, selectedReferral?.generatedAt, selectedReferral?.doctorName, selectedReferral?.doctorSip]);
+   251→
+   252→  // ── Handlers ──
+   253→  const handleGenerateResume = useCallback(async () => {
+   254→    if (!patient) return;
+   255→    setResumeLoading(true);
+   256→    try {
+   257→      const response = await fetch('/api/palliative-resume', {
+   258→        method: 'POST',
+   259→        headers: { 'Content-Type': 'application/json' },
+   260→        body: JSON.stringify({ palliativePatientId: patient.id }),
+   261→      });
+   262→
+   263→      let resumeData;
+   264→      if (response.ok) {
+   265→        const data = await response.json();
+   266→        resumeData = data.resume;
+   267→      } else {
+   268→        // Fallback: generate locally
+   269→        resumeData = generateLocalResumeData(patient);
+   270→      }
+   271→
+   272→      const resume: PalliativeResumeMedis = {
+   273→        id: genId('resume'),
+   274→        palliativePatientId: patient.id,
+   275→        patientName: patient.patientName,
+   276→        rmNumber: patient.rmNumber,
+   277→        documentNumber: genDocNumber('RM-PAL'),
+   278→        generatedAt: new Date().toISOString(),
+   279→        generatedBy: currentUser?.name || 'Dokter',
+   280→        generatedByRole: 'doctor',
+   281→        doctorSip: doctorSip || undefined,
+   282→        doctorName: currentUser?.name || 'Dokter',
+   283→        ringkasanKondisi: resumeData.ringkasanKondisi,
+   284→        ringkasanPemeriksaan: resumeData.ringkasanPemeriksaan,
+   285→        ringkasanTerapi: resumeData.ringkasanTerapi,
+   286→        ringkasanACP: resumeData.ringkasanACP,
+   287→        kesimpulanKlinis: resumeData.kesimpulanKlinis,
+   288→        rekomendasiAI: resumeData.rekomendasiAI || [],
+   289→        fullContent: resumeData.fullContent,
+   290→        version: latestResume ? latestResume.version + 1 : 1,
+   291→        previousVersionId: latestResume?.id,
+   292→        isSigned: false,
+   293→        downloadCount: 0,
+   294→        printCount: 0,
+   295→        createdAt: new Date().toISOString(),
+   296→        updatedAt: new Date().toISOString(),
+   297→      };
+   298→
+   299→      addPalliativeResume(resume);
+   300→
+   301→      // Audit entry
+   302→      const auditEntry: PalliativeDocumentAuditEntry = {
+   303→        id: genId('docaudit'),
+   304→        documentType: 'resume_medis',
+   305→        documentId: resume.id,
+   306→        patientId: patient.id,
+   307→        action: 'generated',
+   308→        performedBy: currentUser?.name || 'Dokter',
+   309→        performedByRole: 'doctor',
+   310→        details: `Resume Medis AI dihasilkan untuk ${patient.patientName || 'Pasien'} (v${resume.version})`,
+   311→        createdAt: new Date().toISOString(),
+   312→      };
+   313→      addPalliativeDocumentAuditEntry(auditEntry);
+   314→
+   315→      const pallAudit: PalliativeAuditEntry = {
+   316→        id: genId('audit'),
+   317→        patientId: patient.id,
+   318→        action: 'resume_generated',
+   319→        performedBy: currentUser?.name || 'Dokter',
+   320→        performedByRole: 'doctor',
+   321→        details: `Resume Medis AI dihasilkan (Dok: ${resume.documentNumber}, v${resume.version})`,
+   322→        createdAt: new Date().toISOString(),
+   323→      };
+   324→      addPalliativeAuditEntry(pallAudit);
+   325→
+   326→      setSelectedResume(resume);
+   327→      setDocTab('resume');
+   328→
+   329→      toast({
+   330→        title: 'Resume Medis Berhasil Dibuat',
+   331→        description: `Resume Medis AI untuk ${patient.patientName || 'Pasien'} telah dihasilkan (v${resume.version}).`,
+   332→      });
+   333→    } catch {
+   334→      // Fallback
+   335→      const resumeData = generateLocalResumeData(patient);
+   336→      const resume: PalliativeResumeMedis = {
+   337→        id: genId('resume'),
+   338→        palliativePatientId: patient.id,
+   339→        patientName: patient.patientName,
+   340→        rmNumber: patient.rmNumber,
+   341→        documentNumber: genDocNumber('RM-PAL'),
+   342→        generatedAt: new Date().toISOString(),
+   343→        generatedBy: currentUser?.name || 'Dokter',
+   344→        generatedByRole: 'doctor',
+   345→        doctorName: currentUser?.name || 'Dokter',
+   346→        ringkasanKondisi: resumeData.ringkasanKondisi,
+   347→        ringkasanPemeriksaan: resumeData.ringkasanPemeriksaan,
+   348→        ringkasanTerapi: resumeData.ringkasanTerapi,
+   349→        ringkasanACP: resumeData.ringkasanACP,
+   350→        kesimpulanKlinis: resumeData.kesimpulanKlinis,
+   351→        rekomendasiAI: resumeData.rekomendasiAI || [],
+   352→        fullContent: resumeData.fullContent,
+   353→        version: latestResume ? latestResume.version + 1 : 1,
+   354→        previousVersionId: latestResume?.id,
+   355→        isSigned: false,
+   356→        downloadCount: 0,
+   357→        printCount: 0,
+   358→        createdAt: new Date().toISOString(),
+   359→        updatedAt: new Date().toISOString(),
+   360→      };
+   361→      addPalliativeResume(resume);
+   362→      setSelectedResume(resume);
+   363→      toast({ title: 'Resume Medis Dibuat (Offline)', description: 'Resume dibuat menggunakan data lokal.' });
+   364→    }
+   365→    setResumeLoading(false);
+   366→  }, [patient, currentUser, doctorSip, latestResume, addPalliativeResume, addPalliativeDocumentAuditEntry, addPalliativeAuditEntry, toast]);
+   367→
+   368→  const handleGenerateReferral = useCallback(async () => {
+   369→    if (!patient) return;
+   370→    setReferralLoading(true);
+   371→    try {
+   372→      const response = await fetch('/api/palliative-referral', {
+   373→        method: 'POST',
+   374→        headers: { 'Content-Type': 'application/json' },
+   375→        body: JSON.stringify({ palliativePatientId: patient.id, targetDepartment: targetDept }),
+   376→      });
+   377→
+   378→      let referralData;
+   379→      if (response.ok) {
+   380→        const data = await response.json();
+   381→        referralData = data.referral;
+   382→      } else {
+   383→        referralData = generateLocalReferralData(patient, targetDept);
+   384→      }
+   385→
+   386→      const letter: PalliativeReferralLetter = {
+   387→        id: genId('referral'),
+   388→        palliativePatientId: patient.id,
+   389→        patientName: patient.patientName,
+   390→        rmNumber: patient.rmNumber,
+   391→        documentNumber: genDocNumber('SR-PAL'),
+   392→        generatedAt: new Date().toISOString(),
+   393→        generatedBy: currentUser?.name || 'Dokter',
+   394→        generatedByRole: 'doctor',
+   395→        doctorSip: doctorSip || undefined,
+   396→        doctorName: currentUser?.name || 'Dokter',
+   397→        nik: patient.nik,
+   398→        bpjsNumber: patient.bpjsNumber,
+   399→        primaryDiagnosis: patient.primaryDiagnosis || '-',
+   400→        secondaryDiagnosis: patient.secondaryDiagnosis,
+   401→        referralReason: referralData.referralReason,
+   402→        clinicalSummary: referralData.clinicalSummary,
+   403→        targetDepartment: targetDept,
+   404→        consultationRequest: referralData.consultationRequest,
+   405→        fullContent: referralData.fullContent,
+   406→        referralStatus: 'belum_dirujuk',
+   407→        version: latestReferral ? latestReferral.version + 1 : 1,
+   408→        previousVersionId: latestReferral?.id,
+   409→        isSigned: false,
+   410→        downloadCount: 0,
+   411→        printCount: 0,
+   412→        createdAt: new Date().toISOString(),
+   413→        updatedAt: new Date().toISOString(),
+   414→      };
+   415→
+   416→      addPalliativeReferralLetter(letter);
+   417→
+   418→      const auditEntry: PalliativeDocumentAuditEntry = {
+   419→        id: genId('docaudit'),
+   420→        documentType: 'surat_rujukan',
+   421→        documentId: letter.id,
+   422→        patientId: patient.id,
+   423→        action: 'generated',
+   424→        performedBy: currentUser?.name || 'Dokter',
+   425→        performedByRole: 'doctor',
+   426→        details: `Surat Rujukan AI dihasilkan untuk ${patient.patientName || 'Pasien'} ke ${getDeptLabel(targetDept)}`,
+   427→        createdAt: new Date().toISOString(),
+   428→      };
+   429→      addPalliativeDocumentAuditEntry(auditEntry);
+   430→
+   431→      const pallAudit: PalliativeAuditEntry = {
+   432→        id: genId('audit'),
+   433→        patientId: patient.id,
+   434→        action: 'referral_generated',
+   435→        performedBy: currentUser?.name || 'Dokter',
+   436→        performedByRole: 'doctor',
+   437→        details: `Surat Rujukan AI dihasilkan (Dok: ${letter.documentNumber}, ke ${getDeptLabel(targetDept)})`,
+   438→        createdAt: new Date().toISOString(),
+   439→      };
+   440→      addPalliativeAuditEntry(pallAudit);
+   441→
+   442→      setSelectedReferral(letter);
+   443→      setDocTab('referral');
+   444→      setShowReferralDeptDialog(false);
+   445→
+   446→      toast({
+   447→        title: 'Surat Rujukan Berhasil Dibuat',
+   448→        description: `Surat Rujukan AI ke ${getDeptLabel(targetDept)} untuk ${patient.patientName || 'Pasien'} telah dihasilkan.`,
+   449→      });
+   450→    } catch {
+   451→      const referralData = generateLocalReferralData(patient, targetDept);
+   452→      const letter: PalliativeReferralLetter = {
+   453→        id: genId('referral'),
+   454→        palliativePatientId: patient.id,
+   455→        patientName: patient.patientName,
+   456→        rmNumber: patient.rmNumber,
+   457→        documentNumber: genDocNumber('SR-PAL'),
+   458→        generatedAt: new Date().toISOString(),
+   459→        generatedBy: currentUser?.name || 'Dokter',
+   460→        generatedByRole: 'doctor',
+   461→        doctorName: currentUser?.name || 'Dokter',
+   462→        nik: patient.nik,
+   463→        bpjsNumber: patient.bpjsNumber,
+   464→        primaryDiagnosis: patient.primaryDiagnosis || '-',
+   465→        secondaryDiagnosis: patient.secondaryDiagnosis,
+   466→        referralReason: referralData.referralReason,
+   467→        clinicalSummary: referralData.clinicalSummary,
+   468→        targetDepartment: targetDept,
+   469→        consultationRequest: referralData.consultationRequest,
+   470→        fullContent: referralData.fullContent,
+   471→        referralStatus: 'belum_dirujuk',
+   472→        version: latestReferral ? latestReferral.version + 1 : 1,
+   473→        previousVersionId: latestReferral?.id,
+   474→        isSigned: false,
+   475→        downloadCount: 0,
+   476→        printCount: 0,
+   477→        createdAt: new Date().toISOString(),
+   478→        updatedAt: new Date().toISOString(),
+   479→      };
+   480→      addPalliativeReferralLetter(letter);
+   481→      setSelectedReferral(letter);
+   482→      setShowReferralDeptDialog(false);
+   483→      toast({ title: 'Surat Rujukan Dibuat (Offline)', description: 'Surat rujukan dibuat menggunakan data lokal.' });
+   484→    }
+   485→    setReferralLoading(false);
+   486→  }, [patient, currentUser, doctorSip, targetDept, latestReferral, addPalliativeReferralLetter, addPalliativeDocumentAuditEntry, addPalliativeAuditEntry, toast]);
+   487→
+   488→  const handleSignDocument = useCallback((docType: 'resume' | 'referral', docId: string) => {
+   489→    const sip = doctorSip || 'SIP-' + (currentUser?.id || '000');
+   490→    if (docType === 'resume') {
+   491→      updatePalliativeResume(docId, { isSigned: true, signedAt: new Date().toISOString(), doctorSip: sip });
+   492→      addPalliativeDocumentAuditEntry({
+   493→        id: genId('docaudit'), documentType: 'resume_medis', documentId: docId, patientId: patient?.id || '',
+   494→        action: 'signed', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+   495→        details: 'Resume Medis ditandatangani secara elektronik', createdAt: new Date().toISOString(),
+   496→      });
+   497→    } else {
+   498→      updatePalliativeReferralLetter(docId, { isSigned: true, signedAt: new Date().toISOString(), doctorSip: sip });
+   499→      addPalliativeDocumentAuditEntry({
+   500→        id: genId('docaudit'), documentType: 'surat_rujukan', documentId: docId, patientId: patient?.id || '',
+   501→        action: 'signed', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+   502→        details: 'Surat Rujukan ditandatangani secara elektronik', createdAt: new Date().toISOString(),
+   503→      });
+   504→    }
+   505→    setShowSignDialog(false);
+   506→    toast({ title: 'Dokumen Ditandatangani', description: 'Tanda tangan elektronik berhasil diterapkan.' });
+   507→  }, [currentUser, doctorSip, patient, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry, toast]);
+   508→
+   509→  const handleSendToChat = useCallback((docType: 'resume' | 'referral', docId: string) => {
+   510→    if (!patient) return;
+   511→    const roomId = `room-${patient.id}`;
+   512→    const doc = docType === 'resume'
+   513→      ? palliativeResumes.find((r) => r.id === docId)
+   514→      : palliativeReferralLetters.find((l) => l.id === docId);
+   515→    if (!doc) return;
+   516→
+   517→    const docLabel = docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan';
+   518→    const chatMsg: PalliativeChatMessage = {
+   519→      id: genId('msg'),
+   520→      roomId,
+   521→      senderId: currentUser?.id || 'doctor',
+   522→      senderName: currentUser?.name || 'Dokter',
+   523→      senderRole: 'doctor',
+   524→      type: 'text',
+   525→      content: `${docLabel} telah diterbitkan untuk pasien.\n\nNo. Dokumen: ${doc.documentNumber}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}${doc.isSigned ? '\nStatus: Ditandatangani secara elektronik' : '\nStatus: Belum ditandatangani'}`,
+   526→      status: 'sent',
+   527→      createdAt: new Date().toISOString(),
+   528→    };
+   529→    addPalliativeChatMessage(chatMsg);
+   530→
+   531→    if (docType === 'resume') {
+   532→      updatePalliativeResume(docId, { sentToChatAt: new Date().toISOString() });
+   533→    } else {
+   534→      updatePalliativeReferralLetter(docId, { sentToChatAt: new Date().toISOString() });
+   535→    }
+   536→
+   537→    addPalliativeDocumentAuditEntry({
+   538→      id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+   539→      documentId: docId, patientId: patient.id,
+   540→      action: 'sent_to_chat', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+   541→      details: `${docLabel} dikirim ke chat pasien`, createdAt: new Date().toISOString(),
+   542→    });
+   543→
+   544→    setShowSendDialog(false);
+   545→    toast({ title: 'Dokumen Terkirim', description: `${docLabel} berhasil dikirim ke chat pasien.` });
+   546→  }, [patient, currentUser, palliativeResumes, palliativeReferralLetters, addPalliativeChatMessage, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry, toast]);
+   547→
+   548→  const handleSendToWhatsApp = useCallback((docType: 'resume' | 'referral', docId: string) => {
+   549→    if (!patient) return;
+   550→    const doc = docType === 'resume'
+   551→      ? palliativeResumes.find((r) => r.id === docId)
+   552→      : palliativeReferralLetters.find((l) => l.id === docId);
+   553→    if (!doc) return;
+   554→
+   555→    const docLabel = docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan';
+   556→    const phone = patient.familyContactPhone?.replace(/\D/g, '') || '';
+   557→    if (!phone) {
+   558→      toast({ title: 'Nomor WhatsApp Tidak Tersedia', description: 'Nomor telepon keluarga pasien belum diisi.', variant: 'destructive' });
+   559→      return;
+   560→    }
+   561→
+   562→    const message = `${docLabel} - ${doc.patientName || 'Pasien'}\n\nNo. Dokumen: ${doc.documentNumber}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}\nStatus: ${doc.isSigned ? 'Ditandatangani secara elektronik' : 'Belum ditandatangani'}\n\nDokumen ini dihasilkan oleh CareLivia`;
+   563→    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+   564→    window.open(waUrl, '_blank');
+   565→
+   566→    if (docType === 'resume') {
+   567→      updatePalliativeResume(docId, { sentToWhatsAppAt: new Date().toISOString() });
+   568→    } else {
+   569→      updatePalliativeReferralLetter(docId, { sentToWhatsAppAt: new Date().toISOString() });
+   570→    }
+   571→
+   572→    addPalliativeDocumentAuditEntry({
+   573→      id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+   574→      documentId: docId, patientId: patient.id,
+   575→      action: 'sent_to_whatsapp', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+   576→      details: `${docLabel} dikirim ke WhatsApp keluarga pasien`, createdAt: new Date().toISOString(),
+   577→    });
+   578→
+   579→    setShowSendDialog(false);
+   580→    toast({ title: 'WhatsApp Terbuka', description: `${docLabel} akan dikirim melalui WhatsApp.` });
+   581→  }, [patient, currentUser, palliativeResumes, palliativeReferralLetters, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry, toast]);
+   582→
+   583→  const handleSendToEmail = useCallback((docType: 'resume' | 'referral', docId: string) => {
+   584→    if (!patient) return;
+   585→    const doc = docType === 'resume'
+   586→      ? palliativeResumes.find((r) => r.id === docId)
+   587→      : palliativeReferralLetters.find((l) => l.id === docId);
+   588→    if (!doc) return;
+   589→
+   590→    const docLabel = docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan';
+   591→    const subject = encodeURIComponent(`[CareLivia] ${docLabel} - ${doc.patientName || 'Pasien'} - ${doc.documentNumber}`);
+   592→    const body = encodeURIComponent(`Kepada Yth.,\n\nBerikut kami sampaikan ${docLabel} untuk pasien ${doc.patientName || '-'} (RM: ${doc.rmNumber || '-'}).\n\nDetail Dokumen:\n- No. Dokumen: ${doc.documentNumber}\n- Tanggal: ${formatDate(doc.generatedAt)}\n- Dokter: ${doc.doctorName || '-'}\n- SIP: ${doc.doctorSip || '-'}\n- Status Tanda Tangan: ${doc.isSigned ? 'Ditandatangani secara elektronik' : 'Belum ditandatangani'}\n- Versi: ${doc.version}\n\nDokumen ini dihasilkan oleh CareLivia.\nHormat kami,\n${currentUser?.name || 'Dokter'}`);
+   593→    window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
+   594→
+   595→    if (docType === 'resume') {
+   596→      updatePalliativeResume(docId, { sentToEmailAt: new Date().toISOString() });
+   597→    } else {
+   598→      updatePalliativeReferralLetter(docId, { sentToEmailAt: new Date().toISOString() });
+   599→    }
+   600→
+   601→    addPalliativeDocumentAuditEntry({
+   602→      id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+   603→      documentId: docId, patientId: patient.id,
+   604→      action: 'sent_to_email', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+   605→      details: `${docLabel} dikirim via email`, createdAt: new Date().toISOString(),
+   606→    });
+   607→
+   608→    setShowSendDialog(false);
+   609→    toast({ title: 'Email Terbuka', description: `Klien email akan terbuka dengan ${docLabel}.` });
+   610→  }, [patient, currentUser, palliativeResumes, palliativeReferralLetters, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry, toast]);
+   611→
+   612→  const handleDownloadPdf = useCallback(async (docType: 'resume' | 'referral', docId: string) => {
+   613→    const doc = docType === 'resume'
+   614→      ? palliativeResumes.find((r) => r.id === docId)
+   615→      : palliativeReferralLetters.find((l) => l.id === docId);
+   616→    if (!doc || !patient) return;
+   617→
+   618→    setDownloading(true);
+   619→    const docLabel = docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan';
+   620→    const fileName = `${docType === 'resume' ? 'Resume_Medis' : 'Surat_Rujukan'}_${doc.patientName || 'Pasien'}_${new Date().toISOString().split('T')[0]}.pdf`;
+   621→
+   622→    try {
+   623→      // Try PDF API first
+   624→      const referralDoc = docType === 'referral' ? doc as PalliativeReferralLetter : undefined;
+   625→      const response = await fetch('/api/palliative-pdf', {
+   626→        method: 'POST',
+   627→        headers: { 'Content-Type': 'application/json' },
+   628→        body: JSON.stringify({
+   629→          documentType: docType,
+   630→          documentId: doc.id,
+   631→          patientData: {
+   632→            patientName: doc.patientName || patient.patientName || '-',
+   633→            rmNumber: doc.rmNumber || patient.rmNumber || '-',
+   634→            nik: patient.nik,
+   635→            bpjsNumber: patient.bpjsNumber,
+   636→            primaryDiagnosis: patient.primaryDiagnosis || '-',
+   637→            secondaryDiagnosis: patient.secondaryDiagnosis,
+   638→            diseaseStage: patient.diseaseStage,
+   639→            careStatus: patient.careStatus,
+   640→            riskLevel: patient.riskLevel,
+   641→          },
+   642→          documentData: {
+   643→            documentNumber: doc.documentNumber,
+   644→            generatedAt: doc.generatedAt,
+   645→            doctorName: doc.doctorName || '-',
+   646→            doctorSip: doc.doctorSip || '',
+   647→            isSigned: doc.isSigned,
+   648→            signedAt: doc.signedAt,
+   649→            fullContent: doc.fullContent,
+   650→            targetDepartment: referralDoc?.targetDepartment,
+   651→            referralStatus: referralDoc?.referralStatus,
+   652→            version: doc.version,
+   653→          },
+   654→        }),
+   655→      });
+   656→
+   657→      if (response.ok) {
+   658→        const blob = await response.blob();
+   659→        const url = URL.createObjectURL(blob);
+   660→        const a = document.createElement('a');
+   661→        a.href = url;
+   662→        a.download = fileName;
+   663→        document.body.appendChild(a);
+   664→        a.click();
+   665→        document.body.removeChild(a);
+   666→        URL.revokeObjectURL(url);
+   667→
+   668→        if (docType === 'resume') {
+   669→          updatePalliativeResume(docId, {
+   670→            downloadCount: (doc.downloadCount || 0) + 1,
+   671→            lastDownloadAt: new Date().toISOString(),
+   672→          });
+   673→        } else {
+   674→          updatePalliativeReferralLetter(docId, {
+   675→            downloadCount: (doc.downloadCount || 0) + 1,
+   676→            lastDownloadAt: new Date().toISOString(),
+   677→          });
+   678→        }
+   679→
+   680→        addPalliativeDocumentAuditEntry({
+   681→          id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+   682→          documentId: docId, patientId: patient.id,
+   683→          action: 'downloaded', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+   684→          details: `${docLabel} diunduh (PDF)`, createdAt: new Date().toISOString(),
+   685→        });
+   686→
+   687→        toast({ title: 'PDF Berhasil Diunduh', description: `${docLabel} telah diunduh dalam format PDF.` });
+   688→      } else {
+   689→        throw new Error('PDF API failed');
+   690→      }
+   691→    } catch {
+   692→      // Fallback to text file download
+   693→      const content = doc.fullContent;
+   694→      const header = docType === 'resume'
+   695→        ? `RESUME MEDIS PALIATIF\nNo. Dokumen: ${doc.documentNumber}\nPasien: ${doc.patientName || '-'}\nRM: ${doc.rmNumber || '-'}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}${doc.isSigned ? `\nSIP: ${doc.doctorSip || '-'}` : ''}\n${'='.repeat(60)}\n\n`
+   696→        : `SURAT RUJUKAN RUMAH SAKIT\nNo. Dokumen: ${doc.documentNumber}\nPasien: ${doc.patientName || '-'}\nRM: ${doc.rmNumber || '-'}\nTujuan: ${getDeptLabel((doc as PalliativeReferralLetter).targetDepartment)}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}${doc.isSigned ? `\nSIP: ${doc.doctorSip || '-'}` : ''}\n${'='.repeat(60)}\n\n`;
+   697→      const footer = `\n\n${'='.repeat(60)}\nDokter: ${doc.doctorName || '-'}\n${doc.doctorSip ? `SIP: ${doc.doctorSip}` : ''}\n${doc.isSigned ? 'Tanda Tangan Elektronik: ✓ Verified' : 'Belum ditandatangani'}\nTanggal: ${formatDate(doc.generatedAt)}`;
+   698→
+   699→      const blob = new Blob([header + content + footer], { type: 'text/plain;charset=utf-8' });
+   700→      const url = URL.createObjectURL(blob);
+   701→      const a = document.createElement('a');
+   702→      a.href = url;
+   703→      a.download = `${docType === 'resume' ? 'Resume_Medis' : 'Surat_Rujukan'}_${doc.patientName || 'Pasien'}_${new Date().toISOString().split('T')[0]}.txt`;
+   704→      document.body.appendChild(a);
+   705→      a.click();
+   706→      document.body.removeChild(a);
+   707→      URL.revokeObjectURL(url);
+   708→
+   709→      if (docType === 'resume') {
+   710→        updatePalliativeResume(docId, {
+   711→          downloadCount: (doc.downloadCount || 0) + 1,
+   712→          lastDownloadAt: new Date().toISOString(),
+   713→        });
+   714→      } else {
+   715→        updatePalliativeReferralLetter(docId, {
+   716→          downloadCount: (doc.downloadCount || 0) + 1,
+   717→          lastDownloadAt: new Date().toISOString(),
+   718→        });
+   719→      }
+   720→
+   721→      addPalliativeDocumentAuditEntry({
+   722→        id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+   723→        documentId: docId, patientId: patient.id,
+   724→        action: 'downloaded', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+   725→        details: `${docLabel} diunduh (TXT fallback)`, createdAt: new Date().toISOString(),
+   726→      });
+   727→
+   728→      toast({ title: 'Dokumen Diunduh (TXT)', description: 'PDF API tidak tersedia, diunduh sebagai file teks.' });
+   729→    }
+   730→    setDownloading(false);
+   731→  }, [palliativeResumes, palliativeReferralLetters, patient, currentUser, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry, toast]);
+   732→
+   733→  const handlePrint = useCallback((docType: 'resume' | 'referral', docId: string) => {
+   734→    const doc = docType === 'resume'
+   735→      ? palliativeResumes.find((r) => r.id === docId)
+   736→      : palliativeReferralLetters.find((l) => l.id === docId);
+   737→    if (!doc) return;
+   738→
+   739→    const printWindow = window.open('', '_blank');
+   740→    if (!printWindow) return;
+   741→
+   742→    const html = `
+   743→      <!DOCTYPE html>
+   744→      <html>
+   745→      <head>
+   746→        <title>${docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'}</title>
+   747→        <style>
+   748→          body { font-family: 'Times New Roman', serif; margin: 40px; line-height: 1.6; color: #333; }
+   749→          h1 { text-align: center; font-size: 18pt; margin-bottom: 5px; }
+   750→          h2 { font-size: 14pt; border-bottom: 1px solid #333; padding-bottom: 4px; margin-top: 20px; }
+   751→          h3 { font-size: 12pt; margin-top: 15px; }
+   752→          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+   753→          .header p { margin: 2px 0; font-size: 10pt; }
+   754→          .doc-info { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 10pt; }
+   755→          .content { white-space: pre-wrap; font-size: 11pt; }
+   756→          .footer { margin-top: 40px; border-top: 1px solid #333; padding-top: 15px; }
+   757→          .signature { margin-top: 30px; text-align: right; }
+   758→          .signature-line { display: inline-block; width: 200px; text-align: center; }
+   759→        </style>
+   760→      </head>
+   761→      <body>
+   762→        <div class="header">
+   763→          <h1>FASILITAS KESEHATAN PRIMER</h1>
+   764→          <p>Jl. Kesehatan No. 1, Kota, Provinsi</p>
+   765→          <p>Telp: (021) 123-4567 | Email: faskes@kesehatan.go.id</p>
+   766→        </div>
+   767→        <div class="doc-info">
+   768→          <span>No. Dokumen: ${doc.documentNumber}</span>
+   769→          <span>Tanggal: ${formatDate(doc.generatedAt)}</span>
+   770→        </div>
+   771→        <h1>${docType === 'resume' ? 'RESUME MEDIS PALIATIF' : 'SURAT RUJUKAN'}</h1>
+   772→        <div class="content">${doc.fullContent}</div>
+   773→        <div class="footer">
+   774→          <div class="signature">
+   775→            <p>Dokter Penanggung Jawab,</p>
+   776→            <br/><br/><br/>
+   777→            <p class="signature-line"><strong>${doc.doctorName || '-'}</strong></p>
+   778→            <p class="signature-line">${doc.doctorSip ? `SIP: ${doc.doctorSip}` : ''}</p>
+   779→            ${doc.isSigned ? '<p style="color: green; font-size: 9pt;">✓ Tanda Tangan Elektronik Terverifikasi</p>' : '<p style="color: #999; font-size: 9pt;">Belum ditandatangani</p>'}
+   780→          </div>
+   781→        </div>
+   782→      </body>
+   783→      </html>
+   784→    `;
+   785→
+   786→    printWindow.document.write(html);
+   787→    printWindow.document.close();
+   788→    printWindow.focus();
+   789→    printWindow.print();
+   790→
+   791→    if (docType === 'resume') {
+   792→      updatePalliativeResume(docId, {
+   793→        printCount: (doc.printCount || 0) + 1,
+   794→        lastPrintAt: new Date().toISOString(),
+   795→      });
+   796→    } else {
+   797→      updatePalliativeReferralLetter(docId, {
+   798→        printCount: (doc.printCount || 0) + 1,
+   799→        lastPrintAt: new Date().toISOString(),
+   800→      });
+   801→    }
+   802→
+   803→    addPalliativeDocumentAuditEntry({
+   804→      id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+   805→      documentId: docId, patientId: patient?.id || '',
+   806→      action: 'printed', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+   807→      details: `${docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'} dicetak`, createdAt: new Date().toISOString(),
+   808→    });
+   809→  }, [palliativeResumes, palliativeReferralLetters, patient, currentUser, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry]);
+   810→
+   811→  // ── Local fallback generators ──
+   812→  function generateLocalResumeData(p: PalliativePatientInfo) {
+   813→    const nd = '-';
+   814→    const fullContent = `RINGKASAN KONDISI PASIEN
+   815→Pasien ${p.patientName || nd} (RM: ${p.rmNumber || nd})
+   816→Diagnosa Utama: ${p.primaryDiagnosis || nd}
+   817→Diagnosa Penyerta: ${p.secondaryDiagnosis || nd}
+   818→Stadium: ${p.diseaseStage || nd}
+   819→Status Perawatan: ${p.careStatus}
+   820→Tingkat Risiko: ${p.riskLevel}
+   821→Pasien merupakan pasien paliatif yang sedang menjalani monitoring berkala. Kondisi saat ini ${p.riskLevel === 'merah' ? 'kritis dan memerlukan perhatian intensif' : p.riskLevel === 'kuning' ? 'perlu pemantauan ketat' : 'stabil namun tetap memerlukan monitoring'}.
+   822→
+   823→RINGKASAN PEMERIKSAAN TERKINI
+   824→Data pemeriksaan terkini menunjukkan kondisi ${p.riskLevel === 'merah' ? 'kritis' : p.riskLevel === 'kuning' ? 'perlu perhatian' : 'stabil'}.
+   825→Perlu monitoring tanda vital secara berkala dan evaluasi gejala dominan.
+   826→
+   827→RINGKASAN TERAPI
+   828→Terapi paliatif sedang berjalan sesuai rencana perawatan.
+   829→Manajemen gejala dilakukan sesuai pedoman perawatan paliatif.
+   830→
+   831→RINGKASAN ADVANCE CARE PLANNING
+   832→${p.notes || 'Data ACP belum tersedia.'}
+   833→
+   834→KESIMPULAN KLINIS
+   835→Pasien ${p.patientName || nd} dengan diagnosa ${p.primaryDiagnosis || nd} stadium ${p.diseaseStage || nd} sedang dalam program monitoring paliatif dengan tingkat risiko ${p.riskLevel}.
+   836→
+   837→REKOMENDASI
+   838→- Lanjutkan monitoring paliatif secara berkala
+   839→- Evaluasi manajemen gejala
+   840→- Pertimbangkan konsultasi spesialis sesuai kebutuhan
+   841→- Diskusikan Advance Care Planning jika belum dilakukan`;
+   842→
+   843→    return {
+   844→      ringkasanKondisi: `Pasien ${p.patientName || nd} dengan diagnosa ${p.primaryDiagnosis || nd}. Kondisi saat ini ${p.riskLevel === 'merah' ? 'kritis' : p.riskLevel === 'kuning' ? 'perlu perhatian' : 'stabil'}.`,
+   845→      ringkasanPemeriksaan: `Data pemeriksaan menunjukkan tingkat risiko ${p.riskLevel}. Perlu monitoring berkala.`,
+   846→      ringkasanTerapi: 'Terapi paliatif berjalan sesuai rencana perawatan.',
+   847→      ringkasanACP: p.notes || 'Data ACP belum tersedia.',
+   848→      kesimpulanKlinis: `Pasien ${p.patientName || nd} dengan diagnosa ${p.primaryDiagnosis || nd} dalam program monitoring paliatif.`,
+   849→      rekomendasiAI: ['Lanjutkan monitoring paliatif', 'Evaluasi manajemen gejala', 'Konsultasi spesialis sesuai kebutuhan'],
+   850→      fullContent,
+   851→    };
+   852→  }
+   853→
+   854→  function generateLocalReferralData(p: PalliativePatientInfo, dept: ReferralTargetDepartment) {
+   855→    const nd = '-';
+   856→    const fullContent = `ALASAN RUJUKAN
+   857→Pasien ${p.patientName || nd} dengan diagnosa ${p.primaryDiagnosis || nd} (${p.diseaseStage || nd}) memerlukan evaluasi dan tindakan lanjutan oleh bagian ${getDeptLabel(dept)}. Kondisi pasien saat ini berada dalam tingkat risiko ${p.riskLevel} dengan status perawatan ${p.careStatus}.
+   858→
+   859→RINGKASAN KONDISI KLINIS
+   860→- Diagnosa Utama: ${p.primaryDiagnosis || nd}
+   861→- Diagnosa Penyerta: ${p.secondaryDiagnosis || nd}
+   862→- Stadium: ${p.diseaseStage || nd}
+   863→- Status Perawatan: ${p.careStatus}
+   864→- Tingkat Risiko: ${p.riskLevel}
+   865→- Terapi paliatif sedang berjalan
+   866→
+   867→PERMINTAAN KONSULTASI
+   868→Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${getDeptLabel(dept)}. Diperlukan penilaian menyeluruh dan rekomendasi tindakan medis.`;
+   869→
+   870→    return {
+   871→      referralReason: `Pasien dengan diagnosa ${p.primaryDiagnosis || nd} memerlukan evaluasi lanjutan oleh ${getDeptLabel(dept)}.`,
+   872→      clinicalSummary: `Diagnosa: ${p.primaryDiagnosis || nd}, Stadium: ${p.diseaseStage || nd}, Risiko: ${p.riskLevel}`,
+   873→      consultationRequest: `Mohon evaluasi dan penanganan lebih lanjut oleh ${getDeptLabel(dept)}.`,
+   874→      fullContent,
+   875→    };
+   876→  }
+   877→
+   878→  // ── Render ──
+   879→  if (!patient) {
+   880→    return (
+   881→      <Card className="p-8 text-center text-muted-foreground">
+   882→        <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+   883→        <p className="font-medium mb-2">Resume Medis & Surat Rujukan AI</p>
+   884→        <p className="text-sm">Pilih pasien terlebih dahulu untuk mengelola dokumen medis.</p>
+   885→      </Card>
+   886→    );
+   887→  }
+   888→
+   889→  return (
+   890→    <div className="space-y-4">
+   891→      {/* Header */}
+   892→      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+   893→        <div>
+   894→          <h2 className="text-lg font-semibold flex items-center gap-2">
+   895→            <FileText className="w-5 h-5 text-primary" />
+   896→            Resume Medis & Surat Rujukan AI
+   897→          </h2>
+   898→          <p className="text-sm text-muted-foreground">
+   899→            Pasien: {patient.patientName || '-'} ({patient.rmNumber || '-'})
+   900→          </p>
+   901→        </div>
+   902→        <div className="flex items-center gap-2 flex-wrap">
+   903→          <Button
+   904→            onClick={handleGenerateResume}
+   905→            disabled={resumeLoading}
+   906→            className="gap-1.5"
+   907→          >
+   908→            {resumeLoading ? (
+   909→              <RefreshCw className="w-4 h-4 animate-spin" />
+   910→            ) : (
+   911→              <Sparkles className="w-4 h-4" />
+   912→            )}
+   913→            Generate Resume AI
+   914→          </Button>
+   915→          {latestResume && (
+   916→            <>
+   917→              <Button
+   918→                variant="outline"
+   919→                size="sm"
+   920→                onClick={() => { setSelectedResume(latestResume); setDocTab('resume'); setTimeout(() => resumeContentRef.current?.scrollIntoView({ behavior: 'smooth' }), 100); }}
+   921→                className="gap-1.5"
+   922→              >
+   923→                <Eye className="w-3.5 h-3.5" />
+   924→                Lihat Resume Medis
+   925→              </Button>
+   926→              <Button
+   927→                variant="outline"
+   928→                size="sm"
+   929→                onClick={() => handleDownloadPdf('resume', latestResume.id)}
+   930→                disabled={downloading}
+   931→                className="gap-1.5"
+   932→              >
+   933→                <Download className="w-3.5 h-3.5" />
+   934→                Download PDF
+   935→              </Button>
+   936→            </>
+   937→          )}
+   938→          <Button
+   939→            variant="outline"
+   940→            onClick={() => setShowReferralDeptDialog(true)}
+   941→            disabled={referralLoading}
+   942→            className="gap-1.5"
+   943→          >
+   944→            {referralLoading ? (
+   945→              <RefreshCw className="w-4 h-4 animate-spin" />
+   946→            ) : (
+   947→              <Building2 className="w-4 h-4" />
+   948→            )}
+   949→            Generate Surat Rujukan AI
+   950→          </Button>
+   951→          {latestReferral && (
+   952→            <Button
+   953→              variant="outline"
+   954→              size="sm"
+   955→              onClick={() => handleDownloadPdf('referral', latestReferral.id)}
+   956→              disabled={downloading}
+   957→              className="gap-1.5"
+   958→            >
+   959→              <Download className="w-3.5 h-3.5" />
+   960→              Download Surat Rujukan PDF
+   961→            </Button>
+   962→          )}
+   963→        </div>
+   964→      </div>
+   965→
+   966→      {/* Document Status Indicators */}
+   967→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   968→        <Card className="p-3">
+   969→          <div className="flex items-center gap-1.5 mb-1">
+   970→            <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+   971→            <span className="text-[10px] text-muted-foreground">Resume Terakhir</span>
+   972→          </div>
+   973→          {latestResume ? (
+   974→            <div>
+   975→              <p className="text-xs font-medium">{latestResume.documentNumber}</p>
+   976→              <p className="text-[10px] text-muted-foreground">{formatDate(latestResume.generatedAt)}</p>
+   977→            </div>
+   978→          ) : (
+   979→            <p className="text-xs text-muted-foreground">Belum ada</p>
+   980→          )}
+   981→        </Card>
+   982→        <Card className="p-3">
+   983→          <div className="flex items-center gap-1.5 mb-1">
+   984→            <Stethoscope className="w-3.5 h-3.5 text-muted-foreground" />
+   985→            <span className="text-[10px] text-muted-foreground">Rujukan Terakhir</span>
+   986→          </div>
+   987→          {latestReferral ? (
+   988→            <div>
+   989→              <p className="text-xs font-medium">{latestReferral.documentNumber}</p>
+   990→              <p className="text-[10px] text-muted-foreground">{formatDate(latestReferral.generatedAt)}</p>
+   991→            </div>
+   992→          ) : (
+   993→            <p className="text-xs text-muted-foreground">Belum ada</p>
+   994→          )}
+   995→        </Card>
+   996→        <Card className="p-3">
+   997→          <div className="flex items-center gap-1.5 mb-1">
+   998→            <Shield className="w-3.5 h-3.5 text-muted-foreground" />
+   999→            <span className="text-[10px] text-muted-foreground">Status Tanda Tangan</span>
+  1000→          </div>
+  1001→          <p className="text-xs font-medium">
+  1002→            {latestResume?.isSigned ? 'Ditandatangani' : 'Belum ditandatangani'}
+  1003→          </p>
+  1004→        </Card>
+  1005→        <Card className="p-3">
+  1006→          <div className="flex items-center gap-1.5 mb-1">
+  1007→            <Send className="w-3.5 h-3.5 text-muted-foreground" />
+  1008→            <span className="text-[10px] text-muted-foreground">Status Rujukan</span>
+  1009→          </div>
+  1010→          {latestReferral ? (
+  1011→            <Badge variant="outline" className={cn('text-[10px]', getReferralStatusLabel(latestReferral.referralStatus).className)}>
+  1012→              {getReferralStatusLabel(latestReferral.referralStatus).label}
+  1013→            </Badge>
+  1014→          ) : (
+  1015→            <p className="text-xs text-muted-foreground">Belum ada rujukan</p>
+  1016→          )}
+  1017→        </Card>
+  1018→      </div>
+  1019→
+  1020→      {/* Doctor SIP Input */}
+  1021→      <div className="flex items-center gap-3">
+  1022→        <Label className="text-sm whitespace-nowrap">SIP Dokter:</Label>
+  1023→        <Input
+  1024→          value={doctorSip}
+  1025→          onChange={(e) => setDoctorSip(e.target.value)}
+  1026→          placeholder="Masukkan nomor SIP untuk tanda tangan..."
+  1027→          className="max-w-xs h-8 text-sm"
+  1028→        />
+  1029→      </div>
+  1030→
+  1031→      {/* Tab Navigation */}
+  1032→      <Tabs value={docTab} onValueChange={(v) => setDocTab(v as DocTab)}>
+  1033→        <TabsList className="bg-muted p-1">
+  1034→          <TabsTrigger value="resume" className="text-xs sm:text-sm">
+  1035→            <FileText className="w-3.5 h-3.5 mr-1" />
+  1036→            Resume Medis ({patientResumes.length})
+  1037→          </TabsTrigger>
+  1038→          <TabsTrigger value="referral" className="text-xs sm:text-sm">
+  1039→            <Building2 className="w-3.5 h-3.5 mr-1" />
+  1040→            Surat Rujukan ({patientReferrals.length})
+  1041→          </TabsTrigger>
+  1042→          <TabsTrigger value="history" className="text-xs sm:text-sm">
+  1043→            <History className="w-3.5 h-3.5 mr-1" />
+  1044→            Riwayat
+  1045→          </TabsTrigger>
+  1046→        </TabsList>
+  1047→
+  1048→        {/* Resume Medis Tab */}
+  1049→        <TabsContent value="resume" className="mt-4">
+  1050→          {selectedResume ? (
+  1051→            <div className="space-y-4" ref={resumeContentRef}>
+  1052→              {/* Resume Actions */}
+  1053→              <div className="flex items-center gap-2 flex-wrap">
+  1054→                <Button
+  1055→                  variant="outline"
+  1056→                  size="sm"
+  1057→                  onClick={() => handleDownloadPdf('resume', selectedResume.id)}
+  1058→                  disabled={downloading}
+  1059→                >
+  1060→                  {downloading ? <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Download className="w-3.5 h-3.5 mr-1.5" />}
+  1061→                  Download PDF
+  1062→                </Button>
+  1063→                <Button
+  1064→                  variant="outline"
+  1065→                  size="sm"
+  1066→                  onClick={() => handlePrint('resume', selectedResume.id)}
+  1067→                >
+  1068→                  <Printer className="w-3.5 h-3.5 mr-1.5" />
+  1069→                  Cetak Resume
+  1070→                </Button>
+  1071→                <Button
+  1072→                  variant="outline"
+  1073→                  size="sm"
+  1074→                  onClick={() => {
+  1075→                    setSendDocType('resume');
+  1076→                    setSendDocId(selectedResume.id);
+  1077→                    setShowSendDialog(true);
+  1078→                  }}
+  1079→                >
+  1080→                  <Send className="w-3.5 h-3.5 mr-1.5" />
+  1081→                  Kirim Dokumen
+  1082→                </Button>
+  1083→                {!selectedResume.isSigned && (
+  1084→                  <Button
+  1085→                    size="sm"
+  1086→                    onClick={() => {
+  1087→                      setSignDocType('resume');
+  1088→                      setSignDocId(selectedResume.id);
+  1089→                      setShowSignDialog(true);
+  1090→                    }}
+  1091→                  >
+  1092→                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+  1093→                    Tanda Tangan
+  1094→                  </Button>
+  1095→                )}
+  1096→              </div>
+  1097→
+  1098→              {/* Resume Content */}
+  1099→              <Card className="p-6">
+  1100→                <div className="space-y-1 mb-4 text-center border-b pb-4">
+  1101→                  <h2 className="text-lg font-bold">RESUME MEDIS PALIATIF</h2>
+  1102→                  <p className="text-sm text-muted-foreground">
+  1103→                    No. Dokumen: {selectedResume.documentNumber} | Versi: {selectedResume.version}
+  1104→                  </p>
+  1105→                  <p className="text-sm text-muted-foreground">
+  1106→                    Tanggal: {formatDate(selectedResume.generatedAt)} | Dokter: {selectedResume.doctorName || '-'}
+  1107→                    {selectedResume.isSigned && ` (SIP: ${selectedResume.doctorSip || '-'})`}
+  1108→                  </p>
+  1109→                  <div className="flex items-center justify-center gap-2 mt-2">
+  1110→                    {selectedResume.isSigned && (
+  1111→                      <Badge className="bg-green-100 text-green-800 border-green-300 border">
+  1112→                        <CheckCircle2 className="w-3 h-3 mr-1" />
+  1113→                        Ditandatangani
+  1114→                      </Badge>
+  1115→                    )}
+  1116→                    <Badge variant="outline">
+  1117→                      Unduh: {selectedResume.downloadCount}x | Cetak: {selectedResume.printCount}x
+  1118→                    </Badge>
+  1119→                  </div>
+  1120→                </div>
+  1121→
+  1122→                <ScrollArea className="max-h-[calc(100vh-520px)]">
+  1123→                  <div className="space-y-6">
+  1124→                    {/* Ringkasan Kondisi */}
+  1125→                    <div>
+  1126→                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
+  1127→                        <FileText className="w-4 h-4 text-primary" />
+  1128→                        Ringkasan Kondisi Pasien
+  1129→                      </h3>
+  1130→                      <div className="text-sm whitespace-pre-wrap text-muted-foreground bg-muted/50 p-3 rounded-lg">
+  1131→                        {selectedResume.ringkasanKondisi}
+  1132→                      </div>
+  1133→                    </div>
+  1134→
+  1135→                    {/* Ringkasan Pemeriksaan */}
+  1136→                    <div>
+  1137→                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
+  1138→                        <Stethoscope className="w-4 h-4 text-teal-600" />
+  1139→                        Ringkasan Pemeriksaan Terkini
+  1140→                      </h3>
+  1141→                      <div className="text-sm whitespace-pre-wrap text-muted-foreground bg-muted/50 p-3 rounded-lg">
+  1142→                        {selectedResume.ringkasanPemeriksaan}
+  1143→                      </div>
+  1144→                    </div>
+  1145→
+  1146→                    {/* Ringkasan Terapi */}
+  1147→                    <div>
+  1148→                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
+  1149→                        <FileCheck className="w-4 h-4 text-amber-600" />
+  1150→                        Ringkasan Terapi
+  1151→                      </h3>
+  1152→                      <div className="text-sm whitespace-pre-wrap text-muted-foreground bg-muted/50 p-3 rounded-lg">
+  1153→                        {selectedResume.ringkasanTerapi}
+  1154→                      </div>
+  1155→                    </div>
+  1156→
+  1157→                    {/* Ringkasan ACP */}
+  1158→                    <div>
+  1159→                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
+  1160→                        <Shield className="w-4 h-4 text-purple-600" />
+  1161→                        Ringkasan Advance Care Planning
+  1162→                      </h3>
+  1163→                      <div className="text-sm whitespace-pre-wrap text-muted-foreground bg-muted/50 p-3 rounded-lg">
+  1164→                        {selectedResume.ringkasanACP}
+  1165→                      </div>
+  1166→                    </div>
+  1167→
+  1168→                    {/* Kesimpulan Klinis */}
+  1169→                    <div>
+  1170→                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
+  1171→                        <AlertCircle className="w-4 h-4 text-red-600" />
+  1172→                        Kesimpulan Klinis AI
+  1173→                      </h3>
+  1174→                      <div className="text-sm whitespace-pre-wrap bg-red-50/50 p-3 rounded-lg border border-red-200 text-red-900">
+  1175→                        {selectedResume.kesimpulanKlinis}
+  1176→                      </div>
+  1177→                    </div>
+  1178→
+  1179→                    {/* Rekomendasi AI */}
+  1180→                    <div>
+  1181→                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
+  1182→                        <Sparkles className="w-4 h-4 text-primary" />
+  1183→                        Rekomendasi AI
+  1184→                      </h3>
+  1185→                      <div className="space-y-1">
+  1186→                        {selectedResume.rekomendasiAI?.map((rec, i) => (
+  1187→                          <div key={i} className="flex items-start gap-2 text-sm">
+  1188→                            <span className="bg-primary text-primary-foreground w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 mt-0.5">
+  1189→                              {i + 1}
+  1190→                            </span>
+  1191→                            <span className="text-muted-foreground">{rec}</span>
+  1192→                          </div>
+  1193→                        ))}
+  1194→                      </div>
+  1195→                    </div>
+  1196→                  </div>
+  1197→                </ScrollArea>
+  1198→
+  1199→                {/* Signature Area */}
+  1200→                <div className="mt-6 border-t pt-4 text-right">
+  1201→                  {selectedResume.isSigned ? (
+  1202→                    <div className="space-y-1">
+  1203→                      <div className="flex items-end justify-end gap-3">
+  1204→                        <div className="text-right">
+  1205→                          <p className="text-sm font-medium">{selectedResume.doctorName || '-'}</p>
+  1206→                          <p className="text-xs text-muted-foreground">SIP: {selectedResume.doctorSip || '-'}</p>
+  1207→                          <div className="flex items-center justify-end gap-1 mt-1">
+  1208→                            <QrCode className="w-3 h-3 text-green-600" />
+  1209→                            <span className="text-xs text-green-600">Tanda Tangan Elektronik Terverifikasi</span>
+  1210→                          </div>
+  1211→                          <p className="text-xs text-muted-foreground">
+  1212→                            Ditandatangani: {selectedResume.signedAt ? formatDateTime(selectedResume.signedAt) : '-'}
+  1213→                          </p>
+  1214→                        </div>
+  1215→                        {resumeQrDataUrl && (
+  1216→                          <div className="flex flex-col items-center">
+  1217→                            <img src={resumeQrDataUrl} alt="QR Verifikasi" className="w-[60px] h-[60px]" />
+  1218→                            <span className="text-[9px] text-muted-foreground mt-0.5">Scan untuk verifikasi</span>
+  1219→                          </div>
+  1220→                        )}
+  1221→                      </div>
+  1222→                    </div>
+  1223→                  ) : (
+  1224→                    <p className="text-xs text-amber-600">Belum ditandatangani</p>
+  1225→                  )}
+  1226→                </div>
+  1227→              </Card>
+  1228→            </div>
+  1229→          ) : patientResumes.length > 0 ? (
+  1230→            <Card className="p-6 text-center text-muted-foreground">
+  1231→              <FileText className="w-10 h-10 mx-auto mb-3 opacity-50" />
+  1232→              <p>Klik pada resume di riwayat untuk melihat detail.</p>
+  1233→            </Card>
+  1234→          ) : (
+  1235→            <Card className="p-8 text-center text-muted-foreground">
+  1236→              <Sparkles className="w-12 h-12 mx-auto mb-3 opacity-50" />
+  1237→              <p className="font-medium mb-2">Belum Ada Resume Medis</p>
+  1238→              <p className="text-sm mb-4">
+  1239→                Klik &quot;Generate Resume AI&quot; untuk membuat resume medis otomatis dari seluruh data pasien.
+  1240→              </p>
+  1241→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left max-w-md mx-auto text-sm">
+  1242→                <div className="flex items-center gap-2"><FileText className="w-4 h-4 text-primary" />Ringkasan Kondisi</div>
+  1243→                <div className="flex items-center gap-2"><Stethoscope className="w-4 h-4 text-primary" />Pemeriksaan Terkini</div>
+  1244→                <div className="flex items-center gap-2"><FileCheck className="w-4 h-4 text-primary" />Ringkasan Terapi</div>
+  1245→                <div className="flex items-center gap-2"><Shield className="w-4 h-4 text-primary" />Advance Care Planning</div>
+  1246→                <div className="flex items-center gap-2"><AlertCircle className="w-4 h-4 text-primary" />Kesimpulan Klinis</div>
+  1247→                <div className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" />Rekomendasi AI</div>
+  1248→              </div>
+  1249→            </Card>
+  1250→          )}
+  1251→        </TabsContent>
+  1252→
+  1253→        {/* Surat Rujukan Tab */}
+  1254→        <TabsContent value="referral" className="mt-4">
+  1255→          {selectedReferral ? (
+  1256→            <div className="space-y-4" ref={referralContentRef}>
+  1257→              {/* Referral Actions */}
+  1258→              <div className="flex items-center gap-2 flex-wrap">
+  1259→                <Button
+  1260→                  variant="outline"
+  1261→                  size="sm"
+  1262→                  onClick={() => handleDownloadPdf('referral', selectedReferral.id)}
+  1263→                  disabled={downloading}
+  1264→                >
+  1265→                  {downloading ? <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Download className="w-3.5 h-3.5 mr-1.5" />}
+  1266→                  Download PDF
+  1267→                </Button>
+  1268→                <Button
+  1269→                  variant="outline"
+  1270→                  size="sm"
+  1271→                  onClick={() => handlePrint('referral', selectedReferral.id)}
+  1272→                >
+  1273→                  <Printer className="w-3.5 h-3.5 mr-1.5" />
+  1274→                  Cetak Surat Rujukan
+  1275→                </Button>
+  1276→                <Button
+  1277→                  variant="outline"
+  1278→                  size="sm"
+  1279→                  onClick={() => {
+  1280→                    setSendDocType('referral');
+  1281→                    setSendDocId(selectedReferral.id);
+  1282→                    setShowSendDialog(true);
+  1283→                  }}
+  1284→                >
+  1285→                  <Send className="w-3.5 h-3.5 mr-1.5" />
+  1286→                  Kirim Dokumen
+  1287→                </Button>
+  1288→                {!selectedReferral.isSigned && (
+  1289→                  <Button
+  1290→                    size="sm"
+  1291→                    onClick={() => {
+  1292→                      setSignDocType('referral');
+  1293→                      setSignDocId(selectedReferral.id);
+  1294→                      setShowSignDialog(true);
+  1295→                    }}
+  1296→                  >
+  1297→                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+  1298→                    Tanda Tangan
+  1299→                  </Button>
+  1300→                )}
+  1301→                <Select
+  1302→                  value={selectedReferral.referralStatus}
+  1303→                  onValueChange={(v) => {
+  1304→                    updatePalliativeReferralLetter(selectedReferral.id, { referralStatus: v as ReferralStatus });
+  1305→                  }}
+  1306→                >
+  1307→                  <SelectTrigger className="w-36 h-8 text-xs">
+  1308→                    <SelectValue />
+  1309→                  </SelectTrigger>
+  1310→                  <SelectContent>
+  1311→                    <SelectItem value="belum_dirujuk">Belum Dirujuk</SelectItem>
+  1312→                    <SelectItem value="menunggu">Menunggu</SelectItem>
+  1313→                    <SelectItem value="sudah_dirujuk">Sudah Dirujuk</SelectItem>
+  1314→                    <SelectItem value="selesai">Selesai</SelectItem>
+  1315→                  </SelectContent>
+  1316→                </Select>
+  1317→              </div>
+  1318→
+  1319→              {/* Referral Content */}
+  1320→              <Card className="p-6">
+  1321→                <div className="space-y-1 mb-4 text-center border-b pb-4">
+  1322→                  <h2 className="text-lg font-bold">SURAT RUJUKAN RUMAH SAKIT</h2>
+  1323→                  <p className="text-sm text-muted-foreground">
+  1324→                    No. Dokumen: {selectedReferral.documentNumber} | Versi: {selectedReferral.version}
+  1325→                  </p>
+  1326→                  <p className="text-sm text-muted-foreground">
+  1327→                    Tujuan: {getDeptLabel(selectedReferral.targetDepartment)} | Tanggal: {formatDate(selectedReferral.generatedAt)}
+  1328→                  </p>
+  1329→                  <div className="flex items-center justify-center gap-2 mt-2">
+  1330→                    <Badge variant="outline" className={getReferralStatusLabel(selectedReferral.referralStatus).className}>
+  1331→                      {getReferralStatusLabel(selectedReferral.referralStatus).label}
+  1332→                    </Badge>
+  1333→                    {selectedReferral.isSigned && (
+  1334→                      <Badge className="bg-green-100 text-green-800 border-green-300 border">
+  1335→                        <CheckCircle2 className="w-3 h-3 mr-1" />
+  1336→                        Ditandatangani
+  1337→                      </Badge>
+  1338→                    )}
+  1339→                  </div>
+  1340→                </div>
+  1341→
+  1342→                {/* Patient Identity */}
+  1343→                <div className="mb-4 p-3 bg-muted/50 rounded-lg">
+  1344→                  <h4 className="font-semibold text-sm mb-2">Identitas Pasien</h4>
+  1345→                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+  1346→                    <div>Nama: <span className="font-medium">{selectedReferral.patientName || '-'}</span></div>
+  1347→                    <div>No. RM: <span className="font-medium">{selectedReferral.rmNumber || '-'}</span></div>
+  1348→                    <div>NIK: <span className="font-medium">{selectedReferral.nik || '-'}</span></div>
+  1349→                    <div>No. BPJS: <span className="font-medium">{selectedReferral.bpjsNumber || '-'}</span></div>
+  1350→                    <div>Diagnosa Utama: <span className="font-medium">{selectedReferral.primaryDiagnosis}</span></div>
+  1351→                    <div>Diagnosa Penyerta: <span className="font-medium">{selectedReferral.secondaryDiagnosis || '-'}</span></div>
+  1352→                  </div>
+  1353→                </div>
+  1354→
+  1355→                <ScrollArea className="max-h-[calc(100vh-600px)]">
+  1356→                  <div className="space-y-6">
+  1357→                    {/* Alasan Rujukan */}
+  1358→                    <div>
+  1359→                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
+  1360→                        <Building2 className="w-4 h-4 text-primary" />
+  1361→                        Alasan Rujukan
+  1362→                      </h3>
+  1363→                      <div className="text-sm whitespace-pre-wrap text-muted-foreground bg-muted/50 p-3 rounded-lg">
+  1364→                        {selectedReferral.referralReason}
+  1365→                      </div>
+  1366→                    </div>
+  1367→
+  1368→                    {/* Ringkasan Kondisi Klinis */}
+  1369→                    <div>
+  1370→                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
+  1371→                        <Stethoscope className="w-4 h-4 text-teal-600" />
+  1372→                        Ringkasan Kondisi Klinis
+  1373→                      </h3>
+  1374→                      <div className="text-sm whitespace-pre-wrap text-muted-foreground bg-muted/50 p-3 rounded-lg">
+  1375→                        {selectedReferral.clinicalSummary}
+  1376→                      </div>
+  1377→                    </div>
+  1378→
+  1379→                    {/* Permintaan Konsultasi */}
+  1380→                    <div>
+  1381→                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
+  1382→                        <Sparkles className="w-4 h-4 text-amber-600" />
+  1383→                        Permintaan Konsultasi
+  1384→                      </h3>
+  1385→                      <div className="text-sm whitespace-pre-wrap bg-amber-50/50 p-3 rounded-lg border border-amber-200">
+  1386→                        {selectedReferral.consultationRequest}
+  1387→                      </div>
+  1388→                    </div>
+  1389→                  </div>
+  1390→                </ScrollArea>
+  1391→
+  1392→                {/* Signature Area */}
+  1393→                <div className="mt-6 border-t pt-4 text-right">
+  1394→                  {selectedReferral.isSigned ? (
+  1395→                    <div className="space-y-1">
+  1396→                      <div className="flex items-end justify-end gap-3">
+  1397→                        <div className="text-right">
+  1398→                          <p className="text-sm font-medium">{selectedReferral.doctorName || '-'}</p>
+  1399→                          <p className="text-xs text-muted-foreground">SIP: {selectedReferral.doctorSip || '-'}</p>
+  1400→                          <div className="flex items-center justify-end gap-1 mt-1">
+  1401→                            <QrCode className="w-3 h-3 text-green-600" />
+  1402→                            <span className="text-xs text-green-600">Tanda Tangan Elektronik Terverifikasi</span>
+  1403→                          </div>
+  1404→                        </div>
+  1405→                        {referralQrDataUrl && (
+  1406→                          <div className="flex flex-col items-center">
+  1407→                            <img src={referralQrDataUrl} alt="QR Verifikasi" className="w-[60px] h-[60px]" />
+  1408→                            <span className="text-[9px] text-muted-foreground mt-0.5">Scan untuk verifikasi</span>
+  1409→                          </div>
+  1410→                        )}
+  1411→                      </div>
+  1412→                    </div>
+  1413→                  ) : (
+  1414→                    <p className="text-xs text-amber-600">Belum ditandatangani</p>
+  1415→                  )}
+  1416→                </div>
+  1417→              </Card>
+  1418→            </div>
+  1419→          ) : patientReferrals.length > 0 ? (
+  1420→            <Card className="p-6 text-center text-muted-foreground">
+  1421→              <Building2 className="w-10 h-10 mx-auto mb-3 opacity-50" />
+  1422→              <p>Klik pada surat rujukan di riwayat untuk melihat detail.</p>
+  1423→            </Card>
+  1424→          ) : (
+  1425→            <Card className="p-8 text-center text-muted-foreground">
+  1426→              <Building2 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+  1427→              <p className="font-medium mb-2">Belum Ada Surat Rujukan</p>
+  1428→              <p className="text-sm mb-4">
+  1429→                Klik &quot;Generate Surat Rujukan AI&quot; untuk membuat surat rujukan otomatis berdasarkan kondisi pasien.
+  1430→              </p>
+  1431→            </Card>
+  1432→          )}
+  1433→        </TabsContent>
+  1434→
+  1435→        {/* History Tab */}
+  1436→        <TabsContent value="history" className="mt-4">
+  1437→          <div className="space-y-4">
+  1438→            {/* Resume History */}
+  1439→            <div>
+  1440→              <h3 className="font-semibold text-base mb-3 flex items-center gap-2">
+  1441→                <FileText className="w-4 h-4 text-primary" />
+  1442→                Riwayat Resume Medis
+  1443→              </h3>
+  1444→              {patientResumes.length === 0 ? (
+  1445→                <p className="text-sm text-muted-foreground">Belum ada resume medis yang dibuat.</p>
+  1446→              ) : (
+  1447→                <div className="space-y-2 max-h-64 overflow-y-auto">
+  1448→                  {patientResumes.map((resume) => (
+  1449→                    <Card
+  1450→                      key={resume.id}
+  1451→                      className={cn(
+  1452→                        'p-3 cursor-pointer hover:shadow-md transition-shadow',
+  1453→                        selectedResume?.id === resume.id && 'ring-2 ring-primary'
+  1454→                      )}
+  1455→                      onClick={() => {
+  1456→                        setSelectedResume(resume);
+  1457→                        setDocTab('resume');
+  1458→                      }}
+  1459→                    >
+  1460→                      <div className="flex items-center justify-between">
+  1461→                        <div>
+  1462→                          <p className="text-sm font-medium">{resume.documentNumber}</p>
+  1463→                          <p className="text-xs text-muted-foreground">
+  1464→                            {formatDateTime(resume.generatedAt)} | v{resume.version} | oleh {resume.generatedBy}
+  1465→                          </p>
+  1466→                        </div>
+  1467→                        <div className="flex items-center gap-1.5">
+  1468→                          {resume.isSigned ? (
+  1469→                            <Badge className="bg-green-100 text-green-800 text-[10px]">Signed</Badge>
+  1470→                          ) : (
+  1471→                            <Badge variant="outline" className="text-[10px]">Draft</Badge>
+  1472→                          )}
+  1473→                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+  1474→                            <Eye className="w-3.5 h-3.5" />
+  1475→                          </Button>
+  1476→                        </div>
+  1477→                      </div>
+  1478→                    </Card>
+  1479→                  ))}
+  1480→                </div>
+  1481→              )}
+  1482→            </div>
+  1483→
+  1484→            <Separator />
+  1485→
+  1486→            {/* Referral History */}
+  1487→            <div>
+  1488→              <h3 className="font-semibold text-base mb-3 flex items-center gap-2">
+  1489→                <Building2 className="w-4 h-4 text-primary" />
+  1490→                Riwayat Surat Rujukan
+  1491→              </h3>
+  1492→              {patientReferrals.length === 0 ? (
+  1493→                <p className="text-sm text-muted-foreground">Belum ada surat rujukan yang dibuat.</p>
+  1494→              ) : (
+  1495→                <div className="space-y-2 max-h-64 overflow-y-auto">
+  1496→                  {patientReferrals.map((letter) => (
+  1497→                    <Card
+  1498→                      key={letter.id}
+  1499→                      className={cn(
+  1500→                        'p-3 cursor-pointer hover:shadow-md transition-shadow',
+  1501→                        selectedReferral?.id === letter.id && 'ring-2 ring-primary'
+  1502→                      )}
+  1503→                      onClick={() => {
+  1504→                        setSelectedReferral(letter);
+  1505→                        setDocTab('referral');
+  1506→                      }}
+  1507→                    >
+  1508→                      <div className="flex items-center justify-between">
+  1509→                        <div>
+  1510→                          <p className="text-sm font-medium">{letter.documentNumber}</p>
+  1511→                          <p className="text-xs text-muted-foreground">
+  1512→                            {formatDateTime(letter.generatedAt)} | ke {getDeptLabel(letter.targetDepartment)} | v{letter.version}
+  1513→                          </p>
+  1514→                        </div>
+  1515→                        <div className="flex items-center gap-1.5">
+  1516→                          <Badge variant="outline" className={cn('text-[10px]', getReferralStatusLabel(letter.referralStatus).className)}>
+  1517→                            {getReferralStatusLabel(letter.referralStatus).label}
+  1518→                          </Badge>
+  1519→                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+  1520→                            <Eye className="w-3.5 h-3.5" />
+  1521→                          </Button>
+  1522→                        </div>
+  1523→                      </div>
+  1524→                    </Card>
+  1525→                  ))}
+  1526→                </div>
+  1527→              )}
+  1528→            </div>
+  1529→
+  1530→            <Separator />
+  1531→
+  1532→            {/* Document Audit Trail */}
+  1533→            <div>
+  1534→              <h3 className="font-semibold text-base mb-3 flex items-center gap-2">
+  1535→                <History className="w-4 h-4 text-primary" />
+  1536→                Audit Trail Dokumen
+  1537→              </h3>
+  1538→              {(() => {
+  1539→                const docAudits = useStore.getState().palliativeDocumentAuditLog
+  1540→                  .filter((a) => a.patientId === patient.id)
+  1541→                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  1542→                if (docAudits.length === 0) {
+  1543→                  return <p className="text-sm text-muted-foreground">Belum ada aktivitas dokumen.</p>;
+  1544→                }
+  1545→                return (
+  1546→                  <div className="space-y-2 max-h-64 overflow-y-auto">
+  1547→                    {docAudits.map((entry) => (
+  1548→                      <div key={entry.id} className="flex items-start gap-3 text-sm p-2 rounded-lg bg-muted/50">
+  1549→                        <div className="mt-0.5">
+  1550→                          {entry.action === 'generated' && <Sparkles className="w-3.5 h-3.5 text-primary" />}
+  1551→                          {entry.action === 'viewed' && <Eye className="w-3.5 h-3.5 text-muted-foreground" />}
+  1552→                          {entry.action === 'signed' && <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />}
+  1553→                          {entry.action === 'downloaded' && <Download className="w-3.5 h-3.5 text-blue-600" />}
+  1554→                          {entry.action === 'printed' && <Printer className="w-3.5 h-3.5 text-muted-foreground" />}
+  1555→                          {entry.action === 'sent_to_chat' && <MessageCircle className="w-3.5 h-3.5 text-teal-600" />}
+  1556→                          {entry.action === 'sent_to_email' && <Mail className="w-3.5 h-3.5 text-purple-600" />}
+  1557→                        </div>
+  1558→                        <div className="flex-1 min-w-0">
+  1559→                          <p className="font-medium text-xs">{entry.details}</p>
+  1560→                          <p className="text-[10px] text-muted-foreground">
+  1561→                            {formatDateTime(entry.createdAt)} | oleh {entry.performedBy}
+  1562→                          </p>
+  1563→                        </div>
+  1564→                        <Badge variant="outline" className="text-[10px] shrink-0">
+  1565→                          {entry.documentType === 'resume_medis' ? 'Resume' : 'Rujukan'}
+  1566→                        </Badge>
+  1567→                      </div>
+  1568→                    ))}
+  1569→                  </div>
+  1570→                );
+  1571→              })()}
+  1572→            </div>
+  1573→          </div>
+  1574→        </TabsContent>
+  1575→      </Tabs>
+  1576→
+  1577→      {/* ── Dialog: Referral Department Selection ── */}
+  1578→      <Dialog open={showReferralDeptDialog} onOpenChange={setShowReferralDeptDialog}>
+  1579→        <DialogContent className="max-w-md">
+  1580→          <DialogHeader>
+  1581→            <DialogTitle>Generate Surat Rujukan AI</DialogTitle>
+  1582→            <DialogDescription>
+  1583→              Pilih departemen tujuan rujukan untuk {patient.patientName || 'Pasien'}.
+  1584→            </DialogDescription>
+  1585→          </DialogHeader>
+  1586→          <div className="space-y-4">
+  1587→            <div>
+  1588→              <Label>Departemen Tujuan</Label>
+  1589→              <Select value={targetDept} onValueChange={(v) => setTargetDept(v as ReferralTargetDepartment)}>
+  1590→                <SelectTrigger>
+  1591→                  <SelectValue />
+  1592→                </SelectTrigger>
+  1593→                <SelectContent>
+  1594→                  <SelectItem value="penyakit_dalam">Penyakit Dalam</SelectItem>
+  1595→                  <SelectItem value="onkologi">Onkologi</SelectItem>
+  1596→                  <SelectItem value="neurologi">Neurologi</SelectItem>
+  1597→                  <SelectItem value="jantung">Jantung / Kardiologi</SelectItem>
+  1598→                  <SelectItem value="pulmonologi">Pulmonologi</SelectItem>
+  1599→                  <SelectItem value="geriatri">Geriatri</SelectItem>
+  1600→                  <SelectItem value="kedokteran_paliatif">Kedokteran Paliatif</SelectItem>
+  1601→                  <SelectItem value="rehabilitasi_medik">Rehabilitasi Medik</SelectItem>
+  1602→                  <SelectItem value="rumah_sakit_rujukan_lanjutan">RS Rujukan Lanjutan</SelectItem>
+  1603→                </SelectContent>
+  1604→              </Select>
+  1605→            </div>
+  1606→          </div>
+  1607→          <DialogFooter>
+  1608→            <Button variant="outline" onClick={() => setShowReferralDeptDialog(false)}>
+  1609→              Batal
+  1610→            </Button>
+  1611→            <Button onClick={handleGenerateReferral} disabled={referralLoading}>
+  1612→              {referralLoading ? (
+  1613→                <>
+  1614→                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+  1615→                  Generating...
+  1616→                </>
+  1617→              ) : (
+  1618→                <>
+  1619→                  <Sparkles className="w-4 h-4 mr-2" />
+  1620→                  Generate Surat Rujukan
+  1621→                </>
+  1622→              )}
+  1623→            </Button>
+  1624→          </DialogFooter>
+  1625→        </DialogContent>
+  1626→      </Dialog>
+  1627→
+  1628→      {/* ── Dialog: Send Document ── */}
+  1629→      <Dialog open={showSendDialog} onOpenChange={setShowSendDialog}>
+  1630→        <DialogContent className="max-w-md">
+  1631→          <DialogHeader>
+  1632→            <DialogTitle>Kirim Dokumen</DialogTitle>
+  1633→            <DialogDescription>
+  1634→              Pilih metode pengiriman {sendDocType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'}.
+  1635→            </DialogDescription>
+  1636→          </DialogHeader>
+  1637→
+  1638→          {/* Document Info */}
+  1639→          {(() => {
+  1640→            const doc = sendDocType === 'resume'
+  1641→              ? palliativeResumes.find((r) => r.id === sendDocId)
+  1642→              : palliativeReferralLetters.find((l) => l.id === sendDocId);
+  1643→            if (!doc) return null;
+  1644→            return (
+  1645→              <div className="p-3 bg-muted/50 rounded-lg text-sm space-y-1">
+  1646→                <div className="font-medium">{sendDocType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'}</div>
+  1647→                <div className="text-muted-foreground">No. {doc.documentNumber} | {formatDate(doc.generatedAt)}</div>
+  1648→                <div className="text-muted-foreground">Dokter: {doc.doctorName || '-'} | {doc.isSigned ? '✓ Ditandatangani' : 'Belum ditandatangani'}</div>
+  1649→              </div>
+  1650→            );
+  1651→          })()}
+  1652→
+  1653→          <div className="space-y-2">
+  1654→            {/* Chat Option */}
+  1655→            <Button
+  1656→              variant="outline"
+  1657→              className="w-full justify-start gap-3 h-auto py-3"
+  1658→              onClick={() => handleSendToChat(sendDocType, sendDocId)}
+  1659→            >
+  1660→              <div className="flex items-center gap-2">
+  1661→                <MessageCircle className="w-4 h-4 text-primary" />
+  1662→                <div className="text-left">
+  1663→                  <div className="font-medium">Kirim ke Chat</div>
+  1664→                  <div className="text-xs text-muted-foreground">Kirim notifikasi dokumen ke chat pasien {patient?.patientName || ''}</div>
+  1665→                </div>
+  1666→              </div>
+  1667→              {(() => {
+  1668→                const doc = sendDocType === 'resume'
+  1669→                  ? palliativeResumes.find((r) => r.id === sendDocId)
+  1670→                  : palliativeReferralLetters.find((l) => l.id === sendDocId);
+  1671→                return doc?.sentToChatAt ? <CheckCircle2 className="w-4 h-4 text-green-500 ml-auto" /> : null;
+  1672→              })()}
+  1673→            </Button>
+  1674→
+  1675→            {/* WhatsApp Option */}
+  1676→            <Button
+  1677→              variant="outline"
+  1678→              className="w-full justify-start gap-3 h-auto py-3"
+  1679→              onClick={() => handleSendToWhatsApp(sendDocType, sendDocId)}
+  1680→            >
+  1681→              <div className="flex items-center gap-2">
+  1682→                <MessageCircle className="w-4 h-4 text-green-600" />
+  1683→                <div className="text-left">
+  1684→                  <div className="font-medium">Kirim ke WhatsApp</div>
+  1685→                  <div className="text-xs text-muted-foreground">
+  1686→                    {patient?.familyContactPhone ? `Ke: ${patient.familyContactPhone} (${patient.familyContactRelation || 'Keluarga'})` : 'Nomor telepon keluarga belum tersedia'}
+  1687→                  </div>
+  1688→                </div>
+  1689→              </div>
+  1690→              {(() => {
+  1691→                const doc = sendDocType === 'resume'
+  1692→                  ? palliativeResumes.find((r) => r.id === sendDocId)
+  1693→                  : palliativeReferralLetters.find((l) => l.id === sendDocId);
+  1694→                return doc?.sentToWhatsAppAt ? <CheckCircle2 className="w-4 h-4 text-green-500 ml-auto" /> : null;
+  1695→              })()}
+  1696→            </Button>
+  1697→
+  1698→            {/* Email Option */}
+  1699→            <Button
+  1700→              variant="outline"
+  1701→              className="w-full justify-start gap-3 h-auto py-3"
+  1702→              onClick={() => handleSendToEmail(sendDocType, sendDocId)}
+  1703→            >
+  1704→              <div className="flex items-center gap-2">
+  1705→                <Mail className="w-4 h-4 text-blue-600" />
+  1706→                <div className="text-left">
+  1707→                  <div className="font-medium">Kirim via Email</div>
+  1708→                  <div className="text-xs text-muted-foreground">Buka klien email dengan subjek dan isi dokumen</div>
+  1709→                </div>
+  1710→              </div>
+  1711→              {(() => {
+  1712→                const doc = sendDocType === 'resume'
+  1713→                  ? palliativeResumes.find((r) => r.id === sendDocId)
+  1714→                  : palliativeReferralLetters.find((l) => l.id === sendDocId);
+  1715→                return doc?.sentToEmailAt ? <CheckCircle2 className="w-4 h-4 text-green-500 ml-auto" /> : null;
+  1716→              })()}
+  1717→            </Button>
+  1718→          </div>
+  1719→
+  1720→          <DialogFooter>
+  1721→            <Button variant="ghost" onClick={() => setShowSendDialog(false)}>Tutup</Button>
+  1722→          </DialogFooter>
+  1723→        </DialogContent>
+  1724→      </Dialog>
+  1725→
+  1726→      {/* ── Dialog: Sign Document ── */}
+  1727→      <Dialog open={showSignDialog} onOpenChange={setShowSignDialog}>
+  1728→        <DialogContent className="max-w-md">
+  1729→          <DialogHeader>
+  1730→            <DialogTitle>Tanda Tangan Elektronik</DialogTitle>
+  1731→            <DialogDescription>
+  1732→              Konfirmasi tanda tangan elektronik untuk {signDocType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'}.
+  1733→            </DialogDescription>
+  1734→          </DialogHeader>
+  1735→          <div className="space-y-4">
+  1736→            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+  1737→              Dengan menandatangani dokumen ini secara elektronik, Anda menyatakan bahwa informasi dalam dokumen ini benar dan dapat dipertanggungjawabkan.
+  1738→            </div>
+  1739→            <div>
+  1740→              <Label>Nomor SIP</Label>
+  1741→              <Input
+  1742→                value={doctorSip}
+  1743→                onChange={(e) => setDoctorSip(e.target.value)}
+  1744→                placeholder="Masukkan nomor SIP..."
+  1745→              />
+  1746→            </div>
+  1747→            <div className="text-sm text-muted-foreground">
+  1748→              <p>Dokter: {currentUser?.name || '-'}</p>
+  1749→              <p>Waktu: {formatDateTime(new Date().toISOString())}</p>
+  1750→            </div>
+  1751→          </div>
+  1752→          <DialogFooter>
+  1753→            <Button variant="outline" onClick={() => setShowSignDialog(false)}>
+  1754→              Batal
+  1755→            </Button>
+  1756→            <Button
+  1757→              onClick={() => handleSignDocument(signDocType, signDocId)}
+  1758→              disabled={!doctorSip}
+  1759→            >
+  1760→              <CheckCircle2 className="w-4 h-4 mr-2" />
+  1761→              Tanda Tangan
+  1762→            </Button>
+  1763→          </DialogFooter>
+  1764→        </DialogContent>
+  1765→      </Dialog>
+  1766→    </div>
+  1767→  );
+  1768→}
+  1769→

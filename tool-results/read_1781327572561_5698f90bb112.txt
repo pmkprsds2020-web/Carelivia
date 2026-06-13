@@ -1,0 +1,1201 @@
+     1→'use client';
+     2→
+     3→import { useState, useRef, useEffect } from 'react';
+     4→import { useStore } from '@/lib/store';
+     5→import type {
+     6→  PatientTransportRequest,
+     7→  PatientCareUpdate,
+     8→  PatientPaliatifChatMessage,
+     9→  PatientTransportRequestType,
+    10→  PatientConditionStatus,
+    11→} from '@/lib/types';
+    12→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    13→import { Badge } from '@/components/ui/badge';
+    14→import { Button } from '@/components/ui/button';
+    15→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    16→import { Input } from '@/components/ui/input';
+    17→import { Label } from '@/components/ui/label';
+    18→import { Textarea } from '@/components/ui/textarea';
+    19→import { ScrollArea } from '@/components/ui/scroll-area';
+    20→import { Separator } from '@/components/ui/separator';
+    21→import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+    22→import { Checkbox } from '@/components/ui/checkbox';
+    23→import {
+    24→  Select,
+    25→  SelectContent,
+    26→  SelectItem,
+    27→  SelectTrigger,
+    28→  SelectValue,
+    29→} from '@/components/ui/select';
+    30→import {
+    31→  HeartPulse,
+    32→  Users,
+    33→  BookOpen,
+    34→  ClipboardList,
+    35→  Phone,
+    36→  Car,
+    37→  MessageCircle,
+    38→  Calendar,
+    39→  Clock,
+    40→  MapPin,
+    41→  CheckCircle2,
+    42→  AlertCircle,
+    43→  ChevronRight,
+    44→  Send,
+    45→  FileText,
+    46→  Activity,
+    47→  Eye,
+    48→  Download,
+    49→  Video,
+    50→  PhoneCall,
+    51→  MessageSquare,
+    52→  Wifi,
+    53→  WifiOff,
+    54→  Stethoscope,
+    55→  UserCheck,
+    56→  Bell,
+    57→  Ambulance,
+    58→  Pill,
+    59→  Home,
+    60→  AlertTriangle,
+    61→} from 'lucide-react';
+    62→
+    63→// ── Helper Functions ──────────────────────────────────────────────────────
+    64→
+    65→function formatDate(dateStr: string): string {
+    66→  try {
+    67→    return new Date(dateStr).toLocaleDateString('id-ID', {
+    68→      day: 'numeric',
+    69→      month: 'long',
+    70→      year: 'numeric',
+    71→    });
+    72→  } catch {
+    73→    return dateStr;
+    74→  }
+    75→}
+    76→
+    77→function formatDateTime(dateStr: string): string {
+    78→  try {
+    79→    return new Date(dateStr).toLocaleDateString('id-ID', {
+    80→      day: 'numeric',
+    81→      month: 'long',
+    82→      year: 'numeric',
+    83→      hour: '2-digit',
+    84→      minute: '2-digit',
+    85→    });
+    86→  } catch {
+    87→    return dateStr;
+    88→  }
+    89→}
+    90→
+    91→function formatTime(dateStr: string): string {
+    92→  try {
+    93→    return new Date(dateStr).toLocaleTimeString('id-ID', {
+    94→      hour: '2-digit',
+    95→      minute: '2-digit',
+    96→    });
+    97→  } catch {
+    98→    return '';
+    99→  }
+   100→}
+   101→
+   102→function genId(prefix: string): string {
+   103→  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+   104→}
+   105→
+   106→const REQUEST_TYPE_LABELS: Record<PatientTransportRequestType, string> = {
+   107→  kontrol_faskes: 'Kontrol Faskes',
+   108→  kunjungan_rumah: 'Kunjungan Rumah',
+   109→  transportasi_darurat: 'Transportasi Darurat',
+   110→  pengambilan_obat: 'Pengambilan Obat',
+   111→  lainnya: 'Lainnya',
+   112→};
+   113→
+   114→const STATUS_BADGE_MAP: Record<string, { label: string; className: string }> = {
+   115→  menunggu_konfirmasi: { label: 'Menunggu Konfirmasi', className: 'bg-amber-100 text-amber-800 border-amber-200' },
+   116→  disetujui: { label: 'Disetujui', className: 'bg-teal-100 text-teal-800 border-teal-200' },
+   117→  dijadwalkan: { label: 'Dijadwalkan', className: 'bg-sky-100 text-sky-800 border-sky-200' },
+   118→  selesai: { label: 'Selesai', className: 'bg-green-100 text-green-800 border-green-200' },
+   119→  ditolak: { label: 'Ditolak', className: 'bg-red-100 text-red-800 border-red-200' },
+   120→};
+   121→
+   122→const MEETING_STATUS_BADGE: Record<string, { label: string; className: string }> = {
+   123→  dijadwalkan: { label: 'Dijadwalkan', className: 'bg-sky-100 text-sky-800 border-sky-200' },
+   124→  berlangsung: { label: 'Berlangsung', className: 'bg-teal-100 text-teal-800 border-teal-200' },
+   125→  selesai: { label: 'Selesai', className: 'bg-green-100 text-green-800 border-green-200' },
+   126→  dibatalkan: { label: 'Dibatalkan', className: 'bg-red-100 text-red-800 border-red-200' },
+   127→};
+   128→
+   129→const CONDITION_STATUS_LABELS: Record<PatientConditionStatus, { label: string; className: string }> = {
+   130→  membaik: { label: 'Membaik', className: 'bg-green-100 text-green-800 border-green-200' },
+   131→  stabil: { label: 'Stabil', className: 'bg-sky-100 text-sky-800 border-sky-200' },
+   132→  menurun: { label: 'Menurun', className: 'bg-amber-100 text-amber-800 border-amber-200' },
+   133→  keluhan_baru: { label: 'Keluhan Baru', className: 'bg-red-100 text-red-800 border-red-200' },
+   134→};
+   135→
+   136→const FORM_TYPE_LABELS: Record<string, string> = {
+   137→  form_ttv: 'Form TTV',
+   138→  form_keluhan: 'Form Keluhan',
+   139→  form_esas: 'Form ESAS-r',
+   140→  form_pps: 'Form PPS',
+   141→  form_distress: 'Form Distress',
+   142→  form_screening: 'Form Screening',
+   143→};
+   144→
+   145→const EDU_CATEGORY_LABELS: Record<string, string> = {
+   146→  perawatan_rumah: 'Perawatan Rumah',
+   147→  panduan_caregiver: 'Panduan Caregiver',
+   148→  video_edukasi: 'Video Edukasi',
+   149→  dukungan_psikososial: 'Dukungan Psikososial',
+   150→  gawat_darurat: 'Gawat Darurat',
+   151→  end_of_life: 'End of Life',
+   152→  faq: 'FAQ',
+   153→};
+   154→
+   155→// ── Main Component ────────────────────────────────────────────────────────
+   156→
+   157→export function PatientPaliatifPanel() {
+   158→  const {
+   159→    palliativePatients,
+   160→    currentUser,
+   161→    familyMeetings,
+   162→    eduMaterials,
+   163→    emergencyContacts,
+   164→    patientTransportRequests,
+   165→    addPatientTransportRequest,
+   166→    patientCareUpdates,
+   167→    addPatientCareUpdate,
+   168→    patientPaliatifMessages,
+   169→    addPatientPaliatifMessage,
+   170→  } = useStore();
+   171→
+   172→  // For demo, match current user (patient-1) to palliative patient pp-1
+   173→  const palliativePatient = palliativePatients.find(p => p.patientId === 'patient-1');
+   174→  const patientId = palliativePatient?.id || 'pp-1';
+   175→
+   176→  // Filter data for this patient
+   177→  const myTransportRequests = patientTransportRequests.filter(r => r.palliativePatientId === patientId);
+   178→  const myCareUpdates = patientCareUpdates.filter(u => u.palliativePatientId === patientId);
+   179→  const myMessages = patientPaliatifMessages.filter(m => m.roomId === `${patientId}_doc-sarah`);
+   180→  const myMeetings = familyMeetings.filter(m => m.palliativePatientId === patientId);
+   181→  const myEduMaterials = eduMaterials.filter(m => m.palliativePatientId === patientId);
+   182→  const myEmergencyContacts = emergencyContacts.filter(c => c.palliativePatientId === patientId);
+   183→
+   184→  const [activeTab, setActiveTab] = useState('dashboard');
+   185→
+   186→  return (
+   187→    <div className="p-4 md:p-6 space-y-4 max-w-5xl mx-auto">
+   188→      <Tabs value={activeTab} onValueChange={setActiveTab}>
+   189→        <TabsList className="flex flex-wrap h-auto gap-1 bg-muted/50 p-1">
+   190→          <TabsTrigger value="dashboard" className="text-xs sm:text-sm">
+   191→            <HeartPulse className="w-4 h-4 mr-1" /> Dashboard
+   192→          </TabsTrigger>
+   193→          <TabsTrigger value="meetings" className="text-xs sm:text-sm">
+   194→            <Users className="w-4 h-4 mr-1" /> Family Meeting
+   195→          </TabsTrigger>
+   196→          <TabsTrigger value="education" className="text-xs sm:text-sm">
+   197→            <BookOpen className="w-4 h-4 mr-1" /> Dukungan Keluarga
+   198→          </TabsTrigger>
+   199→          <TabsTrigger value="care" className="text-xs sm:text-sm">
+   200→            <ClipboardList className="w-4 h-4 mr-1" /> Koordinasi Perawatan
+   201→          </TabsTrigger>
+   202→          <TabsTrigger value="emergency" className="text-xs sm:text-sm">
+   203→            <Phone className="w-4 h-4 mr-1" /> Kontak Darurat
+   204→          </TabsTrigger>
+   205→          <TabsTrigger value="transport" className="text-xs sm:text-sm">
+   206→            <Car className="w-4 h-4 mr-1" /> Transportasi
+   207→          </TabsTrigger>
+   208→          <TabsTrigger value="chat" className="text-xs sm:text-sm">
+   209→            <MessageCircle className="w-4 h-4 mr-1" /> Chat Paliatif
+   210→          </TabsTrigger>
+   211→        </TabsList>
+   212→
+   213→        <TabsContent value="dashboard">
+   214→          <DashboardTab
+   215→            palliativePatient={palliativePatient}
+   216→            myTransportRequests={myTransportRequests}
+   217→            myCareUpdates={myCareUpdates}
+   218→            myMessages={myMessages}
+   219→            myMeetings={myMeetings}
+   220→            myEduMaterials={myEduMaterials}
+   221→            myEmergencyContacts={myEmergencyContacts}
+   222→            onNavigate={setActiveTab}
+   223→          />
+   224→        </TabsContent>
+   225→
+   226→        <TabsContent value="meetings">
+   227→          <FamilyMeetingTab meetings={myMeetings} />
+   228→        </TabsContent>
+   229→
+   230→        <TabsContent value="education">
+   231→          <EducationTab materials={myEduMaterials} />
+   232→        </TabsContent>
+   233→
+   234→        <TabsContent value="care">
+   235→          <CareCoordinationTab patientId={patientId} updates={myCareUpdates} onSubmit={addPatientCareUpdate} />
+   236→        </TabsContent>
+   237→
+   238→        <TabsContent value="emergency">
+   239→          <EmergencyContactTab contacts={myEmergencyContacts} />
+   240→        </TabsContent>
+   241→
+   242→        <TabsContent value="transport">
+   243→          <TransportTab patientId={patientId} requests={myTransportRequests} onSubmit={addPatientTransportRequest} />
+   244→        </TabsContent>
+   245→
+   246→        <TabsContent value="chat">
+   247→          <ChatTab patientId={patientId} messages={myMessages} onSend={addPatientPaliatifMessage} currentUser={currentUser} />
+   248→        </TabsContent>
+   249→      </Tabs>
+   250→    </div>
+   251→  );
+   252→}
+   253→
+   254→// ── Dashboard Tab ─────────────────────────────────────────────────────────
+   255→
+   256→function DashboardTab({
+   257→  palliativePatient,
+   258→  myTransportRequests,
+   259→  myCareUpdates,
+   260→  myMessages,
+   261→  myMeetings,
+   262→  myEduMaterials,
+   263→  myEmergencyContacts,
+   264→  onNavigate,
+   265→}: {
+   266→  palliativePatient: typeof useStore extends { getState: () => { palliativePatients: (infer T)[] } } ? T : never;
+   267→  myTransportRequests: PatientTransportRequest[];
+   268→  myCareUpdates: PatientCareUpdate[];
+   269→  myMessages: PatientPaliatifChatMessage[];
+   270→  myMeetings: { id: string; title: string; scheduledAt: string; status: string }[];
+   271→  myEduMaterials: { id: string }[];
+   272→  myEmergencyContacts: { id: string }[];
+   273→  onNavigate: (tab: string) => void;
+   274→}) {
+   275→  const pendingTransport = myTransportRequests.filter(r => r.status === 'menunggu_konfirmasi').length;
+   276→  const unreadMessages = myMessages.filter(m => m.senderRole !== 'patient' && m.status !== 'read').length;
+   277→  const upcomingMeetings = myMeetings.filter(m => m.status === 'dijadwalkan');
+   278→  const nextMeeting = upcomingMeetings.length > 0 ? upcomingMeetings[0] : null;
+   279→  const unviewedUpdates = myCareUpdates.filter(u => !u.viewedByDoctor).length;
+   280→
+   281→  return (
+   282→    <div className="space-y-4">
+   283→      {/* Patient Info Card */}
+   284→      <Card className="border-l-4 border-l-teal-500">
+   285→        <CardHeader className="pb-3">
+   286→          <CardTitle className="text-lg flex items-center gap-2">
+   287→            <HeartPulse className="w-5 h-5 text-teal-600" />
+   288→            Informasi Program Paliatif
+   289→          </CardTitle>
+   290→        </CardHeader>
+   291→        <CardContent>
+   292→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   293→            <div className="space-y-2">
+   294→              <div className="flex items-start gap-2">
+   295→                <Stethoscope className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+   296→                <div>
+   297→                  <p className="text-xs text-muted-foreground">Dokter Penanggung Jawab</p>
+   298→                  <p className="text-sm font-medium">{palliativePatient?.attendingDoctorName || 'Belum ditentukan'}</p>
+   299→                </div>
+   300→              </div>
+   301→              <div className="flex items-start gap-2">
+   302→                <Activity className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+   303→                <div>
+   304→                  <p className="text-xs text-muted-foreground">Status Program Paliatif</p>
+   305→                  <Badge className={palliativePatient?.patientStatus === 'aktif' ? 'bg-teal-100 text-teal-800 border-teal-200' : 'bg-gray-100 text-gray-800 border-gray-200'}>
+   306→                    {palliativePatient?.patientStatus === 'aktif' ? 'Aktif' : palliativePatient?.patientStatus || 'Tidak Diketahui'}
+   307→                  </Badge>
+   308→                </div>
+   309→              </div>
+   310→              <div className="flex items-start gap-2">
+   311→                <Home className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+   312→                <div>
+   313→                  <p className="text-xs text-muted-foreground">Status Perawatan</p>
+   314→                  <p className="text-sm font-medium capitalize">{(palliativePatient?.careStatus || '').replace(/_/g, ' ')}</p>
+   315→                </div>
+   316→              </div>
+   317→            </div>
+   318→            <div className="space-y-2">
+   319→              <div className="flex items-start gap-2">
+   320→                <AlertTriangle className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+   321→                <div>
+   322→                  <p className="text-xs text-muted-foreground">Tingkat Risiko</p>
+   323→                  <Badge className={
+   324→                    palliativePatient?.riskLevel === 'merah' ? 'bg-red-100 text-red-800 border-red-200' :
+   325→                    palliativePatient?.riskLevel === 'kuning' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+   326→                    'bg-green-100 text-green-800 border-green-200'
+   327→                  }>
+   328→                    {palliativePatient?.riskLevel === 'merah' ? 'Risiko Tinggi' :
+   329→                     palliativePatient?.riskLevel === 'kuning' ? 'Risiko Sedang' : 'Risiko Rendah'}
+   330→                  </Badge>
+   331→                </div>
+   332→              </div>
+   333→              <div className="flex items-start gap-2">
+   334→                <FileText className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+   335→                <div>
+   336→                  <p className="text-xs text-muted-foreground">Diagnosis Utama</p>
+   337→                  <p className="text-sm font-medium">{palliativePatient?.primaryDiagnosis || '-'}</p>
+   338→                </div>
+   339→              </div>
+   340→            </div>
+   341→          </div>
+   342→        </CardContent>
+   343→      </Card>
+   344→
+   345→      {/* Summary Cards */}
+   346→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   347→        <SummaryCard
+   348→          icon={<Calendar className="w-5 h-5" />}
+   349→          label="Jadwal Kontrol Berikutnya"
+   350→          value={myTransportRequests.find(r => r.status === 'disetujui' || r.status === 'dijadwalkan')
+   351→            ? formatDate(myTransportRequests.find(r => r.status === 'disetujui' || r.status === 'dijadwalkan')!.requestDate)
+   352→            : 'Belum ada'}
+   353→          onClick={() => onNavigate('transport')}
+   354→          color="teal"
+   355→        />
+   356→        <SummaryCard
+   357→          icon={<Users className="w-5 h-5" />}
+   358→          label="Family Meeting Terdekat"
+   359→          value={nextMeeting ? formatDate(nextMeeting.scheduledAt) : 'Belum ada'}
+   360→          onClick={() => onNavigate('meetings')}
+   361→          color="sky"
+   362→        />
+   363→        <SummaryCard
+   364→          icon={<BookOpen className="w-5 h-5" />}
+   365→          label="Materi Edukasi Baru"
+   366→          value={`${myEduMaterials.length} materi`}
+   367→          onClick={() => onNavigate('education')}
+   368→          color="amber"
+   369→        />
+   370→        <SummaryCard
+   371→          icon={<Ambulance className="w-5 h-5" />}
+   372→          label="Permintaan Transportasi"
+   373→          value={pendingTransport > 0 ? `${pendingTransport} menunggu` : 'Tidak ada'}
+   374→          onClick={() => onNavigate('transport')}
+   375→          color="red"
+   376→        />
+   377→      </div>
+   378→
+   379→      {/* Quick Notifications */}
+   380→      <Card>
+   381→        <CardHeader className="pb-3">
+   382→          <CardTitle className="text-base flex items-center gap-2">
+   383→            <Bell className="w-4 h-4 text-amber-500" /> Notifikasi Terbaru
+   384→          </CardTitle>
+   385→        </CardHeader>
+   386→        <CardContent>
+   387→          <div className="space-y-2">
+   388→            {unreadMessages > 0 && (
+   389→              <button
+   390→                onClick={() => onNavigate('chat')}
+   391→                className="w-full flex items-center gap-3 p-3 rounded-lg bg-teal-50 border border-teal-100 hover:bg-teal-100 transition-colors text-left"
+   392→              >
+   393→                <MessageCircle className="w-5 h-5 text-teal-600 shrink-0" />
+   394→                <div className="flex-1 min-w-0">
+   395→                  <p className="text-sm font-medium text-teal-800">{unreadMessages} pesan baru dari dokter</p>
+   396→                  <p className="text-xs text-teal-600">Klik untuk membuka chat</p>
+   397→                </div>
+   398→                <ChevronRight className="w-4 h-4 text-teal-400 shrink-0" />
+   399→              </button>
+   400→            )}
+   401→            {pendingTransport > 0 && (
+   402→              <button
+   403→                onClick={() => onNavigate('transport')}
+   404→                className="w-full flex items-center gap-3 p-3 rounded-lg bg-amber-50 border border-amber-100 hover:bg-amber-100 transition-colors text-left"
+   405→              >
+   406→                <Car className="w-5 h-5 text-amber-600 shrink-0" />
+   407→                <div className="flex-1 min-w-0">
+   408→                  <p className="text-sm font-medium text-amber-800">{pendingTransport} permintaan transportasi menunggu konfirmasi</p>
+   409→                  <p className="text-xs text-amber-600">Klik untuk melihat detail</p>
+   410→                </div>
+   411→                <ChevronRight className="w-4 h-4 text-amber-400 shrink-0" />
+   412→              </button>
+   413→            )}
+   414→            {unviewedUpdates > 0 && (
+   415→              <button
+   416→                onClick={() => onNavigate('care')}
+   417→                className="w-full flex items-center gap-3 p-3 rounded-lg bg-sky-50 border border-sky-100 hover:bg-sky-100 transition-colors text-left"
+   418→              >
+   419→                <ClipboardList className="w-5 h-5 text-sky-600 shrink-0" />
+   420→                <div className="flex-1 min-w-0">
+   421→                  <p className="text-sm font-medium text-sky-800">{unviewedUpdates} laporan kondisi belum dilihat dokter</p>
+   422→                  <p className="text-xs text-sky-600">Klik untuk melihat riwayat</p>
+   423→                </div>
+   424→                <ChevronRight className="w-4 h-4 text-sky-400 shrink-0" />
+   425→              </button>
+   426→            )}
+   427→            {unreadMessages === 0 && pendingTransport === 0 && unviewedUpdates === 0 && (
+   428→              <div className="text-center py-6">
+   429→                <CheckCircle2 className="w-8 h-8 text-green-500 mx-auto mb-2" />
+   430→                <p className="text-sm text-muted-foreground">Tidak ada notifikasi baru</p>
+   431→              </div>
+   432→            )}
+   433→          </div>
+   434→        </CardContent>
+   435→      </Card>
+   436→
+   437→      {/* Quick Action Buttons */}
+   438→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   439→        <button
+   440→          onClick={() => onNavigate('care')}
+   441→          className="flex flex-col items-center gap-2 p-4 rounded-xl bg-teal-50 border border-teal-100 hover:bg-teal-100 transition-colors"
+   442→        >
+   443→          <ClipboardList className="w-6 h-6 text-teal-600" />
+   444→          <span className="text-xs font-medium text-teal-800">Laporkan Kondisi</span>
+   445→        </button>
+   446→        <button
+   447→          onClick={() => onNavigate('transport')}
+   448→          className="flex flex-col items-center gap-2 p-4 rounded-xl bg-amber-50 border border-amber-100 hover:bg-amber-100 transition-colors"
+   449→        >
+   450→          <Car className="w-6 h-6 text-amber-600" />
+   451→          <span className="text-xs font-medium text-amber-800">Ajukan Transportasi</span>
+   452→        </button>
+   453→        <button
+   454→          onClick={() => onNavigate('chat')}
+   455→          className="flex flex-col items-center gap-2 p-4 rounded-xl bg-sky-50 border border-sky-100 hover:bg-sky-100 transition-colors"
+   456→        >
+   457→          <MessageCircle className="w-6 h-6 text-sky-600" />
+   458→          <span className="text-xs font-medium text-sky-800">Chat Paliatif</span>
+   459→        </button>
+   460→        <button
+   461→          onClick={() => onNavigate('emergency')}
+   462→          className="flex flex-col items-center gap-2 p-4 rounded-xl bg-red-50 border border-red-100 hover:bg-red-100 transition-colors"
+   463→        >
+   464→          <Phone className="w-6 h-6 text-red-600" />
+   465→          <span className="text-xs font-medium text-red-800">Kontak Darurat</span>
+   466→        </button>
+   467→      </div>
+   468→    </div>
+   469→  );
+   470→}
+   471→
+   472→function SummaryCard({
+   473→  icon,
+   474→  label,
+   475→  value,
+   476→  onClick,
+   477→  color,
+   478→}: {
+   479→  icon: React.ReactNode;
+   480→  label: string;
+   481→  value: string;
+   482→  onClick: () => void;
+   483→  color: 'teal' | 'sky' | 'amber' | 'red';
+   484→}) {
+   485→  const colorMap = {
+   486→    teal: 'border-l-teal-500 hover:bg-teal-50/50',
+   487→    sky: 'border-l-sky-500 hover:bg-sky-50/50',
+   488→    amber: 'border-l-amber-500 hover:bg-amber-50/50',
+   489→    red: 'border-l-red-500 hover:bg-red-50/50',
+   490→  };
+   491→  const iconColorMap = {
+   492→    teal: 'text-teal-600',
+   493→    sky: 'text-sky-600',
+   494→    amber: 'text-amber-600',
+   495→    red: 'text-red-600',
+   496→  };
+   497→
+   498→  return (
+   499→    <button
+   500→      onClick={onClick}
+   501→      className={`text-left p-4 rounded-lg border border-l-4 bg-card ${colorMap[color]} transition-colors`}
+   502→    >
+   503→      <div className={`${iconColorMap[color]} mb-2`}>{icon}</div>
+   504→      <p className="text-[10px] sm:text-xs text-muted-foreground leading-tight">{label}</p>
+   505→      <p className="text-xs sm:text-sm font-semibold mt-1 truncate">{value}</p>
+   506→    </button>
+   507→  );
+   508→}
+   509→
+   510→// ── Family Meeting Tab (Read-Only) ────────────────────────────────────────
+   511→
+   512→function FamilyMeetingTab({ meetings }: { meetings: { id: string; title: string; scheduledAt: string; status: string; duration?: number; participants?: { name: string; role: string; attended: boolean }[]; agenda?: string; discussionNotes?: string; resume?: string; followUpActions?: string[]; meetingUrl?: string }[] }) {
+   513→  if (meetings.length === 0) {
+   514→    return (
+   515→      <Card>
+   516→        <CardContent className="py-12 text-center">
+   517→          <Users className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+   518→          <p className="text-sm text-muted-foreground">Belum ada jadwal Family Meeting</p>
+   519→        </CardContent>
+   520→      </Card>
+   521→    );
+   522→  }
+   523→
+   524→  return (
+   525→    <div className="space-y-4">
+   526→      <div className="flex items-center gap-2 mb-2">
+   527→        <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200">Hanya Lihat</Badge>
+   528→        <p className="text-xs text-muted-foreground">Anda tidak dapat membuat atau mengubah jadwal Family Meeting</p>
+   529→      </div>
+   530→      {meetings.map((meeting) => {
+   531→        const statusBadge = MEETING_STATUS_BADGE[meeting.status] || { label: meeting.status, className: 'bg-gray-100 text-gray-800 border-gray-200' };
+   532→        return (
+   533→          <Card key={meeting.id}>
+   534→            <CardHeader className="pb-3">
+   535→              <div className="flex items-start justify-between gap-2">
+   536→                <CardTitle className="text-base">{meeting.title}</CardTitle>
+   537→                <Badge className={statusBadge.className}>{statusBadge.label}</Badge>
+   538→              </div>
+   539→            </CardHeader>
+   540→            <CardContent className="space-y-3">
+   541→              <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+   542→                <div className="flex items-center gap-1">
+   543→                  <Calendar className="w-4 h-4" />
+   544→                  {formatDate(meeting.scheduledAt)}
+   545→                </div>
+   546→                <div className="flex items-center gap-1">
+   547→                  <Clock className="w-4 h-4" />
+   548→                  {formatTime(meeting.scheduledAt)}
+   549→                  {meeting.duration && ` (${meeting.duration} menit)`}
+   550→                </div>
+   551→              </div>
+   552→              {meeting.agenda && (
+   553→                <div>
+   554→                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Agenda</p>
+   555→                  <p className="text-sm">{meeting.agenda}</p>
+   556→                </div>
+   557→              )}
+   558→              {meeting.participants && meeting.participants.length > 0 && (
+   559→                <div>
+   560→                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Peserta</p>
+   561→                  <div className="flex flex-wrap gap-2">
+   562→                    {meeting.participants.map((p, i) => (
+   563→                      <div key={i} className="flex items-center gap-1.5 text-xs bg-muted/50 px-2 py-1 rounded-md">
+   564→                        {p.attended ? <CheckCircle2 className="w-3 h-3 text-green-500" /> : <AlertCircle className="w-3 h-3 text-muted-foreground" />}
+   565→                        <span className="font-medium">{p.name}</span>
+   566→                        <span className="text-muted-foreground">({p.role})</span>
+   567→                      </div>
+   568→                    ))}
+   569→                  </div>
+   570→                </div>
+   571→              )}
+   572→              {meeting.meetingUrl && (meeting.status === 'dijadwalkan' || meeting.status === 'berlangsung') && (
+   573→                <a href={meeting.meetingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-teal-600 hover:text-teal-800">
+   574→                  <Video className="w-4 h-4" /> Gabung Meeting
+   575→                </a>
+   576→              )}
+   577→              {meeting.resume && (
+   578→                <div>
+   579→                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Resume Diskusi</p>
+   580→                  <p className="text-sm bg-muted/30 p-3 rounded-md">{meeting.resume}</p>
+   581→                </div>
+   582→              )}
+   583→              {meeting.followUpActions && meeting.followUpActions.length > 0 && (
+   584→                <div>
+   585→                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Tindak Lanjut</p>
+   586→                  <ul className="list-disc list-inside text-sm space-y-1">
+   587→                    {meeting.followUpActions.map((a, i) => <li key={i}>{a}</li>)}
+   588→                  </ul>
+   589→                </div>
+   590→              )}
+   591→            </CardContent>
+   592→          </Card>
+   593→        );
+   594→      })}
+   595→    </div>
+   596→  );
+   597→}
+   598→
+   599→// ── Education Tab (Read-Only) ─────────────────────────────────────────────
+   600→
+   601→function EducationTab({ materials }: { materials: { id: string; title: string; category?: string; type?: string; description?: string; fileUrl?: string }[] }) {
+   602→  if (materials.length === 0) {
+   603→    return (
+   604→      <Card>
+   605→        <CardContent className="py-12 text-center">
+   606→          <BookOpen className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+   607→          <p className="text-sm text-muted-foreground">Belum ada materi edukasi tersedia</p>
+   608→        </CardContent>
+   609→      </Card>
+   610→    );
+   611→  }
+   612→
+   613→  const getTypeIcon = (type?: string) => {
+   614→    switch (type) {
+   615→      case 'video': return <Video className="w-4 h-4 text-red-500" />;
+   616→      case 'pdf': case 'document': return <FileText className="w-4 h-4 text-blue-500" />;
+   617→      default: return <BookOpen className="w-4 h-4 text-teal-500" />;
+   618→    }
+   619→  };
+   620→
+   621→  return (
+   622→    <div className="space-y-4">
+   623→      <div className="flex items-center gap-2 mb-2">
+   624→        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Hanya Lihat</Badge>
+   625→        <p className="text-xs text-muted-foreground">Materi edukasi disediakan oleh tim paliatif</p>
+   626→      </div>
+   627→      <div className="grid gap-3">
+   628→        {materials.map((mat) => (
+   629→          <Card key={mat.id}>
+   630→            <CardContent className="p-4">
+   631→              <div className="flex items-start gap-3">
+   632→                <div className="w-10 h-10 rounded-lg bg-muted/50 flex items-center justify-center shrink-0">
+   633→                  {getTypeIcon(mat.type)}
+   634→                </div>
+   635→                <div className="flex-1 min-w-0">
+   636→                  <div className="flex items-start justify-between gap-2">
+   637→                    <div>
+   638→                      <p className="text-sm font-medium">{mat.title}</p>
+   639→                      {mat.category && (
+   640→                        <Badge variant="outline" className="mt-1 text-[10px]">
+   641→                          {EDU_CATEGORY_LABELS[mat.category] || mat.category}
+   642→                        </Badge>
+   643→                      )}
+   644→                    </div>
+   645→                    {mat.fileUrl && (
+   646→                      <Button variant="outline" size="sm" className="shrink-0 text-xs" asChild>
+   647→                        <a href={mat.fileUrl} target="_blank" rel="noopener noreferrer">
+   648→                          <Download className="w-3 h-3 mr-1" /> Unduh
+   649→                        </a>
+   650→                      </Button>
+   651→                    )}
+   652→                  </div>
+   653→                  {mat.description && (
+   654→                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{mat.description}</p>
+   655→                  )}
+   656→                </div>
+   657→              </div>
+   658→            </CardContent>
+   659→          </Card>
+   660→        ))}
+   661→      </div>
+   662→    </div>
+   663→  );
+   664→}
+   665→
+   666→// ── Care Coordination Tab ─────────────────────────────────────────────────
+   667→
+   668→function CareCoordinationTab({
+   669→  patientId,
+   670→  updates,
+   671→  onSubmit,
+   672→}: {
+   673→  patientId: string;
+   674→  updates: PatientCareUpdate[];
+   675→  onSubmit: (update: PatientCareUpdate) => void;
+   676→}) {
+   677→  const [conditionStatus, setConditionStatus] = useState<PatientConditionStatus>('stabil');
+   678→  const [newComplaints, setNewComplaints] = useState(false);
+   679→  const [activityChange, setActivityChange] = useState(false);
+   680→  const [appetiteChange, setAppetiteChange] = useState(false);
+   681→  const [sleepQualityChange, setSleepQualityChange] = useState(false);
+   682→  const [additionalNotes, setAdditionalNotes] = useState('');
+   683→  const [submitted, setSubmitted] = useState(false);
+   684→
+   685→  const handleSubmit = () => {
+   686→    const update: PatientCareUpdate = {
+   687→      id: genId('pcu'),
+   688→      palliativePatientId: patientId,
+   689→      conditionStatus,
+   690→      newComplaints,
+   691→      activityChange,
+   692→      appetiteChange,
+   693→      sleepQualityChange,
+   694→      additionalNotes: additionalNotes.trim() || undefined,
+   695→      submittedBy: 'Siti Rahayu',
+   696→      viewedByDoctor: false,
+   697→      createdAt: new Date().toISOString(),
+   698→    };
+   699→    onSubmit(update);
+   700→    setConditionStatus('stabil');
+   701→    setNewComplaints(false);
+   702→    setActivityChange(false);
+   703→    setAppetiteChange(false);
+   704→    setSleepQualityChange(false);
+   705→    setAdditionalNotes('');
+   706→    setSubmitted(true);
+   707→    setTimeout(() => setSubmitted(false), 3000);
+   708→  };
+   709→
+   710→  return (
+   711→    <div className="space-y-4">
+   712→      {/* Submit Form */}
+   713→      <Card>
+   714→        <CardHeader className="pb-3">
+   715→          <CardTitle className="text-base flex items-center gap-2">
+   716→            <ClipboardList className="w-5 h-5 text-teal-600" />
+   717→            Laporkan Kondisi Anda Hari Ini
+   718→          </CardTitle>
+   719→        </CardHeader>
+   720→        <CardContent className="space-y-4">
+   721→          {/* Condition Status */}
+   722→          <div>
+   723→            <Label className="text-sm font-medium mb-3 block">Status Kondisi</Label>
+   724→            <RadioGroup value={conditionStatus} onValueChange={(v) => setConditionStatus(v as PatientConditionStatus)} className="grid grid-cols-2 gap-2">
+   725→              {(['membaik', 'stabil', 'menurun', 'keluhan_baru'] as PatientConditionStatus[]).map((status) => (
+   726→                <div key={status} className="flex items-center space-x-2">
+   727→                  <RadioGroupItem value={status} id={`cond-${status}`} />
+   728→                  <Label htmlFor={`cond-${status}`} className="text-sm cursor-pointer flex items-center gap-1.5">
+   729→                    <Badge className={CONDITION_STATUS_LABELS[status].className}>
+   730→                      {CONDITION_STATUS_LABELS[status].label}
+   731→                    </Badge>
+   732→                  </Label>
+   733→                </div>
+   734→              ))}
+   735→            </RadioGroup>
+   736→          </div>
+   737→
+   738→          <Separator />
+   739→
+   740→          {/* Checklist */}
+   741→          <div className="space-y-3">
+   742→            <Label className="text-sm font-medium">Perubahan yang Dirasakan</Label>
+   743→            <div className="flex items-center space-x-2">
+   744→              <Checkbox id="new-complaints" checked={newComplaints} onCheckedChange={(v) => setNewComplaints(!!v)} />
+   745→              <Label htmlFor="new-complaints" className="text-sm cursor-pointer">Ada keluhan baru</Label>
+   746→            </div>
+   747→            <div className="flex items-center space-x-2">
+   748→              <Checkbox id="activity-change" checked={activityChange} onCheckedChange={(v) => setActivityChange(!!v)} />
+   749→              <Label htmlFor="activity-change" className="text-sm cursor-pointer">Perubahan aktivitas</Label>
+   750→            </div>
+   751→            <div className="flex items-center space-x-2">
+   752→              <Checkbox id="appetite-change" checked={appetiteChange} onCheckedChange={(v) => setAppetiteChange(!!v)} />
+   753→              <Label htmlFor="appetite-change" className="text-sm cursor-pointer">Perubahan nafsu makan</Label>
+   754→            </div>
+   755→            <div className="flex items-center space-x-2">
+   756→              <Checkbox id="sleep-change" checked={sleepQualityChange} onCheckedChange={(v) => setSleepQualityChange(!!v)} />
+   757→              <Label htmlFor="sleep-change" className="text-sm cursor-pointer">Perubahan kualitas tidur</Label>
+   758→            </div>
+   759→          </div>
+   760→
+   761→          <Separator />
+   762→
+   763→          {/* Notes */}
+   764→          <div>
+   765→            <Label htmlFor="additional-notes" className="text-sm font-medium">Catatan Tambahan</Label>
+   766→            <Textarea
+   767→              id="additional-notes"
+   768→              placeholder="Tuliskan catatan atau keluhan tambahan..."
+   769→              value={additionalNotes}
+   770→              onChange={(e) => setAdditionalNotes(e.target.value)}
+   771→              className="mt-1.5"
+   772→              rows={3}
+   773→            />
+   774→          </div>
+   775→
+   776→          <Button onClick={handleSubmit} className="w-full bg-teal-600 hover:bg-teal-700 text-white">
+   777→            {submitted ? (
+   778→              <>
+   779→                <CheckCircle2 className="w-4 h-4 mr-2" /> Laporan Terkirim
+   780→              </>
+   781→            ) : (
+   782→              <>
+   783→                <Send className="w-4 h-4 mr-2" /> Kirim Laporan Kondisi
+   784→              </>
+   785→            )}
+   786→          </Button>
+   787→        </CardContent>
+   788→      </Card>
+   789→
+   790→      {/* Update History */}
+   791→      <Card>
+   792→        <CardHeader className="pb-3">
+   793→          <CardTitle className="text-base">Riwayat Laporan Kondisi</CardTitle>
+   794→        </CardHeader>
+   795→        <CardContent>
+   796→          {updates.length === 0 ? (
+   797→            <p className="text-sm text-muted-foreground text-center py-6">Belum ada laporan kondisi</p>
+   798→          ) : (
+   799→            <ScrollArea className="max-h-96">
+   800→              <div className="space-y-3">
+   801→                {[...updates].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((update) => (
+   802→                  <div key={update.id} className="p-3 rounded-lg border bg-muted/20">
+   803→                    <div className="flex items-start justify-between gap-2">
+   804→                      <Badge className={CONDITION_STATUS_LABELS[update.conditionStatus].className}>
+   805→                        {CONDITION_STATUS_LABELS[update.conditionStatus].label}
+   806→                      </Badge>
+   807→                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+   808→                        {update.viewedByDoctor ? (
+   809→                          <><Eye className="w-3 h-3 text-green-500" /> Dilihat dokter</>
+   810→                        ) : (
+   811→                          <><Clock className="w-3 h-3 text-amber-500" /> Belum dilihat</>
+   812→                        )}
+   813→                      </div>
+   814→                    </div>
+   815→                    <div className="flex flex-wrap gap-2 mt-2">
+   816→                      {update.newComplaints && <Badge variant="outline" className="text-[10px] bg-red-50 text-red-700">Keluhan Baru</Badge>}
+   817→                      {update.activityChange && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700">Perubahan Aktivitas</Badge>}
+   818→                      {update.appetiteChange && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700">Perubahan Nafsu Makan</Badge>}
+   819→                      {update.sleepQualityChange && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700">Perubahan Tidur</Badge>}
+   820→                    </div>
+   821→                    {update.additionalNotes && (
+   822→                      <p className="text-xs text-muted-foreground mt-2">{update.additionalNotes}</p>
+   823→                    )}
+   824→                    <p className="text-[10px] text-muted-foreground mt-2">{formatDateTime(update.createdAt)}</p>
+   825→                  </div>
+   826→                ))}
+   827→              </div>
+   828→            </ScrollArea>
+   829→          )}
+   830→        </CardContent>
+   831→      </Card>
+   832→    </div>
+   833→  );
+   834→}
+   835→
+   836→// ── Emergency Contact Tab ─────────────────────────────────────────────────
+   837→
+   838→function EmergencyContactTab({ contacts }: { contacts: { id: string; name: string; role: string; phone: string; alternatePhone?: string; isAvailable?: boolean }[] }) {
+   839→  if (contacts.length === 0) {
+   840→    return (
+   841→      <Card>
+   842→        <CardContent className="py-12 text-center">
+   843→          <Phone className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+   844→          <p className="text-sm text-muted-foreground">Belum ada kontak darurat terdaftar</p>
+   845→        </CardContent>
+   846→      </Card>
+   847→    );
+   848→  }
+   849→
+   850→  return (
+   851→    <div className="space-y-3">
+   852→      <div className="flex items-center gap-2 mb-2">
+   853→        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">Hanya Lihat</Badge>
+   854→        <p className="text-xs text-muted-foreground">Kontak darurat dikelola oleh tim paliatif</p>
+   855→      </div>
+   856→      {contacts.map((contact) => (
+   857→        <Card key={contact.id} className="border-l-4 border-l-red-400">
+   858→          <CardContent className="p-4">
+   859→            <div className="flex items-start justify-between gap-3">
+   860→              <div className="flex-1 min-w-0">
+   861→                <div className="flex items-center gap-2 mb-1">
+   862→                  <p className="text-sm font-medium">{contact.name}</p>
+   863→                  <Badge variant="outline" className="text-[10px]">{contact.role}</Badge>
+   864→                  {contact.isAvailable !== undefined && (
+   865→                    <Badge className={contact.isAvailable ? 'bg-green-100 text-green-800 border-green-200' : 'bg-gray-100 text-gray-600 border-gray-200'}>
+   866→                      {contact.isAvailable ? 'Tersedia' : 'Tidak Tersedia'}
+   867→                    </Badge>
+   868→                  )}
+   869→                </div>
+   870→                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+   871→                  <Phone className="w-3.5 h-3.5" /> {contact.phone}
+   872→                </div>
+   873→                {contact.alternatePhone && (
+   874→                  <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
+   875→                    <Phone className="w-3.5 h-3.5" /> {contact.alternatePhone} (alternatif)
+   876→                  </div>
+   877→                )}
+   878→              </div>
+   879→              <div className="flex gap-2 shrink-0">
+   880→                <Button variant="outline" size="sm" className="text-xs" asChild>
+   881→                  <a href={`tel:${contact.phone}`}>
+   882→                    <PhoneCall className="w-3 h-3 mr-1" /> Hubungi
+   883→                  </a>
+   884→                </Button>
+   885→                <Button variant="outline" size="sm" className="text-xs" asChild>
+   886→                  <a href={`sms:${contact.phone}`}>
+   887→                    <MessageSquare className="w-3 h-3 mr-1" /> Pesan
+   888→                  </a>
+   889→                </Button>
+   890→              </div>
+   891→            </div>
+   892→          </CardContent>
+   893→        </Card>
+   894→      ))}
+   895→    </div>
+   896→  );
+   897→}
+   898→
+   899→// ── Transport Tab ─────────────────────────────────────────────────────────
+   900→
+   901→function TransportTab({
+   902→  patientId,
+   903→  requests,
+   904→  onSubmit,
+   905→}: {
+   906→  patientId: string;
+   907→  requests: PatientTransportRequest[];
+   908→  onSubmit: (request: PatientTransportRequest) => void;
+   909→}) {
+   910→  const [requestType, setRequestType] = useState<PatientTransportRequestType>('kontrol_faskes');
+   911→  const [requestDate, setRequestDate] = useState('');
+   912→  const [requestTime, setRequestTime] = useState('');
+   913→  const [pickupLocation, setPickupLocation] = useState('');
+   914→  const [destination, setDestination] = useState('');
+   915→  const [notes, setNotes] = useState('');
+   916→  const [submitted, setSubmitted] = useState(false);
+   917→
+   918→  const handleSubmit = () => {
+   919→    if (!requestDate || !requestTime || !pickupLocation || !destination) return;
+   920→    const request: PatientTransportRequest = {
+   921→      id: genId('ptr'),
+   922→      palliativePatientId: patientId,
+   923→      requestType,
+   924→      requestDate,
+   925→      requestTime,
+   926→      pickupLocation,
+   927→      destination,
+   928→      notes: notes.trim() || undefined,
+   929→      status: 'menunggu_konfirmasi',
+   930→      requestedBy: 'Siti Rahayu',
+   931→      createdAt: new Date().toISOString(),
+   932→      updatedAt: new Date().toISOString(),
+   933→    };
+   934→    onSubmit(request);
+   935→    setRequestType('kontrol_faskes');
+   936→    setRequestDate('');
+   937→    setRequestTime('');
+   938→    setPickupLocation('');
+   939→    setDestination('');
+   940→    setNotes('');
+   941→    setSubmitted(true);
+   942→    setTimeout(() => setSubmitted(false), 3000);
+   943→  };
+   944→
+   945→  const isValid = requestDate && requestTime && pickupLocation && destination;
+   946→
+   947→  return (
+   948→    <div className="space-y-4">
+   949→      {/* Request Form */}
+   950→      <Card>
+   951→        <CardHeader className="pb-3">
+   952→          <CardTitle className="text-base flex items-center gap-2">
+   953→            <Car className="w-5 h-5 text-amber-600" />
+   954→            Ajukan Permintaan Transportasi
+   955→          </CardTitle>
+   956→        </CardHeader>
+   957→        <CardContent className="space-y-4">
+   958→          <div>
+   959→            <Label className="text-sm font-medium mb-1.5 block">Jenis Permintaan</Label>
+   960→            <Select value={requestType} onValueChange={(v) => setRequestType(v as PatientTransportRequestType)}>
+   961→              <SelectTrigger><SelectValue /></SelectTrigger>
+   962→              <SelectContent>
+   963→                <SelectItem value="kontrol_faskes">Kontrol Faskes</SelectItem>
+   964→                <SelectItem value="kunjungan_rumah">Kunjungan Rumah</SelectItem>
+   965→                <SelectItem value="transportasi_darurat">Transportasi Darurat</SelectItem>
+   966→                <SelectItem value="pengambilan_obat">Pengambilan Obat</SelectItem>
+   967→                <SelectItem value="lainnya">Lainnya</SelectItem>
+   968→              </SelectContent>
+   969→            </Select>
+   970→          </div>
+   971→
+   972→          <div className="grid grid-cols-2 gap-3">
+   973→            <div>
+   974→              <Label htmlFor="tr-date" className="text-sm font-medium mb-1.5 block">Tanggal</Label>
+   975→              <Input id="tr-date" type="date" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} />
+   976→            </div>
+   977→            <div>
+   978→              <Label htmlFor="tr-time" className="text-sm font-medium mb-1.5 block">Waktu</Label>
+   979→              <Input id="tr-time" type="time" value={requestTime} onChange={(e) => setRequestTime(e.target.value)} />
+   980→            </div>
+   981→          </div>
+   982→
+   983→          <div>
+   984→            <Label htmlFor="tr-pickup" className="text-sm font-medium mb-1.5 block">Lokasi Jemput</Label>
+   985→            <Input id="tr-pickup" placeholder="Alamat lokasi jemput" value={pickupLocation} onChange={(e) => setPickupLocation(e.target.value)} />
+   986→          </div>
+   987→
+   988→          <div>
+   989→            <Label htmlFor="tr-dest" className="text-sm font-medium mb-1.5 block">Tujuan</Label>
+   990→            <Input id="tr-dest" placeholder="Alamat tujuan" value={destination} onChange={(e) => setDestination(e.target.value)} />
+   991→          </div>
+   992→
+   993→          <div>
+   994→            <Label htmlFor="tr-notes" className="text-sm font-medium mb-1.5 block">Catatan Tambahan</Label>
+   995→            <Textarea id="tr-notes" placeholder="Catatan tambahan (opsional)" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+   996→          </div>
+   997→
+   998→          <Button onClick={handleSubmit} disabled={!isValid} className="w-full bg-amber-600 hover:bg-amber-700 text-white">
+   999→            {submitted ? (
+  1000→              <><CheckCircle2 className="w-4 h-4 mr-2" /> Permintaan Terkirim</>
+  1001→            ) : (
+  1002→              <><Send className="w-4 h-4 mr-2" /> Kirim Permintaan Transportasi</>
+  1003→            )}
+  1004→          </Button>
+  1005→        </CardContent>
+  1006→      </Card>
+  1007→
+  1008→      {/* Request History */}
+  1009→      <Card>
+  1010→        <CardHeader className="pb-3">
+  1011→          <CardTitle className="text-base">Riwayat Permintaan Transportasi</CardTitle>
+  1012→        </CardHeader>
+  1013→        <CardContent>
+  1014→          {requests.length === 0 ? (
+  1015→            <p className="text-sm text-muted-foreground text-center py-6">Belum ada permintaan transportasi</p>
+  1016→          ) : (
+  1017→            <ScrollArea className="max-h-96">
+  1018→              <div className="space-y-3">
+  1019→                {[...requests].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((req) => {
+  1020→                  const statusInfo = STATUS_BADGE_MAP[req.status] || { label: req.status, className: 'bg-gray-100 text-gray-800 border-gray-200' };
+  1021→                  return (
+  1022→                    <div key={req.id} className="p-3 rounded-lg border">
+  1023→                      <div className="flex items-start justify-between gap-2">
+  1024→                        <div>
+  1025→                          <p className="text-sm font-medium">{REQUEST_TYPE_LABELS[req.requestType]}</p>
+  1026→                          <p className="text-xs text-muted-foreground mt-0.5">{formatDate(req.requestDate)} | {req.requestTime}</p>
+  1027→                        </div>
+  1028→                        <Badge className={statusInfo.className}>{statusInfo.label}</Badge>
+  1029→                      </div>
+  1030→                      <div className="flex flex-col gap-1 mt-2 text-xs text-muted-foreground">
+  1031→                        <div className="flex items-center gap-1">
+  1032→                          <MapPin className="w-3 h-3 shrink-0" />
+  1033→                          <span>{req.pickupLocation}</span>
+  1034→                        </div>
+  1035→                        <div className="flex items-center gap-1">
+  1036→                          <ChevronRight className="w-3 h-3 shrink-0" />
+  1037→                          <span>{req.destination}</span>
+  1038→                        </div>
+  1039→                      </div>
+  1040→                      {req.notes && <p className="text-xs text-muted-foreground mt-1 italic">{req.notes}</p>}
+  1041→                      {req.confirmedBy && (
+  1042→                        <p className="text-[10px] text-muted-foreground mt-1">
+  1043→                          Dikonfirmasi oleh {req.confirmedBy} - {req.confirmedAt ? formatDateTime(req.confirmedAt) : ''}
+  1044→                        </p>
+  1045→                      )}
+  1046→                      {req.rejectionReason && (
+  1047→                        <p className="text-xs text-red-600 mt-1">Alasan penolakan: {req.rejectionReason}</p>
+  1048→                      )}
+  1049→                    </div>
+  1050→                  );
+  1051→                })}
+  1052→              </div>
+  1053→            </ScrollArea>
+  1054→          )}
+  1055→        </CardContent>
+  1056→      </Card>
+  1057→    </div>
+  1058→  );
+  1059→}
+  1060→
+  1061→// ── Chat Paliatif Tab ─────────────────────────────────────────────────────
+  1062→
+  1063→function ChatTab({
+  1064→  patientId,
+  1065→  messages,
+  1066→  onSend,
+  1067→  currentUser,
+  1068→}: {
+  1069→  patientId: string;
+  1070→  messages: PatientPaliatifChatMessage[];
+  1071→  onSend: (message: PatientPaliatifChatMessage) => void;
+  1072→  currentUser: { id: string; name: string } | null;
+  1073→}) {
+  1074→  const [inputMessage, setInputMessage] = useState('');
+  1075→  const scrollRef = useRef<HTMLDivElement>(null);
+  1076→  const [doctorOnline] = useState(true);
+  1077→
+  1078→  useEffect(() => {
+  1079→    if (scrollRef.current) {
+  1080→      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  1081→    }
+  1082→  }, [messages]);
+  1083→
+  1084→  const handleSend = () => {
+  1085→    if (!inputMessage.trim()) return;
+  1086→    const message: PatientPaliatifChatMessage = {
+  1087→      id: genId('ppm'),
+  1088→      roomId: `${patientId}_doc-sarah`,
+  1089→      senderId: currentUser?.id || 'patient-1',
+  1090→      senderName: currentUser?.name || 'Siti Rahayu',
+  1091→      senderRole: 'patient',
+  1092→      content: inputMessage.trim(),
+  1093→      type: 'text',
+  1094→      status: 'sent',
+  1095→      createdAt: new Date().toISOString(),
+  1096→    };
+  1097→    onSend(message);
+  1098→    setInputMessage('');
+  1099→  };
+  1100→
+  1101→  const getStatusIcon = (status: string) => {
+  1102→    switch (status) {
+  1103→      case 'sent': return <CheckCircle2 className="w-3 h-3 text-muted-foreground" />;
+  1104→      case 'delivered': return <CheckCircle2 className="w-3 h-3 text-sky-500" />;
+  1105→      case 'read': return <CheckCircle2 className="w-3 h-3 text-teal-500" />;
+  1106→      default: return null;
+  1107→    }
+  1108→  };
+  1109→
+  1110→  return (
+  1111→    <Card className="flex flex-col" style={{ height: 'calc(100vh - 220px)', minHeight: '400px' }}>
+  1112→      {/* Chat Header */}
+  1113→      <div className="p-3 border-b flex items-center gap-3">
+  1114→        <div className="w-9 h-9 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
+  1115→          <Stethoscope className="w-5 h-5 text-teal-600" />
+  1116→        </div>
+  1117→        <div className="flex-1 min-w-0">
+  1118→          <p className="text-sm font-medium">dr. Sarah Wijaya</p>
+  1119→          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+  1120→            {doctorOnline ? (
+  1121→              <>
+  1122→                <Wifi className="w-3 h-3 text-green-500" />
+  1123→                <span className="text-green-600">Online</span>
+  1124→              </>
+  1125→            ) : (
+  1126→              <>
+  1127→                <WifiOff className="w-3 h-3" />
+  1128→                <span>Offline</span>
+  1129→              </>
+  1130→            )}
+  1131→          </div>
+  1132→        </div>
+  1133→        <Badge variant="outline" className="text-[10px] bg-teal-50 text-teal-700 border-teal-200">Tim Paliatif</Badge>
+  1134→      </div>
+  1135→
+  1136→      {/* Messages */}
+  1137→      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+  1138→        {messages.length === 0 && (
+  1139→          <div className="text-center py-8">
+  1140→            <MessageCircle className="w-10 h-10 text-muted-foreground/20 mx-auto mb-2" />
+  1141→            <p className="text-sm text-muted-foreground">Mulai percakapan dengan tim paliatif</p>
+  1142→          </div>
+  1143→        )}
+  1144→        {messages.map((msg) => {
+  1145→          const isPatient = msg.senderRole === 'patient';
+  1146→          const isForm = msg.type !== 'text' && msg.type !== 'system';
+  1147→
+  1148→          return (
+  1149→            <div key={msg.id} className={`flex ${isPatient ? 'justify-end' : 'justify-start'}`}>
+  1150→              <div className={`max-w-[80%] ${isPatient ? 'order-2' : 'order-1'}`}>
+  1151→                {!isPatient && (
+  1152→                  <p className="text-[10px] font-medium text-muted-foreground mb-1 ml-1">{msg.senderName}</p>
+  1153→                )}
+  1154→                <div className={`rounded-xl px-3 py-2 ${
+  1155→                  isPatient
+  1156→                    ? 'bg-teal-600 text-white rounded-br-sm'
+  1157→                    : isForm
+  1158→                    ? 'bg-amber-50 border border-amber-200 text-amber-900 rounded-bl-sm'
+  1159→                    : 'bg-muted rounded-bl-sm'
+  1160→                }`}>
+  1161→                  {isForm ? (
+  1162→                    <div className="flex items-center gap-2">
+  1163→                      <FileText className="w-4 h-4 text-amber-600 shrink-0" />
+  1164→                      <div>
+  1165→                        <p className="text-xs font-medium">{FORM_TYPE_LABELS[msg.type] || msg.type}</p>
+  1166→                        <p className="text-[10px] mt-0.5 opacity-80">{msg.content}</p>
+  1167→                      </div>
+  1168→                    </div>
+  1169→                  ) : (
+  1170→                    <p className="text-sm">{msg.content}</p>
+  1171→                  )}
+  1172→                </div>
+  1173→                <div className={`flex items-center gap-1 mt-1 ${isPatient ? 'justify-end' : 'justify-start'} px-1`}>
+  1174→                  <span className="text-[10px] text-muted-foreground">{formatTime(msg.createdAt)}</span>
+  1175→                  {isPatient && getStatusIcon(msg.status)}
+  1176→                </div>
+  1177→              </div>
+  1178→            </div>
+  1179→          );
+  1180→        })}
+  1181→      </div>
+  1182→
+  1183→      {/* Input */}
+  1184→      <div className="p-3 border-t">
+  1185→        <div className="flex gap-2">
+  1186→          <Input
+  1187→            placeholder="Ketik pesan..."
+  1188→            value={inputMessage}
+  1189→            onChange={(e) => setInputMessage(e.target.value)}
+  1190→            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+  1191→            className="flex-1"
+  1192→          />
+  1193→          <Button onClick={handleSend} disabled={!inputMessage.trim()} size="icon" className="bg-teal-600 hover:bg-teal-700 text-white shrink-0">
+  1194→            <Send className="w-4 h-4" />
+  1195→          </Button>
+  1196→        </div>
+  1197→      </div>
+  1198→    </Card>
+  1199→  );
+  1200→}
+  1201→
