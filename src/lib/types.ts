@@ -432,8 +432,7 @@ export type ActivePanel =
   | 'palliative-screening'
   | 'palliative-monitoring'
   | 'rvsm'
-  | 'patient-paliatif'
-  | 'social-needs-screening';
+  | 'patient-paliatif';
 
 // ── Palliative Monitoring Types ──────────────────────────────────────────
 
@@ -669,6 +668,56 @@ export interface KeluhanFormAnswers {
   catatanTambahan?: string;
 }
 
+// ── Daily Complaint Form (Form Keluhan Harian) ──
+
+export type DailyCondition = 'baik' | 'tidak_baik';
+export type DailyComplaintYesNo = 'tidak_ada' | 'ada';
+export type DailyPainCondition = 'tidak_nyeri' | 'berkurang' | 'sama' | 'bertambah';
+export type DailyDyspneaCondition = 'tidak_sesak' | 'berkurang' | 'sama' | 'bertambah';
+export type DailyYesNo = 'ya' | 'tidak';
+export type DailyMedicineProblem = 'tidak' | 'ya';
+export type DailyComplaintSeverity = 'hijau' | 'kuning' | 'merah';
+export type DailyComplaintSource = 'monitoring' | 'chat';
+
+export interface DailyComplaintRecord {
+  id: string;
+  palliativePatientId: string;
+  patientName?: string;
+  kondisiHariIni: DailyCondition;
+  alasanKondisi?: string;
+  keluhanBaru: DailyComplaintYesNo;
+  deskripsiKeluhanBaru?: string;
+  kondisiNyeri: DailyPainCondition;
+  kondisiSesak: DailyDyspneaCondition;
+  makanMinum: DailyYesNo;
+  alasanMakanMinum?: string;
+  tidur: DailyYesNo;
+  alasanTidur?: string;
+  masalahObat: DailyMedicineProblem;
+  deskripsiMasalahObat?: string;
+  severityLevel: DailyComplaintSeverity;
+  sumberPengisian: DailyComplaintSource;
+  submittedAt: string;
+  createdAt: string;
+}
+
+export interface DailyComplaintFormInput {
+  palliativePatientId: string;
+  kondisiHariIni: DailyCondition;
+  alasanKondisi?: string;
+  keluhanBaru: DailyComplaintYesNo;
+  deskripsiKeluhanBaru?: string;
+  kondisiNyeri: DailyPainCondition;
+  kondisiSesak: DailyDyspneaCondition;
+  makanMinum: DailyYesNo;
+  alasanMakanMinum?: string;
+  tidur: DailyYesNo;
+  alasanTidur?: string;
+  masalahObat: DailyMedicineProblem;
+  deskripsiMasalahObat?: string;
+  sumberPengisian?: DailyComplaintSource;
+}
+
 export interface PalliativeFormResponse {
   formId: string;
   formType: PalliativeFormType;
@@ -683,6 +732,7 @@ export interface PalliativeFormResponse {
     ewsLevel: PalliativeEwsLevel;
   };
   medicationMonitoringAnswers?: MedicationMonitoringFormAnswers;
+  dailyComplaint?: DailyComplaintRecord;
   submittedAt: string;
 }
 
@@ -1138,6 +1188,87 @@ export type ReferralTargetDepartment =
 
 export type ReferralStatus = 'belum_dirujuk' | 'menunggu' | 'sudah_dirujuk' | 'selesai';
 
+export interface PalliativeResumeDataPasien {
+  nama: string | null;
+  tanggalLahir: string | null;
+  umur?: string | null;
+  jenisKelamin: string | null;
+  nik: string | null;
+  noRM: string | null;
+  noBPJS: string | null;
+  alamat: string | null;
+  noTelepon?: string | null;
+  diagnosaUtama: string | null;
+  diagnosaPenyerta: string | null;
+  stadiumPenyakit: string | null;
+  dpjp: string | null;
+  dpjpSpesialisasi: string | null;
+  dpjpSIP: string | null;
+  statusPerawatan: string;
+  statusPasien: string;
+  tingkatRisiko: string;
+  tanggalRegistrasi?: string | null;
+  kontakKeluarga: {
+    nama: string | null;
+    hubungan: string | null;
+    telepon: string | null;
+  };
+}
+
+export interface PalliativeResumeTTVRecord {
+  tanggal: string;
+  sistolik: number | null;
+  diastolik: number | null;
+  nadi: number | null;
+  rr: number | null;
+  suhu: number | null;
+  spo2: number | null;
+  berat: number | null;
+  tinggi: number | null;
+  bmi: number | null;
+  catatan: string | null;
+  alasanKritis?: string[];
+}
+
+export interface PalliativeResumeKeluhan {
+  keluhanAwal: Record<string, unknown> | null;
+  keluhanTerberat: Record<string, unknown> | null;
+  keluhanTerakhir: Record<string, unknown> | null;
+  analisis: string;
+}
+
+export interface PalliativeResumeAIAnalysis {
+  ringkasanPerjalananKlinis: string;
+  identifikasiKondisiKritis: string;
+  analisisTrenPasien: string;
+  ringkasanSkrining: {
+    domainFisik: string;
+    domainPsikologis: string;
+    domainSosial: string;
+    domainSpiritual: string;
+    kebutuhanEdukasi: string;
+    bebanCaregiver: string;
+  };
+  ringkasanNutrisi: string;
+  ringkasanSosial: string;
+  ringkasanACP: string;
+  kesimpulanTelepaliatif: {
+    diagnosisUtama: string;
+    statusFungsionalAwal: string;
+    statusFungsionalTerakhir: string;
+    masalahPaliatifUtama: string;
+    keluhanDominan: string;
+    kondisiPalingKritis: string;
+    responsTerhadapIntervensi: string;
+    kondisiKlinisSaatIni: string;
+    tujuanPerawatanSaatIni: string;
+    rencanaTindakLanjut: string;
+    lokasiPerawatanSaatIni: string;
+    jadwalMonitoringBerikutnya: string;
+  };
+  rekomendasi: string[];
+}
+
 export interface PalliativeResumeMedis {
   id: string;
   palliativePatientId: string;
@@ -1149,13 +1280,32 @@ export interface PalliativeResumeMedis {
   generatedByRole: 'doctor' | 'admin';
   doctorSip?: string;
   doctorName?: string;
-  // AI-generated content sections
-  ringkasanKondisi: string;
-  ringkasanPemeriksaan: string;
-  ringkasanTerapi: string;
-  ringkasanACP: string;
-  kesimpulanKlinis: string;
-  rekomendasiAI: string[];
+  // Comprehensive structured data
+  dataPasien?: PalliativeResumeDataPasien;
+  ttvSerial?: {
+    ttvAwal: PalliativeResumeTTVRecord | null;
+    ttvKritis: PalliativeResumeTTVRecord | null;
+    ttvTerakhir: PalliativeResumeTTVRecord | null;
+  };
+  keluhanHarian?: PalliativeResumeKeluhan;
+  skriningPaliatif?: Record<string, unknown>;
+  esasScores?: {
+    skorAwal: Record<string, unknown> | null;
+    skorTertinggi: Record<string, unknown> | null;
+    skorTerakhir: Record<string, unknown> | null;
+  };
+  obat?: Record<string, unknown>;
+  nutrisi?: Record<string, unknown>;
+  sosial?: Record<string, unknown>;
+  acp?: Record<string, unknown>;
+  aiAnalysis?: PalliativeResumeAIAnalysis;
+  // Legacy fields (for backward compatibility)
+  ringkasanKondisi?: string;
+  ringkasanPemeriksaan?: string;
+  ringkasanTerapi?: string;
+  ringkasanACP?: string;
+  kesimpulanKlinis?: string;
+  rekomendasiAI?: string[];
   // Full content as markdown
   fullContent: string;
   // Version tracking
@@ -1601,203 +1751,4 @@ export interface PatientPaliatifChatMessage {
   documentUrl?: string;
   createdAt: string;
   readAt?: string;
-}
-
-// ── Social Needs Screening Types ──────────────────────────────────────────
-
-export type SocialNeedsCategory =
-  | 'dukungan_keluarga'
-  | 'caregiver'
-  | 'tempat_tinggal'
-  | 'akses_layanan'
-  | 'ekonomi'
-  | 'transportasi'
-  | 'interaksi_sosial'
-  | 'kebutuhan_informasi'
-  | 'pertanyaan_terbuka';
-
-export type SocialNeedsQuestionType = 'single_choice' | 'multiple_choice' | 'text_area';
-
-export type SocialNeedsRiskLevel = 'rendah' | 'sedang' | 'tinggi' | 'sangat_tinggi';
-
-export interface SocialNeedsQuestionOption {
-  label: string;
-  value: string;
-  score: number; // 0-3 risk weight
-  tooltip?: string;
-}
-
-export interface SocialNeedsQuestion {
-  id: string;
-  category: SocialNeedsCategory;
-  categoryLabel: string;
-  questionNumber: number;
-  questionText: string;
-  type: SocialNeedsQuestionType;
-  options?: SocialNeedsQuestionOption[];
-  required: boolean;
-  hasTooltip?: boolean;
-}
-
-export interface SocialNeedsCategoryScore {
-  category: SocialNeedsCategory;
-  categoryLabel: string;
-  totalScore: number;
-  maxScore: number;
-  percentage: number;
-  riskLevel: SocialNeedsRiskLevel;
-}
-
-export interface SocialNeedsScreeningResult {
-  totalScore: number;
-  maxScore: number;
-  overallPercentage: number;
-  overallRiskLevel: SocialNeedsRiskLevel;
-  categoryScores: SocialNeedsCategoryScore[];
-  completedAt: string;
-}
-
-export interface SocialNeedsAIResult {
-  familySupportScore: SocialNeedsRiskLevel;
-  socialRiskScore: SocialNeedsRiskLevel;
-  caregiverBurnoutScore: SocialNeedsRiskLevel;
-  accessToCareScore: SocialNeedsRiskLevel;
-  financialRiskScore: SocialNeedsRiskLevel;
-  socialIsolationScore: SocialNeedsRiskLevel;
-  recommendations: SocialNeedsAIRecommendation[];
-  analysisSummary: string;
-  earlyWarnings: SocialNeedsEarlyWarning[];
-  generatedAt: string;
-}
-
-export interface SocialNeedsAIRecommendation {
-  priority: number;
-  action: string;
-  reason: string;
-  category: 'edukasi_keluarga' | 'family_meeting' | 'home_visit' | 'konseling_psikososial'
-    | 'dukungan_caregiver' | 'bantuan_finansial' | 'bantuan_transportasi'
-    | 'rujukan_pekerja_sosial' | 'pendampingan_spiritual' | 'monitoring_intensif';
-}
-
-export interface SocialNeedsEarlyWarning {
-  type: string;
-  severity: 'info' | 'warning' | 'critical';
-  title: string;
-  description: string;
-}
-
-// ── Daily Complaints Monitoring Types ────────────────────────────────────
-
-export type DailyComplaintCategory =
-  | 'nyeri'
-  | 'sesak_napas'
-  | 'mual'
-  | 'muntah'
-  | 'nafsu_makan_menurun'
-  | 'kelelahan'
-  | 'gangguan_tidur'
-  | 'konstipasi'
-  | 'diare'
-  | 'batuk'
-  | 'kecemasan'
-  | 'depresi'
-  | 'masalah_spiritual'
-  | 'masalah_sosial'
-  | 'keluhan_lainnya';
-
-export type DailyComplaintSeverity = 'ringan' | 'sedang' | 'berat';
-
-export type DailyComplaintImpact =
-  | 'tidak_mengganggu'
-  | 'sedikit_mengganggu'
-  | 'mengganggu_aktivitas'
-  | 'sangat_mengganggu';
-
-export type DailyComplaintInputSource = 'pasien' | 'keluarga' | 'dokter' | 'perawat';
-
-export type DailyComplaintDataSource = 'chat' | 'manual' | 'ai_classification';
-
-export type DailyComplaintFollowUpStatus =
-  | 'belum_ditindaklanjuti'
-  | 'sedang_diproses'
-  | 'selesai';
-
-export type DailyAlertLevel = 'hijau' | 'kuning' | 'merah';
-
-export interface DailyComplaintEntry {
-  id: string;
-  patientId: string;
-  patientName: string;
-  medicalRecordNumber: string;
-  date: string;
-  time: string;
-  category: DailyComplaintCategory;
-  severity: DailyComplaintSeverity;
-  severityScore: number; // 0-10
-  description: string;
-  impact: DailyComplaintImpact;
-  inputSource: DailyComplaintInputSource;
-  dataSource: DailyComplaintDataSource;
-  followUpStatus: DailyComplaintFollowUpStatus;
-  clinicalNote?: string;
-  validatedBy?: string;
-  chatMessageId?: string;
-  relatedModuleLinks?: string[];
-  alertLevel: DailyAlertLevel;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface DailyComplaintSummary {
-  date: string;
-  totalComplaints: number;
-  mostFrequentCategory: DailyComplaintCategory;
-  severeComplaints: number;
-  needsFollowUp: number;
-  categoryBreakdown: Record<DailyComplaintCategory, number>;
-}
-
-export interface DailyComplaintTrend {
-  date: string;
-  nyeri: number;
-  sesak_napas: number;
-  mual: number;
-  kelelahan: number;
-  gangguan_tidur: number;
-  kecemasan: number;
-}
-
-export interface DailyComplaintAlert {
-  id: string;
-  complaintId: string;
-  patientId: string;
-  patientName: string;
-  alertLevel: DailyAlertLevel;
-  title: string;
-  description: string;
-  triggerReason: string;
-  createdAt: string;
-  isRead: boolean;
-  isResolved: boolean;
-}
-
-export interface DailyComplaintAIResult {
-  category: DailyComplaintCategory;
-  severityScore: number;
-  severity: DailyComplaintSeverity;
-  impact: DailyComplaintImpact;
-  extractedComplaints: string[];
-  additionalNotes: string;
-  alertLevel: DailyAlertLevel;
-  suggestedFollowUp: string;
-}
-
-export interface ChatComplaintSaveRequest {
-  messageId: string;
-  messageText: string;
-  patientId: string;
-  patientName: string;
-  medicalRecordNumber: string;
-  saveCategory: 'keluhan_harian' | 'perkembangan_kondisi' | 'efek_samping_terapi' | 'permasalahan_psikologis' | 'permasalahan_sosial' | 'keluhan_lainnya';
-  inputSource: DailyComplaintInputSource;
 }

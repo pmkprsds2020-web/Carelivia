@@ -25,7 +25,8 @@ import type {
   EduMaterial, FamilyCoordinationNote, EmergencyContact,
   FinancialSupportRecord, TransportRecord, SocialMonitoringAlert,
   AISocialAnalysisResult, AISocialAnalysisRecord, AISocialPopulationStats,
-  PatientTransportRequest, PatientCareUpdate, PatientPaliatifChatMessage
+  PatientTransportRequest, PatientCareUpdate, PatientPaliatifChatMessage,
+  DailyComplaintRecord
 } from './types';
 
 interface TelemedicineStore {
@@ -193,6 +194,11 @@ interface TelemedicineStore {
   // Palliative Program Completion
   palliativeProgramCompletions: PalliativeProgramCompletion[];
   completePalliativeProgram: (patientId: string, completionData: Omit<PalliativeProgramCompletion, 'id' | 'createdAt'>) => void;
+
+  // Daily Complaint (Keluhan Harian)
+  dailyComplaints: DailyComplaintRecord[];
+  setDailyComplaints: (complaints: DailyComplaintRecord[]) => void;
+  addDailyComplaint: (complaint: DailyComplaintRecord) => void;
 
   // RVSM (Remote Vital Sign Monitoring)
   rvsmDevices: WearableDevice[];
@@ -1112,6 +1118,11 @@ export const useStore = create<TelemedicineStore>((set) => ({
       palliativePatients: updatedPatients,
     };
   }),
+
+  // Daily Complaint (Keluhan Harian)
+  dailyComplaints: [] as DailyComplaintRecord[],
+  setDailyComplaints: (complaints) => set({ dailyComplaints: complaints }),
+  addDailyComplaint: (complaint) => set((state) => ({ dailyComplaints: [complaint, ...state.dailyComplaints] })),
 
   // RVSM
   rvsmDevices: [

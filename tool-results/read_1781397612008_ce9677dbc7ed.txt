@@ -1,0 +1,1735 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+     4→import { useStore } from '@/lib/store';
+     5→import { cn } from '@/lib/utils';
+     6→import type {
+     7→  PalliativeChatMessage,
+     8→  PalliativeChatMsgType,
+     9→  PalliativeFormType,
+    10→  PalliativePatientInfo,
+    11→  TTVFormAnswers,
+    12→  KeluhanFormAnswers,
+    13→  PalliativeToolType,
+    14→  PalliativeClinicalAlert,
+    15→  PalliativeAuditEntry,
+    16→  PalliativeEwsLevel,
+    17→  VitalSignRecordInfo,
+    18→  PalliativeScreeningRecordInfo,
+    19→  MedicationMonitoringFormAnswers,
+    20→  MedicationFormSchedule,
+    21→  MedicationMonitoringFormInfo,
+    22→  DailyComplaintRecord,
+    23→} from '@/lib/types';
+    24→import { calculateScreeningResult, type ScreeningScoreResult } from '@/lib/palliative-screening-data';
+    25→import { InlineScreeningForm } from '@/components/telemedicine/inline-screening-form';
+    26→import { MedicationMonitoringForm } from '@/components/telemedicine/medication-monitoring-form';
+    27→import { DailyComplaintForm } from '@/components/telemedicine/daily-complaint-panel';
+    28→import { Button } from '@/components/ui/button';
+    29→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    30→import { Input } from '@/components/ui/input';
+    31→import { Label } from '@/components/ui/label';
+    32→import { Textarea } from '@/components/ui/textarea';
+    33→import {
+    34→  Select,
+    35→  SelectContent,
+    36→  SelectItem,
+    37→  SelectTrigger,
+    38→  SelectValue,
+    39→} from '@/components/ui/select';
+    40→import {
+    41→  Dialog,
+    42→  DialogContent,
+    43→  DialogHeader,
+    44→  DialogTitle,
+    45→  DialogDescription,
+    46→  DialogFooter,
+    47→} from '@/components/ui/dialog';
+    48→import { Badge } from '@/components/ui/badge';
+    49→import { Separator } from '@/components/ui/separator';
+    50→import { ScrollArea } from '@/components/ui/scroll-area';
+    51→import { Checkbox } from '@/components/ui/checkbox';
+    52→import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+    53→import { Progress } from '@/components/ui/progress';
+    54→import {
+    55→  Tooltip,
+    56→  TooltipContent,
+    57→  TooltipProvider,
+    58→  TooltipTrigger,
+    59→} from '@/components/ui/tooltip';
+    60→import {
+    61→  MessageCircle,
+    62→  Send,
+    63→  FileText,
+    64→  HeartPulse,
+    65→  ClipboardList,
+    66→  Activity,
+    67→  AlertTriangle,
+    68→  CheckCircle2,
+    69→  Clock,
+    70→  Eye,
+    71→  Sparkles,
+    72→  ChevronDown,
+    73→  Image as ImageIcon,
+    74→  Pill,
+    75→  Stethoscope,
+    76→  Shield,
+    77→  Bell,
+    78→  Bot,
+    79→  User,
+    80→  UserCheck,
+    81→  X,
+    82→  Save,
+    83→  ArrowRight,
+    84→} from 'lucide-react';
+    85→
+    86→// ── Helpers ────────────────────────────────────────────────────────────────
+    87→
+    88→function genId(prefix: string): string {
+    89→  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    90→}
+    91→
+    92→function formatTime(dateStr: string): string {
+    93→  try {
+    94→    return new Date(dateStr).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    95→  } catch { return dateStr; }
+    96→}
+    97→
+    98→function formatDate(dateStr: string): string {
+    99→  try {
+   100→    return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+   101→  } catch { return dateStr; }
+   102→}
+   103→
+   104→function getToolLabel(type: PalliativeToolType): string {
+   105→  const map: Record<PalliativeToolType, string> = {
+   106→    pps: 'PPS (Palliative Performance Scale)',
+   107→    esas: 'ESAS-r (Edmonton Symptom Assessment)',
+   108→    distress: 'Distress Thermometer',
+   109→    spict: 'SPICT Screening',
+   110→    zarit: 'Caregiver Burden Assessment',
+   111→    eortc: 'EORTC QLQ-C15-PAL',
+   112→  };
+   113→  return map[type];
+   114→}
+   115→
+   116→function getToolCategory(type: PalliativeToolType): string {
+   117→  const map: Record<PalliativeToolType, string> = {
+   118→    pps: 'Performance Status',
+   119→    esas: 'Gejala',
+   120→    distress: 'Distres Emosional',
+   121→    spict: 'Kebutuhan Paliatif',
+   122→    zarit: 'Beban Perawatan Keluarga',
+   123→    eortc: 'Kualitas Hidup',
+   124→  };
+   125→  return map[type];
+   126→}
+   127→
+   128→function getSeverityColor(severity: 'hijau' | 'kuning' | 'merah') {
+   129→  switch (severity) {
+   130→    case 'merah': return 'bg-red-100 text-red-800 border-red-300';
+   131→    case 'kuning': return 'bg-amber-100 text-amber-800 border-amber-300';
+   132→    case 'hijau': return 'bg-green-100 text-green-800 border-green-300';
+   133→  }
+   134→}
+   135→
+   136→function getSeverityLabel(severity: 'hijau' | 'kuning' | 'merah') {
+   137→  switch (severity) {
+   138→    case 'merah': return 'Perlu Tindak Lanjut Segera';
+   139→    case 'kuning': return 'Perlu Pemantauan';
+   140→    case 'hijau': return 'Stabil';
+   141→  }
+   142→}
+   143→
+   144→function checkTTVAlerts(ttv: TTVFormAnswers): { alert: boolean; severity: 'hijau' | 'kuning' | 'merah'; messages: string[] } {
+   145→  const messages: string[] = [];
+   146→  let maxSeverity: 'hijau' | 'kuning' | 'merah' = 'hijau';
+   147→
+   148→  if (ttv.systolicBP !== undefined && ttv.systolicBP < 90) {
+   149→    messages.push(`TD rendah: ${ttv.systolicBP} mmHg`);
+   150→    maxSeverity = 'merah';
+   151→  }
+   152→  if (ttv.systolicBP !== undefined && ttv.systolicBP > 180) {
+   153→    messages.push(`TD tinggi: ${ttv.systolicBP} mmHg`);
+   154→    maxSeverity = 'merah';
+   155→  }
+   156→  if (ttv.heartRate !== undefined && ttv.heartRate > 120) {
+   157→    messages.push(`Nadi tinggi: ${ttv.heartRate} bpm`);
+   158→    maxSeverity = 'merah';
+   159→  }
+   160→  if (ttv.respiratoryRate !== undefined && ttv.respiratoryRate > 30) {
+   161→    messages.push(`RR tinggi: ${ttv.respiratoryRate}/menit`);
+   162→    maxSeverity = 'merah';
+   163→  } else if (ttv.respiratoryRate !== undefined && ttv.respiratoryRate > 24) {
+   164→    messages.push(`RR meningkat: ${ttv.respiratoryRate}/menit`);
+   165→    if (maxSeverity !== 'merah') maxSeverity = 'kuning';
+   166→  }
+   167→  if (ttv.oxygenSat !== undefined && ttv.oxygenSat < 90) {
+   168→    messages.push(`SpO2 rendah: ${ttv.oxygenSat}%`);
+   169→    maxSeverity = 'merah';
+   170→  }
+   171→  if (ttv.temperature !== undefined && ttv.temperature > 38) {
+   172→    messages.push(`Demam: ${ttv.temperature}°C`);
+   173→    if (maxSeverity !== 'merah') maxSeverity = 'kuning';
+   174→  }
+   175→  if (ttv.painScore !== undefined && ttv.painScore >= 7) {
+   176→    messages.push(`Nyeri berat: ${ttv.painScore}/10`);
+   177→    if (maxSeverity !== 'merah') maxSeverity = 'kuning';
+   178→  }
+   179→
+   180→  return { alert: messages.length > 0, severity: maxSeverity, messages };
+   181→}
+   182→
+   183→// ── TTV Form Component ─────────────────────────────────────────────────────
+   184→
+   185→function TTVForm({ onSubmit, onSaveDraft }: {
+   186→  onSubmit: (answers: TTVFormAnswers) => void;
+   187→  onSaveDraft: (answers: TTVFormAnswers) => void;
+   188→}) {
+   189→  const [answers, setAnswers] = useState<TTVFormAnswers>({
+   190→    symptoms: {
+   191→      nyeri: false, sesak: false, batuk: false, mual: false, muntah: false,
+   192→      sulit_menelan: false, sulit_tidur: false, lemas: false, nafsu_makan_menurun: false,
+   193→      konstipasi: false, diare: false, lainnya: '',
+   194→    },
+   195→  });
+   196→  const [step, setStep] = useState(0);
+   197→
+   198→  const progress = step === 0 ? 50 : 100;
+   199→
+   200→  const symptomsList = [
+   201→    { key: 'nyeri' as const, label: 'Nyeri' },
+   202→    { key: 'sesak' as const, label: 'Sesak Napas' },
+   203→    { key: 'batuk' as const, label: 'Batuk' },
+   204→    { key: 'mual' as const, label: 'Mual' },
+   205→    { key: 'muntah' as const, label: 'Muntah' },
+   206→    { key: 'sulit_menelan' as const, label: 'Sulit Menelan' },
+   207→    { key: 'sulit_tidur' as const, label: 'Sulit Tidur' },
+   208→    { key: 'lemas' as const, label: 'Lemas' },
+   209→    { key: 'nafsu_makan_menurun' as const, label: 'Nafsu Makan Menurun' },
+   210→    { key: 'konstipasi' as const, label: 'Konstipasi' },
+   211→    { key: 'diare' as const, label: 'Diare' },
+   212→  ];
+   213→
+   214→  return (
+   215→    <div className="space-y-4">
+   216→      <div className="flex items-center justify-between">
+   217→        <h3 className="font-semibold text-sm">Form Monitoring TTV</h3>
+   218→        <Badge variant="outline">Langkah {step + 1}/2</Badge>
+   219→      </div>
+   220→      <Progress value={progress} className="h-2" />
+   221→
+   222→      {step === 0 && (
+   223→        <div className="space-y-3">
+   224→          <p className="text-sm font-medium text-muted-foreground">Tanda Vital</p>
+   225→          <div className="grid grid-cols-2 gap-3">
+   226→            <div>
+   227→              <Label className="text-xs">Tekanan Darah Sistolik (mmHg)</Label>
+   228→              <Input type="number" placeholder="110" value={answers.systolicBP ?? ''} onChange={e => setAnswers({ ...answers, systolicBP: e.target.value ? Number(e.target.value) : undefined })} />
+   229→            </div>
+   230→            <div>
+   231→              <Label className="text-xs">Tekanan Darah Diastolik (mmHg)</Label>
+   232→              <Input type="number" placeholder="70" value={answers.diastolicBP ?? ''} onChange={e => setAnswers({ ...answers, diastolicBP: e.target.value ? Number(e.target.value) : undefined })} />
+   233→            </div>
+   234→            <div>
+   235→              <Label className="text-xs">Nadi (x/menit)</Label>
+   236→              <Input type="number" placeholder="80" value={answers.heartRate ?? ''} onChange={e => setAnswers({ ...answers, heartRate: e.target.value ? Number(e.target.value) : undefined })} />
+   237→            </div>
+   238→            <div>
+   239→              <Label className="text-xs">Frekuensi Napas (x/menit)</Label>
+   240→              <Input type="number" placeholder="20" value={answers.respiratoryRate ?? ''} onChange={e => setAnswers({ ...answers, respiratoryRate: e.target.value ? Number(e.target.value) : undefined })} />
+   241→            </div>
+   242→            <div>
+   243→              <Label className="text-xs">Suhu Tubuh (°C)</Label>
+   244→              <Input type="number" step="0.1" placeholder="36.5" value={answers.temperature ?? ''} onChange={e => setAnswers({ ...answers, temperature: e.target.value ? Number(e.target.value) : undefined })} />
+   245→            </div>
+   246→            <div>
+   247→              <Label className="text-xs">Saturasi Oksigen SpO2 (%)</Label>
+   248→              <Input type="number" placeholder="98" value={answers.oxygenSat ?? ''} onChange={e => setAnswers({ ...answers, oxygenSat: e.target.value ? Number(e.target.value) : undefined })} />
+   249→            </div>
+   250→            <div>
+   251→              <Label className="text-xs">Berat Badan (kg)</Label>
+   252→              <Input type="number" step="0.1" placeholder="60" value={answers.weight ?? ''} onChange={e => setAnswers({ ...answers, weight: e.target.value ? Number(e.target.value) : undefined })} />
+   253→            </div>
+   254→            <div>
+   255→              <Label className="text-xs">Gula Darah (opsional, mg/dL)</Label>
+   256→              <Input type="number" placeholder="100" value={answers.bloodSugar ?? ''} onChange={e => setAnswers({ ...answers, bloodSugar: e.target.value ? Number(e.target.value) : undefined })} />
+   257→            </div>
+   258→          </div>
+   259→          <div>
+   260→            <Label className="text-xs">Skor Nyeri (0-10)</Label>
+   261→            <div className="flex items-center gap-2 mt-1">
+   262→              <Input type="number" min={0} max={10} value={answers.painScore ?? ''} onChange={e => setAnswers({ ...answers, painScore: e.target.value ? Number(e.target.value) : undefined })} className="w-20" />
+   263→              <span className="text-xs text-muted-foreground">0 = tidak nyeri, 10 = nyeri terburuk</span>
+   264→            </div>
+   265→          </div>
+   266→          <div className="flex justify-end gap-2">
+   267→            <Button variant="outline" size="sm" onClick={() => onSaveDraft(answers)}>
+   268→              <Save className="w-3 h-3 mr-1" /> Simpan Draft
+   269→            </Button>
+   270→            <Button size="sm" onClick={() => setStep(1)}>
+   271→              Lanjut <ArrowRight className="w-3 h-3 ml-1" />
+   272→            </Button>
+   273→          </div>
+   274→        </div>
+   275→      )}
+   276→
+   277→      {step === 1 && (
+   278→        <div className="space-y-3">
+   279→          <p className="text-sm font-medium text-muted-foreground">Gejala Saat Ini</p>
+   280→          <div className="grid grid-cols-2 gap-2">
+   281→            {symptomsList.map(s => (
+   282→              <label key={s.key} className="flex items-center gap-2 text-sm cursor-pointer">
+   283→                <Checkbox checked={answers.symptoms[s.key]} onCheckedChange={v => setAnswers({ ...answers, symptoms: { ...answers.symptoms, [s.key]: !!v } })} />
+   284→                {s.label}
+   285→              </label>
+   286→            ))}
+   287→          </div>
+   288→          <div>
+   289→            <Label className="text-xs">Keluhan Lainnya</Label>
+   290→            <Input value={answers.symptoms.lainnya} onChange={e => setAnswers({ ...answers, symptoms: { ...answers.symptoms, lainnya: e.target.value } })} placeholder="Tuliskan keluhan lain..." />
+   291→          </div>
+   292→          <div>
+   293→            <Label className="text-xs">Catatan Tambahan</Label>
+   294→            <Textarea value={answers.notes ?? ''} onChange={e => setAnswers({ ...answers, notes: e.target.value })} placeholder="Catatan untuk dokter..." rows={2} />
+   295→          </div>
+   296→          <div className="flex justify-between gap-2">
+   297→            <Button variant="outline" size="sm" onClick={() => setStep(0)}>
+   298→              Kembali
+   299→            </Button>
+   300→            <div className="flex gap-2">
+   301→              <Button variant="outline" size="sm" onClick={() => onSaveDraft(answers)}>
+   302→                <Save className="w-3 h-3 mr-1" /> Simpan Draft
+   303→              </Button>
+   304→              <Button size="sm" onClick={() => onSubmit(answers)}>
+   305→                <Send className="w-3 h-3 mr-1" /> Kirim
+   306→              </Button>
+   307→            </div>
+   308→          </div>
+   309→        </div>
+   310→      )}
+   311→    </div>
+   312→  );
+   313→}
+   314→
+   315→// ── Keluhan Form Component ─────────────────────────────────────────────────
+   316→
+   317→function KeluhanForm({ onSubmit, onSaveDraft }: {
+   318→  onSubmit: (answers: KeluhanFormAnswers) => void;
+   319→  onSaveDraft: (answers: KeluhanFormAnswers) => void;
+   320→}) {
+   321→  const [answers, setAnswers] = useState<KeluhanFormAnswers>({
+   322→    kondisiHariIni: 'cukup',
+   323→    keluhanBaru: 'tidak_ada',
+   324→    nyeriBertambah: 'tidak_ada',
+   325→    sesakBertambah: 'tidak_ada',
+   326→    makanMinum: 'tidak_ada',
+   327→    tidur: 'tidak_ada',
+   328→    masalahObat: 'tidak_ada',
+   329→  });
+   330→
+   331→  const severityOptions = [
+   332→    { value: 'tidak_ada', label: 'Tidak Ada' },
+   333→    { value: 'ringan', label: 'Ringan' },
+   334→    { value: 'sedang', label: 'Sedang' },
+   335→    { value: 'berat', label: 'Berat' },
+   336→  ];
+   337→
+   338→  const kondisiOptions = [
+   339→    { value: 'baik', label: 'Baik' },
+   340→    { value: 'cukup', label: 'Cukup' },
+   341→    { value: 'kurang', label: 'Kurang' },
+   342→    { value: 'buruk', label: 'Buruk' },
+   343→  ];
+   344→
+   345→  const questions = [
+   346→    { key: 'keluhanBaru' as const, label: 'Apakah ada keluhan baru?' },
+   347→    { key: 'nyeriBertambah' as const, label: 'Apakah nyeri bertambah?' },
+   348→    { key: 'sesakBertambah' as const, label: 'Apakah sesak napas bertambah?' },
+   349→    { key: 'makanMinum' as const, label: 'Apakah dapat makan dan minum dengan baik?' },
+   350→    { key: 'tidur' as const, label: 'Apakah dapat tidur dengan baik?' },
+   351→    { key: 'masalahObat' as const, label: 'Apakah ada masalah dengan obat yang diberikan?' },
+   352→  ];
+   353→
+   354→  const filledCount = questions.filter(q => answers[q.key] !== 'tidak_ada').length + 1;
+   355→  const progress = Math.round((filledCount / (questions.length + 1)) * 100);
+   356→
+   357→  return (
+   358→    <div className="space-y-4">
+   359→      <div className="flex items-center justify-between">
+   360→        <h3 className="font-semibold text-sm">Form Keluhan Harian</h3>
+   361→        <Badge variant="outline">{progress}% terisi</Badge>
+   362→      </div>
+   363→      <Progress value={progress} className="h-2" />
+   364→
+   365→      <div>
+   366→        <Label className="text-sm font-medium">Bagaimana kondisi Anda hari ini?</Label>
+   367→        <RadioGroup value={answers.kondisiHariIni} onValueChange={v => setAnswers({ ...answers, kondisiHariIni: v as KeluhanFormAnswers['kondisiHariIni'] })} className="flex gap-4 mt-2">
+   368→          {kondisiOptions.map(opt => (
+   369→            <label key={opt.value} className="flex items-center gap-1.5 text-sm cursor-pointer">
+   370→              <RadioGroupItem value={opt.value} />
+   371→              {opt.label}
+   372→            </label>
+   373→          ))}
+   374→        </RadioGroup>
+   375→      </div>
+   376→
+   377→      <Separator />
+   378→
+   379→      {questions.map(q => (
+   380→        <div key={q.key}>
+   381→          <Label className="text-sm font-medium">{q.label}</Label>
+   382→          <RadioGroup value={answers[q.key]} onValueChange={v => setAnswers({ ...answers, [q.key]: v })} className="flex gap-4 mt-1">
+   383→            {severityOptions.map(opt => (
+   384→              <label key={opt.value} className="flex items-center gap-1.5 text-sm cursor-pointer">
+   385→                <RadioGroupItem value={opt.value} />
+   386→                {opt.label}
+   387→              </label>
+   388→            ))}
+   389→          </RadioGroup>
+   390→        </div>
+   391→      ))}
+   392→
+   393→      <div>
+   394→        <Label className="text-sm font-medium">Catatan Tambahan</Label>
+   395→        <Textarea value={answers.catatanTambahan ?? ''} onChange={e => setAnswers({ ...answers, catatanTambahan: e.target.value })} placeholder="Tuliskan catatan untuk dokter..." rows={2} />
+   396→      </div>
+   397→
+   398→      <div className="flex justify-end gap-2">
+   399→        <Button variant="outline" size="sm" onClick={() => onSaveDraft(answers)}>
+   400→          <Save className="w-3 h-3 mr-1" /> Simpan Draft
+   401→        </Button>
+   402→        <Button size="sm" onClick={() => onSubmit(answers)}>
+   403→          <Send className="w-3 h-3 mr-1" /> Kirim
+   404→        </Button>
+   405→      </div>
+   406→    </div>
+   407→  );
+   408→}
+   409→
+   410→// ── Main Chat Panel ────────────────────────────────────────────────────────
+   411→
+   412→interface PalliativeChatPanelProps {
+   413→  patient: PalliativePatientInfo | null;
+   414→}
+   415→
+   416→export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
+   417→  const [messageInput, setMessageInput] = useState('');
+   418→  const [showFormDialog, setShowFormDialog] = useState(false);
+   419→  const [formType, setFormType] = useState<PalliativeFormType | null>(null);
+   420→  const [showScreeningPicker, setShowScreeningPicker] = useState(false);
+   421→  const [selectedScreeningTool, setSelectedScreeningTool] = useState<PalliativeToolType | null>(null);
+   422→  const [activeFormMsgId, setActiveFormMsgId] = useState<string | null>(null);
+   423→  const [activeScreeningType, setActiveScreeningType] = useState<PalliativeToolType | null>(null);
+   424→  const [showAlertsPanel, setShowAlertsPanel] = useState(false);
+   425→  const [showMedMonitoringDialog, setShowMedMonitoringDialog] = useState(false);
+   426→  const [selectedMedIds, setSelectedMedIds] = useState<string[]>([]);
+   427→  const [medSchedule, setMedSchedule] = useState<MedicationFormSchedule>('harian');
+   428→  const [medDeadline, setMedDeadline] = useState('');
+   429→  const [showMedFormFill, setShowMedFormFill] = useState(false);
+   430→  const messagesEndRef = useRef<HTMLDivElement>(null);
+   431→
+   432→  const {
+   433→    currentUser,
+   434→    palliativeChatMessages,
+   435→    addPalliativeChatMessage,
+   436→    updatePalliativeChatMessage,
+   437→    palliativeClinicalAlerts,
+   438→    addPalliativeClinicalAlert,
+   439→    markPalliativeAlertRead,
+   440→    addPalliativeAuditEntry,
+   441→    addVitalSignRecord,
+   442→    addPalliativeScreeningRecord,
+   443→    palliativeMedications,
+   444→    addMedicationMonitoringForm,
+   445→    addMedicationMonitoringAlert,
+   446→    addMedicationMonitoringAuditEntry,
+   447→  } = useStore();
+   448→
+   449→  // Get room messages for current patient
+   450→  const roomId = patient ? `${patient.id}_${patient.attendingDoctorId || currentUser?.id}` : '';
+   451→  const roomMessages = useMemo(() =>
+   452→    palliativeChatMessages
+   453→      .filter(m => m.roomId === roomId)
+   454→      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+   455→    [palliativeChatMessages, roomId]
+   456→  );
+   457→
+   458→  // Get patient alerts
+   459→  const patientAlerts = useMemo(() =>
+   460→    palliativeClinicalAlerts.filter(a => a.patientId === patient?.id),
+   461→    [palliativeClinicalAlerts, patient]
+   462→  );
+   463→
+   464→  const unreadAlertCount = patientAlerts.filter(a => !a.isRead).length;
+   465→
+   466→  // Auto-scroll to bottom
+   467→  useEffect(() => {
+   468→    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+   469→  }, [roomMessages.length]);
+   470→
+   471→  // Send text message
+   472→  const handleSendMessage = useCallback(() => {
+   473→    if (!messageInput.trim() || !patient || !currentUser) return;
+   474→    const msg: PalliativeChatMessage = {
+   475→      id: genId('pcm'),
+   476→      roomId,
+   477→      senderId: currentUser.id,
+   478→      senderName: currentUser.name,
+   479→      senderRole: 'doctor',
+   480→      type: 'text',
+   481→      content: messageInput.trim(),
+   482→      status: 'sent',
+   483→      createdAt: new Date().toISOString(),
+   484→    };
+   485→    addPalliativeChatMessage(msg);
+   486→    addPalliativeAuditEntry({
+   487→      id: genId('audit'),
+   488→      patientId: patient.id,
+   489→      action: 'chat_sent',
+   490→      performedBy: currentUser.id,
+   491→      performedByRole: 'doctor',
+   492→      details: `Dokter mengirim pesan: "${messageInput.trim().substring(0, 50)}..."`,
+   493→      createdAt: new Date().toISOString(),
+   494→    });
+   495→    setMessageInput('');
+   496→  }, [messageInput, patient, currentUser, roomId, addPalliativeChatMessage, addPalliativeAuditEntry]);
+   497→
+   498→  // Send form (TTV/Keluhan)
+   499→  const handleSendForm = useCallback((type: PalliativeFormType, screeningType?: PalliativeToolType) => {
+   500→    if (!patient || !currentUser) return;
+   501→    const formId = genId('form');
+   502→    const msgType: PalliativeChatMsgType = type === 'ttv' ? 'form_ttv' : type === 'keluhan' ? 'form_keluhan' : type === 'monitoring_obat' ? 'form_monitoring_obat' : 'form_screening';
+   503→    const contentMap: Record<PalliativeFormType, string> = {
+   504→      ttv: 'Silakan isi formulir TTV untuk memantau kondisi Anda hari ini.',
+   505→      keluhan: 'Mohon isi form keluhan harian untuk evaluasi gejala Anda.',
+   506→      screening: `Mohon isi skrining ${screeningType ? getToolLabel(screeningType) : ''} untuk evaluasi kebutuhan Anda.`,
+   507→      monitoring_obat: 'Silakan isi form monitoring obat paliatif.',
+   508→    };
+   509→    const msg: PalliativeChatMessage = {
+   510→      id: genId('pcm'),
+   511→      roomId,
+   512→      senderId: currentUser.id,
+   513→      senderName: currentUser.name,
+   514→      senderRole: 'doctor',
+   515→      type: msgType,
+   516→      content: contentMap[type],
+   517→      status: 'sent',
+   518→      formType: type,
+   519→      formData: {
+   520→        id: formId,
+   521→        formType: type,
+   522→        screeningType,
+   523→        status: 'sent',
+   524→        progress: 0,
+   525→      },
+   526→      screeningType,
+   527→      createdAt: new Date().toISOString(),
+   528→    };
+   529→    addPalliativeChatMessage(msg);
+   530→    addPalliativeAuditEntry({
+   531→      id: genId('audit'),
+   532→      patientId: patient.id,
+   533→      action: 'form_sent',
+   534→      performedBy: currentUser.id,
+   535→      performedByRole: 'doctor',
+   536→      details: `Dokter mengirim Form ${type === 'ttv' ? 'TTV' : type === 'keluhan' ? 'Keluhan Harian' : `Skrining ${screeningType || ''}`} kepada pasien`,
+   537→      createdAt: new Date().toISOString(),
+   538→    });
+   539→    setShowFormDialog(false);
+   540→    setFormType(null);
+   541→    setSelectedScreeningTool(null);
+   542→    setShowScreeningPicker(false);
+   543→  }, [patient, currentUser, roomId, addPalliativeChatMessage, addPalliativeAuditEntry]);
+   544→
+   545→  // Generate AI SOAP note (must be before handleTTVSubmit since it's called there)
+   546→  const generateAISummary = useCallback(async (ttvAnswers?: TTVFormAnswers) => {
+   547→    if (!patient) return;
+   548→    const latestVital = ttvAnswers;
+   549→    const soapNote = `S: Pasien ${patient.patientName || '-'} dengan diagnosa ${patient.primaryDiagnosis || '-'}. ${latestVital?.notes || 'Tidak ada keluhan tambahan.'}\nO: TD ${latestVital?.systolicBP || '-'}/${latestVital?.diastolicBP || '-'} mmHg, Nadi ${latestVital?.heartRate || '-'} x/menit, RR ${latestVital?.respiratoryRate || '-'}/menit, Suhu ${latestVital?.temperature || '-'}°C, SpO2 ${latestVital?.oxygenSat || '-'}%.${latestVital?.weight ? ` BB ${latestVital.weight} kg.` : ''}${latestVital?.painScore ? ` Nyeri ${latestVital.painScore}/10.` : ''}\nA: Kondisi ${patient.riskLevel === 'merah' ? 'kritis, memerlukan perhatian segera' : patient.riskLevel === 'kuning' ? 'perlu pemantauan ketat' : 'stabil, lanjutkan monitoring'}. ${latestVital?.oxygenSat && latestVital.oxygenSat < 90 ? 'Hipoksemia terdeteksi. ' : ''}${latestVital?.respiratoryRate && latestVital.respiratoryRate > 24 ? 'Takipnea. ' : ''}\nP: Lanjutkan monitoring tanda vital, manajemen gejala, dan evaluasi berkala.${latestVital?.oxygenSat && latestVital.oxygenSat < 90 ? ' Evaluasi oksigen tambahan.' : ''} Monitoring ulang ${patient.riskLevel === 'merah' ? '6' : patient.riskLevel === 'kuning' ? '12' : '24'} jam.`;
+   550→
+   551→    const aiMsg: PalliativeChatMessage = {
+   552→      id: genId('pcm'),
+   553→      roomId,
+   554→      senderId: 'system',
+   555→      senderName: 'AI Clinical Assistant',
+   556→      senderRole: 'system',
+   557→      type: 'ai_summary',
+   558→      content: `Ringkasan AI otomatis telah dibuat berdasarkan data terbaru pasien.`,
+   559→      aiSummary: soapNote,
+   560→      status: 'delivered',
+   561→      createdAt: new Date().toISOString(),
+   562→    };
+   563→    addPalliativeChatMessage(aiMsg);
+   564→    addPalliativeAuditEntry({
+   565→      id: genId('audit'),
+   566→      patientId: patient.id,
+   567→      action: 'ai_generated',
+   568→      performedBy: 'system',
+   569→      performedByRole: 'system',
+   570→      details: 'AI menghasilkan ringkasan klinis otomatis',
+   571→      createdAt: new Date().toISOString(),
+   572→    });
+   573→  }, [patient, roomId, addPalliativeChatMessage, addPalliativeAuditEntry]);
+   574→
+   575→  // Handle TTV form submission from patient
+   576→  const handleTTVSubmit = useCallback((answers: TTVFormAnswers) => {
+   577→    if (!patient || !currentUser) return;
+   578→    const responseMsg: PalliativeChatMessage = {
+   579→      id: genId('pcm'),
+   580→      roomId,
+   581→      senderId: patient.patientId || patient.id,
+   582→      senderName: patient.patientName || 'Pasien',
+   583→      senderRole: 'patient',
+   584→      type: 'form_response',
+   585→      content: 'Form TTV telah diisi.',
+   586→      formType: 'ttv',
+   587→      formResponse: {
+   588→        formId: activeFormMsgId || genId('form'),
+   589→        formType: 'ttv',
+   590→        ttvAnswers: answers,
+   591→        submittedAt: new Date().toISOString(),
+   592→      },
+   593→      status: 'delivered',
+   594→      createdAt: new Date().toISOString(),
+   595→    };
+   596→    addPalliativeChatMessage(responseMsg);
+   597→
+   598→    // Save to vital signs
+   599→    const vitalRecord: VitalSignRecordInfo = {
+   600→      id: genId('vs'),
+   601→      palliativePatientId: patient.id,
+   602→      recordedBy: 'patient',
+   603→      systolicBP: answers.systolicBP,
+   604→      diastolicBP: answers.diastolicBP,
+   605→      heartRate: answers.heartRate,
+   606→      respiratoryRate: answers.respiratoryRate,
+   607→      temperature: answers.temperature,
+   608→      oxygenSat: answers.oxygenSat,
+   609→      weight: answers.weight,
+   610→      notes: answers.notes,
+   611→      recordedAt: new Date().toISOString(),
+   612→      createdAt: new Date().toISOString(),
+   613→    };
+   614→    addVitalSignRecord(vitalRecord);
+   615→
+   616→    // Check for clinical alerts
+   617→    const alertCheck = checkTTVAlerts(answers);
+   618→    if (alertCheck.alert) {
+   619→      const alert: PalliativeClinicalAlert = {
+   620→        id: genId('alert'),
+   621→        patientId: patient.id,
+   622→        alertType: 'ttv_abnormal',
+   623→        severity: alertCheck.severity,
+   624→        title: alertCheck.severity === 'merah' ? 'TTV Kritis' : 'TTV Abnormal',
+   625→        description: alertCheck.messages.join('. '),
+   626→        values: { systolicBP: answers.systolicBP, diastolicBP: answers.diastolicBP, heartRate: answers.heartRate, respiratoryRate: answers.respiratoryRate, temperature: answers.temperature, oxygenSat: answers.oxygenSat },
+   627→        isRead: false,
+   628→        createdAt: new Date().toISOString(),
+   629→      };
+   630→      addPalliativeClinicalAlert(alert);
+   631→
+   632→      const alertMsg: PalliativeChatMessage = {
+   633→        id: genId('pcm'),
+   634→        roomId,
+   635→        senderId: 'system',
+   636→        senderName: 'Sistem',
+   637→        senderRole: 'system',
+   638→        type: 'clinical_alert',
+   639→        content: `Peringatan: ${alertCheck.messages.join('. ')}`,
+   640→        clinicalAlert: alert,
+   641→        status: 'delivered',
+   642→        createdAt: new Date().toISOString(),
+   643→      };
+   644→      addPalliativeChatMessage(alertMsg);
+   645→      addPalliativeAuditEntry({
+   646→        id: genId('audit'),
+   647→        patientId: patient.id,
+   648→        action: 'alert_triggered',
+   649→        performedBy: 'system',
+   650→        performedByRole: 'system',
+   651→        details: `Alert: ${alertCheck.messages.join(', ')}`,
+   652→        createdAt: new Date().toISOString(),
+   653→      });
+   654→    }
+   655→
+   656→    // Generate AI summary
+   657→    generateAISummary(answers);
+   658→
+   659→    addPalliativeAuditEntry({
+   660→      id: genId('audit'),
+   661→      patientId: patient.id,
+   662→      action: 'form_submitted',
+   663→      performedBy: patient.patientId || patient.id,
+   664→      performedByRole: 'patient',
+   665→      details: 'Pasien mengirimkan hasil Form TTV',
+   666→      createdAt: new Date().toISOString(),
+   667→    });
+   668→
+   669→    setActiveFormMsgId(null);
+   670→  }, [patient, currentUser, roomId, activeFormMsgId, addPalliativeChatMessage, addVitalSignRecord, addPalliativeClinicalAlert, addPalliativeAuditEntry, generateAISummary]);
+   671→
+   672→  // Handle Keluhan form submission (from unified DailyComplaintForm)
+   673→  const handleKeluhanSubmit = useCallback((complaint: DailyComplaintRecord) => {
+   674→    if (!patient || !currentUser) return;
+   675→    const responseMsg: PalliativeChatMessage = {
+   676→      id: genId('pcm'),
+   677→      roomId,
+   678→      senderId: patient.patientId || patient.id,
+   679→      senderName: patient.patientName || 'Pasien',
+   680→      senderRole: 'patient',
+   681→      type: 'form_response',
+   682→      content: 'Form Keluhan Harian telah diisi.',
+   683→      formType: 'keluhan',
+   684→      formResponse: {
+   685→        formId: activeFormMsgId || genId('form'),
+   686→        formType: 'keluhan',
+   687→        submittedAt: new Date().toISOString(),
+   688→        dailyComplaint: complaint,
+   689→      },
+   690→      status: 'delivered',
+   691→      createdAt: new Date().toISOString(),
+   692→    };
+   693→    addPalliativeChatMessage(responseMsg);
+   694→    addPalliativeAuditEntry({
+   695→      id: genId('audit'),
+   696→      patientId: patient.id,
+   697→      action: 'form_submitted',
+   698→      performedBy: patient.patientId || patient.id,
+   699→      performedByRole: 'patient',
+   700→      details: `Pasien mengirimkan hasil Form Keluhan Harian (via Chat) - Status: ${complaint.severityLevel}`,
+   701→      createdAt: new Date().toISOString(),
+   702→    });
+   703→    setActiveFormMsgId(null);
+   704→  }, [patient, currentUser, roomId, activeFormMsgId, addPalliativeChatMessage, addPalliativeAuditEntry]);
+   705→
+   706→  // Handle Screening form submission from patient
+   707→  const handleScreeningSubmit = useCallback((result: ScreeningScoreResult, answers: Record<string, number | string | string[]>) => {
+   708→    if (!patient || !currentUser || !activeScreeningType) return;
+   709→    const responseMsg: PalliativeChatMessage = {
+   710→      id: genId('pcm'),
+   711→      roomId,
+   712→      senderId: patient.patientId || patient.id,
+   713→      senderName: patient.patientName || 'Pasien',
+   714→      senderRole: 'patient',
+   715→      type: 'form_response',
+   716→      content: `Skrining ${getToolLabel(activeScreeningType)} telah diisi.`,
+   717→      formType: 'screening',
+   718→      formResponse: {
+   719→        formId: activeFormMsgId || genId('form'),
+   720→        formType: 'screening',
+   721→        screeningType: activeScreeningType,
+   722→        screeningAnswers: answers,
+   723→        screeningResult: {
+   724→          score: result.score,
+   725→          scoreLabel: result.scoreLabel,
+   726→          interpretation: result.interpretation,
+   727→          ewsLevel: result.ewsLevel,
+   728→        },
+   729→        submittedAt: new Date().toISOString(),
+   730→      },
+   731→      status: 'delivered',
+   732→      createdAt: new Date().toISOString(),
+   733→    };
+   734→    addPalliativeChatMessage(responseMsg);
+   735→
+   736→    // Save to screening records
+   737→    const screeningRecord: PalliativeScreeningRecordInfo = {
+   738→      id: genId('sr'),
+   739→      palliativePatientId: patient.id,
+   740→      screeningType: activeScreeningType,
+   741→      score: result.score,
+   742→      scoreLabel: result.scoreLabel,
+   743→      interpretation: result.interpretation,
+   744→      ewsLevel: result.ewsLevel,
+   745→      details: JSON.stringify(result.details),
+   746→      performedAt: new Date().toISOString(),
+   747→      createdAt: new Date().toISOString(),
+   748→    };
+   749→    addPalliativeScreeningRecord(screeningRecord);
+   750→
+   751→    // Check for clinical alerts based on screening result
+   752→    if (result.ewsLevel === 'merah') {
+   753→      const alert: PalliativeClinicalAlert = {
+   754→        id: genId('alert'),
+   755→        patientId: patient.id,
+   756→        alertType: 'perburukan',
+   757→        severity: 'merah',
+   758→        title: `Skrining ${getToolLabel(activeScreeningType)} Kritis`,
+   759→        description: `Hasil skrining ${getToolLabel(activeScreeningType)} menunjukkan kondisi kritis: ${result.scoreLabel}. ${result.interpretation}`,
+   760→        isRead: false,
+   761→        createdAt: new Date().toISOString(),
+   762→      };
+   763→      addPalliativeClinicalAlert(alert);
+   764→
+   765→      const alertMsg: PalliativeChatMessage = {
+   766→        id: genId('pcm'),
+   767→        roomId,
+   768→        senderId: 'system',
+   769→        senderName: 'Sistem',
+   770→        senderRole: 'system',
+   771→        type: 'clinical_alert',
+   772→        content: `Peringatan: Skrining ${getToolLabel(activeScreeningType)} menunjukkan kondisi kritis (${result.scoreLabel})`,
+   773→        clinicalAlert: alert,
+   774→        status: 'delivered',
+   775→        createdAt: new Date().toISOString(),
+   776→      };
+   777→      addPalliativeChatMessage(alertMsg);
+   778→    }
+   779→
+   780→    addPalliativeAuditEntry({
+   781→      id: genId('audit'),
+   782→      patientId: patient.id,
+   783→      action: 'form_submitted',
+   784→      performedBy: patient.patientId || patient.id,
+   785→      performedByRole: 'patient',
+   786→      details: `Pasien mengirimkan hasil Skrining ${getToolLabel(activeScreeningType)}: ${result.scoreLabel}`,
+   787→      createdAt: new Date().toISOString(),
+   788→    });
+   789→
+   790→    setActiveFormMsgId(null);
+   791→    setActiveScreeningType(null);
+   792→  }, [patient, currentUser, roomId, activeFormMsgId, activeScreeningType, addPalliativeChatMessage, addPalliativeScreeningRecord, addPalliativeClinicalAlert, addPalliativeAuditEntry]);
+   793→
+   794→  // Open form from chat message click
+   795→  const handleOpenForm = useCallback((msg: PalliativeChatMessage) => {
+   796→    if (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') {
+   797→      setActiveFormMsgId(msg.formData.id);
+   798→      setFormType(msg.formType || null);
+   799→      if (msg.formType === 'screening' && msg.screeningType) {
+   800→        setActiveScreeningType(msg.screeningType);
+   801→      }
+   802→      if (msg.formType === 'monitoring_obat') {
+   803→        setShowMedFormFill(true);
+   804→      }
+   805→    }
+   806→  }, []);
+   807→
+   808→  // Send medication monitoring form
+   809→  const handleSendMedMonitoringForm = useCallback(() => {
+   810→    if (!patient || !currentUser || selectedMedIds.length === 0) return;
+   811→    const formId = genId('medform');
+   812→    const selectedMeds = palliativeMedications.filter(m => selectedMedIds.includes(m.id));
+   813→    const medNames = selectedMeds.map(m => m.medicineName).join(', ');
+   814→    const msg: PalliativeChatMessage = {
+   815→      id: genId('pcm'),
+   816→      roomId,
+   817→      senderId: currentUser.id,
+   818→      senderName: currentUser.name,
+   819→      senderRole: 'doctor',
+   820→      type: 'form_monitoring_obat',
+   821→      content: `Silakan isi form monitoring obat paliatif untuk: ${medNames}`,
+   822→      status: 'sent',
+   823→      formType: 'monitoring_obat',
+   824→      formData: {
+   825→        id: formId,
+   826→        formType: 'monitoring_obat',
+   827→        status: 'sent',
+   828→        progress: 0,
+   829→      },
+   830→      createdAt: new Date().toISOString(),
+   831→    };
+   832→    addPalliativeChatMessage(msg);
+   833→
+   834→    // Save to medication monitoring forms store
+   835→    const medForm: MedicationMonitoringFormInfo = {
+   836→      id: formId,
+   837→      palliativePatientId: patient.id,
+   838→      doctorId: currentUser.id,
+   839→      patientId: patient.patientId || patient.id,
+   840→      selectedMedicationIds: selectedMedIds,
+   841→      schedule: medSchedule,
+   842→      deadline: medDeadline || undefined,
+   843→      status: 'sent',
+   844→      responses: [],
+   845→      createdAt: new Date().toISOString(),
+   846→      updatedAt: new Date().toISOString(),
+   847→    };
+   848→    addMedicationMonitoringForm(medForm);
+   849→
+   850→    addPalliativeAuditEntry({
+   851→      id: genId('audit'),
+   852→      patientId: patient.id,
+   853→      action: 'form_sent',
+   854→      performedBy: currentUser.id,
+   855→      performedByRole: 'doctor',
+   856→      details: `Dokter mengirim Form Monitoring Obat Paliatif (${selectedMeds.length} obat)`,
+   857→      createdAt: new Date().toISOString(),
+   858→    });
+   859→    addMedicationMonitoringAuditEntry({
+   860→      id: genId('mmaudit'),
+   861→      patientId: patient.id,
+   862→      action: 'form_sent',
+   863→      performedBy: currentUser.id,
+   864→      performedByRole: 'doctor',
+   865→      details: `Form Monitoring Obat dikirim: ${medNames}`,
+   866→      createdAt: new Date().toISOString(),
+   867→    });
+   868→
+   869→    setShowMedMonitoringDialog(false);
+   870→    setSelectedMedIds([]);
+   871→    setMedSchedule('harian');
+   872→    setMedDeadline('');
+   873→    setShowFormDialog(false);
+   874→  }, [patient, currentUser, selectedMedIds, medSchedule, medDeadline, palliativeMedications, roomId, addPalliativeChatMessage, addMedicationMonitoringForm, addPalliativeAuditEntry, addMedicationMonitoringAuditEntry]);
+   875→
+   876→  // Handle medication monitoring form submission from patient
+   877→  const handleMedMonitoringSubmit = useCallback((answers: MedicationMonitoringFormAnswers) => {
+   878→    if (!patient || !currentUser) return;
+   879→    const responseMsg: PalliativeChatMessage = {
+   880→      id: genId('pcm'),
+   881→      roomId,
+   882→      senderId: patient.patientId || patient.id,
+   883→      senderName: patient.patientName || 'Pasien',
+   884→      senderRole: 'patient',
+   885→      type: 'form_response',
+   886→      content: 'Form Monitoring Obat Paliatif telah diisi.',
+   887→      formType: 'monitoring_obat',
+   888→      formResponse: {
+   889→        formId: activeFormMsgId || genId('form'),
+   890→        formType: 'monitoring_obat',
+   891→        medicationMonitoringAnswers: answers,
+   892→        submittedAt: new Date().toISOString(),
+   893→      },
+   894→      status: 'delivered',
+   895→      createdAt: new Date().toISOString(),
+   896→    };
+   897→    addPalliativeChatMessage(responseMsg);
+   898→
+   899→    // Check for alerts
+   900→    const notConsumedMeds = answers.medications.filter(m => m.consumptionStatus === 'tidak_diminum');
+   901→    const severeSideEffects = answers.medications.filter(m =>
+   902→      m.hasComplaints && ((m.complaintSeverity !== undefined && m.complaintSeverity >= 7) ||
+   903→        m.sideEffects?.includes('reaksi_alergi') ||
+   904→        m.sideEffects?.includes('sesak_napas'))
+   905→    );
+   906→
+   907→    // Alert for not consumed medications
+   908→    for (const med of notConsumedMeds) {
+   909→      addMedicationMonitoringAlert({
+   910→        id: genId('mmalert'),
+   911→        patientId: patient.id,
+   912→        alertType: 'obat_tidak_diminum',
+   913→        severity: 'warning',
+   914→        title: `Obat Tidak Diminum: ${med.medicineName}`,
+   915→        description: `Pasien tidak meminum ${med.medicineName}. Alasan: ${med.notConsumedReason || 'tidak disebutkan'}. ${med.notConsumedExplanation || ''}`,
+   916→        medicationName: med.medicineName,
+   917→        isRead: false,
+   918→        createdAt: new Date().toISOString(),
+   919→      });
+   920→    }
+   921→
+   922→    // Alert for severe side effects
+   923→    for (const med of severeSideEffects) {
+   924→      addMedicationMonitoringAlert({
+   925→        id: genId('mmalert'),
+   926→        patientId: patient.id,
+   927→        alertType: 'efek_samping_berat',
+   928→        severity: 'critical',
+   929→        title: `Efek Samping Berat: ${med.medicineName}`,
+   930→        description: `Pasien melaporkan efek samping berat setelah minum ${med.medicineName}. Keparahan: ${med.complaintSeverity}/10. Efek samping: ${(med.sideEffects || []).join(', ')}`,
+   931→        medicationName: med.medicineName,
+   932→        isRead: false,
+   933→        createdAt: new Date().toISOString(),
+   934→      });
+   935→
+   936→      // Also add palliative clinical alert
+   937→      const alert: PalliativeClinicalAlert = {
+   938→        id: genId('alert'),
+   939→        patientId: patient.id,
+   940→        alertType: 'obat_tidak_diminum',
+   941→        severity: 'merah',
+   942→        title: `Efek Samping Obat Berat: ${med.medicineName}`,
+   943→        description: `Keparahan ${med.complaintSeverity}/10. Efek: ${(med.sideEffects || []).join(', ')}. ${med.complaintNotes || ''}`,
+   944→        isRead: false,
+   945→        createdAt: new Date().toISOString(),
+   946→      };
+   947→      addPalliativeClinicalAlert(alert);
+   948→
+   949→      const alertMsg: PalliativeChatMessage = {
+   950→        id: genId('pcm'),
+   951→        roomId,
+   952→        senderId: 'system',
+   953→        senderName: 'Sistem',
+   954→        senderRole: 'system',
+   955→        type: 'clinical_alert',
+   956→        content: `Peringatan: Efek samping berat dilaporkan untuk ${med.medicineName} (keparahan ${med.complaintSeverity}/10)`,
+   957→        clinicalAlert: alert,
+   958→        status: 'delivered',
+   959→        createdAt: new Date().toISOString(),
+   960→      };
+   961→      addPalliativeChatMessage(alertMsg);
+   962→    }
+   963→
+   964→    // Generate AI summary for medication monitoring
+   965→    const takenCount = answers.medications.filter(m => m.consumptionStatus === 'sudah_diminum').length;
+   966→    const missedCount = answers.medications.filter(m => m.consumptionStatus === 'belum_diminum').length;
+   967→    const notConsumedCount = notConsumedMeds.length;
+   968→    const totalMeds = answers.medications.length;
+   969→    const compliancePercent = totalMeds > 0 ? Math.round((takenCount / totalMeds) * 100) : 0;
+   970→    const allSideEffects = answers.medications.filter(m => m.hasComplaints).flatMap(m => m.sideEffects || []);
+   971→    const sideEffectSummary = allSideEffects.length > 0 ? `Efek samping dilaporkan: ${[...new Set(allSideEffects)].join(', ')}.` : 'Tidak ada efek samping dilaporkan.';
+   972→
+   973→    const aiSummaryNote = `Monitoring Obat Paliatif - ${patient.patientName || '-'}
+   974→Obat dimonitor: ${totalMeds}
+   975→Sudah diminum: ${takenCount} (${compliancePercent}% kepatuhan)
+   976→Belum diminum: ${missedCount}
+   977→Tidak diminum: ${notConsumedCount}
+   978→${sideEffectSummary}
+   979→${notConsumedMeds.length > 0 ? `Obat tidak diminum: ${notConsumedMeds.map(m => m.medicineName).join(', ')}.` : ''}
+   980→${severeSideEffects.length > 0 ? `PERINGATAN: Efek samping berat pada ${severeSideEffects.map(m => m.medicineName).join(', ')}.` : ''}
+   981→${answers.overallNotes ? `Catatan pasien: ${answers.overallNotes}` : ''}
+   982→Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.' : compliancePercent >= 50 ? 'Kepatuhan perlu ditingkatkan, evaluasi hambatan.' : 'Kepatuhan rendah, perlu intervensi segera.'}`;
+   983→
+   984→    const aiMsg: PalliativeChatMessage = {
+   985→      id: genId('pcm'),
+   986→      roomId,
+   987→      senderId: 'system',
+   988→      senderName: 'AI Clinical Assistant',
+   989→      senderRole: 'system',
+   990→      type: 'ai_summary',
+   991→      content: 'Ringkasan AI otomatis telah dibuat berdasarkan data monitoring obat.',
+   992→      aiSummary: aiSummaryNote,
+   993→      status: 'delivered',
+   994→      createdAt: new Date().toISOString(),
+   995→    };
+   996→    addPalliativeChatMessage(aiMsg);
+   997→
+   998→    addMedicationMonitoringAuditEntry({
+   999→      id: genId('mmaudit'),
+  1000→      patientId: patient.id,
+  1001→      action: 'form_submitted',
+  1002→      performedBy: patient.patientId || patient.id,
+  1003→      performedByRole: 'patient',
+  1004→      details: `Form Monitoring Obat disubmit: ${takenCount} diminum, ${missedCount} belum, ${notConsumedCount} tidak`,
+  1005→      createdAt: new Date().toISOString(),
+  1006→    });
+  1007→
+  1008→    addPalliativeAuditEntry({
+  1009→      id: genId('audit'),
+  1010→      patientId: patient.id,
+  1011→      action: 'form_submitted',
+  1012→      performedBy: patient.patientId || patient.id,
+  1013→      performedByRole: 'patient',
+  1014→      details: 'Pasien mengirimkan hasil Form Monitoring Obat Paliatif',
+  1015→      createdAt: new Date().toISOString(),
+  1016→    });
+  1017→
+  1018→    setShowMedFormFill(false);
+  1019→    setActiveFormMsgId(null);
+  1020→  }, [patient, currentUser, roomId, activeFormMsgId, addPalliativeChatMessage, addMedicationMonitoringAlert, addPalliativeClinicalAlert, addMedicationMonitoringAuditEntry, addPalliativeAuditEntry]);
+  1021→
+  1022→  // Render message bubble
+  1023→  const renderMessage = (msg: PalliativeChatMessage) => {
+  1024→    const isDoctor = msg.senderRole === 'doctor';
+  1025→    const isSystem = msg.senderRole === 'system';
+  1026→    const isPatient = msg.senderRole === 'patient';
+  1027→
+  1028→    return (
+  1029→      <div key={msg.id} className={cn('flex gap-2 mb-3', isDoctor ? 'justify-end' : isSystem ? 'justify-center' : 'justify-start')}>
+  1030→        {!isDoctor && !isSystem && (
+  1031→          <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
+  1032→            <User className="w-4 h-4 text-teal-700" />
+  1033→          </div>
+  1034→        )}
+  1035→        {isSystem && (
+  1036→          <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center shrink-0">
+  1037→            {msg.type === 'ai_summary' ? <Sparkles className="w-4 h-4 text-purple-700" /> : <Bot className="w-4 h-4 text-purple-700" />}
+  1038→          </div>
+  1039→        )}
+  1040→
+  1041→        <div className={cn(
+  1042→          'max-w-[80%] rounded-lg px-3 py-2 text-sm',
+  1043→          isDoctor ? 'bg-primary text-primary-foreground' :
+  1044→          isSystem ? (msg.type === 'clinical_alert' ? 'bg-red-50 border border-red-200 text-red-900' : msg.type === 'ai_summary' ? 'bg-purple-50 border border-purple-200 text-purple-900' : 'bg-gray-100 text-gray-700') :
+  1045→          'bg-muted'
+  1046→        )}>
+  1047→          {!isDoctor && (
+  1048→            <p className="text-xs font-semibold mb-1 opacity-70">{msg.senderName}</p>
+  1049→          )}
+  1050→
+  1051→          {/* Text message */}
+  1052→          {(msg.type === 'text' || msg.type === 'education' || msg.type === 'instruction' || msg.type === 'reminder') && (
+  1053→            <p>{msg.content}</p>
+  1054→          )}
+  1055→
+  1056→          {/* Form TTV */}
+  1057→          {msg.type === 'form_ttv' && (
+  1058→            <div
+  1059→              className={cn(
+  1060→                'space-y-2',
+  1061→                (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && 'cursor-pointer hover:opacity-90'
+  1062→              )}
+  1063→              onClick={() => {
+  1064→                if (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') {
+  1065→                  handleOpenForm(msg);
+  1066→                }
+  1067→              }}
+  1068→            >
+  1069→              <div className="flex items-center gap-1.5">
+  1070→                <HeartPulse className="w-4 h-4" />
+  1071→                <span className="font-semibold">Form Monitoring TTV</span>
+  1072→              </div>
+  1073→              <p className="text-xs opacity-80">{msg.content}</p>
+  1074→              {(msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && (
+  1075→                <Button variant="outline" size="sm" className="text-xs h-7 w-full mt-1">
+  1076→                  <FileText className="w-3 h-3 mr-1" /> Klik untuk mengisi form TTV
+  1077→                </Button>
+  1078→              )}
+  1079→              {msg.formData?.status === 'submitted' && (
+  1080→                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+  1081→                  <CheckCircle2 className="w-3 h-3 mr-1" /> Sudah diisi
+  1082→                </Badge>
+  1083→              )}
+  1084→            </div>
+  1085→          )}
+  1086→
+  1087→          {/* Form Keluhan */}
+  1088→          {msg.type === 'form_keluhan' && (
+  1089→            <div
+  1090→              className={cn(
+  1091→                'space-y-2',
+  1092→                (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && 'cursor-pointer hover:opacity-90'
+  1093→              )}
+  1094→              onClick={() => {
+  1095→                if (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') {
+  1096→                  handleOpenForm(msg);
+  1097→                }
+  1098→              }}
+  1099→            >
+  1100→              <div className="flex items-center gap-1.5">
+  1101→                <ClipboardList className="w-4 h-4" />
+  1102→                <span className="font-semibold">Form Keluhan Harian</span>
+  1103→              </div>
+  1104→              <p className="text-xs opacity-80">{msg.content}</p>
+  1105→              {(msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && (
+  1106→                <Button variant="outline" size="sm" className="text-xs h-7 w-full mt-1">
+  1107→                  <FileText className="w-3 h-3 mr-1" /> Klik untuk mengisi form keluhan
+  1108→                </Button>
+  1109→              )}
+  1110→              {msg.formData?.status === 'submitted' && (
+  1111→                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+  1112→                  <CheckCircle2 className="w-3 h-3 mr-1" /> Sudah diisi
+  1113→                </Badge>
+  1114→              )}
+  1115→            </div>
+  1116→          )}
+  1117→
+  1118→          {/* Form Screening */}
+  1119→          {msg.type === 'form_screening' && (
+  1120→            <div
+  1121→              className={cn(
+  1122→                'space-y-2',
+  1123→                (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && 'cursor-pointer hover:opacity-90'
+  1124→              )}
+  1125→              onClick={() => {
+  1126→                if (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') {
+  1127→                  handleOpenForm(msg);
+  1128→                }
+  1129→              }}
+  1130→            >
+  1131→              <div className="flex items-center gap-1.5">
+  1132→                <Activity className="w-4 h-4" />
+  1133→                <span className="font-semibold">Skrining Paliatif</span>
+  1134→              </div>
+  1135→              <p className="text-xs opacity-80">{msg.content}</p>
+  1136→              {msg.screeningType && (
+  1137→                <Badge variant="outline" className="text-xs">{getToolLabel(msg.screeningType)}</Badge>
+  1138→              )}
+  1139→              {(msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && (
+  1140→                <Button variant="outline" size="sm" className="text-xs h-7 w-full mt-1">
+  1141→                  <FileText className="w-3 h-3 mr-1" /> Klik untuk mengisi skrining
+  1142→                </Button>
+  1143→              )}
+  1144→              {msg.formData?.status === 'submitted' && (
+  1145→                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+  1146→                  <CheckCircle2 className="w-3 h-3 mr-1" /> Sudah diisi
+  1147→                </Badge>
+  1148→              )}
+  1149→            </div>
+  1150→          )}
+  1151→
+  1152→          {/* Form Monitoring Obat */}
+  1153→          {msg.type === 'form_monitoring_obat' && (
+  1154→            <div
+  1155→              className={cn(
+  1156→                'space-y-2',
+  1157→                (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && 'cursor-pointer hover:opacity-90'
+  1158→              )}
+  1159→              onClick={() => {
+  1160→                if (msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') {
+  1161→                  handleOpenForm(msg);
+  1162→                }
+  1163→              }}
+  1164→            >
+  1165→              <div className="flex items-center gap-1.5">
+  1166→                <Pill className="w-4 h-4" />
+  1167→                <span className="font-semibold">Form Monitoring Obat Paliatif</span>
+  1168→              </div>
+  1169→              <p className="text-xs opacity-80">{msg.content}</p>
+  1170→              {(msg.formData?.status === 'sent' || msg.formData?.status === 'opened' || msg.formData?.status === 'in_progress') && (
+  1171→                <Button variant="outline" size="sm" className="text-xs h-7 w-full mt-1">
+  1172→                  <FileText className="w-3 h-3 mr-1" /> Klik untuk mengisi form monitoring obat
+  1173→                </Button>
+  1174→              )}
+  1175→              {msg.formData?.status === 'submitted' && (
+  1176→                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+  1177→                  <CheckCircle2 className="w-3 h-3 mr-1" /> Sudah diisi
+  1178→                </Badge>
+  1179→              )}
+  1180→            </div>
+  1181→          )}
+  1182→
+  1183→          {/* Form Response */}
+  1184→          {msg.type === 'form_response' && msg.formResponse && (
+  1185→            <div className="space-y-2">
+  1186→              <div className="flex items-center gap-1.5">
+  1187→                <CheckCircle2 className="w-4 h-4 text-green-600" />
+  1188→                <span className="font-semibold">
+  1189→                  {msg.formResponse.formType === 'ttv' ? 'Hasil Form TTV' : msg.formResponse.formType === 'keluhan' ? 'Hasil Form Keluhan' : msg.formResponse.formType === 'monitoring_obat' ? 'Hasil Monitoring Obat' : 'Hasil Skrining'}
+  1190→                </span>
+  1191→              </div>
+  1192→
+  1193→              {msg.formResponse.ttvAnswers && (
+  1194→                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+  1195→                  {msg.formResponse.ttvAnswers.systolicBP && <span>TD: {msg.formResponse.ttvAnswers.systolicBP}/{msg.formResponse.ttvAnswers.diastolicBP} mmHg</span>}
+  1196→                  {msg.formResponse.ttvAnswers.heartRate && <span>Nadi: {msg.formResponse.ttvAnswers.heartRate} bpm</span>}
+  1197→                  {msg.formResponse.ttvAnswers.respiratoryRate && <span>RR: {msg.formResponse.ttvAnswers.respiratoryRate}/menit</span>}
+  1198→                  {msg.formResponse.ttvAnswers.temperature && <span>Suhu: {msg.formResponse.ttvAnswers.temperature}°C</span>}
+  1199→                  {msg.formResponse.ttvAnswers.oxygenSat && <span>SpO2: {msg.formResponse.ttvAnswers.oxygenSat}%</span>}
+  1200→                  {msg.formResponse.ttvAnswers.weight && <span>BB: {msg.formResponse.ttvAnswers.weight} kg</span>}
+  1201→                  {msg.formResponse.ttvAnswers.painScore !== undefined && <span>Nyeri: {msg.formResponse.ttvAnswers.painScore}/10</span>}
+  1202→                  {msg.formResponse.ttvAnswers.bloodSugar && <span>GD: {msg.formResponse.ttvAnswers.bloodSugar} mg/dL</span>}
+  1203→                </div>
+  1204→              )}
+  1205→
+  1206→              {msg.formResponse.ttvAnswers?.symptoms && (
+  1207→                <div className="flex flex-wrap gap-1">
+  1208→                  {Object.entries(msg.formResponse.ttvAnswers.symptoms).map(([key, val]) => 
+  1209→                    val && key !== 'lainnya' ? (
+  1210→                      <Badge key={key} variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+  1211→                        {key.replace(/_/g, ' ')}
+  1212→                      </Badge>
+  1213→                    ) : null
+  1214→                  )}
+  1215→                  {msg.formResponse.ttvAnswers.symptoms.lainnya && (
+  1216→                    <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+  1217→                      {msg.formResponse.ttvAnswers.symptoms.lainnya}
+  1218→                    </Badge>
+  1219→                  )}
+  1220→                </div>
+  1221→              )}
+  1222→
+  1223→              {msg.formResponse.dailyComplaint && (
+  1224→                <div className="space-y-1.5 text-xs">
+  1225→                  <div className="flex items-center gap-1.5">
+  1226→                    <span>Kondisi:</span>
+  1227→                    <Badge variant="outline" className={msg.formResponse.dailyComplaint.kondisiHariIni === 'baik' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}>
+  1228→                      {msg.formResponse.dailyComplaint.kondisiHariIni === 'baik' ? 'Baik' : 'Tidak Baik'}
+  1229→                    </Badge>
+  1230→                  </div>
+  1231→                  {msg.formResponse.dailyComplaint.keluhanBaru === 'ada' && (
+  1232→                    <div className="flex items-center gap-1.5">
+  1233→                      <span>Keluhan Baru:</span>
+  1234→                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Ada</Badge>
+  1235→                    </div>
+  1236→                  )}
+  1237→                  <div className="flex flex-wrap gap-1.5">
+  1238→                    <Badge variant="outline" className={msg.formResponse.dailyComplaint.kondisiNyeri === 'bertambah' ? 'bg-red-50 text-red-700 border-red-200' : msg.formResponse.dailyComplaint.kondisiNyeri === 'sama' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}>
+  1239→                      Nyeri: {msg.formResponse.dailyComplaint.kondisiNyeri === 'tidak_nyeri' ? 'Tidak Nyeri' : msg.formResponse.dailyComplaint.kondisiNyeri === 'berkurang' ? 'Berkurang' : msg.formResponse.dailyComplaint.kondisiNyeri === 'sama' ? 'Sama' : 'Bertambah'}
+  1240→                    </Badge>
+  1241→                    <Badge variant="outline" className={msg.formResponse.dailyComplaint.kondisiSesak === 'bertambah' ? 'bg-red-50 text-red-700 border-red-200' : msg.formResponse.dailyComplaint.kondisiSesak === 'sama' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}>
+  1242→                      Sesak: {msg.formResponse.dailyComplaint.kondisiSesak === 'tidak_sesak' ? 'Tidak Sesak' : msg.formResponse.dailyComplaint.kondisiSesak === 'berkurang' ? 'Berkurang' : msg.formResponse.dailyComplaint.kondisiSesak === 'sama' ? 'Sama' : 'Bertambah'}
+  1243→                    </Badge>
+  1244→                  </div>
+  1245→                  <div className="flex flex-wrap gap-1.5">
+  1246→                    <Badge variant="outline" className={msg.formResponse.dailyComplaint.makanMinum === 'ya' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}>
+  1247→                      Makan/Minum: {msg.formResponse.dailyComplaint.makanMinum === 'ya' ? 'Ya' : 'Tidak'}
+  1248→                    </Badge>
+  1249→                    <Badge variant="outline" className={msg.formResponse.dailyComplaint.tidur === 'ya' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}>
+  1250→                      Tidur: {msg.formResponse.dailyComplaint.tidur === 'ya' ? 'Ya' : 'Tidak'}
+  1251→                    </Badge>
+  1252→                    <Badge variant="outline" className={msg.formResponse.dailyComplaint.masalahObat === 'tidak' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}>
+  1253→                      Obat: {msg.formResponse.dailyComplaint.masalahObat === 'tidak' ? 'Tidak Ada Masalah' : 'Ada Masalah'}
+  1254→                    </Badge>
+  1255→                  </div>
+  1256→                  <Badge className={`text-[10px] border ${
+  1257→                    msg.formResponse.dailyComplaint.severityLevel === 'merah' ? 'bg-red-100 text-red-800 border-red-300' :
+  1258→                    msg.formResponse.dailyComplaint.severityLevel === 'kuning' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+  1259→                    'bg-emerald-100 text-emerald-800 border-emerald-300'
+  1260→                  }`}>
+  1261→                    {msg.formResponse.dailyComplaint.severityLevel === 'merah' ? '🔴 Kritis' : msg.formResponse.dailyComplaint.severityLevel === 'kuning' ? '🟡 Perhatian' : '🟢 Stabil'}
+  1262→                  </Badge>
+  1263→                </div>
+  1264→              )}
+  1265→
+  1266→              {!msg.formResponse.dailyComplaint && msg.formResponse.keluhanAnswers && (
+  1267→                <div className="space-y-1 text-xs">
+  1268→                  <div>Kondisi: <Badge variant="outline">{msg.formResponse.keluhanAnswers.kondisiHariIni}</Badge></div>
+  1269→                  {Object.entries(msg.formResponse.keluhanAnswers).filter(([k]) => k !== 'kondisiHariIni' && k !== 'catatanTambahan').map(([key, val]) => (
+  1270→                    val !== 'tidak_ada' ? <div key={key}>{key.replace(/([A-Z])/g, ' $1')}: <Badge variant="outline" className={val === 'berat' ? 'bg-red-50 text-red-700' : val === 'sedang' ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'}>{String(val)}</Badge></div> : null
+  1271→                  ))}
+  1272→                  {msg.formResponse.keluhanAnswers.catatanTambahan && <div className="italic">"{msg.formResponse.keluhanAnswers.catatanTambahan}"</div>}
+  1273→                </div>
+  1274→              )}
+  1275→
+  1276→              {msg.formResponse.screeningResult && (
+  1277→                <div className="space-y-1 text-xs">
+  1278→                  <div>Skor: <Badge variant="outline" className={getSeverityColor(msg.formResponse.screeningResult.ewsLevel)}>{msg.formResponse.screeningResult.score} - {msg.formResponse.screeningResult.scoreLabel}</Badge></div>
+  1279→                  <div className="italic">{msg.formResponse.screeningResult.interpretation}</div>
+  1280→                </div>
+  1281→              )}
+  1282→
+  1283→              {msg.formResponse.medicationMonitoringAnswers && (
+  1284→                <div className="space-y-1 text-xs">
+  1285→                  {msg.formResponse.medicationMonitoringAnswers.medications.map(med => (
+  1286→                    <div key={med.medicationId} className="flex items-center gap-2">
+  1287→                      <span
+  1288→                        className={cn(
+  1289→                          'w-2 h-2 rounded-full shrink-0',
+  1290→                          med.consumptionStatus === 'sudah_diminum' && 'bg-green-500',
+  1291→                          med.consumptionStatus === 'belum_diminum' && 'bg-amber-500',
+  1292→                          med.consumptionStatus === 'tidak_diminum' && 'bg-red-500',
+  1293→                        )}
+  1294→                      />
+  1295→                      <span className="truncate">{med.medicineName}</span>
+  1296→                      <Badge
+  1297→                        variant="outline"
+  1298→                        className={cn(
+  1299→                          'text-[9px] shrink-0',
+  1300→                          med.consumptionStatus === 'sudah_diminum' && 'bg-green-50 text-green-700 border-green-200',
+  1301→                          med.consumptionStatus === 'belum_diminum' && 'bg-amber-50 text-amber-700 border-amber-200',
+  1302→                          med.consumptionStatus === 'tidak_diminum' && 'bg-red-50 text-red-700 border-red-200',
+  1303→                        )}
+  1304→                      >
+  1305→                        {med.consumptionStatus === 'sudah_diminum' ? 'Diminum' : med.consumptionStatus === 'belum_diminum' ? 'Belum' : 'Tidak'}
+  1306→                      </Badge>
+  1307→                      {med.hasComplaints && <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />}
+  1308→                    </div>
+  1309→                  ))}
+  1310→                  {msg.formResponse.medicationMonitoringAnswers.overallNotes && (
+  1311→                    <div className="italic mt-1">&quot;{msg.formResponse.medicationMonitoringAnswers.overallNotes}&quot;</div>
+  1312→                  )}
+  1313→                </div>
+  1314→              )}
+  1315→
+  1316→              <p className="text-[10px] opacity-60">Diisi pada: {formatDate(msg.formResponse.submittedAt)} {formatTime(msg.formResponse.submittedAt)}</p>
+  1317→            </div>
+  1318→          )}
+  1319→
+  1320→          {/* AI Summary */}
+  1321→          {msg.type === 'ai_summary' && msg.aiSummary && (
+  1322→            <div className="space-y-2">
+  1323→              <div className="flex items-center gap-1.5">
+  1324→                <Sparkles className="w-4 h-4" />
+  1325→                <span className="font-semibold">Ringkasan AI</span>
+  1326→              </div>
+  1327→              <pre className="text-xs whitespace-pre-wrap font-sans leading-relaxed">{msg.aiSummary}</pre>
+  1328→            </div>
+  1329→          )}
+  1330→
+  1331→          {/* Clinical Alert */}
+  1332→          {msg.type === 'clinical_alert' && msg.clinicalAlert && (
+  1333→            <div className="space-y-2">
+  1334→              <div className="flex items-center gap-1.5">
+  1335→                <AlertTriangle className="w-4 h-4" />
+  1336→                <span className="font-semibold">{msg.clinicalAlert.title}</span>
+  1337→              </div>
+  1338→              <p className="text-xs">{msg.clinicalAlert.description}</p>
+  1339→              <Badge variant="outline" className={cn('text-xs', getSeverityColor(msg.clinicalAlert.severity))}>
+  1340→                {getSeverityLabel(msg.clinicalAlert.severity)}
+  1341→              </Badge>
+  1342→            </div>
+  1343→          )}
+  1344→
+  1345→          {/* Message status */}
+  1346→          <div className="flex items-center justify-end gap-1 mt-1">
+  1347→            <span className="text-[10px] opacity-50">{formatTime(msg.createdAt)}</span>
+  1348→            {isDoctor && (
+  1349→              <span className="text-[10px] opacity-50">
+  1350→                {msg.status === 'sent' ? <CheckCircle2 className="w-3 h-3" /> : msg.status === 'delivered' ? <Eye className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3 text-blue-400" />}
+  1351→              </span>
+  1352→            )}
+  1353→          </div>
+  1354→        </div>
+  1355→
+  1356→        {isDoctor && (
+  1357→          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+  1358→            <Stethoscope className="w-4 h-4 text-primary" />
+  1359→          </div>
+  1360→        )}
+  1361→      </div>
+  1362→    );
+  1363→  };
+  1364→
+  1365→  if (!patient) {
+  1366→    return (
+  1367→      <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+  1368→        <MessageCircle className="w-12 h-12 mb-3 opacity-50" />
+  1369→        <p className="text-sm">Pilih pasien untuk memulai percakapan</p>
+  1370→      </div>
+  1371→    );
+  1372→  }
+  1373→
+  1374→  return (
+  1375→    <div className="flex flex-col h-full">
+  1376→      {/* Chat Header */}
+  1377→      <div className="flex items-center justify-between p-3 border-b bg-muted/30">
+  1378→        <div className="flex items-center gap-2">
+  1379→          <div className="w-9 h-9 rounded-full bg-teal-100 flex items-center justify-center">
+  1380→            <User className="w-5 h-5 text-teal-700" />
+  1381→          </div>
+  1382→          <div>
+  1383→            <p className="font-semibold text-sm">{patient.patientName}</p>
+  1384→            <p className="text-xs text-muted-foreground">{patient.primaryDiagnosis} | RM: {patient.rmNumber}</p>
+  1385→          </div>
+  1386→          <Badge variant="outline" className={cn('text-[10px]', getSeverityColor(patient.riskLevel))}>
+  1387→            {getSeverityLabel(patient.riskLevel)}
+  1388→          </Badge>
+  1389→        </div>
+  1390→        <div className="flex items-center gap-2">
+  1391→          <TooltipProvider>
+  1392→            <Tooltip>
+  1393→              <TooltipTrigger asChild>
+  1394→                <Button variant="ghost" size="sm" className="relative" onClick={() => setShowAlertsPanel(!showAlertsPanel)}>
+  1395→                  <Bell className="w-4 h-4" />
+  1396→                  {unreadAlertCount > 0 && (
+  1397→                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">{unreadAlertCount}</span>
+  1398→                  )}
+  1399→                </Button>
+  1400→              </TooltipTrigger>
+  1401→              <TooltipContent>Notifikasi Klinis</TooltipContent>
+  1402→            </Tooltip>
+  1403→          </TooltipProvider>
+  1404→        </div>
+  1405→      </div>
+  1406→
+  1407→      {/* Alerts Panel */}
+  1408→      {showAlertsPanel && (
+  1409→        <div className="p-3 border-b bg-red-50/50 space-y-2 max-h-48 overflow-y-auto">
+  1410→          <div className="flex items-center justify-between">
+  1411→            <p className="text-xs font-semibold text-red-800">Notifikasi Klinis</p>
+  1412→            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setShowAlertsPanel(false)}>
+  1413→              <X className="w-3 h-3" />
+  1414→            </Button>
+  1415→          </div>
+  1416→          {patientAlerts.length === 0 ? (
+  1417→            <p className="text-xs text-muted-foreground">Tidak ada notifikasi</p>
+  1418→          ) : (
+  1419→            patientAlerts.map(alert => (
+  1420→              <Card key={alert.id} className={cn('p-2 cursor-pointer', !alert.isRead && 'ring-1 ring-red-300')} onClick={() => markPalliativeAlertRead(alert.id)}>
+  1421→                <div className="flex items-center gap-2">
+  1422→                  <Badge variant="outline" className={cn('text-[10px]', getSeverityColor(alert.severity))}>
+  1423→                    {alert.severity === 'merah' ? 'Gawat' : alert.severity === 'kuning' ? 'Waspada' : 'Stabil'}
+  1424→                  </Badge>
+  1425→                  <span className="text-xs font-medium">{alert.title}</span>
+  1426→                </div>
+  1427→                <p className="text-[10px] text-muted-foreground mt-1">{alert.description}</p>
+  1428→                <p className="text-[10px] text-muted-foreground mt-1">{formatDate(alert.createdAt)} {formatTime(alert.createdAt)}</p>
+  1429→              </Card>
+  1430→            ))
+  1431→          )}
+  1432→        </div>
+  1433→      )}
+  1434→
+  1435→      {/* Messages Area */}
+  1436→      <ScrollArea className="flex-1 p-3">
+  1437→        <div className="space-y-1">
+  1438→          {roomMessages.length === 0 ? (
+  1439→            <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+  1440→              <MessageCircle className="w-8 h-8 mb-2 opacity-50" />
+  1441→              <p className="text-xs">Mulai percakapan dengan {patient.patientName}</p>
+  1442→            </div>
+  1443→          ) : (
+  1444→            roomMessages.map(msg => renderMessage(msg))
+  1445→          )}
+  1446→          <div ref={messagesEndRef} />
+  1447→        </div>
+  1448→      </ScrollArea>
+  1449→
+  1450→      {/* Patient Fill Form (shows TTV/Keluhan/Screening form for patient view) */}
+  1451→      {activeFormMsgId && (
+  1452→        <Dialog open={!!activeFormMsgId} onOpenChange={(open) => {
+  1453→          if (!open) {
+  1454→            setActiveFormMsgId(null);
+  1455→            setActiveScreeningType(null);
+  1456→          }
+  1457→        }}>
+  1458→          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()} onPointerDownOutside={(e) => e.preventDefault()}>
+  1459→            <DialogHeader>
+  1460→              <DialogTitle>Isi Formulir</DialogTitle>
+  1461→              <DialogDescription>Silakan isi formulir yang dikirim oleh dokter</DialogDescription>
+  1462→            </DialogHeader>
+  1463→            {formType === 'ttv' && (
+  1464→              <TTVForm
+  1465→                onSubmit={(answers) => handleTTVSubmit(answers)}
+  1466→                onSaveDraft={() => {}}
+  1467→              />
+  1468→            )}
+  1469→            {formType === 'keluhan' && patient && (
+  1470→              <DailyComplaintForm
+  1471→                palliativePatientId={patient.id}
+  1472→                source="chat"
+  1473→                compact
+  1474→                onSubmitSuccess={handleKeluhanSubmit}
+  1475→              />
+  1476→            )}
+  1477→            {formType === 'screening' && activeScreeningType && (
+  1478→              <InlineScreeningForm
+  1479→                screeningType={activeScreeningType}
+  1480→                onSubmit={handleScreeningSubmit}
+  1481→                onSaveDraft={() => {}}
+  1482→              />
+  1483→            )}
+  1484→            {formType === 'monitoring_obat' && showMedFormFill && (
+  1485→              <MedicationMonitoringForm
+  1486→                medications={palliativeMedications.filter(m => m.palliativePatientId === patient?.id && m.isActive)}
+  1487→                onSubmit={handleMedMonitoringSubmit}
+  1488→                onSaveDraft={() => {}}
+  1489→              />
+  1490→            )}
+  1491→          </DialogContent>
+  1492→        </Dialog>
+  1493→      )}
+  1494→
+  1495→      {/* Send Form Dialog */}
+  1496→      <Dialog open={showFormDialog} onOpenChange={setShowFormDialog}>
+  1497→        <DialogContent className="max-w-md">
+  1498→          <DialogHeader>
+  1499→            <DialogTitle>Kirim Formulir ke Pasien</DialogTitle>
+  1500→            <DialogDescription>Pilih jenis formulir yang akan dikirim kepada {patient.patientName}</DialogDescription>
+  1501→          </DialogHeader>
+  1502→          <div className="space-y-2">
+  1503→            <Card className="p-3 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => { setFormType('ttv'); handleSendForm('ttv'); }}>
+  1504→              <div className="flex items-center gap-3">
+  1505→                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+  1506→                  <HeartPulse className="w-5 h-5 text-red-600" />
+  1507→                </div>
+  1508→                <div>
+  1509→                  <p className="font-medium text-sm">Form Monitoring TTV</p>
+  1510→                  <p className="text-xs text-muted-foreground">Tekanan darah, nadi, napas, suhu, SpO2, berat badan, gejala</p>
+  1511→                </div>
+  1512→              </div>
+  1513→            </Card>
+  1514→            <Card className="p-3 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => { setFormType('keluhan'); handleSendForm('keluhan'); }}>
+  1515→              <div className="flex items-center gap-3">
+  1516→                <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+  1517→                  <ClipboardList className="w-5 h-5 text-amber-600" />
+  1518→                </div>
+  1519→                <div>
+  1520→                  <p className="font-medium text-sm">Form Keluhan Harian</p>
+  1521→                  <p className="text-xs text-muted-foreground">Kondisi hari ini, keluhan, nyeri, sesak, makan, tidur, obat</p>
+  1522→                </div>
+  1523→              </div>
+  1524→            </Card>
+  1525→            <Card className="p-3 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => { setShowScreeningPicker(true); }}>
+  1526→              <div className="flex items-center gap-3">
+  1527→                <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center">
+  1528→                  <Activity className="w-5 h-5 text-teal-600" />
+  1529→                </div>
+  1530→                <div>
+  1531→                  <p className="font-medium text-sm">Skrining Paliatif</p>
+  1532→                  <p className="text-xs text-muted-foreground">PPS, ESAS-r, Distress Thermometer, SPICT, dll.</p>
+  1533→                </div>
+  1534→              </div>
+  1535→            </Card>
+  1536→            <Card className="p-3 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => { setShowFormDialog(false); setShowMedMonitoringDialog(true); setSelectedMedIds(palliativeMedications.filter(m => m.palliativePatientId === patient?.id && m.isActive).map(m => m.id)); }}>
+  1537→              <div className="flex items-center gap-3">
+  1538→                <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+  1539→                  <Pill className="w-5 h-5 text-purple-600" />
+  1540→                </div>
+  1541→                <div>
+  1542→                  <p className="font-medium text-sm">Monitoring Obat Paliatif</p>
+  1543→                  <p className="text-xs text-muted-foreground">Kepatuhan minum obat, efek samping, alasan tidak minum</p>
+  1544→                </div>
+  1545→              </div>
+  1546→            </Card>
+  1547→          </div>
+  1548→          <DialogFooter>
+  1549→            <Button variant="outline" onClick={() => setShowFormDialog(false)}>Batal</Button>
+  1550→          </DialogFooter>
+  1551→        </DialogContent>
+  1552→      </Dialog>
+  1553→
+  1554→      {/* Screening Picker Dialog */}
+  1555→      <Dialog open={showScreeningPicker} onOpenChange={setShowScreeningPicker}>
+  1556→        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+  1557→          <DialogHeader>
+  1558→            <DialogTitle>Pilih Jenis Skrining</DialogTitle>
+  1559→            <DialogDescription>Pilih skrining paliatif yang akan dikirim kepada pasien</DialogDescription>
+  1560→          </DialogHeader>
+  1561→          <div className="space-y-2">
+  1562→            {(['pps', 'eortc', 'esas', 'spict', 'distress', 'zarit'] as PalliativeToolType[]).map(tool => (
+  1563→              <Card key={tool} className="p-3 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSendForm('screening', tool)}>
+  1564→                <div className="flex items-center justify-between">
+  1565→                  <div>
+  1566→                    <p className="font-medium text-sm">{getToolLabel(tool)}</p>
+  1567→                    <p className="text-xs text-muted-foreground">{getToolCategory(tool)}</p>
+  1568→                  </div>
+  1569→                  <ArrowRight className="w-4 h-4 text-muted-foreground" />
+  1570→                </div>
+  1571→              </Card>
+  1572→            ))}
+  1573→          </div>
+  1574→          <DialogFooter>
+  1575→            <Button variant="outline" onClick={() => setShowScreeningPicker(false)}>Batal</Button>
+  1576→          </DialogFooter>
+  1577→        </DialogContent>
+  1578→      </Dialog>
+  1579→
+  1580→      {/* Medication Monitoring Selection Dialog */}
+  1581→      <Dialog open={showMedMonitoringDialog} onOpenChange={setShowMedMonitoringDialog}>
+  1582→        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+  1583→          <DialogHeader>
+  1584→            <DialogTitle>Kirim Form Monitoring Obat Paliatif</DialogTitle>
+  1585→            <DialogDescription>Pilih obat dan jadwal monitoring untuk {patient?.patientName}</DialogDescription>
+  1586→          </DialogHeader>
+  1587→          <div className="space-y-3">
+  1588→            <div>
+  1589→              <div className="flex items-center justify-between mb-2">
+  1590→                <Label className="text-sm font-medium">Pilih Obat</Label>
+  1591→                <Button variant="ghost" size="sm" className="text-xs h-6" onClick={() => {
+  1592→                  const allIds = palliativeMedications.filter(m => m.palliativePatientId === patient?.id && m.isActive).map(m => m.id);
+  1593→                  setSelectedMedIds(selectedMedIds.length === allIds.length ? [] : allIds);
+  1594→                }}>
+  1595→                  {selectedMedIds.length === palliativeMedications.filter(m => m.palliativePatientId === patient?.id && m.isActive).length ? 'Batal Semua' : 'Pilih Semua'}
+  1596→                </Button>
+  1597→              </div>
+  1598→              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+  1599→                {palliativeMedications.filter(m => m.palliativePatientId === patient?.id && m.isActive).map(med => (
+  1600→                  <label key={med.id} className="flex items-center gap-2 text-sm cursor-pointer p-1.5 rounded hover:bg-muted/50">
+  1601→                    <Checkbox
+  1602→                      checked={selectedMedIds.includes(med.id)}
+  1603→                      onCheckedChange={checked => {
+  1604→                        setSelectedMedIds(prev =>
+  1605→                          checked ? [...prev, med.id] : prev.filter(id => id !== med.id)
+  1606→                        );
+  1607→                      }}
+  1608→                    />
+  1609→                    <div className="flex-1 min-w-0">
+  1610→                      <span className="font-medium">{med.medicineName}</span>
+  1611→                      <span className="text-xs text-muted-foreground ml-2">{med.dosage} - {med.frequency}</span>
+  1612→                    </div>
+  1613→                  </label>
+  1614→                ))}
+  1615→                {palliativeMedications.filter(m => m.palliativePatientId === patient?.id && m.isActive).length === 0 && (
+  1616→                  <p className="text-xs text-muted-foreground">Tidak ada obat aktif untuk pasien ini</p>
+  1617→                )}
+  1618→              </div>
+  1619→            </div>
+  1620→            <Separator />
+  1621→            <div>
+  1622→              <Label className="text-sm font-medium">Jadwal Monitoring</Label>
+  1623→              <Select value={medSchedule} onValueChange={v => setMedSchedule(v as MedicationFormSchedule)}>
+  1624→                <SelectTrigger className="mt-1">
+  1625→                  <SelectValue />
+  1626→                </SelectTrigger>
+  1627→                <SelectContent>
+  1628→                  <SelectItem value="sekali">Sekali</SelectItem>
+  1629→                  <SelectItem value="harian">Harian</SelectItem>
+  1630→                  <SelectItem value="mingguan">Mingguan</SelectItem>
+  1631→                  <SelectItem value="sesuai_jadwal_obat">Sesuai Jadwal Obat</SelectItem>
+  1632→                </SelectContent>
+  1633→              </Select>
+  1634→            </div>
+  1635→            <div>
+  1636→              <Label className="text-sm font-medium">Deadline (opsional)</Label>
+  1637→              <Input
+  1638→                type="datetime-local"
+  1639→                value={medDeadline}
+  1640→                onChange={e => setMedDeadline(e.target.value)}
+  1641→                className="mt-1"
+  1642→              />
+  1643→            </div>
+  1644→          </div>
+  1645→          <DialogFooter>
+  1646→            <Button variant="outline" onClick={() => { setShowMedMonitoringDialog(false); setSelectedMedIds([]); }}>Batal</Button>
+  1647→            <Button
+  1648→              onClick={handleSendMedMonitoringForm}
+  1649→              disabled={selectedMedIds.length === 0}
+  1650→            >
+  1651→              <Send className="w-4 h-4 mr-1" /> Kirim Form Monitoring
+  1652→            </Button>
+  1653→          </DialogFooter>
+  1654→        </DialogContent>
+  1655→      </Dialog>
+  1656→
+  1657→      {/* Input Area */}
+  1658→      <div className="p-3 border-t bg-background">
+  1659→        <div className="flex items-center gap-2 mb-2">
+  1660→          <TooltipProvider>
+  1661→            <Tooltip>
+  1662→              <TooltipTrigger asChild>
+  1663→                <Button variant="outline" size="sm" onClick={() => setShowFormDialog(true)}>
+  1664→                  <FileText className="w-4 h-4 mr-1" />
+  1665→                  <span className="hidden sm:inline">Kirim Form</span>
+  1666→                </Button>
+  1667→              </TooltipTrigger>
+  1668→              <TooltipContent>Kirim Form TTV / Keluhan / Skrining / Monitoring Obat</TooltipContent>
+  1669→            </Tooltip>
+  1670→          </TooltipProvider>
+  1671→          <TooltipProvider>
+  1672→            <Tooltip>
+  1673→              <TooltipTrigger asChild>
+  1674→                <Button variant="ghost" size="sm" onClick={() => { setMessageInput('Silakan kontrol sesuai jadwal. Semoga kondisi tetap stabil.'); }}>
+  1675→                  <Clock className="w-4 h-4 mr-1" />
+  1676→                  <span className="hidden sm:inline">Pengingat</span>
+  1677→                </Button>
+  1678→              </TooltipTrigger>
+  1679→              <TooltipContent>Kirim Pengingat Kontrol</TooltipContent>
+  1680→            </Tooltip>
+  1681→          </TooltipProvider>
+  1682→          <TooltipProvider>
+  1683→            <Tooltip>
+  1684→              <TooltipTrigger asChild>
+  1685→                <Button variant="ghost" size="sm" onClick={() => { setMessageInput('Berikut informasi edukasi kesehatan untuk Anda:'); }}>
+  1686→                  <Stethoscope className="w-4 h-4 mr-1" />
+  1687→                  <span className="hidden sm:inline">Edukasi</span>
+  1688→                </Button>
+  1689→              </TooltipTrigger>
+  1690→              <TooltipContent>Kirim Edukasi Kesehatan</TooltipContent>
+  1691→            </Tooltip>
+  1692→          </TooltipProvider>
+  1693→
+  1694→          {/* Simulate patient fill button for demo */}
+  1695→          <TooltipProvider>
+  1696→            <Tooltip>
+  1697→              <TooltipTrigger asChild>
+  1698→                <Button variant="ghost" size="sm" className="ml-auto text-teal-600" onClick={() => {
+  1699→                  const lastForm = [...roomMessages].reverse().find(m => m.formData?.status === 'sent');
+  1700→                  if (lastForm?.formType) {
+  1701→                    setActiveFormMsgId(lastForm.formData!.id);
+  1702→                    setFormType(lastForm.formType);
+  1703→                    if (lastForm.formType === 'screening' && lastForm.screeningType) {
+  1704→                      setActiveScreeningType(lastForm.screeningType);
+  1705→                    }
+  1706→                    if (lastForm.formType === 'monitoring_obat') {
+  1707→                      setShowMedFormFill(true);
+  1708→                    }
+  1709→                  }
+  1710→                }}>
+  1711→                  <UserCheck className="w-4 h-4 mr-1" />
+  1712→                  <span className="hidden sm:inline">Simulasi Pasien</span>
+  1713→                </Button>
+  1714→              </TooltipTrigger>
+  1715→              <TooltipContent>Simulasi pasien mengisi form (demo)</TooltipContent>
+  1716→            </Tooltip>
+  1717→          </TooltipProvider>
+  1718→        </div>
+  1719→        <div className="flex items-center gap-2">
+  1720→          <Input
+  1721→            placeholder="Ketik pesan..."
+  1722→            value={messageInput}
+  1723→            onChange={e => setMessageInput(e.target.value)}
+  1724→            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
+  1725→            className="flex-1"
+  1726→          />
+  1727→          <Button size="sm" onClick={handleSendMessage} disabled={!messageInput.trim()}>
+  1728→            <Send className="w-4 h-4" />
+  1729→          </Button>
+  1730→        </div>
+  1731→      </div>
+  1732→    </div>
+  1733→  );
+  1734→}
+  1735→

@@ -1,0 +1,1736 @@
+     1→import { NextRequest, NextResponse } from 'next/server';
+     2→import { db } from '@/lib/db';
+     3→import ZAI from 'z-ai-web-dev-sdk';
+     4→
+     5→// ── Types ────────────────────────────────────────────────────────────────────
+     6→
+     7→interface AdditionalData {
+     8→  nutritionRecords?: Record<string, unknown>[];
+     9→  socialAssessmentRecords?: Record<string, unknown>[];
+    10→  caregivers?: Record<string, unknown>[];
+    11→  familyMeetings?: Record<string, unknown>[];
+    12→  financialSupportRecords?: Record<string, unknown>[];
+    13→}
+    14→
+    15→interface VitalSignRecord {
+    16→  id: string;
+    17→  recordedBy: string | null;
+    18→  systolicBP: number | null;
+    19→  diastolicBP: number | null;
+    20→  heartRate: number | null;
+    21→  respiratoryRate: number | null;
+    22→  temperature: number | null;
+    23→  oxygenSat: number | null;
+    24→  weight: number | null;
+    25→  height: number | null;
+    26→  bmi: number | null;
+    27→  notes: string | null;
+    28→  recordedAt: Date;
+    29→}
+    30→
+    31→interface MedicationWithAdherences {
+    32→  id: string;
+    33→  medicineName: string;
+    34→  dosage: string;
+    35→  frequency: string;
+    36→  route: string | null;
+    37→  startDate: string | null;
+    38→  endDate: string | null;
+    39→  indication: string | null;
+    40→  isActive: boolean;
+    41→  notes: string | null;
+    42→  adherences: {
+    43→    id: string;
+    44→    date: string;
+    45→    takenOnTime: boolean;
+    46→    missedDose: boolean;
+    47→    sideEffects: string | null;
+    48→    complaints: string | null;
+    49→  }[];
+    50→}
+    51→
+    52→interface ScreeningRecord {
+    53→  id: string;
+    54→  screeningType: string;
+    55→  score: number | null;
+    56→  scoreLabel: string | null;
+    57→  interpretation: string | null;
+    58→  ewsLevel: string | null;
+    59→  details: string | null;
+    60→  performedAt: Date;
+    61→}
+    62→
+    63→interface DailyComplaintRecord {
+    64→  id: string;
+    65→  kondisiHariIni: string;
+    66→  alasanKondisi: string | null;
+    67→  keluhanBaru: string;
+    68→  deskripsiKeluhanBaru: string | null;
+    69→  kondisiNyeri: string;
+    70→  kondisiSesak: string;
+    71→  makanMinum: string;
+    72→  alasanMakanMinum: string | null;
+    73→  tidur: string;
+    74→  alasanTidur: string | null;
+    75→  masalahObat: string;
+    76→  deskripsiMasalahObat: string | null;
+    77→  severityLevel: string;
+    78→  sumberPengisian: string;
+    79→  submittedAt: Date;
+    80→}
+    81→
+    82→interface ACPDocument {
+    83→  id: string;
+    84→  decisionMakerName: string | null;
+    85→  decisionMakerRelation: string | null;
+    86→  decisionMakerPhone: string | null;
+    87→  preferredCareLocation: string | null;
+    88→  careGoal: string | null;
+    89→  resuscitationPref: string | null;
+    90→  ventilatorPref: string | null;
+    91→  icuPref: string | null;
+    92→  artificialNutrition: string | null;
+    93→  dialysisPref: string | null;
+    94→  organDonation: string | null;
+    95→  patientHopes: string | null;
+    96→  patientWorries: string | null;
+    97→  lifeValues: string | null;
+    98→  endOfLifePrefs: string | null;
+    99→  patientSigned: boolean;
+   100→  familySigned: boolean;
+   101→  doctorSigned: boolean;
+   102→  signedAt: string | null;
+   103→  isActive: boolean;
+   104→  revisions: {
+   105→    id: string;
+   106→    revisedBy: string | null;
+   107→    changes: string | null;
+   108→    reason: string | null;
+   109→    createdAt: Date;
+   110→  }[];
+   111→}
+   112→
+   113→interface AIAnalysis {
+   114→  ringkasanPerjalananKlinis: string;
+   115→  identifikasiKondisiKritis: string;
+   116→  analisisTrenPasien: string;
+   117→  ringkasanSkrining: {
+   118→    domainFisik: string;
+   119→    domainPsikologis: string;
+   120→    domainSosial: string;
+   121→    domainSpiritual: string;
+   122→    kebutuhanEdukasi: string;
+   123→    bebanCaregiver: string;
+   124→  };
+   125→  ringkasanNutrisi: string;
+   126→  ringkasanSosial: string;
+   127→  ringkasanACP: string;
+   128→  kesimpulanTelepaliatif: {
+   129→    diagnosisUtama: string;
+   130→    statusFungsionalAwal: string;
+   131→    statusFungsionalTerakhir: string;
+   132→    masalahPaliatifUtama: string;
+   133→    keluhanDominan: string;
+   134→    kondisiPalingKritis: string;
+   135→    responsTerhadapIntervensi: string;
+   136→    kondisiKlinisSaatIni: string;
+   137→    tujuanPerawatanSaatIni: string;
+   138→    rencanaTindakLanjut: string;
+   139→    lokasiPerawatanSaatIni: string;
+   140→    jadwalMonitoringBerikutnya: string;
+   141→  };
+   142→  rekomendasi: string[];
+   143→}
+   144→
+   145→// ── Helper: Format a value with optional suffix ──────────────────────────────
+   146→function fmtVal(val: unknown, suffix: string): string {
+   147→  if (val == null) return '-' + suffix;
+   148→  return String(val) + suffix;
+   149→}
+   150→
+   151→// ── Helper: Severity ranking ─────────────────────────────────────────────────
+   152→const SEVERITY_RANK: Record<string, number> = { hijau: 0, kuning: 1, merah: 2 };
+   153→
+   154→// ── Helper: Compute vital sign criticality score ─────────────────────────────
+   155→function computeCriticalityScore(v: VitalSignRecord): { score: number; reasons: string[] } {
+   156→  let score = 0;
+   157→  const reasons: string[] = [];
+   158→
+   159→  if (v.oxygenSat != null && v.oxygenSat < 90) {
+   160→    score += 4;
+   161→    reasons.push(`SpO2 ${v.oxygenSat}% (<90%)`);
+   162→  }
+   163→  if (v.heartRate != null) {
+   164→    if (v.heartRate > 120) { score += 3; reasons.push(`Nadi ${v.heartRate} bpm (>120)`); }
+   165→    else if (v.heartRate < 50) { score += 3; reasons.push(`Nadi ${v.heartRate} bpm (<50)`); }
+   166→  }
+   167→  if (v.respiratoryRate != null) {
+   168→    if (v.respiratoryRate > 28) { score += 3; reasons.push(`RR ${v.respiratoryRate}/menit (>28)`); }
+   169→    else if (v.respiratoryRate < 8) { score += 3; reasons.push(`RR ${v.respiratoryRate}/menit (<8)`); }
+   170→  }
+   171→  if (v.systolicBP != null) {
+   172→    if (v.systolicBP > 180) { score += 3; reasons.push(`SBP ${v.systolicBP} mmHg (>180)`); }
+   173→    else if (v.systolicBP < 90) { score += 3; reasons.push(`SBP ${v.systolicBP} mmHg (<90)`); }
+   174→  }
+   175→  if (v.temperature != null) {
+   176→    if (v.temperature > 39) { score += 2; reasons.push(`Suhu ${v.temperature}°C (>39)`); }
+   177→    else if (v.temperature < 35) { score += 2; reasons.push(`Suhu ${v.temperature}°C (<35)`); }
+   178→  }
+   179→
+   180→  return { score, reasons };
+   181→}
+   182→
+   183→// ── Helper: Categorize medication ────────────────────────────────────────────
+   184→function categorizeMedication(med: MedicationWithAdherences): string {
+   185→  const name = med.medicineName.toLowerCase();
+   186→  const indication = (med.indication || '').toLowerCase();
+   187→
+   188→  // Analgesik
+   189→  const analgesikKeywords = ['nyeri', 'pain', 'morphine', 'fentanyl', 'tramadol', 'ketorolac', 'paracetamol', 'ibuprofen', 'diclofenac', 'morfine', 'kodein', 'gabapentin', 'pregabalin'];
+   190→  if (analgesikKeywords.some(k => name.includes(k) || indication.includes(k))) return 'analgesik';
+   191→
+   192→  // Antiemetik
+   193→  const antiemetikKeywords = ['mual', 'nausea', 'vomiting', 'muntah', 'ondansetron', 'metoclopramide', 'domperidone', 'granisetron'];
+   194→  if (antiemetikKeywords.some(k => name.includes(k) || indication.includes(k))) return 'antiemetik';
+   195→
+   196→  // Laksatif
+   197→  const laksatifKeywords = ['konstipasi', 'constipation', 'sembelit', 'bisacodyl', 'lactulose', 'senna', 'peg', 'movicol'];
+   198→  if (laksatifKeywords.some(k => name.includes(k) || indication.includes(k))) return 'laksatif';
+   199→
+   200→  // Antidepresan
+   201→  const antidepresanKeywords = ['depresi', 'depression', 'sertraline', 'fluoxetine', 'mirtazapine', 'citalopram', 'escitalopram', 'venlafaxine', 'amitriptyline'];
+   202→  if (antidepresanKeywords.some(k => name.includes(k) || indication.includes(k))) return 'antidepresan';
+   203→
+   204→  // Ansiolitik
+   205→  const ansiolitikKeywords = ['cemas', 'anxiety', 'diazepam', 'lorazepam', 'alprazolam', 'clonazepam', 'midazolam'];
+   206→  if (ansiolitikKeywords.some(k => name.includes(k) || indication.includes(k))) return 'ansiolitik';
+   207→
+   208→  return 'lainnya';
+   209→}
+   210→
+   211→// ── Helper: Format TTV for display ───────────────────────────────────────────
+   212→function formatTTV(v: VitalSignRecord): Record<string, unknown> {
+   213→  return {
+   214→    tanggal: v.recordedAt,
+   215→    sistolik: v.systolicBP,
+   216→    diastolik: v.diastolicBP,
+   217→    nadi: v.heartRate,
+   218→    rr: v.respiratoryRate,
+   219→    suhu: v.temperature,
+   220→    spo2: v.oxygenSat,
+   221→    berat: v.weight,
+   222→    tinggi: v.height,
+   223→    bmi: v.bmi,
+   224→    catatan: v.notes,
+   225→  };
+   226→}
+   227→
+   228→// ── Helper: Format TTV for narrative ─────────────────────────────────────────
+   229→function formatTTVNarrative(v: VitalSignRecord, label: string): string {
+   230→  const tgl = new Date(v.recordedAt).toLocaleString('id-ID');
+   231→  const parts = [
+   232→    `${label} (${tgl}):`,
+   233→    `  TD: ${fmtVal(v.systolicBP, '')}/${fmtVal(v.diastolicBP, ' mmHg')}`,
+   234→    `  Nadi: ${fmtVal(v.heartRate, ' bpm')}`,
+   235→    `  RR: ${fmtVal(v.respiratoryRate, '/menit')}`,
+   236→    `  Suhu: ${fmtVal(v.temperature, '°C')}`,
+   237→    `  SpO2: ${fmtVal(v.oxygenSat, '%')}`,
+   238→  ];
+   239→  if (v.weight != null) parts.push(`  BB: ${v.weight} kg`);
+   240→  if (v.bmi != null) parts.push(`  BMI: ${v.bmi}`);
+   241→  if (v.notes) parts.push(`  Catatan: ${v.notes}`);
+   242→  return parts.join('\n');
+   243→}
+   244→
+   245→// ── Helper: Format complaint for narrative ───────────────────────────────────
+   246→function formatComplaintNarrative(c: DailyComplaintRecord, label: string): string {
+   247→  const tgl = new Date(c.submittedAt).toLocaleString('id-ID');
+   248→  const parts = [`${label} (${tgl}):`];
+   249→  parts.push(`  Kondisi: ${c.kondisiHariIni === 'baik' ? 'Baik' : 'Tidak Baik'}`);
+   250→  if (c.alasanKondisi) parts.push(`  Alasan: ${c.alasanKondisi}`);
+   251→  if (c.keluhanBaru === 'ada' && c.deskripsiKeluhanBaru) {
+   252→    parts.push(`  Keluhan Baru: ${c.deskripsiKeluhanBaru}`);
+   253→  }
+   254→  parts.push(`  Nyeri: ${c.kondisiNyeri}`);
+   255→  parts.push(`  Sesak: ${c.kondisiSesak}`);
+   256→  parts.push(`  Makan/Minum: ${c.makanMinum === 'ya' ? 'Ya' : 'Tidak'}`);
+   257→  if (c.makanMinum === 'tidak' && c.alasanMakanMinum) parts.push(`  Alasan: ${c.alasanMakanMinum}`);
+   258→  parts.push(`  Tidur: ${c.tidur === 'ya' ? 'Ya' : 'Tidak'}`);
+   259→  if (c.tidur === 'tidak' && c.alasanTidur) parts.push(`  Alasan: ${c.alasanTidur}`);
+   260→  if (c.masalahObat === 'ya' && c.deskripsiMasalahObat) {
+   261→    parts.push(`  Masalah Obat: ${c.deskripsiMasalahObat}`);
+   262→  }
+   263→  parts.push(`  Tingkat Keparahan: ${c.severityLevel}`);
+   264→  return parts.join('\n');
+   265→}
+   266→
+   267→// ── Helper: Build comprehensive clinical context string for LLM ──────────────
+   268→function buildClinicalContext(params: {
+   269→  patient: {
+   270→    id: string;
+   271→    rmNumber: string | null;
+   272→    bpjsNumber: string | null;
+   273→    nik: string | null;
+   274→    primaryDiagnosis: string | null;
+   275→    secondaryDiagnosis: string | null;
+   276→    diseaseStage: string | null;
+   277→    attendingDoctorId: string | null;
+   278→    familyContactName: string | null;
+   279→    familyContactRelation: string | null;
+   280→    familyContactPhone: string | null;
+   281→    address: string | null;
+   282→    careStatus: string;
+   283→    patientStatus: string;
+   284→    riskLevel: string;
+   285→    notes: string | null;
+   286→  };
+   287→  user: {
+   288→    name: string;
+   289→    dateOfBirth: string | null;
+   290→    gender: string | null;
+   291→    nik: string | null;
+   292→    bpjsNumber: string | null;
+   293→    address: string | null;
+   294→  } | null;
+   295→  doctorName: string | null;
+   296→  doctorSpecialization: string | null;
+   297→  doctorLicense: string | null;
+   298→  vitalSigns: VitalSignRecord[];
+   299→  medications: MedicationWithAdherences[];
+   300→  screeningRecords: ScreeningRecord[];
+   301→  dailyComplaints: DailyComplaintRecord[];
+   302→  acpDocuments: ACPDocument[];
+   303→  additionalData: AdditionalData;
+   304→  ttvSerial: {
+   305→    ttvAwal: VitalSignRecord | null;
+   306→    ttvKritis: VitalSignRecord | null;
+   307→    ttvKritisReasons: string[];
+   308→    ttvTerakhir: VitalSignRecord | null;
+   309→  };
+   310→  keluhanHarian: {
+   311→    keluhanAwal: DailyComplaintRecord | null;
+   312→    keluhanTerberat: DailyComplaintRecord | null;
+   313→    keluhanTerakhir: DailyComplaintRecord | null;
+   314→    symptomFrequencies: Record<string, number>;
+   315→  };
+   316→  esasAnalysis: {
+   317→    skorAwal: Record<string, unknown> | null;
+   318→    skorTertinggi: Record<string, unknown> | null;
+   319→    skorTerakhir: Record<string, unknown> | null;
+   320→  };
+   321→  medicationCategories: Record<string, MedicationWithAdherences[]>;
+   322→}): string {
+   323→  const {
+   324→    patient, user, doctorName, doctorSpecialization, doctorLicense,
+   325→    vitalSigns, medications, screeningRecords, dailyComplaints, acpDocuments,
+   326→    additionalData, ttvSerial, keluhanHarian, esasAnalysis, medicationCategories,
+   327→  } = params;
+   328→
+   329→  const lines: string[] = [];
+   330→  const name = user?.name || 'Pasien';
+   331→
+   332→  // ── Demographics ──
+   333→  lines.push('=== DATA DEMOGRAFI PASIEN ===');
+   334→  lines.push(`Nama: ${name}`);
+   335→  lines.push(`Tanggal Lahir: ${user?.dateOfBirth || '-'}`);
+   336→  lines.push(`Jenis Kelamin: ${user?.gender || '-'}`);
+   337→  lines.push(`NIK: ${patient.nik || user?.nik || '-'}`);
+   338→  lines.push(`No. Rekam Medis: ${patient.rmNumber || '-'}`);
+   339→  lines.push(`No. BPJS: ${patient.bpjsNumber || user?.bpjsNumber || '-'}`);
+   340→  lines.push(`Alamat: ${patient.address || user?.address || '-'}`);
+   341→  lines.push(`Dokter Penanggung Jawab (DPJP): ${doctorName || '-'}${doctorSpecialization ? ` (${doctorSpecialization})` : ''}${doctorLicense ? ` - SIP: ${doctorLicense}` : ''}`);
+   342→  lines.push('');
+   343→
+   344→  // ── Clinical Info ──
+   345→  lines.push('=== INFORMASI KLINIS ===');
+   346→  lines.push(`Diagnosa Utama: ${patient.primaryDiagnosis || '-'}`);
+   347→  lines.push(`Diagnosa Penyerta: ${patient.secondaryDiagnosis || '-'}`);
+   348→  lines.push(`Stadium Penyakit: ${patient.diseaseStage || '-'}`);
+   349→  lines.push(`Status Perawatan: ${patient.careStatus}`);
+   350→  lines.push(`Status Pasien: ${patient.patientStatus}`);
+   351→  lines.push(`Tingkat Risiko: ${patient.riskLevel}`);
+   352→  lines.push(`Kontak Keluarga: ${patient.familyContactName || '-'} (${patient.familyContactRelation || '-'}) - ${patient.familyContactPhone || '-'}`);
+   353→  if (patient.notes) lines.push(`Catatan: ${patient.notes}`);
+   354→  lines.push('');
+   355→
+   356→  // ── TTV Serial Analysis ──
+   357→  lines.push('=== ANALISIS TTV SERIAL ===');
+   358→  if (ttvSerial.ttvAwal) {
+   359→    lines.push(formatTTVNarrative(ttvSerial.ttvAwal, 'TTV AWAL'));
+   360→  } else {
+   361→    lines.push('TTV AWAL: Tidak Ada Data');
+   362→  }
+   363→  lines.push('');
+   364→  if (ttvSerial.ttvKritis) {
+   365→    lines.push(formatTTVNarrative(ttvSerial.ttvKritis, 'TTV KRITIS'));
+   366→    if (ttvSerial.ttvKritisReasons.length > 0) {
+   367→      lines.push(`  Alasan Kritis: ${ttvSerial.ttvKritisReasons.join(', ')}`);
+   368→    }
+   369→  } else {
+   370→    lines.push('TTV KRITIS: Tidak Ada Data Kritis Teridentifikasi');
+   371→  }
+   372→  lines.push('');
+   373→  if (ttvSerial.ttvTerakhir) {
+   374→    lines.push(formatTTVNarrative(ttvSerial.ttvTerakhir, 'TTV TERAKHIR'));
+   375→  } else {
+   376→    lines.push('TTV TERAKHIR: Tidak Ada Data');
+   377→  }
+   378→
+   379→  // TTV trend if we have both awal and terakhir
+   380→  if (ttvSerial.ttvAwal && ttvSerial.ttvTerakhir && vitalSigns.length >= 2) {
+   381→    lines.push('');
+   382→    lines.push('Tren TTV (Awal → Terakhir):');
+   383→    const awal = ttvSerial.ttvAwal;
+   384→    const akhir = ttvSerial.ttvTerakhir;
+   385→    if (awal.systolicBP != null && akhir.systolicBP != null) {
+   386→      const diff = akhir.systolicBP - awal.systolicBP;
+   387→      lines.push(`  Sistolik: ${awal.systolicBP} → ${akhir.systolicBP} mmHg (${diff > 0 ? '+' : ''}${diff})`);
+   388→    }
+   389→    if (awal.heartRate != null && akhir.heartRate != null) {
+   390→      const diff = akhir.heartRate - awal.heartRate;
+   391→      lines.push(`  Nadi: ${awal.heartRate} → ${akhir.heartRate} bpm (${diff > 0 ? '+' : ''}${diff})`);
+   392→    }
+   393→    if (awal.oxygenSat != null && akhir.oxygenSat != null) {
+   394→      const diff = akhir.oxygenSat - awal.oxygenSat;
+   395→      lines.push(`  SpO2: ${awal.oxygenSat} → ${akhir.oxygenSat}% (${diff > 0 ? '+' : ''}${diff})`);
+   396→    }
+   397→    if (awal.respiratoryRate != null && akhir.respiratoryRate != null) {
+   398→      const diff = akhir.respiratoryRate - awal.respiratoryRate;
+   399→      lines.push(`  RR: ${awal.respiratoryRate} → ${akhir.respiratoryRate}/menit (${diff > 0 ? '+' : ''}${diff})`);
+   400→    }
+   401→  }
+   402→  lines.push('');
+   403→
+   404→  // ── All TTV Records ──
+   405→  if (vitalSigns.length > 0) {
+   406→    lines.push('=== SEMUA CATATAN TTV ===');
+   407→    vitalSigns.forEach((v, i) => {
+   408→      const tgl = new Date(v.recordedAt).toLocaleString('id-ID');
+   409→      const crit = computeCriticalityScore(v);
+   410→      const critLabel = crit.score > 0 ? ` [KRITIS: ${crit.reasons.join(', ')}]` : '';
+   411→      lines.push(
+   412→        `${i + 1}. Tgl: ${tgl}` +
+   413→        ` | TD: ${fmtVal(v.systolicBP, '')}/${fmtVal(v.diastolicBP, ' mmHg')}` +
+   414→        ` | Nadi: ${fmtVal(v.heartRate, ' bpm')}` +
+   415→        ` | RR: ${fmtVal(v.respiratoryRate, '/menit')}` +
+   416→        ` | Suhu: ${fmtVal(v.temperature, '°C')}` +
+   417→        ` | SpO2: ${fmtVal(v.oxygenSat, '%')}` +
+   418→        ` | BB: ${fmtVal(v.weight, ' kg')}` +
+   419→        ` | BMI: ${fmtVal(v.bmi, '')}` +
+   420→        `${v.notes ? ' | Catatan: ' + v.notes : ''}` +
+   421→        critLabel,
+   422→      );
+   423→    });
+   424→    lines.push('');
+   425→  }
+   426→
+   427→  // ── Daily Complaints Analysis ──
+   428→  lines.push('=== ANALISIS KELUHAN HARIAN ===');
+   429→  if (keluhanHarian.keluhanAwal) {
+   430→    lines.push(formatComplaintNarrative(keluhanHarian.keluhanAwal, 'KELUHAN AWAL'));
+   431→  } else {
+   432→    lines.push('KELUHAN AWAL: Tidak Ada Data');
+   433→  }
+   434→  lines.push('');
+   435→  if (keluhanHarian.keluhanTerberat) {
+   436→    lines.push(formatComplaintNarrative(keluhanHarian.keluhanTerberat, 'KELUHAN TERBERAT'));
+   437→  } else {
+   438→    lines.push('KELUHAN TERBERAT: Tidak Ada Data');
+   439→  }
+   440→  lines.push('');
+   441→  if (keluhanHarian.keluhanTerakhir) {
+   442→    lines.push(formatComplaintNarrative(keluhanHarian.keluhanTerakhir, 'KELUHAN TERAKHIR'));
+   443→  } else {
+   444→    lines.push('KELUHAN TERAKHIR: Tidak Ada Data');
+   445→  }
+   446→  lines.push('');
+   447→
+   448→  // Symptom frequencies
+   449→  const freqEntries = Object.entries(keluhanHarian.symptomFrequencies);
+   450→  if (freqEntries.length > 0) {
+   451→    lines.push('Frekuensi Gejala:');
+   452→    freqEntries
+   453→      .sort((a, b) => b[1] - a[1])
+   454→      .forEach(([symptom, count]) => {
+   455→        lines.push(`  - ${symptom}: ${count} kali`);
+   456→      });
+   457→    lines.push('');
+   458→  }
+   459→
+   460→  // All daily complaints
+   461→  if (dailyComplaints.length > 0) {
+   462→    lines.push('=== SEMUA CATATAN KELUHAN HARIAN ===');
+   463→    dailyComplaints.forEach((c, i) => {
+   464→      const tgl = new Date(c.submittedAt).toLocaleString('id-ID');
+   465→      lines.push(
+   466→        `${i + 1}. Tgl: ${tgl}` +
+   467→        ` | Kondisi: ${c.kondisiHariIni}` +
+   468→        ` | Nyeri: ${c.kondisiNyeri}` +
+   469→        ` | Sesak: ${c.kondisiSesak}` +
+   470→        ` | Makan: ${c.makanMinum}` +
+   471→        ` | Tidur: ${c.tidur}` +
+   472→        ` | Severity: ${c.severityLevel}` +
+   473→        `${c.keluhanBaru === 'ada' && c.deskripsiKeluhanBaru ? ' | Keluhan: ' + c.deskripsiKeluhanBaru : ''}` +
+   474→        `${c.masalahObat === 'ya' && c.deskripsiMasalahObat ? ' | Masalah Obat: ' + c.deskripsiMasalahObat : ''}`,
+   475→      );
+   476→    });
+   477→    lines.push('');
+   478→  }
+   479→
+   480→  // ── Categorized Medications ──
+   481→  lines.push('=== OBAT (TERKATEGORI) ===');
+   482→  const catLabels: Record<string, string> = {
+   483→    analgesik: 'ANALGESIK',
+   484→    antiemetik: 'ANTIEMETIK',
+   485→    laksatif: 'LAKSATIF',
+   486→    antidepresan: 'ANTIDEPRESAN',
+   487→    ansiolitik: 'ANSIOLITIK',
+   488→    lainnya: 'OBAT LAINNYA',
+   489→  };
+   490→  for (const [cat, meds] of Object.entries(medicationCategories)) {
+   491→    if (meds.length === 0) continue;
+   492→    lines.push(`${catLabels[cat] || cat.toUpperCase()} (${meds.length} obat):`);
+   493→    meds.forEach((m) => {
+   494→      const adherences = m.adherences || [];
+   495→      const missedDoses = adherences.filter(a => a.missedDose).length;
+   496→      const adherenceRate = adherences.length > 0
+   497→        ? `${((adherences.length - missedDoses) / adherences.length * 100).toFixed(0)}%`
+   498→        : 'Belum ada data';
+   499→      lines.push(
+   500→        `  - ${m.medicineName} ${m.dosage} ${m.frequency} (${m.route || 'oral'})` +
+   501→        ` | Indikasi: ${m.indication || '-'}` +
+   502→        ` | Kepatuhan: ${adherenceRate}` +
+   503→        ` | ${m.isActive ? 'Aktif' : 'Tidak Aktif'}` +
+   504→        ` | Mulai: ${m.startDate || '-'} - Selesai: ${m.endDate || '-'}` +
+   505→        `${m.notes ? ' | Catatan: ' + m.notes : ''}`,
+   506→      );
+   507→      // Side effects from adherences
+   508→      const sideEffectsList = adherences.filter(a => a.sideEffects).map(a => a.sideEffects);
+   509→      if (sideEffectsList.length > 0) {
+   510→        lines.push(`    Efek Samping: ${Array.from(new Set(sideEffectsList)).join('; ')}`);
+   511→      }
+   512→      const complaintsList = adherences.filter(a => a.complaints).map(a => a.complaints);
+   513→      if (complaintsList.length > 0) {
+   514→        lines.push(`    Keluhan: ${Array.from(new Set(complaintsList)).join('; ')}`);
+   515→      }
+   516→    });
+   517→    lines.push('');
+   518→  }
+   519→
+   520→  // ── Screening Records ──
+   521→  if (screeningRecords.length > 0) {
+   522→    lines.push('=== HASIL SKRINING PALIATIF ===');
+   523→    const byType: Record<string, ScreeningRecord[]> = {};
+   524→    screeningRecords.forEach(s => {
+   525→      const type = s.screeningType;
+   526→      if (!byType[type]) byType[type] = [];
+   527→      byType[type].push(s);
+   528→    });
+   529→
+   530→    for (const [type, records] of Object.entries(byType)) {
+   531→      lines.push(`${type.toUpperCase()} (${records.length} skrining):`);
+   532→      records.forEach((s, i) => {
+   533→        const tgl = new Date(s.performedAt).toLocaleDateString('id-ID');
+   534→        lines.push(
+   535→          `  ${i + 1}. Skor: ${s.score != null ? s.score : '-'} (${s.scoreLabel || '-'})` +
+   536→          ` | EWS: ${s.ewsLevel || '-'}` +
+   537→          ` | Tgl: ${tgl}` +
+   538→          ` | Interpretasi: ${s.interpretation || '-'}` +
+   539→          `${s.details ? ' | Detail: ' + s.details : ''}`,
+   540→        );
+   541→      });
+   542→      lines.push('');
+   543→    }
+   544→  }
+   545→
+   546→  // ── ESAS Analysis ──
+   547→  lines.push('=== ANALISIS ESAS ===');
+   548→  if (esasAnalysis.skorAwal) {
+   549→    lines.push(`Skor Awal: ${JSON.stringify(esasAnalysis.skorAwal)}`);
+   550→  } else {
+   551→    lines.push('Skor Awal: Tidak Ada Data');
+   552→  }
+   553→  if (esasAnalysis.skorTertinggi) {
+   554→    lines.push(`Skor Tertinggi: ${JSON.stringify(esasAnalysis.skorTertinggi)}`);
+   555→  } else {
+   556→    lines.push('Skor Tertinggi: Tidak Ada Data');
+   557→  }
+   558→  if (esasAnalysis.skorTerakhir) {
+   559→    lines.push(`Skor Terakhir: ${JSON.stringify(esasAnalysis.skorTerakhir)}`);
+   560→  } else {
+   561→    lines.push('Skor Terakhir: Tidak Ada Data');
+   562→  }
+   563→  lines.push('');
+   564→
+   565→  // ── Advance Care Planning ──
+   566→  if (acpDocuments.length > 0) {
+   567→    lines.push('=== ADVANCE CARE PLANNING ===');
+   568→    acpDocuments.forEach((acp, idx) => {
+   569→      lines.push(`Dokumen ACP #${idx + 1}${acp.isActive ? '' : ' (Tidak Aktif)'}:`);
+   570→      lines.push(`  Pengambil Keputusan: ${acp.decisionMakerName || '-'} (${acp.decisionMakerRelation || '-'}) - ${acp.decisionMakerPhone || '-'}`);
+   571→      lines.push(`  Tempat Perawatan Pilihan: ${acp.preferredCareLocation || '-'}`);
+   572→      lines.push(`  Tujuan Perawatan: ${acp.careGoal || '-'}`);
+   573→      lines.push(`  Preferensi Resusitasi (CPR/DNR): ${acp.resuscitationPref || '-'}`);
+   574→      lines.push(`  Preferensi Ventilator: ${acp.ventilatorPref || '-'}`);
+   575→      lines.push(`  Preferensi ICU: ${acp.icuPref || '-'}`);
+   576→      lines.push(`  Nutrisi Buatan: ${acp.artificialNutrition || '-'}`);
+   577→      lines.push(`  Dialisis: ${acp.dialysisPref || '-'}`);
+   578→      lines.push(`  Donasi Organ: ${acp.organDonation || '-'}`);
+   579→      lines.push(`  Tanda Tangan: Pasien=${acp.patientSigned ? 'Ya' : 'Belum'} | Keluarga=${acp.familySigned ? 'Ya' : 'Belum'} | Dokter=${acp.doctorSigned ? 'Ya' : 'Belum'}`);
+   580→      if (acp.signedAt) lines.push(`  Tanggal Penandatanganan: ${acp.signedAt}`);
+   581→      lines.push(`  Harapan Pasien: ${acp.patientHopes || '-'}`);
+   582→      lines.push(`  Kekhawatiran Pasien: ${acp.patientWorries || '-'}`);
+   583→      lines.push(`  Nilai Hidup Penting: ${acp.lifeValues || '-'}`);
+   584→      lines.push(`  Preferensi Akhir Hayat: ${acp.endOfLifePrefs || '-'}`);
+   585→
+   586→      if (acp.revisions.length > 0) {
+   587→        lines.push('  Revisi:');
+   588→        acp.revisions.forEach((rev) => {
+   589→          const revDate = new Date(rev.createdAt).toLocaleDateString('id-ID');
+   590→          lines.push(`    - Tgl: ${revDate} | Oleh: ${rev.revisedBy || '-'} | Alasan: ${rev.reason || '-'} | Perubahan: ${rev.changes || '-'}`);
+   591→        });
+   592→      }
+   593→      lines.push('');
+   594→    });
+   595→  } else {
+   596→    lines.push('=== ADVANCE CARE PLANNING ===');
+   597→    lines.push('Belum ada dokumen ACP yang tersedia.');
+   598→    lines.push('');
+   599→  }
+   600→
+   601→  // ── Nutrition (from additionalData) ──
+   602→  if (additionalData.nutritionRecords && additionalData.nutritionRecords.length > 0) {
+   603→    lines.push('=== CATATAN NUTRISI ===');
+   604→    additionalData.nutritionRecords.forEach((n, i) => {
+   605→      lines.push(`${i + 1}. ${JSON.stringify(n)}`);
+   606→    });
+   607→    lines.push('');
+   608→  }
+   609→
+   610→  // ── Social Assessment ──
+   611→  if (additionalData.socialAssessmentRecords && additionalData.socialAssessmentRecords.length > 0) {
+   612→    lines.push('=== PENILAIAN SOSIAL ===');
+   613→    additionalData.socialAssessmentRecords.forEach((s, i) => {
+   614→      lines.push(`${i + 1}. ${JSON.stringify(s)}`);
+   615→    });
+   616→    lines.push('');
+   617→  }
+   618→
+   619→  // ── Caregivers ──
+   620→  if (additionalData.caregivers && additionalData.caregivers.length > 0) {
+   621→    lines.push('=== CAREGIVER ===');
+   622→    additionalData.caregivers.forEach((c, i) => {
+   623→      lines.push(`${i + 1}. ${JSON.stringify(c)}`);
+   624→    });
+   625→    lines.push('');
+   626→  }
+   627→
+   628→  // ── Family Meetings ──
+   629→  if (additionalData.familyMeetings && additionalData.familyMeetings.length > 0) {
+   630→    lines.push('=== PERTEMUAN KELUARGA ===');
+   631→    additionalData.familyMeetings.forEach((f, i) => {
+   632→      lines.push(`${i + 1}. ${JSON.stringify(f)}`);
+   633→    });
+   634→    lines.push('');
+   635→  }
+   636→
+   637→  // ── Financial Support ──
+   638→  if (additionalData.financialSupportRecords && additionalData.financialSupportRecords.length > 0) {
+   639→    lines.push('=== DUKUNGAN KEUANGAN ===');
+   640→    additionalData.financialSupportRecords.forEach((f, i) => {
+   641→      lines.push(`${i + 1}. ${JSON.stringify(f)}`);
+   642→    });
+   643→    lines.push('');
+   644→  }
+   645→
+   646→  return lines.join('\n');
+   647→}
+   648→
+   649→// ── Helper: Parse JSON from LLM response ─────────────────────────────────────
+   650→function parseLLMJson(response: string): AIAnalysis | null {
+   651→  // Try direct JSON parse
+   652→  try {
+   653→    const parsed = JSON.parse(response);
+   654→    if (parsed && typeof parsed === 'object') return parsed as AIAnalysis;
+   655→  } catch {
+   656→    // Not direct JSON, continue
+   657→  }
+   658→
+   659→  // Try to extract JSON from markdown code blocks
+   660→  const jsonBlockMatch = response.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+   661→  if (jsonBlockMatch) {
+   662→    try {
+   663→      const parsed = JSON.parse(jsonBlockMatch[1].trim());
+   664→      if (parsed && typeof parsed === 'object') return parsed as AIAnalysis;
+   665→    } catch {
+   666→      // Failed to parse code block JSON
+   667→    }
+   668→  }
+   669→
+   670→  // Try to find JSON object in the response
+   671→  const jsonMatch = response.match(/\{[\s\S]*\}/);
+   672→  if (jsonMatch) {
+   673→    try {
+   674→      const parsed = JSON.parse(jsonMatch[0]);
+   675→      if (parsed && typeof parsed === 'object') return parsed as AIAnalysis;
+   676→    } catch {
+   677→      // Failed to parse extracted JSON
+   678→    }
+   679→  }
+   680→
+   681→  return null;
+   682→}
+   683→
+   684→// ── Helper: Generate fallback AI analysis ─────────────────────────────────────
+   685→function generateFallbackAnalysis(params: {
+   686→  patient: {
+   687→    primaryDiagnosis: string | null;
+   688→    secondaryDiagnosis: string | null;
+   689→    diseaseStage: string | null;
+   690→    careStatus: string;
+   691→    patientStatus: string;
+   692→    riskLevel: string;
+   693→  };
+   694→  user: { name: string } | null;
+   695→  vitalSigns: VitalSignRecord[];
+   696→  ttvSerial: {
+   697→    ttvAwal: VitalSignRecord | null;
+   698→    ttvKritis: VitalSignRecord | null;
+   699→    ttvKritisReasons: string[];
+   700→    ttvTerakhir: VitalSignRecord | null;
+   701→  };
+   702→  dailyComplaints: DailyComplaintRecord[];
+   703→  keluhanHarian: {
+   704→    keluhanAwal: DailyComplaintRecord | null;
+   705→    keluhanTerberat: DailyComplaintRecord | null;
+   706→    keluhanTerakhir: DailyComplaintRecord | null;
+   707→    symptomFrequencies: Record<string, number>;
+   708→  };
+   709→  screeningRecords: ScreeningRecord[];
+   710→  medicationCategories: Record<string, MedicationWithAdherences[]>;
+   711→  acpDocuments: ACPDocument[];
+   712→  additionalData: AdditionalData;
+   713→}): AIAnalysis {
+   714→  const { patient, user, ttvSerial, keluhanHarian, screeningRecords, medicationCategories, acpDocuments, additionalData } = params;
+   715→  const name = user?.name || 'Pasien';
+   716→
+   717→  const careStatusLabels: Record<string, string> = {
+   718→    rawat_jalan: 'Rawat Jalan', home_care: 'Home Care', hospice: 'Hospice', rawat_inap: 'Rawat Inap',
+   719→  };
+   720→  const riskLabels: Record<string, string> = {
+   721→    hijau: 'stabil (hijau)', kuning: 'moderat (kuning)', merah: 'kritis (merah)',
+   722→  };
+   723→
+   724→  // ── Ringkasan Perjalanan Klinis ──
+   725→  const perjalananParts: string[] = [];
+   726→  perjalananParts.push(
+   727→    `Pasien ${name} dengan diagnosa utama ${patient.primaryDiagnosis || 'belum terdiagnosa'}` +
+   728→    `${patient.secondaryDiagnosis ? `, diagnosa penyerta ${patient.secondaryDiagnosis}` : ''}` +
+   729→    `${patient.diseaseStage ? ` pada stadium ${patient.diseaseStage}` : ''}.`,
+   730→  );
+   731→  perjalananParts.push(
+   732→    `Status perawatan: ${careStatusLabels[patient.careStatus] || patient.careStatus}, ` +
+   733→    `tingkat risiko: ${riskLabels[patient.riskLevel] || patient.riskLevel}, ` +
+   734→    `status pasien: ${patient.patientStatus}.`,
+   735→  );
+   736→
+   737→  if (ttvSerial.ttvAwal && ttvSerial.ttvTerakhir) {
+   738→    perjalananParts.push(
+   739→      `Berdasarkan serial TTV, pasien mengalami perubahan dari ` +
+   740→      `TD ${fmtVal(ttvSerial.ttvAwal.systolicBP, '')}/${fmtVal(ttvSerial.ttvAwal.diastolicBP, '')} mmHg, ` +
+   741→      `Nadi ${fmtVal(ttvSerial.ttvAwal.heartRate, '')} bpm, ` +
+   742→      `SpO2 ${fmtVal(ttvSerial.ttvAwal.oxygenSat, '')}% ` +
+   743→      `menjadi ` +
+   744→      `TD ${fmtVal(ttvSerial.ttvTerakhir.systolicBP, '')}/${fmtVal(ttvSerial.ttvTerakhir.diastolicBP, '')} mmHg, ` +
+   745→      `Nadi ${fmtVal(ttvSerial.ttvTerakhir.heartRate, '')} bpm, ` +
+   746→      `SpO2 ${fmtVal(ttvSerial.ttvTerakhir.oxygenSat, '')}%.`,
+   747→    );
+   748→  }
+   749→
+   750→  if (ttvSerial.ttvKritis) {
+   751→    perjalananParts.push(
+   752→      `Kondisi kritis teridentifikasi pada ${new Date(ttvSerial.ttvKritis.recordedAt).toLocaleDateString('id-ID')}` +
+   753→      ` dengan ${ttvSerial.ttvKritisReasons.join(', ')}.`,
+   754→    );
+   755→  }
+   756→
+   757→  const ringkasanPerjalananKlinis = perjalananParts.join(' ');
+   758→
+   759→  // ── Identifikasi Kondisi Kritis ──
+   760→  let identifikasiKondisiKritis = 'Tidak Ada Data';
+   761→  if (ttvSerial.ttvKritis) {
+   762→    const parts: string[] = [];
+   763→    parts.push(
+   764→      `Kondisi kritis teridentifikasi pada ${new Date(ttvSerial.ttvKritis.recordedAt).toLocaleString('id-ID')}.`,
+   765→    );
+   766→    parts.push(`Parameter abnormal: ${ttvSerial.ttvKritisReasons.join(', ')}.`);
+   767→    parts.push(
+   768→      `TTV saat kritis: TD ${fmtVal(ttvSerial.ttvKritis.systolicBP, '')}/${fmtVal(ttvSerial.ttvKritis.diastolicBP, '')} mmHg, ` +
+   769→      `Nadi ${fmtVal(ttvSerial.ttvKritis.heartRate, '')} bpm, ` +
+   770→      `RR ${fmtVal(ttvSerial.ttvKritis.respiratoryRate, '/menit')}, ` +
+   771→      `Suhu ${fmtVal(ttvSerial.ttvKritis.temperature, '°C')}, ` +
+   772→      `SpO2 ${fmtVal(ttvSerial.ttvKritis.oxygenSat, '%')}.`,
+   773→    );
+   774→    if (ttvSerial.ttvKritis.notes) parts.push(`Catatan: ${ttvSerial.ttvKritis.notes}`);
+   775→    identifikasiKondisiKritis = parts.join(' ');
+   776→  }
+   777→
+   778→  // ── Analisis Tren Pasien ──
+   779→  let analisisTrenPasien = 'Stabil';
+   780→  if (ttvSerial.ttvAwal && ttvSerial.ttvTerakhir) {
+   781→    const awal = ttvSerial.ttvAwal;
+   782→    const akhir = ttvSerial.ttvTerakhir;
+   783→    const awalCritical = computeCriticalityScore(awal).score;
+   784→    const akhirCritical = computeCriticalityScore(akhir).score;
+   785→
+   786→    if (akhirCritical > awalCritical + 2) {
+   787→      analisisTrenPasien = 'Memburuk';
+   788→    } else if (akhirCritical < awalCritical - 2) {
+   789→      analisisTrenPasien = 'Membaik';
+   790→    } else if (akhirCritical > 0 && awalCritical > 0) {
+   791→      analisisTrenPasien = 'Fluktuatif';
+   792→    } else if (akhirCritical >= 3) {
+   793→      analisisTrenPasien = patient.riskLevel === 'merah' ? 'Terminal' : 'Memburuk';
+   794→    } else {
+   795→      analisisTrenPasien = 'Stabil';
+   796→    }
+   797→  } else if (patient.riskLevel === 'merah') {
+   798→    analisisTrenPasien = 'Memburuk';
+   799→  }
+   800→
+   801→  // Add explanation
+   802→  const trendExplanations: Record<string, string> = {
+   803→    'Membaik': 'Terdapat perbaikan parameter vital dibandingkan sebelumnya.',
+   804→    'Stabil': 'Parameter vital relatif stabil tanpa perubahan signifikan.',
+   805→    'Fluktuatif': 'Parameter vital menunjukkan fluktuasi, memerlukan monitoring ketat.',
+   806→    'Memburuk': 'Terdapat perburukan parameter vital yang memerlukan evaluasi dan penyesuaian terapi.',
+   807→    'Terminal': 'Pasien dalam kondisi terminal, fokus pada perawatan kenyamanan.',
+   808→    'End of Life': 'Pasien dalam fase akhir hayat, perawatan difokuskan pada kenyamanan dan dukungan.',
+   809→  };
+   810→  analisisTrenPasien += `. ${trendExplanations[analisisTrenPasien] || ''}`;
+   811→
+   812→  // ── Ringkasan Skrining ──
+   813→  const domainFisik = screeningRecords.length > 0
+   814→    ? `Skrining menunjukkan ${screeningRecords.length} pemeriksaan. ` +
+   815→      screeningRecords.filter(s => ['esas', 'pps'].includes(s.screeningType))
+   816→        .map(s => `${s.screeningType.toUpperCase()}: skor ${s.score ?? '-'} (${s.scoreLabel ?? '-'})`)
+   817→        .join('; ') || 'Tidak Ada Data domain fisik'
+   818→    : 'Tidak Ada Data';
+   819→
+   820→  const psicScreenings = screeningRecords.filter(s => s.screeningType === 'distress');
+   821→  const domainPsikologis = psicScreenings.length > 0
+   822→    ? `Skrining distress: ${psicScreenings.map(s => `skor ${s.score ?? '-'} (${s.interpretation ?? '-'})`).join('; ')}. ` +
+   823→      (medicationCategories.antidepresan?.length > 0 || medicationCategories.ansiolitik?.length > 0
+   824→        ? `Pasien mendapat terapi psikotropika: ${[...(medicationCategories.antidepresan || []), ...(medicationCategories.ansiolitik || [])].map(m => m.medicineName).join(', ')}.`
+   825→        : 'Tidak ada terapi psikotropika yang tercatat.')
+   826→    : 'Tidak Ada Data';
+   827→
+   828→  const domainSosial = additionalData.socialAssessmentRecords?.length > 0
+   829→    ? `Terdapat ${additionalData.socialAssessmentRecords.length} catatan penilaian sosial.`
+   830→    : 'Tidak Ada Data penilaian sosial.';
+   831→
+   832→  const domainSpiritual = acpDocuments.length > 0
+   833→    ? `Aspek spiritual teridentifikasi melalui ACP: ${[acpDocuments[0].patientHopes, acpDocuments[0].lifeValues, acpDocuments[0].endOfLifePrefs].filter(Boolean).join('; ') || 'Tidak ada aspek spiritual yang tercatat'}.`
+   834→    : 'Tidak Ada Data';
+   835→
+   836→  const kebutuhanEdukasi = [
+   837→    ...(acpDocuments.length === 0 ? ['Diskusi Advance Care Planning'] : []),
+   838→    ...(medicationCategories.analgesik?.length > 0 ? ['Edukasi manajemen nyeri dan penggunaan analgesik'] : []),
+   839→    'Edukasi tanda bahaya yang harus segera dilaporkan',
+   840→    'Edukasi manajemen gejala paliatif',
+   841→  ].join('; ');
+   842→
+   843→  const bebanCaregiver = additionalData.caregivers?.length > 0
+   844→    ? `Terdapat ${additionalData.caregivers.length} caregiver yang tercatat.`
+   845→    : screeningRecords.filter(s => s.screeningType === 'zarit').length > 0
+   846→      ? `Skrining Zarit: ${screeningRecords.filter(s => s.screeningType === 'zarit').map(s => `skor ${s.score ?? '-'} (${s.interpretation ?? '-'})`).join('; ')}.`
+   847→      : 'Tidak Ada Data';
+   848→
+   849→  // ── Ringkasan Nutrisi ──
+   850→  const ringkasanNutrisi = additionalData.nutritionRecords?.length > 0
+   851→    ? `Terdapat ${additionalData.nutritionRecords.length} catatan nutrisi. ${params.dailyComplaints.length > 0 ? `Keluhan terkait makan/minum: ${params.dailyComplaints.filter(c => c.makanMinum === 'tidak').length} dari ${params.dailyComplaints.length} laporan menunjukkan masalah asupan.` : ''}`
+   852→    : params.dailyComplaints.length > 0
+   853→      ? `Berdasarkan keluhan harian: ${params.dailyComplaints.filter(c => c.makanMinum === 'tidak').length} dari ${params.dailyComplaints.length} laporan menunjukkan masalah asupan makan/minum.`
+   854→      : 'Tidak Ada Data nutrisi';
+   855→
+   856→  // ── Ringkasan Sosial ──
+   857→  const ringkasanSosial = [
+   858→    additionalData.socialAssessmentRecords?.length > 0 ? `Terdapat ${additionalData.socialAssessmentRecords.length} penilaian sosial.` : '',
+   859→    additionalData.familyMeetings?.length > 0 ? `Terdapat ${additionalData.familyMeetings.length} pertemuan keluarga.` : '',
+   860→    additionalData.financialSupportRecords?.length > 0 ? `Terdapat ${additionalData.financialSupportRecords.length} catatan dukungan keuangan.` : '',
+   861→    params.patient.primaryDiagnosis ? '' : '',
+   862→  ].filter(Boolean).join(' ') || 'Tidak Ada Data sosial';
+   863→
+   864→  // ── Ringkasan ACP ──
+   865→  let ringkasanACP = 'Belum ada dokumen Advance Care Planning yang tersedia. Disarankan untuk segera melakukan diskusi ACP dengan pasien dan keluarga.';
+   866→  if (acpDocuments.length > 0) {
+   867→    const acp = acpDocuments[0];
+   868→    const parts: string[] = [];
+   869→    parts.push(`Dokumen ACP tersedia${acp.isActive ? ' dan aktif' : ' (tidak aktif)'}.`);
+   870→    parts.push(`Tujuan perawatan: ${acp.careGoal || '-'}.`);
+   871→    parts.push(`Preferensi tempat perawatan: ${acp.preferredCareLocation || '-'}.`);
+   872→    parts.push(`Resusitasi: ${acp.resuscitationPref === 'dnr' ? 'DNR (Do Not Resuscitate)' : acp.resuscitationPref === 'cpr' ? 'CPR' : '-'}.`);
+   873→    parts.push(`Ventilator: ${acp.ventilatorPref || '-'}. ICU: ${acp.icuPref || '-'}.`);
+   874→    parts.push(`Nutrisi buatan: ${acp.artificialNutrition || '-'}. Dialisis: ${acp.dialysisPref || '-'}.`);
+   875→    parts.push(`Pengambil keputusan: ${acp.decisionMakerName || '-'} (${acp.decisionMakerRelation || '-'}).`);
+   876→    parts.push(`Tanda tangan: Pasien=${acp.patientSigned ? 'Ya' : 'Belum'}, Keluarga=${acp.familySigned ? 'Ya' : 'Belum'}, Dokter=${acp.doctorSigned ? 'Ya' : 'Belum'}.`);
+   877→    if (acp.patientHopes) parts.push(`Harapan pasien: ${acp.patientHopes}.`);
+   878→    if (acp.patientWorries) parts.push(`Kekhawatiran pasien: ${acp.patientWorries}.`);
+   879→    if (acp.revisions.length > 0) parts.push(`Dokumen telah mengalami ${acp.revisions.length} kali revisi.`);
+   880→    ringkasanACP = parts.join(' ');
+   881→  }
+   882→
+   883→  // ── Kesimpulan Telepaliatif ──
+   884→  const ppsRecords = screeningRecords.filter(s => s.screeningType === 'pps');
+   885→  const latestPPS = ppsRecords.length > 0 ? ppsRecords[0] : null;
+   886→  const earliestPPS = ppsRecords.length > 0 ? ppsRecords[ppsRecords.length - 1] : null;
+   887→
+   888→  // Compile dominant complaints
+   889→  const topSymptoms = Object.entries(keluhanHarian.symptomFrequencies)
+   890→    .sort((a, b) => b[1] - a[1])
+   891→    .slice(0, 3)
+   892→    .map(([s]) => s);
+   893→
+   894→  const allMeds = Object.values(medicationCategories).flat();
+   895→  const adherenceRates = allMeds.map(m => {
+   896→    const total = m.adherences.length;
+   897→    if (total === 0) return null;
+   898→    const missed = m.adherences.filter(a => a.missedDose).length;
+   899→    return (total - missed) / total * 100;
+   900→  }).filter((r): r is number => r !== null);
+   901→
+   902→  const avgAdherence = adherenceRates.length > 0
+   903→    ? adherenceRates.reduce((a, b) => a + b, 0) / adherenceRates.length
+   904→    : 0;
+   905→
+   906→  const kesimpulanTelepaliatif = {
+   907→    diagnosisUtama: patient.primaryDiagnosis || 'Tidak Ada Data',
+   908→    statusFungsionalAwal: earliestPPS ? `PPS ${earliestPPS.score ?? '-'} (${earliestPPS.scoreLabel ?? '-'})` : 'Tidak Ada Data',
+   909→    statusFungsionalTerakhir: latestPPS ? `PPS ${latestPPS.score ?? '-'} (${latestPPS.scoreLabel ?? '-'})` : 'Tidak Ada Data',
+   910→    masalahPaliatifUtama: topSymptoms.length > 0 ? topSymptoms.join(', ') : patient.primaryDiagnosis || 'Tidak Ada Data',
+   911→    keluhanDominan: topSymptoms.length > 0 ? topSymptoms.join(', ') : 'Tidak Ada Data',
+   912→    kondisiPalingKritis: ttvSerial.ttvKritis
+   913→      ? `Pada ${new Date(ttvSerial.ttvKritis.recordedAt).toLocaleDateString('id-ID')}: ${ttvSerial.ttvKritisReasons.join(', ')}`
+   914→      : 'Tidak Ada Data',
+   915→    responsTerhadapIntervensi: avgAdherence > 0
+   916→      ? `Kepatuhan obat rata-rata ${avgAdherence.toFixed(0)}%. ${avgAdherence >= 80 ? 'Respons cukup baik.' : 'Kepatuhan perlu ditingkatkan.'}`
+   917→      : 'Tidak Ada Data kepatuhan',
+   918→    kondisiKlinisSaatIni: `Risiko ${riskLabels[patient.riskLevel] || patient.riskLevel}, perawatan ${careStatusLabels[patient.careStatus] || patient.careStatus}`,
+   919→    tujuanPerawatanSaatIni: acpDocuments.length > 0
+   920→      ? (acpDocuments[0].careGoal || 'Tidak ditentukan')
+   921→      : 'Tidak Ada Data ACP',
+   922→    rencanaTindakLanjut: patient.riskLevel === 'merah'
+   923→      ? 'Evaluasi dan stabilisasi segera, pertimbangkan peningkatan level perawatan'
+   924→      : patient.riskLevel === 'kuning'
+   925→        ? 'Monitoring ketat, penyesuaian terapi, evaluasi berkala'
+   926→        : 'Lanjutkan perawatan paliatif dengan monitoring rutin',
+   927→    lokasiPerawatanSaatIni: careStatusLabels[patient.careStatus] || patient.careStatus,
+   928→    jadwalMonitoringBerikutnya: patient.riskLevel === 'merah'
+   929→      ? 'Dalam 4-6 jam'
+   930→      : patient.riskLevel === 'kuning'
+   931→        ? 'Dalam 8-12 jam'
+   932→        : 'Dalam 24 jam',
+   933→  };
+   934→
+   935→  // ── Rekomendasi ──
+   936→  const rekomendasi: string[] = [];
+   937→  rekomendasi.push(
+   938→    `Lanjut monitoring paliatif dengan frekuensi sesuai tingkat risiko (${patient.riskLevel === 'merah' ? 'setiap 4-6 jam' : patient.riskLevel === 'kuning' ? 'setiap 8-12 jam' : 'setiap 24 jam'})`,
+   939→  );
+   940→  if (patient.riskLevel === 'merah') {
+   941→    rekomendasi.push('Pertimbangkan rawat inap untuk monitoring dan stabilisasi kondisi');
+   942→  }
+   943→  if (patient.careStatus === 'rawat_jalan' && patient.riskLevel !== 'hijau') {
+   944→    rekomendasi.push('Home care untuk memfasilitasi perawatan di lingkungan yang nyaman bagi pasien');
+   945→  }
+   946→  if (medicationCategories.analgesik?.length > 0) {
+   947→    rekomendasi.push('Evaluasi dan optimasi regimen analgesik secara berkala');
+   948→  }
+   949→  if (acpDocuments.length === 0) {
+   950→    rekomendasi.push('Segera lakukan diskusi Advance Care Planning dengan pasien dan keluarga');
+   951→  } else {
+   952→    const acp = acpDocuments[0];
+   953→    if (!acp.patientSigned || !acp.familySigned || !acp.doctorSigned) {
+   954→      rekomendasi.push('Lengkapi penandatanganan dokumen Advance Care Planning');
+   955→    }
+   956→  }
+   957→  if (patient.riskLevel === 'merah' && patient.careStatus !== 'hospice') {
+   958→    rekomendasi.push('Pertimbangkan hospice care untuk perawatan suportif dan kenyamanan');
+   959→  }
+   960→  if (acpDocuments.length > 0 && acpDocuments[0].careGoal === 'akhir_hayat') {
+   961→    rekomendasi.push('Perawatan akhir hayat: Fokus pada kenyamanan, pengendalian gejala, dan dukungan psikososial');
+   962→  }
+   963→  if (screeningRecords.some(s => s.ewsLevel === 'merah')) {
+   964→    rekomendasi.push('Evaluasi segera hasil skrining dengan EWS merah');
+   965→  }
+   966→  rekomendasi.push(
+   967→    `Evaluasi ulang skrining paliatif dalam ${patient.riskLevel === 'merah' ? '3 hari' : patient.riskLevel === 'kuning' ? '7 hari' : '14 hari'}`,
+   968→  );
+   969→
+   970→  return {
+   971→    ringkasanPerjalananKlinis,
+   972→    identifikasiKondisiKritis,
+   973→    analisisTrenPasien,
+   974→    ringkasanSkrining: {
+   975→      domainFisik,
+   976→      domainPsikologis,
+   977→      domainSosial,
+   978→      domainSpiritual,
+   979→      kebutuhanEdukasi,
+   980→      bebanCaregiver,
+   981→    },
+   982→    ringkasanNutrisi,
+   983→    ringkasanSosial,
+   984→    ringkasanACP,
+   985→    kesimpulanTelepaliatif,
+   986→    rekomendasi,
+   987→  };
+   988→}
+   989→
+   990→// ── Helper: Generate document number ─────────────────────────────────────────
+   991→async function generateDocumentNumber(): Promise<string> {
+   992→  const now = new Date();
+   993→  const year = now.getFullYear();
+   994→  const month = String(now.getMonth() + 1).padStart(2, '0');
+   995→
+   996→  // Count existing resumes this month to generate sequence
+   997→  const startOfMonth = new Date(year, now.getMonth(), 1);
+   998→  const startOfNextMonth = new Date(year, now.getMonth() + 1, 1);
+   999→
+  1000→  const count = await db.palliativeResume.count({
+  1001→    where: {
+  1002→      createdAt: {
+  1003→        gte: startOfMonth,
+  1004→        lt: startOfNextMonth,
+  1005→      },
+  1006→    },
+  1007→  });
+  1008→
+  1009→  const sequence = String(count + 1).padStart(4, '0');
+  1010→  return `RPM/${year}/${month}/${sequence}`;
+  1011→}
+  1012→
+  1013→// ── Helper: Build the LLM system prompt ──────────────────────────────────────
+  1014→function buildSystemPrompt(): string {
+  1015→  return [
+  1016→    'Anda adalah asisten klinis AI yang ahli dalam perawatan paliatif dan pembuatan resume medis profesional.',
+  1017→    'Tugas Anda adalah menganalisis data pasien paliatif secara komprehensif dan menghasilkan resume medis dalam format JSON.',
+  1018→    '',
+  1019→    'INSTRUKSI:',
+  1020→    '- Gunakan bahasa Indonesia yang profesional dan medis.',
+  1021→    '- Berikan analisis spesifik berdasarkan data yang tersedia, bukan pernyataan umum.',
+  1022→    '- Sertakan nilai numerik dari pemeriksaan dalam narasi.',
+  1023→    '- Jika data tidak tersedia, nyatakan "Tidak Ada Data" dengan jelas alih-alih berasumsi.',
+  1024→    '- Jangan membuat kesimpulan di luar data yang tersedia.',
+  1025→    '- Output HARUS berupa JSON valid tanpa markdown formatting.',
+  1026→    '',
+  1027→    'FORMAT OUTPUT JSON YANG HARUS DIKANDUNG:',
+  1028→    '{',
+  1029→    '  "ringkasanPerjalananKlinis": "string - narasi komprehensif perjalanan klinis pasien dari awal hingga saat ini, mencakup diagnosa, progresivitas, perubahan TTV, dan respons terapi",',
+  1030→    '  "identifikasiKondisiKritis": "string - kapan kondisi kritis terjadi, penyebab, gejala utama, TTV saat kritis, intervensi yang dilakukan, respons pasien",',
+  1031→    '  "analisisTrenPasien": "string - salah satu: Membaik/Stabil/Fluktuatif/Memburuk/Terminal/End of Life, disertai penjelasan berdasarkan data serial",',
+  1032→    '  "ringkasanSkrining": {',
+  1033→    '    "domainFisik": "string - narasi domain fisik berdasarkan ESAS, PPS, keluhan nyeri/sesak",',
+  1034→    '    "domainPsikologis": "string - narasi domain psikologis berdasarkan skrining distress, kecemasan, depresi",',
+  1035→    '    "domainSosial": "string - narasi domain sosial berdasarkan penilaian sosial, dukungan keluarga",',
+  1036→    '    "domainSpiritual": "string - narasi domain spiritual berdasarkan ACP, harapan, kekhawatiran, nilai hidup",',
+  1037→    '    "kebutuhanEdukasi": "string - kebutuhan edukasi yang teridentifikasi",',
+  1038→    '    "bebanCaregiver": "string - narasi beban caregiver berdasarkan skrining Zarit dan data caregiver"',
+  1039→    '  },',
+  1040→    '  "ringkasanNutrisi": "string - narasi status nutrisi berdasarkan catatan nutrisi dan keluhan makan/minum",',
+  1041→    '  "ringkasanSosial": "string - narasi kondisi sosial pasien dan keluarga",',
+  1042→    '  "ringkasanACP": "string - narasi lengkap Advance Care Planning termasuk preferensi, keputusan, harapan, kekhawatiran",',
+  1043→    '  "kesimpulanTelepaliatif": {',
+  1044→    '    "diagnosisUtama": "string",',
+  1045→    '    "statusFungsionalAwal": "string",',
+  1046→    '    "statusFungsionalTerakhir": "string",',
+  1047→    '    "masalahPaliatifUtama": "string",',
+  1048→    '    "keluhanDominan": "string",',
+  1049→    '    "kondisiPalingKritis": "string",',
+  1050→    '    "responsTerhadapIntervensi": "string",',
+  1051→    '    "kondisiKlinisSaatIni": "string",',
+  1052→    '    "tujuanPerawatanSaatIni": "string",',
+  1053→    '    "rencanaTindakLanjut": "string",',
+  1054→    '    "lokasiPerawatanSaatIni": "string",',
+  1055→    '    "jadwalMonitoringBerikutnya": "string"',
+  1056→    '  },',
+  1057→    '  "rekomendasi": ["string - daftar rekomendasi tindak lanjut"]',
+  1058→    '}',
+  1059→    '',
+  1060→    'PENTING: Output hanya JSON yang valid. Jangan gunakan markdown code block. Jangan tambahkan teks di luar JSON.',
+  1061→  ].join('\n');
+  1062→}
+  1063→
+  1064→// ── Helper: Build full markdown content ───────────────────────────────────────
+  1065→function buildFullMarkdown(params: {
+  1066→  patient: {
+  1067→    primaryDiagnosis: string | null;
+  1068→    secondaryDiagnosis: string | null;
+  1069→    diseaseStage: string | null;
+  1070→    careStatus: string;
+  1071→    patientStatus: string;
+  1072→    riskLevel: string;
+  1073→    familyContactName: string | null;
+  1074→    familyContactRelation: string | null;
+  1075→    familyContactPhone: string | null;
+  1076→  };
+  1077→  user: { name: string; dateOfBirth: string | null; gender: string | null } | null;
+  1078→  doctorName: string | null;
+  1079→  ttvSerial: {
+  1080→    ttvAwal: VitalSignRecord | null;
+  1081→    ttvKritis: VitalSignRecord | null;
+  1082→    ttvKritisReasons: string[];
+  1083→    ttvTerakhir: VitalSignRecord | null;
+  1084→  };
+  1085→  keluhanHarian: {
+  1086→    keluhanAwal: DailyComplaintRecord | null;
+  1087→    keluhanTerberat: DailyComplaintRecord | null;
+  1088→    keluhanTerakhir: DailyComplaintRecord | null;
+  1089→    symptomFrequencies: Record<string, number>;
+  1090→  };
+  1091→  medicationCategories: Record<string, MedicationWithAdherences[]>;
+  1092→  acpDocuments: ACPDocument[];
+  1093→  aiAnalysis: AIAnalysis;
+  1094→}): string {
+  1095→  const { patient, user, doctorName, ttvSerial, keluhanHarian, medicationCategories, acpDocuments, aiAnalysis } = params;
+  1096→  const name = user?.name || 'Pasien';
+  1097→
+  1098→  const md: string[] = [];
+  1099→  md.push('# RESUME MEDIS PALIATIF');
+  1100→  md.push('');
+  1101→  md.push(`**Nama Pasien:** ${name}`);
+  1102→  md.push(`**Tanggal Lahir:** ${user?.dateOfBirth || '-'}`);
+  1103→  md.push(`**Jenis Kelamin:** ${user?.gender || '-'}`);
+  1104→  md.push(`**Diagnosa Utama:** ${patient.primaryDiagnosis || '-'}`);
+  1105→  md.push(`**Diagnosa Penyerta:** ${patient.secondaryDiagnosis || '-'}`);
+  1106→  md.push(`**Stadium:** ${patient.diseaseStage || '-'}`);
+  1107→  md.push(`**DPJP:** ${doctorName || '-'}`);
+  1108→  md.push('');
+  1109→  md.push('---');
+  1110→  md.push('');
+  1111→
+  1112→  md.push('## RINGKASAN PERJALANAN KLINIS');
+  1113→  md.push(aiAnalysis.ringkasanPerjalananKlinis);
+  1114→  md.push('');
+  1115→
+  1116→  md.push('## IDENTIFIKASI KONDISI KRITIS');
+  1117→  md.push(aiAnalysis.identifikasiKondisiKritis);
+  1118→  md.push('');
+  1119→
+  1120→  md.push('## ANALISIS TREN PASIEN');
+  1121→  md.push(aiAnalysis.analisisTrenPasien);
+  1122→  md.push('');
+  1123→
+  1124→  md.push('### TTV Serial');
+  1125→  if (ttvSerial.ttvAwal) {
+  1126→    md.push(`**TTV Awal:** TD ${fmtVal(ttvSerial.ttvAwal.systolicBP, '')}/${fmtVal(ttvSerial.ttvAwal.diastolicBP, '')} mmHg, Nadi ${fmtVal(ttvSerial.ttvAwal.heartRate, '')} bpm, RR ${fmtVal(ttvSerial.ttvAwal.respiratoryRate, '/menit')}, SpO2 ${fmtVal(ttvSerial.ttvAwal.oxygenSat, '%')}`);
+  1127→  }
+  1128→  if (ttvSerial.ttvKritis) {
+  1129→    md.push(`**TTV Kritis:** TD ${fmtVal(ttvSerial.ttvKritis.systolicBP, '')}/${fmtVal(ttvSerial.ttvKritis.diastolicBP, '')} mmHg, Nadi ${fmtVal(ttvSerial.ttvKritis.heartRate, '')} bpm, RR ${fmtVal(ttvSerial.ttvKritis.respiratoryRate, '/menit')}, SpO2 ${fmtVal(ttvSerial.ttvKritis.oxygenSat, '%')} — ${ttvSerial.ttvKritisReasons.join(', ')}`);
+  1130→  }
+  1131→  if (ttvSerial.ttvTerakhir) {
+  1132→    md.push(`**TTV Terakhir:** TD ${fmtVal(ttvSerial.ttvTerakhir.systolicBP, '')}/${fmtVal(ttvSerial.ttvTerakhir.diastolicBP, '')} mmHg, Nadi ${fmtVal(ttvSerial.ttvTerakhir.heartRate, '')} bpm, RR ${fmtVal(ttvSerial.ttvTerakhir.respiratoryRate, '/menit')}, SpO2 ${fmtVal(ttvSerial.ttvTerakhir.oxygenSat, '%')}`);
+  1133→  }
+  1134→  md.push('');
+  1135→
+  1136→  md.push('## RINGKASAN SKRINING');
+  1137→  md.push(`**Domain Fisik:** ${aiAnalysis.ringkasanSkrining.domainFisik}`);
+  1138→  md.push(`**Domain Psikologis:** ${aiAnalysis.ringkasanSkrining.domainPsikologis}`);
+  1139→  md.push(`**Domain Sosial:** ${aiAnalysis.ringkasanSkrining.domainSosial}`);
+  1140→  md.push(`**Domain Spiritual:** ${aiAnalysis.ringkasanSkrining.domainSpiritual}`);
+  1141→  md.push(`**Kebutuhan Edukasi:** ${aiAnalysis.ringkasanSkrining.kebutuhanEdukasi}`);
+  1142→  md.push(`**Beban Caregiver:** ${aiAnalysis.ringkasanSkrining.bebanCaregiver}`);
+  1143→  md.push('');
+  1144→
+  1145→  md.push('## RINGKASAN NUTRISI');
+  1146→  md.push(aiAnalysis.ringkasanNutrisi);
+  1147→  md.push('');
+  1148→
+  1149→  md.push('## RINGKASAN SOSIAL');
+  1150→  md.push(aiAnalysis.ringkasanSosial);
+  1151→  md.push('');
+  1152→
+  1153→  md.push('## RINGKASAN ACP');
+  1154→  md.push(aiAnalysis.ringkasanACP);
+  1155→  md.push('');
+  1156→
+  1157→  md.push('## KESIMPULAN TELEPALIATIF');
+  1158→  md.push(`- **Diagnosis Utama:** ${aiAnalysis.kesimpulanTelepaliatif.diagnosisUtama}`);
+  1159→  md.push(`- **Status Fungsional Awal:** ${aiAnalysis.kesimpulanTelepaliatif.statusFungsionalAwal}`);
+  1160→  md.push(`- **Status Fungsional Terakhir:** ${aiAnalysis.kesimpulanTelepaliatif.statusFungsionalTerakhir}`);
+  1161→  md.push(`- **Masalah Paliatif Utama:** ${aiAnalysis.kesimpulanTelepaliatif.masalahPaliatifUtama}`);
+  1162→  md.push(`- **Keluhan Dominan:** ${aiAnalysis.kesimpulanTelepaliatif.keluhanDominan}`);
+  1163→  md.push(`- **Kondisi Paling Kritis:** ${aiAnalysis.kesimpulanTelepaliatif.kondisiPalingKritis}`);
+  1164→  md.push(`- **Respons Terhadap Intervensi:** ${aiAnalysis.kesimpulanTelepaliatif.responsTerhadapIntervensi}`);
+  1165→  md.push(`- **Kondisi Klinis Saat Ini:** ${aiAnalysis.kesimpulanTelepaliatif.kondisiKlinisSaatIni}`);
+  1166→  md.push(`- **Tujuan Perawatan Saat Ini:** ${aiAnalysis.kesimpulanTelepaliatif.tujuanPerawatanSaatIni}`);
+  1167→  md.push(`- **Rencana Tindak Lanjut:** ${aiAnalysis.kesimpulanTelepaliatif.rencanaTindakLanjut}`);
+  1168→  md.push(`- **Lokasi Perawatan Saat Ini:** ${aiAnalysis.kesimpulanTelepaliatif.lokasiPerawatanSaatIni}`);
+  1169→  md.push(`- **Jadwal Monitoring Berikutnya:** ${aiAnalysis.kesimpulanTelepaliatif.jadwalMonitoringBerikutnya}`);
+  1170→  md.push('');
+  1171→
+  1172→  md.push('## REKOMENDASI');
+  1173→  aiAnalysis.rekomendasi.forEach((r, i) => {
+  1174→    md.push(`${i + 1}. ${r}`);
+  1175→  });
+  1176→  md.push('');
+  1177→
+  1178→  return md.join('\n');
+  1179→}
+  1180→
+  1181→// ── POST /api/palliative-resume ──────────────────────────────────────────────
+  1182→export async function POST(req: NextRequest) {
+  1183→  try {
+  1184→    const body = await req.json();
+  1185→    const { palliativePatientId, additionalData: rawAdditionalData } = body;
+  1186→
+  1187→    if (!palliativePatientId) {
+  1188→      return NextResponse.json({ error: 'Patient ID required' }, { status: 400 });
+  1189→    }
+  1190→
+  1191→    const additionalData: AdditionalData = rawAdditionalData || {};
+  1192→
+  1193→    // ── 1. Fetch ALL patient data from DB ────────────────────────────────────
+  1194→    const patient = await db.palliativePatient.findUnique({
+  1195→      where: { id: palliativePatientId },
+  1196→      include: {
+  1197→        vitalSigns: { orderBy: { recordedAt: 'asc' } }, // ALL, ordered ASC for serial analysis
+  1198→        medications: {
+  1199→          include: { adherences: { orderBy: { date: 'desc' } } }, // ALL medications (active + inactive)
+  1200→        },
+  1201→        adherences: { orderBy: { date: 'desc' } },
+  1202→        acpDocuments: {
+  1203→          include: { revisions: true }, // ALL ACP documents (including inactive)
+  1204→        },
+  1205→        screeningRecords: { orderBy: { performedAt: 'asc' } }, // ALL, ordered ASC for trend analysis
+  1206→        dailyComplaints: { orderBy: { submittedAt: 'asc' } }, // ALL, ordered ASC
+  1207→      },
+  1208→    });
+  1209→
+  1210→    if (!patient) {
+  1211→      return NextResponse.json({ error: 'Patient not found' }, { status: 404 });
+  1212→    }
+  1213→
+  1214→    // ── Fetch latest resume for versioning (separate query to avoid include issues) ──
+  1215→    const previousResume = await db.palliativeResume.findFirst({
+  1216→      where: { palliativePatientId: patient.id },
+  1217→      orderBy: { createdAt: 'desc' },
+  1218→    });
+  1219→
+  1220→    // ── 2. Fetch User for demographics ───────────────────────────────────────
+  1221→    const user = await db.user.findUnique({ where: { id: patient.patientId } });
+  1222→
+  1223→    // ── 3. Fetch DoctorProfile for DPJP ──────────────────────────────────────
+  1224→    let doctorName: string | null = null;
+  1225→    let doctorSpecialization: string | null = null;
+  1226→    let doctorLicense: string | null = null;
+  1227→
+  1228→    if (patient.attendingDoctorId) {
+  1229→      const doctorUser = await db.user.findUnique({
+  1230→        where: { id: patient.attendingDoctorId },
+  1231→        include: { doctorProfile: true },
+  1232→      });
+  1233→      if (doctorUser) {
+  1234→        doctorName = doctorUser.name;
+  1235→        doctorSpecialization = doctorUser.doctorProfile?.specialization || null;
+  1236→        doctorLicense = doctorUser.doctorProfile?.licenseNumber || null;
+  1237→      }
+  1238→    }
+  1239→
+  1240→    // ── 4. TTV Serial Analysis ───────────────────────────────────────────────
+  1241→    const vitalSigns = patient.vitalSigns as unknown as VitalSignRecord[];
+  1242→    let ttvAwal: VitalSignRecord | null = null;
+  1243→    let ttvKritis: VitalSignRecord | null = null;
+  1244→    let ttvKritisReasons: string[] = [];
+  1245→    let ttvTerakhir: VitalSignRecord | null = null;
+  1246→
+  1247→    if (vitalSigns.length > 0) {
+  1248→      // TTV Awal: first (earliest) record
+  1249→      ttvAwal = vitalSigns[0];
+  1250→
+  1251→      // TTV Terakhir: most recent record
+  1252→      ttvTerakhir = vitalSigns[vitalSigns.length - 1];
+  1253→
+  1254→      // TTV Kritis: find the worst vital sign record using composite scoring
+  1255→      let worstScore = 0;
+  1256→      let worstRecord: VitalSignRecord | null = null;
+  1257→      let worstReasons: string[] = [];
+  1258→
+  1259→      for (const v of vitalSigns) {
+  1260→        const { score, reasons } = computeCriticalityScore(v);
+  1261→        if (score > worstScore) {
+  1262→          worstScore = score;
+  1263→          worstRecord = v;
+  1264→          worstReasons = reasons;
+  1265→        }
+  1266→      }
+  1267→
+  1268→      if (worstRecord && worstScore > 0) {
+  1269→        ttvKritis = worstRecord;
+  1270→        ttvKritisReasons = worstReasons;
+  1271→      }
+  1272→    }
+  1273→
+  1274→    const ttvSerial = { ttvAwal, ttvKritis, ttvKritisReasons, ttvTerakhir };
+  1275→
+  1276→    // ── 5. Daily Complaints Analysis ─────────────────────────────────────────
+  1277→    const dailyComplaints = patient.dailyComplaints as unknown as DailyComplaintRecord[];
+  1278→    let keluhanAwal: DailyComplaintRecord | null = null;
+  1279→    let keluhanTerberat: DailyComplaintRecord | null = null;
+  1280→    let keluhanTerakhir: DailyComplaintRecord | null = null;
+  1281→    const symptomFrequencies: Record<string, number> = {};
+  1282→
+  1283→    if (dailyComplaints.length > 0) {
+  1284→      // Keluhan Awal: first complaint
+  1285→      keluhanAwal = dailyComplaints[0];
+  1286→
+  1287→      // Keluhan Terakhir: most recent complaint
+  1288→      keluhanTerakhir = dailyComplaints[dailyComplaints.length - 1];
+  1289→
+  1290→      // Keluhan Terberat: highest severity, or most symptoms
+  1291→      let bestSeverity = -1;
+  1292→      let bestSymptomCount = 0;
+  1293→
+  1294→      for (const c of dailyComplaints) {
+  1295→        const severityRank = SEVERITY_RANK[c.severityLevel] ?? 0;
+  1296→
+  1297→        // Count symptoms
+  1298→        let symptomCount = 0;
+  1299→        if (c.kondisiHariIni === 'tidak_baik') symptomCount++;
+  1300→        if (c.keluhanBaru === 'ada') symptomCount++;
+  1301→        if (c.kondisiNyeri === 'bertambah') symptomCount++;
+  1302→        if (c.kondisiSesak === 'bertambah') symptomCount++;
+  1303→        if (c.makanMinum === 'tidak') symptomCount++;
+  1304→        if (c.tidur === 'tidak') symptomCount++;
+  1305→        if (c.masalahObat === 'ya') symptomCount++;
+  1306→
+  1307→        // Compile symptom frequencies
+  1308→        if (c.kondisiNyeri !== 'tidak_nyeri') {
+  1309→          symptomFrequencies['Nyeri'] = (symptomFrequencies['Nyeri'] || 0) + 1;
+  1310→        }
+  1311→        if (c.kondisiSesak !== 'tidak_sesak') {
+  1312→          symptomFrequencies['Sesak'] = (symptomFrequencies['Sesak'] || 0) + 1;
+  1313→        }
+  1314→        if (c.makanMinum === 'tidak') {
+  1315→          symptomFrequencies['Gangguan Asupan'] = (symptomFrequencies['Gangguan Asupan'] || 0) + 1;
+  1316→        }
+  1317→        if (c.tidur === 'tidak') {
+  1318→          symptomFrequencies['Gangguan Tidur'] = (symptomFrequencies['Gangguan Tidur'] || 0) + 1;
+  1319→        }
+  1320→        if (c.keluhanBaru === 'ada' && c.deskripsiKeluhanBaru) {
+  1321→          // Try to extract individual complaints
+  1322→          const symptoms = c.deskripsiKeluhanBaru.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+  1323→          for (const s of symptoms) {
+  1324→            symptomFrequencies[s] = (symptomFrequencies[s] || 0) + 1;
+  1325→          }
+  1326→        }
+  1327→        if (c.masalahObat === 'ya') {
+  1328→          symptomFrequencies['Masalah Obat'] = (symptomFrequencies['Masalah Obat'] || 0) + 1;
+  1329→        }
+  1330→
+  1331→        // Determine worst complaint
+  1332→        if (severityRank > bestSeverity || (severityRank === bestSeverity && symptomCount > bestSymptomCount)) {
+  1333→          bestSeverity = severityRank;
+  1334→          bestSymptomCount = symptomCount;
+  1335→          keluhanTerberat = c;
+  1336→        }
+  1337→      }
+  1338→    }
+  1339→
+  1340→    const keluhanHarian = { keluhanAwal, keluhanTerberat, keluhanTerakhir, symptomFrequencies };
+  1341→
+  1342→    // ── 6. Categorize Screenings ─────────────────────────────────────────────
+  1343→    const screeningRecords = patient.screeningRecords as unknown as ScreeningRecord[];
+  1344→
+  1345→    // ESAS analysis
+  1346→    const esasRecords = screeningRecords
+  1347→      .filter(s => s.screeningType === 'esas')
+  1348→      .sort((a, b) => new Date(a.performedAt).getTime() - new Date(b.performedAt).getTime());
+  1349→
+  1350→    let esasSkorAwal: Record<string, unknown> | null = null;
+  1351→    let esasSkorTertinggi: Record<string, unknown> | null = null;
+  1352→    let esasSkorTerakhir: Record<string, unknown> | null = null;
+  1353→
+  1354→    if (esasRecords.length > 0) {
+  1355→      // Skor Awal
+  1356→      const first = esasRecords[0];
+  1357→      try {
+  1358→        esasSkorAwal = first.details ? { ...JSON.parse(first.details), score: first.score, performedAt: first.performedAt } : { score: first.score, performedAt: first.performedAt, scoreLabel: first.scoreLabel };
+  1359→      } catch {
+  1360→        esasSkorAwal = { score: first.score, performedAt: first.performedAt, scoreLabel: first.scoreLabel };
+  1361→      }
+  1362→
+  1363→      // Skor Terakhir
+  1364→      const last = esasRecords[esasRecords.length - 1];
+  1365→      try {
+  1366→        esasSkorTerakhir = last.details ? { ...JSON.parse(last.details), score: last.score, performedAt: last.performedAt } : { score: last.score, performedAt: last.performedAt, scoreLabel: last.scoreLabel };
+  1367→      } catch {
+  1368→        esasSkorTerakhir = { score: last.score, performedAt: last.performedAt, scoreLabel: last.scoreLabel };
+  1369→      }
+  1370→
+  1371→      // Skor Tertinggi (highest total score)
+  1372→      let maxScore = -1;
+  1373→      let maxRecord: ScreeningRecord | null = null;
+  1374→      for (const r of esasRecords) {
+  1375→        if (r.score != null && r.score > maxScore) {
+  1376→          maxScore = r.score;
+  1377→          maxRecord = r;
+  1378→        }
+  1379→      }
+  1380→      if (maxRecord) {
+  1381→        try {
+  1382→          esasSkorTertinggi = maxRecord.details ? { ...JSON.parse(maxRecord.details), score: maxRecord.score, performedAt: maxRecord.performedAt } : { score: maxRecord.score, performedAt: maxRecord.performedAt, scoreLabel: maxRecord.scoreLabel };
+  1383→        } catch {
+  1384→          esasSkorTertinggi = { score: maxRecord.score, performedAt: maxRecord.performedAt, scoreLabel: maxRecord.scoreLabel };
+  1385→        }
+  1386→      }
+  1387→    }
+  1388→
+  1389→    const esasAnalysis = { skorAwal: esasSkorAwal, skorTertinggi: esasSkorTertinggi, skorTerakhir: esasSkorTerakhir };
+  1390→
+  1391→    // Group screenings by type
+  1392→    const screeningsByType: Record<string, ScreeningRecord[]> = {};
+  1393→    for (const s of screeningRecords) {
+  1394→      if (!screeningsByType[s.screeningType]) screeningsByType[s.screeningType] = [];
+  1395→      screeningsByType[s.screeningType].push(s);
+  1396→    }
+  1397→
+  1398→    // ── 7. Categorize Medications ────────────────────────────────────────────
+  1399→    const medications = patient.medications as unknown as MedicationWithAdherences[];
+  1400→    const medicationCategories: Record<string, MedicationWithAdherences[]> = {
+  1401→      analgesik: [],
+  1402→      antiemetik: [],
+  1403→      laksatif: [],
+  1404→      antidepresan: [],
+  1405→      ansiolitik: [],
+  1406→      lainnya: [],
+  1407→    };
+  1408→
+  1409→    for (const med of medications) {
+  1410→      const cat = categorizeMedication(med);
+  1411→      medicationCategories[cat].push(med);
+  1412→    }
+  1413→
+  1414→    // ── 8. Compile ACP data ──────────────────────────────────────────────────
+  1415→    const acpDocuments = patient.acpDocuments as unknown as ACPDocument[];
+  1416→
+  1417→    // ── 9. Build clinical context for LLM ────────────────────────────────────
+  1418→    const clinicalContext = buildClinicalContext({
+  1419→      patient: {
+  1420→        id: patient.id,
+  1421→        rmNumber: patient.rmNumber,
+  1422→        bpjsNumber: patient.bpjsNumber,
+  1423→        nik: patient.nik,
+  1424→        primaryDiagnosis: patient.primaryDiagnosis,
+  1425→        secondaryDiagnosis: patient.secondaryDiagnosis,
+  1426→        diseaseStage: patient.diseaseStage,
+  1427→        attendingDoctorId: patient.attendingDoctorId,
+  1428→        familyContactName: patient.familyContactName,
+  1429→        familyContactRelation: patient.familyContactRelation,
+  1430→        familyContactPhone: patient.familyContactPhone,
+  1431→        address: patient.address,
+  1432→        careStatus: patient.careStatus,
+  1433→        patientStatus: patient.patientStatus,
+  1434→        riskLevel: patient.riskLevel,
+  1435→        notes: patient.notes,
+  1436→      },
+  1437→      user: user ? { name: user.name, dateOfBirth: user.dateOfBirth, gender: user.gender, nik: user.nik, bpjsNumber: user.bpjsNumber, address: user.address } : null,
+  1438→      doctorName,
+  1439→      doctorSpecialization,
+  1440→      doctorLicense,
+  1441→      vitalSigns,
+  1442→      medications,
+  1443→      screeningRecords,
+  1444→      dailyComplaints,
+  1445→      acpDocuments,
+  1446→      additionalData,
+  1447→      ttvSerial,
+  1448→      keluhanHarian,
+  1449→      esasAnalysis,
+  1450→      medicationCategories,
+  1451→    });
+  1452→
+  1453→    // ── 10. Attempt AI-generated analysis via LLM ────────────────────────────
+  1454→    let aiAnalysis: AIAnalysis;
+  1455→    let usedAI = false;
+  1456→
+  1457→    try {
+  1458→      const zai = await ZAI.create();
+  1459→      const completion = await zai.chat.completions.create({
+  1460→        messages: [
+  1461→          { role: 'assistant', content: buildSystemPrompt() },
+  1462→          { role: 'user', content: `Berikut data pasien paliatif untuk dianalisis dan dibuatkan resume medis:\n\n${clinicalContext}` },
+  1463→        ],
+  1464→        thinking: { type: 'disabled' },
+  1465→      });
+  1466→
+  1467→      const llmResponse = completion.choices[0]?.message?.content || '';
+  1468→
+  1469→      if (llmResponse) {
+  1470→        const parsed = parseLLMJson(llmResponse);
+  1471→        if (parsed) {
+  1472→          aiAnalysis = parsed;
+  1473→          usedAI = true;
+  1474→        } else {
+  1475→          // LLM returned non-parseable response, use fallback
+  1476→          console.warn('LLM response could not be parsed as JSON, using fallback analysis');
+  1477→          aiAnalysis = generateFallbackAnalysis({
+  1478→            patient: {
+  1479→              primaryDiagnosis: patient.primaryDiagnosis,
+  1480→              secondaryDiagnosis: patient.secondaryDiagnosis,
+  1481→              diseaseStage: patient.diseaseStage,
+  1482→              careStatus: patient.careStatus,
+  1483→              patientStatus: patient.patientStatus,
+  1484→              riskLevel: patient.riskLevel,
+  1485→            },
+  1486→            user: user ? { name: user.name } : null,
+  1487→            vitalSigns,
+  1488→            ttvSerial,
+  1489→            dailyComplaints,
+  1490→            keluhanHarian,
+  1491→            screeningRecords,
+  1492→            medicationCategories,
+  1493→            acpDocuments,
+  1494→            additionalData,
+  1495→          });
+  1496→        }
+  1497→      } else {
+  1498→        aiAnalysis = generateFallbackAnalysis({
+  1499→          patient: {
+  1500→            primaryDiagnosis: patient.primaryDiagnosis,
+  1501→            secondaryDiagnosis: patient.secondaryDiagnosis,
+  1502→            diseaseStage: patient.diseaseStage,
+  1503→            careStatus: patient.careStatus,
+  1504→            patientStatus: patient.patientStatus,
+  1505→            riskLevel: patient.riskLevel,
+  1506→          },
+  1507→          user: user ? { name: user.name } : null,
+  1508→          vitalSigns,
+  1509→          ttvSerial,
+  1510→          dailyComplaints,
+  1511→          keluhanHarian,
+  1512→          screeningRecords,
+  1513→          medicationCategories,
+  1514→          acpDocuments,
+  1515→          additionalData,
+  1516→        });
+  1517→      }
+  1518→    } catch (aiError) {
+  1519→      console.error('AI resume generation failed, using local fallback:', aiError);
+  1520→      aiAnalysis = generateFallbackAnalysis({
+  1521→        patient: {
+  1522→          primaryDiagnosis: patient.primaryDiagnosis,
+  1523→          secondaryDiagnosis: patient.secondaryDiagnosis,
+  1524→          diseaseStage: patient.diseaseStage,
+  1525→          careStatus: patient.careStatus,
+  1526→          patientStatus: patient.patientStatus,
+  1527→          riskLevel: patient.riskLevel,
+  1528→        },
+  1529→        user: user ? { name: user.name } : null,
+  1530→        vitalSigns,
+  1531→        ttvSerial,
+  1532→        dailyComplaints,
+  1533→        keluhanHarian,
+  1534→        screeningRecords,
+  1535→        medicationCategories,
+  1536→        acpDocuments,
+  1537→        additionalData,
+  1538→      });
+  1539→    }
+  1540→
+  1541→    // ── 11. Build structured response ────────────────────────────────────────
+  1542→
+  1543→    // Data Pasien
+  1544→    const dataPasien = {
+  1545→      nama: user?.name || null,
+  1546→      tanggalLahir: user?.dateOfBirth || null,
+  1547→      jenisKelamin: user?.gender || null,
+  1548→      nik: patient.nik || user?.nik || null,
+  1549→      noRM: patient.rmNumber || null,
+  1550→      noBPJS: patient.bpjsNumber || user?.bpjsNumber || null,
+  1551→      alamat: patient.address || user?.address || null,
+  1552→      diagnosaUtama: patient.primaryDiagnosis,
+  1553→      diagnosaPenyerta: patient.secondaryDiagnosis,
+  1554→      stadiumPenyakit: patient.diseaseStage,
+  1555→      dpjp: doctorName,
+  1556→      dpjpSpesialisasi: doctorSpecialization,
+  1557→      dpjpSIP: doctorLicense,
+  1558→      statusPerawatan: patient.careStatus,
+  1559→      statusPasien: patient.patientStatus,
+  1560→      tingkatRisiko: patient.riskLevel,
+  1561→      kontakKeluarga: {
+  1562→        nama: patient.familyContactName,
+  1563→        hubungan: patient.familyContactRelation,
+  1564→        telepon: patient.familyContactPhone,
+  1565→      },
+  1566→    };
+  1567→
+  1568→    // TTV Serial
+  1569→    const ttvSerialResponse = {
+  1570→      ttvAwal: ttvSerial.ttvAwal ? formatTTV(ttvSerial.ttvAwal) : null,
+  1571→      ttvKritis: ttvSerial.ttvKritis ? { ...formatTTV(ttvSerial.ttvKritis), alasanKritis: ttvSerial.ttvKritisReasons } : null,
+  1572→      ttvTerakhir: ttvSerial.ttvTerakhir ? formatTTV(ttvSerial.ttvTerakhir) : null,
+  1573→    };
+  1574→
+  1575→    // Keluhan Harian
+  1576→    const keluhanHarianResponse = {
+  1577→      keluhanAwal: keluhanHarian.keluhanAwal,
+  1578→      keluhanTerberat: keluhanHarian.keluhanTerberat,
+  1579→      keluhanTerakhir: keluhanHarian.keluhanTerakhir,
+  1580→      analisis: Object.entries(keluhanHarian.symptomFrequencies)
+  1581→        .sort((a, b) => b[1] - a[1])
+  1582→        .map(([symptom, count]) => `${symptom}: ${count}x`)
+  1583→        .join('; ') || 'Tidak Ada Data',
+  1584→    };
+  1585→
+  1586→    // Skrining Paliatif
+  1587→    const skriningPaliatif: Record<string, unknown> = {};
+  1588→    for (const [type, records] of Object.entries(screeningsByType)) {
+  1589→      skriningPaliatif[type] = records;
+  1590→    }
+  1591→
+  1592→    // Obat
+  1593→    const allMedsForResponse = Object.values(medicationCategories).flat();
+  1594→    const totalAdherences = allMedsForResponse.reduce((sum, m) => sum + m.adherences.length, 0);
+  1595→    const totalMissed = allMedsForResponse.reduce(
+  1596→      (sum, m) => sum + m.adherences.filter(a => a.missedDose).length, 0,
+  1597→    );
+  1598→    const overallAdherence = totalAdherences > 0
+  1599→      ? `${((totalAdherences - totalMissed) / totalAdherences * 100).toFixed(0)}%`
+  1600→      : 'Belum ada data';
+  1601→
+  1602→    // Check for regimen changes
+  1603→    const inactiveMeds = medications.filter(m => !m.isActive);
+  1604→    const perubahanRegimen = inactiveMeds.length > 0
+  1605→      ? `Terdapat ${inactiveMeds.length} obat yang sudah tidak aktif: ${inactiveMeds.map(m => m.medicineName).join(', ')}`
+  1606→      : 'Tidak ada perubahan regimen yang tercatat';
+  1607→
+  1608→    const obatResponse = {
+  1609→      analgesik: medicationCategories.analgesik,
+  1610→      simtomatik: {
+  1611→        antiemetik: medicationCategories.antiemetik,
+  1612→        laksatif: medicationCategories.laksatif,
+  1613→        antidepresan: medicationCategories.antidepresan,
+  1614→        ansiolitik: medicationCategories.ansiolitik,
+  1615→      },
+  1616→      obatLainnya: medicationCategories.lainnya,
+  1617→      kepatuhan: overallAdherence,
+  1618→      perubahanRegimen,
+  1619→      responsTerapi: aiAnalysis.kesimpulanTelepaliatif.responsTerhadapIntervensi,
+  1620→    };
+  1621→
+  1622→    // Nutrisi
+  1623→    const nutrisiResponse = {
+  1624→      catatan: additionalData.nutritionRecords || [],
+  1625→      ringkasan: aiAnalysis.ringkasanNutrisi,
+  1626→    };
+  1627→
+  1628→    // Sosial
+  1629→    const sosialResponse = {
+  1630→      penilaianSosial: additionalData.socialAssessmentRecords || [],
+  1631→      caregiver: additionalData.caregivers || [],
+  1632→      pertemuanKeluarga: additionalData.familyMeetings || [],
+  1633→      dukunganKeuangan: additionalData.financialSupportRecords || [],
+  1634→      ringkasan: aiAnalysis.ringkasanSosial,
+  1635→    };
+  1636→
+  1637→    // ACP
+  1638→    const acpResponse = {
+  1639→      dokumen: acpDocuments,
+  1640→      ringkasan: aiAnalysis.ringkasanACP,
+  1641→    };
+  1642→
+  1643→    // ── 12. Build full markdown content ──────────────────────────────────────
+  1644→    const fullContent = buildFullMarkdown({
+  1645→      patient: {
+  1646→        primaryDiagnosis: patient.primaryDiagnosis,
+  1647→        secondaryDiagnosis: patient.secondaryDiagnosis,
+  1648→        diseaseStage: patient.diseaseStage,
+  1649→        careStatus: patient.careStatus,
+  1650→        patientStatus: patient.patientStatus,
+  1651→        riskLevel: patient.riskLevel,
+  1652→        familyContactName: patient.familyContactName,
+  1653→        familyContactRelation: patient.familyContactRelation,
+  1654→        familyContactPhone: patient.familyContactPhone,
+  1655→      },
+  1656→      user: user ? { name: user.name, dateOfBirth: user.dateOfBirth, gender: user.gender } : null,
+  1657→      doctorName,
+  1658→      ttvSerial,
+  1659→      keluhanHarian,
+  1660→      medicationCategories,
+  1661→      acpDocuments,
+  1662→      aiAnalysis,
+  1663→    });
+  1664→
+  1665→    // ── 13. Save to PalliativeResume table ────────────────────────────────────
+  1666→    const documentNumber = await generateDocumentNumber();
+  1667→    // previousResume already fetched before as separate query
+  1668→
+  1669→    const resumeDataToSave = JSON.stringify({
+  1670→      dataPasien,
+  1671→      ttvSerial: ttvSerialResponse,
+  1672→      keluhanHarian: keluhanHarianResponse,
+  1673→      skriningPaliatif,
+  1674→      esasScores: esasAnalysis,
+  1675→      obat: obatResponse,
+  1676→      nutrisi: nutrisiResponse,
+  1677→      sosial: sosialResponse,
+  1678→      acp: acpResponse,
+  1679→      aiAnalysis,
+  1680→    });
+  1681→
+  1682→    const savedResume = await db.palliativeResume.create({
+  1683→      data: {
+  1684→        palliativePatientId: patient.id,
+  1685→        documentNumber,
+  1686→        generatedBy: patient.attendingDoctorId || 'system',
+  1687→        generatedByRole: 'doctor',
+  1688→        doctorSip: doctorLicense,
+  1689→        doctorName: doctorName,
+  1690→        version: previousResume ? previousResume.version + 1 : 1,
+  1691→        previousVersionId: previousResume?.id || null,
+  1692→        isSigned: false,
+  1693→        resumeData: resumeDataToSave,
+  1694→        fullContent,
+  1695→      },
+  1696→    });
+  1697→
+  1698→    // ── 14. Create audit log entry ───────────────────────────────────────────
+  1699→    await db.auditLog.create({
+  1700→      data: {
+  1701→        userId: patient.attendingDoctorId || undefined,
+  1702→        action: 'PALLIATIVE_RESUME_GENERATED',
+  1703→        entity: 'PalliativeResume',
+  1704→        entityId: savedResume.id,
+  1705→        details: usedAI
+  1706→          ? `AI-powered palliative resume generated (Doc: ${documentNumber}, V${savedResume.version})`
+  1707→          : `Palliative resume generated using local fallback - AI unavailable (Doc: ${documentNumber}, V${savedResume.version})`,
+  1708→      },
+  1709→    });
+  1710→
+  1711→    // ── 15. Return response ──────────────────────────────────────────────────
+  1712→    const resume = {
+  1713→      id: savedResume.id,
+  1714→      documentNumber,
+  1715→      version: savedResume.version,
+  1716→      dataPasien,
+  1717→      ttvSerial: ttvSerialResponse,
+  1718→      keluhanHarian: keluhanHarianResponse,
+  1719→      skriningPaliatif,
+  1720→      esasScores: esasAnalysis,
+  1721→      obat: obatResponse,
+  1722→      nutrisi: nutrisiResponse,
+  1723→      sosial: sosialResponse,
+  1724→      acp: acpResponse,
+  1725→      aiAnalysis,
+  1726→      fullContent,
+  1727→    };
+  1728→
+  1729→    return NextResponse.json({ resume, usedAI });
+  1730→  } catch (error) {
+  1731→    console.error('Palliative resume generation error:', error);
+  1732→    const message = error instanceof Error ? error.message : 'Failed to generate resume';
+  1733→    return NextResponse.json({ error: message }, { status: 500 });
+  1734→  }
+  1735→}
+  1736→

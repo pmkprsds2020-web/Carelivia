@@ -139,21 +139,18 @@ import {
   Apple,
   Scale,
   Flame,
-  ArrowRight,
-  Calendar,
-  Heart,
   ClipboardList,
 } from 'lucide-react';
 import { PalliativeChatPanel } from './palliative-chat-panel';
 import { MedicationMonitoringDashboard } from './medication-monitoring-dashboard';
 import { PalliativeResumeReferralPanel } from './palliative-resume-referral-panel';
 import SocialSupportPanel from './social-support-panel';
-import DailyComplaintsPanel from './daily-complaints-panel';
+import DailyComplaintPanel from './daily-complaint-panel';
 import { useToast } from '@/hooks/use-toast';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'nutrition' | 'sosial' | 'keluhan' | 'acp' | 'ai' | 'chat' | 'dokumen';
+type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'nutrition' | 'keluhan' | 'sosial' | 'acp' | 'ai' | 'chat' | 'dokumen';
 
 // ── Helper Functions ─────────────────────────────────────────────────────
 
@@ -1252,48 +1249,6 @@ export function PalliativeMonitoringPanel() {
         </Card>
       </div>
 
-      {/* Status Sosial Pasien Card */}
-      <Card className="border-[#2D8C7A]/20 bg-gradient-to-r from-[#2D8C7A]/5 to-[#6DB8A8]/5">
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#2D8C7A]/10 flex items-center justify-center">
-                <Users className="w-5 h-5 text-[#2D8C7A]" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  Status Sosial Pasien
-                  <Badge className="text-[9px] bg-[#2D8C7A] text-white">Aktif</Badge>
-                </h3>
-                <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Shield className="w-3 h-3 text-amber-500" />
-                    Skor Risiko: <span className="font-semibold text-amber-600">Sedang</span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Heart className="w-3 h-3 text-pink-500" />
-                    Dukungan Keluarga: <span className="font-semibold text-pink-600">Cukup</span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Calendar className="w-3 h-3 text-muted-foreground" />
-                    Skrining Terakhir: <span className="font-semibold">10 Sep 2025</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 border-[#2D8C7A]/30 text-[#2D8C7A] hover:bg-[#2D8C7A]/10 shrink-0"
-              onClick={() => setActiveTab('sosial')}
-            >
-              <ArrowRight className="w-3.5 h-3.5" />
-              Lihat Detail Skrining Sosial
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Search and Filter */}
       <div className="flex flex-col gap-2">
         <div className="flex flex-col sm:flex-row gap-2">
@@ -1858,7 +1813,7 @@ export function PalliativeMonitoringPanel() {
               </div>
             </div>
 
-            <div className="border rounded-lg overflow-hidden overflow-x-auto table-scroll-wrapper">
+            <div className="border rounded-lg overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -2012,7 +1967,6 @@ export function PalliativeMonitoringPanel() {
             </CardHeader>
             <CardContent>
               <ScrollArea className="max-h-72">
-                <div className="overflow-x-auto table-scroll-wrapper">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -2097,7 +2051,6 @@ export function PalliativeMonitoringPanel() {
                     )}
                   </TableBody>
                 </Table>
-                </div>
               </ScrollArea>
             </CardContent>
           </Card>
@@ -2300,7 +2253,6 @@ export function PalliativeMonitoringPanel() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto table-scroll-wrapper">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -2356,7 +2308,6 @@ export function PalliativeMonitoringPanel() {
                 })}
               </TableBody>
             </Table>
-            </div>
           </CardContent>
         </Card>
       )}
@@ -2588,7 +2539,7 @@ export function PalliativeMonitoringPanel() {
             <Button variant="ghost" size="sm" onClick={() => setShowACPDetail(null)}>
               Kembali ke Daftar ACP
             </Button>
-            <Card className="p-6 max-h-[calc(100vh-360px)] overflow-y-auto custom-scrollbar">
+            <Card className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Shield className="w-5 h-5 text-primary" />
@@ -3293,7 +3244,8 @@ export function PalliativeMonitoringPanel() {
                 Hitung kebutuhan kalori harian berdasarkan data pasien
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 max-h-[calc(100vh-560px)] overflow-y-auto custom-scrollbar pr-1">
+            <CardContent className="space-y-4">
+              {/* Patient Data */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">Usia (tahun) *</Label>
@@ -3710,7 +3662,7 @@ export function PalliativeMonitoringPanel() {
   };
 
   // ── Main Render ──
-  const needsPatientSelection = ['ttv', 'screening', 'medication', 'nutrition', 'sosial', 'acp', 'ai', 'chat'].includes(
+  const needsPatientSelection = ['ttv', 'screening', 'medication', 'nutrition', 'keluhan', 'sosial', 'acp', 'ai', 'chat'].includes(
     activeTab
   );
 
@@ -3749,13 +3701,13 @@ export function PalliativeMonitoringPanel() {
             <Utensils className="w-4 h-4 mr-1" />
             Nutrisi
           </TabsTrigger>
+          <TabsTrigger value="keluhan" className="text-xs sm:text-sm">
+            <ClipboardList className="w-4 h-4 mr-1" />
+            Keluhan Harian
+          </TabsTrigger>
           <TabsTrigger value="sosial" className="text-xs sm:text-sm">
             <Users className="w-4 h-4 mr-1" />
             Sosial
-          </TabsTrigger>
-          <TabsTrigger value="keluhan" className="text-xs sm:text-sm">
-            <ClipboardList className="w-4 h-4 mr-1" />
-            Keluhan
           </TabsTrigger>
           <TabsTrigger value="acp" className="text-xs sm:text-sm">
             <Shield className="w-4 h-4 mr-1" />
@@ -3778,40 +3730,40 @@ export function PalliativeMonitoringPanel() {
         {/* Patient selector for tabs that need it */}
         {needsPatientSelection && renderPatientSelector()}
 
-        <TabsContent value="dashboard" className="overflow-y-auto custom-scrollbar">{renderDashboard()}</TabsContent>
-        <TabsContent value="patients" className="overflow-y-auto custom-scrollbar">{renderPatients()}</TabsContent>
-        <TabsContent value="ttv" className="overflow-y-auto custom-scrollbar">{renderTTV()}</TabsContent>
-        <TabsContent value="screening" className="overflow-y-auto custom-scrollbar">{renderScreening()}</TabsContent>
-        <TabsContent value="medication" className="overflow-y-auto custom-scrollbar">{renderMedication()}</TabsContent>
-        <TabsContent value="nutrition" className="overflow-y-auto custom-scrollbar">{renderNutrition()}</TabsContent>
-        <TabsContent value="sosial" className="overflow-y-auto custom-scrollbar">
+        <TabsContent value="dashboard">{renderDashboard()}</TabsContent>
+        <TabsContent value="patients">{renderPatients()}</TabsContent>
+        <TabsContent value="ttv">{renderTTV()}</TabsContent>
+        <TabsContent value="screening">{renderScreening()}</TabsContent>
+        <TabsContent value="medication">{renderMedication()}</TabsContent>
+        <TabsContent value="nutrition">{renderNutrition()}</TabsContent>
+        <TabsContent value="keluhan">
+          <DailyComplaintPanel palliativePatientId={selectedPalliativePatientId} />
+        </TabsContent>
+        <TabsContent value="sosial">
           <SocialSupportPanel palliativePatientId={selectedPalliativePatientId} />
         </TabsContent>
-        <TabsContent value="keluhan" className="overflow-y-auto custom-scrollbar">
-          <DailyComplaintsPanel embedded />
-        </TabsContent>
-        <TabsContent value="acp" className="overflow-y-auto custom-scrollbar">{renderACP()}</TabsContent>
-        <TabsContent value="ai" className="overflow-y-auto custom-scrollbar">{renderAI()}</TabsContent>
+        <TabsContent value="acp">{renderACP()}</TabsContent>
+        <TabsContent value="ai">{renderAI()}</TabsContent>
         <TabsContent value="chat">
           <div className="h-[calc(100vh-280px)]">
             <PalliativeChatPanel patient={selectedPatient} />
           </div>
         </TabsContent>
-        <TabsContent value="dokumen" className="overflow-y-auto custom-scrollbar">
+        <TabsContent value="dokumen">
           <PalliativeResumeReferralPanel patient={selectedPatient} />
         </TabsContent>
       </Tabs>
 
       {/* ── Dialog: Add Patient ── */}
       <Dialog open={showAddPatient} onOpenChange={setShowAddPatient}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
             <DialogTitle>Tambah Pasien Paliatif</DialogTitle>
             <DialogDescription>
               Isi data pasien paliatif baru. Field bertanda * wajib diisi.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
+          <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
                 <Label>Nama Lengkap *</Label>
@@ -4046,7 +3998,7 @@ export function PalliativeMonitoringPanel() {
               </div>
             </div>
           </div>
-          <DialogFooter className="shrink-0">
+          <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddPatient(false)}>
               Batal
             </Button>
@@ -4067,13 +4019,13 @@ export function PalliativeMonitoringPanel() {
           if (!open) setEditingPatient(null);
         }}
       >
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
             <DialogTitle>Edit Pasien Paliatif</DialogTitle>
             <DialogDescription>Perbarui data pasien.</DialogDescription>
           </DialogHeader>
           {editingPatient && (
-            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
+            <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2">
                   <Label>Nama Lengkap</Label>
@@ -4347,7 +4299,7 @@ export function PalliativeMonitoringPanel() {
               </div>
             </div>
           )}
-          <DialogFooter className="shrink-0">
+          <DialogFooter>
             <Button variant="outline" onClick={() => setEditingPatient(null)}>
               Batal
             </Button>
@@ -4392,8 +4344,8 @@ export function PalliativeMonitoringPanel() {
           if (!open) setShowProgramCompleteConfirm(null);
         }}
       >
-        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CircleOff className="w-5 h-5 text-slate-600" />
               Akhiri Program Monitoring Paliatif
@@ -4408,7 +4360,7 @@ export function PalliativeMonitoringPanel() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 py-2 pr-1">
+          <div className="space-y-4 py-2">
             <Alert className="border-amber-200 bg-amber-50">
               <AlertTriangle className="w-4 h-4 text-amber-600" />
               <AlertTitle className="text-amber-800">Perhatian</AlertTitle>
@@ -4494,7 +4446,7 @@ export function PalliativeMonitoringPanel() {
             </div>
           </div>
 
-          <DialogFooter className="shrink-0 gap-2">
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setShowProgramCompleteConfirm(null)}>
               Batal
             </Button>
@@ -4512,14 +4464,14 @@ export function PalliativeMonitoringPanel() {
 
       {/* ── Dialog: Add Vital Sign ── */}
       <Dialog open={showAddVital} onOpenChange={setShowAddVital}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
             <DialogTitle>Tambah Tanda Vital</DialogTitle>
             <DialogDescription>
               Pasien: {selectedPatient?.patientName || '-'}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
+          <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Tanggal & Jam</Label>
@@ -4688,7 +4640,7 @@ export function PalliativeMonitoringPanel() {
               </div>
             </div>
           </div>
-          <DialogFooter className="shrink-0">
+          <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddVital(false)}>
               Batal
             </Button>
@@ -4699,14 +4651,14 @@ export function PalliativeMonitoringPanel() {
 
       {/* ── Dialog: Add Medication ── */}
       <Dialog open={showAddMedication} onOpenChange={setShowAddMedication}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
             <DialogTitle>Tambah Obat Paliatif</DialogTitle>
             <DialogDescription>
               Pasien: {selectedPatient?.patientName || '-'}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
+          <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
                 <Label>Nama Obat *</Label>
@@ -4801,7 +4753,7 @@ export function PalliativeMonitoringPanel() {
               </div>
             </div>
           </div>
-          <DialogFooter className="shrink-0">
+          <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddMedication(false)}>
               Batal
             </Button>
@@ -4822,15 +4774,15 @@ export function PalliativeMonitoringPanel() {
           }
         }}
       >
-        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-md">
+          <DialogHeader>
             <DialogTitle>Catat Kepatuhan Obat</DialogTitle>
             <DialogDescription>
               Obat:{' '}
               {palliativeMedications.find((m) => m.id === showAddAdherence)?.medicineName || '-'}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
+          <div className="space-y-4">
             <div>
               <Label>Tanggal</Label>
               <Input
@@ -4903,7 +4855,7 @@ export function PalliativeMonitoringPanel() {
               />
             </div>
           </div>
-          <DialogFooter className="shrink-0">
+          <DialogFooter>
             <Button
               variant="outline"
               onClick={() => {
@@ -4924,14 +4876,13 @@ export function PalliativeMonitoringPanel() {
 
       {/* ── Dialog: Add ACP (Multi-step) ── */}
       <Dialog open={showAddACP} onOpenChange={(open) => { if (!open) { setShowAddACP(false); setAcpStep(0); } }}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
             <DialogTitle>Advance Care Planning</DialogTitle>
             <DialogDescription>
               Pasien: {selectedPatient?.patientName || '-'} — Langkah {acpStep + 1} dari 4
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
           <Progress value={((acpStep + 1) / 4) * 100} className="h-2 mb-4" />
 
           {/* Step 1: Decision Maker */}
@@ -5223,8 +5174,7 @@ export function PalliativeMonitoringPanel() {
             </div>
           )}
 
-          </div>
-          <DialogFooter className="shrink-0">
+          <DialogFooter>
             {acpStep > 0 && (
               <Button variant="outline" onClick={() => setAcpStep(acpStep - 1)}>
                 Sebelumnya

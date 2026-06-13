@@ -1,0 +1,2002 @@
+     1→'use client';
+     2→
+     3→import React, { useState, useMemo, useEffect, useRef } from 'react';
+     4→import { useStore } from '@/lib/store';
+     5→import { useToast } from '@/hooks/use-toast';
+     6→import type {
+     7→  SocialAssessmentRecord,
+     8→  CaregiverInfo,
+     9→  FamilyMeetingRecord,
+    10→  FamilyMeetingParticipant,
+    11→  EduMaterialCategory,
+    12→  EmergencyContact,
+    13→  FinancialSupportRecord,
+    14→  TransportRecord,
+    15→  SocialMonitoringAlert,
+    16→  HousingCondition,
+    17→  CaregiverAvailability,
+    18→  FamilySupportLevel,
+    19→  TransportDifficulty,
+    20→  EconomicConstraint,
+    21→  HealthcareAccess,
+    22→  MedicalEquipmentNeed,
+    23→  SocialAssistanceNeed,
+    24→  SocialIsolationRisk,
+    25→  SocialScreeningPriority,
+    26→  CaregiverRole,
+    27→  CaregiverRelation,
+    28→  MeetingStatus,
+    29→  TransportNeedType,
+    30→  TransportStatus,
+    31→} from '@/lib/types';
+    32→
+    33→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+    34→import { Button } from '@/components/ui/button';
+    35→import { Input } from '@/components/ui/input';
+    36→import { Label } from '@/components/ui/label';
+    37→import { Textarea } from '@/components/ui/textarea';
+    38→import { Badge } from '@/components/ui/badge';
+    39→import { Separator } from '@/components/ui/separator';
+    40→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    41→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+    42→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+    43→import { ScrollArea } from '@/components/ui/scroll-area';
+    44→import { Checkbox } from '@/components/ui/checkbox';
+    45→import { Progress } from '@/components/ui/progress';
+    46→import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+    47→
+    48→import {
+    49→  Heart, Users, ClipboardCheck, Video, BookOpen, UserCheck,
+    50→  FolderSync, Phone, DollarSign, Car, AlertTriangle, Plus,
+    51→  Calendar, Clock, Star, PhoneCall, MessageSquare, Trash2,
+    52→  Edit, CheckCircle2, Circle, ArrowRight, TrendingUp,
+    53→  FileText, Activity, Shield, Home, Briefcase, Ambulance,
+    54→  ChevronRight, Eye, Download, XCircle, Info, Bell, Brain
+    55→} from 'lucide-react';
+    56→
+    57→import AISocialAnalysisTab from './ai-social-analysis-tab';
+    58→import { SocialNeedsScreeningPanel } from './social-needs-screening-panel';
+    59→
+    60→import {
+    61→  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+    62→  ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell,
+    63→} from 'recharts';
+    64→
+    65→// ─── Props ──────────────────────────────────────────────────────────────────
+    66→
+    67→interface SocialSupportPanelProps {
+    68→  palliativePatientId: string | null;
+    69→}
+    70→
+    71→// ─── Helpers ────────────────────────────────────────────────────────────────
+    72→
+    73→const genId = (prefix: string) =>
+    74→  `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    75→
+    76→const fmtDate = (d: string) =>
+    77→  new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    78→
+    79→const fmtDateTime = (d: string) =>
+    80→  new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    81→
+    82→const priorityBadge = (p: SocialScreeningPriority) => {
+    83→  const map: Record<SocialScreeningPriority, { label: string; cls: string }> = {
+    84→    rendah: { label: 'Rendah', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+    85→    sedang: { label: 'Sedang', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+    86→    tinggi: { label: 'Tinggi', cls: 'bg-red-100 text-red-800 border-red-300' },
+    87→  };
+    88→  const m = map[p];
+    89→  return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
+    90→};
+    91→
+    92→const severityBadge = (s: 'info' | 'warning' | 'critical') => {
+    93→  const map = {
+    94→    info: { label: 'Info', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
+    95→    warning: { label: 'Peringatan', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+    96→    critical: { label: 'Kritis', cls: 'bg-red-100 text-red-800 border-red-300' },
+    97→  };
+    98→  const m = map[s];
+    99→  return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
+   100→};
+   101→
+   102→const meetingStatusBadge = (s: MeetingStatus) => {
+   103→  const map: Record<MeetingStatus, { label: string; cls: string }> = {
+   104→    dijadwalkan: { label: 'Dijadwalkan', cls: 'bg-teal-100 text-teal-800 border-teal-300' },
+   105→    berlangsung: { label: 'Berlangsung', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+   106→    selesai: { label: 'Selesai', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+   107→    dibatalkan: { label: 'Dibatalkan', cls: 'bg-slate-100 text-slate-500 border-slate-300' },
+   108→  };
+   109→  const m = map[s];
+   110→  return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
+   111→};
+   112→
+   113→const transportStatusBadge = (s: TransportStatus) => {
+   114→  const map: Record<TransportStatus, { label: string; cls: string }> = {
+   115→    belum_dipesan: { label: 'Belum Dipesan', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
+   116→    dipesan: { label: 'Dipesan', cls: 'bg-teal-100 text-teal-800 border-teal-300' },
+   117→    dalam_perjalanan: { label: 'Dalam Perjalanan', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+   118→    selesai: { label: 'Selesai', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+   119→    dibatalkan: { label: 'Dibatalkan', cls: 'bg-red-100 text-red-800 border-red-300' },
+   120→  };
+   121→  const m = map[s];
+   122→  return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
+   123→};
+   124→
+   125→const transportTypeBadge = (t: TransportNeedType) => {
+   126→  const map: Record<TransportNeedType, { label: string; cls: string }> = {
+   127→    ambulans: { label: 'Ambulans', cls: 'bg-red-100 text-red-800 border-red-300' },
+   128→    ambulans_darurat: { label: 'Ambulans Darurat', cls: 'bg-red-200 text-red-900 border-red-400' },
+   129→    kendaraan_pribadi: { label: 'Kendaraan Pribadi', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
+   130→    transportasi_medis: { label: 'Transportasi Medis', cls: 'bg-teal-100 text-teal-800 border-teal-300' },
+   131→    lainnya: { label: 'Lainnya', cls: 'bg-slate-100 text-slate-600 border-slate-300' },
+   132→  };
+   133→  const m = map[t];
+   134→  return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
+   135→};
+   136→
+   137→const zaritLevelBadge = (l?: 'beban_ringan' | 'beban_sedang' | 'beban_berat') => {
+   138→  if (!l) return <Badge variant="outline">Belum dinilai</Badge>;
+   139→  const map = {
+   140→    beban_ringan: { label: 'Beban Ringan', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+   141→    beban_sedang: { label: 'Beban Sedang', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+   142→    beban_berat: { label: 'Beban Berat', cls: 'bg-red-100 text-red-800 border-red-300' },
+   143→  };
+   144→  const m = map[l];
+   145→  return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
+   146→};
+   147→
+   148→const apgarLevelBadge = (l?: 'dysfunctional' | 'severe_dysfunction' | 'moderate_dysfunction' | 'good' | 'high_functional') => {
+   149→  if (!l) return <Badge variant="outline">Belum dinilai</Badge>;
+   150→  const map = {
+   151→    dysfunctional: { label: 'Dysfunctional', cls: 'bg-red-200 text-red-900 border-red-400' },
+   152→    severe_dysfunction: { label: 'Gangguan Berat', cls: 'bg-red-100 text-red-800 border-red-300' },
+   153→    moderate_dysfunction: { label: 'Gangguan Sedang', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+   154→    good: { label: 'Baik', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+   155→    high_functional: { label: 'Sangat Baik', cls: 'bg-teal-100 text-teal-800 border-teal-300' },
+   156→  };
+   157→  const m = map[l];
+   158→  return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
+   159→};
+   160→
+   161→const roleBadge = (role: 'utama' | 'pendamping') =>
+   162→  role === 'utama'
+   163→    ? <Badge className="bg-teal-100 text-teal-800 border-teal-300 border">Utama</Badge>
+   164→    : <Badge className="bg-slate-100 text-slate-600 border-slate-300 border">Pendamping</Badge>;
+   165→
+   166→const emergencyRoleBadge = (role: string) => {
+   167→  const map: Record<string, { label: string; cls: string }> = {
+   168→    dokter: { label: 'Dokter', cls: 'bg-teal-100 text-teal-800 border-teal-300' },
+   169→    perawat: { label: 'Perawat', cls: 'bg-teal-100 text-teal-700 border-teal-300' },
+   170→    caregiver_utama: { label: 'Caregiver Utama', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+   171→    keluarga: { label: 'Keluarga', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+   172→    ambulans: { label: 'Ambulans', cls: 'bg-red-100 text-red-800 border-red-300' },
+   173→    rumah_sakit: { label: 'Rumah Sakit', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
+   174→    gawat_darurat: { label: 'Gawat Darurat', cls: 'bg-red-200 text-red-900 border-red-400' },
+   175→    lainnya: { label: 'Lainnya', cls: 'bg-slate-100 text-slate-600 border-slate-300' },
+   176→  };
+   177→  const m = map[role] || map.lainnya;
+   178→  return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
+   179→};
+   180→
+   181→const categoryLabel = (c: EduMaterialCategory): string => {
+   182→  const map: Record<EduMaterialCategory, string> = {
+   183→    perawatan_rumah: 'Perawatan Rumah',
+   184→    panduan_caregiver: 'Panduan Caregiver',
+   185→    video_edukasi: 'Video Edukasi',
+   186→    dukungan_psikososial: 'Dukungan Psikososial',
+   187→    gawat_darurat: 'Gawat Darurat',
+   188→    end_of_life: 'End-of-Life',
+   189→    faq: 'FAQ',
+   190→  };
+   191→  return map[c] || c;
+   192→};
+   193→
+   194→const categoryBadge = (c: EduMaterialCategory) => {
+   195→  const cls: Record<EduMaterialCategory, string> = {
+   196→    perawatan_rumah: 'bg-teal-100 text-teal-800 border-teal-300',
+   197→    panduan_caregiver: 'bg-amber-100 text-amber-800 border-amber-300',
+   198→    video_edukasi: 'bg-purple-100 text-purple-800 border-purple-300',
+   199→    dukungan_psikososial: 'bg-pink-100 text-pink-800 border-pink-300',
+   200→    gawat_darurat: 'bg-red-100 text-red-800 border-red-300',
+   201→    end_of_life: 'bg-slate-100 text-slate-700 border-slate-300',
+   202→    faq: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+   203→  };
+   204→  return <Badge className={`${cls[c]} border`}>{categoryLabel(c)}</Badge>;
+   205→};
+   206→
+   207→const typeIcon = (t: string) => {
+   208→  switch (t) {
+   209→    case 'video': return <Video className="h-4 w-4" />;
+   210→    case 'pdf': return <FileText className="h-4 w-4" />;
+   211→    case 'infografis': return <Eye className="h-4 w-4" />;
+   212→    default: return <BookOpen className="h-4 w-4" />;
+   213→  }
+   214→};
+   215→
+   216→const noteTypeBadge = (t: string) => {
+   217→  const map: Record<string, { label: string; cls: string }> = {
+   218→    perkembangan: { label: 'Perkembangan', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+   219→    tugas: { label: 'Tugas', cls: 'bg-teal-100 text-teal-800 border-teal-300' },
+   220→    pengingat_obat: { label: 'Pengingat Obat', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+   221→    pengingat_kontrol: { label: 'Pengingat Kontrol', cls: 'bg-purple-100 text-purple-800 border-purple-300' },
+   222→    tanggung_jawab: { label: 'Tanggung Jawab', cls: 'bg-pink-100 text-pink-800 border-pink-300' },
+   223→    lainnya: { label: 'Lainnya', cls: 'bg-slate-100 text-slate-600 border-slate-300' },
+   224→  };
+   225→  const m = map[t] || map.lainnya;
+   226→  return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
+   227→};
+   228→
+   229→// ─── Social Score Calculator ────────────────────────────────────────────────
+   230→
+   231→const scoreMap: Record<string, number> = {
+   232→  layak: 0, kurang_layak: 1, tidak_layak: 2,
+   233→  tersedia: 0, terbatas: 1, tidak_tersedia: 2,
+   234→  kuat: 0, cukup: 1, lemah: 2, tidak_ada: 3,
+   235→  tidak_ada: 0, ringan: 1, sedang: 2, berat: 3,
+   236→  mudah: 0, cukup: 1, sulit: 2, sangat_sulit: 3,
+   237→  rendah: 0, sedang: 1, tinggi: 2,
+   238→};
+   239→
+   240→const calculateSocialScore = (a: SocialAssessmentRecord): number => {
+   241→  const fields: string[] = [
+   242→    a.housingCondition, a.caregiverAvailability, a.familySupportLevel,
+   243→    a.transportDifficulty, a.economicConstraint, a.healthcareAccess,
+   244→    a.medicalEquipmentNeed, a.socialAssistanceNeed, a.socialIsolationRisk,
+   245→  ];
+   246→  return fields.reduce((sum, f) => sum + (scoreMap[f] ?? 0), 0);
+   247→};
+   248→
+   249→const calculatePriority = (form: ScreeningFormState): SocialScreeningPriority => {
+   250→  const highVals = ['berat', 'tidak_tersedia', 'sangat_sulit', 'tidak_layak', 'tinggi', 'tidak_ada'];
+   251→  const medVals = ['sedang', 'terbatas', 'sulit', 'kurang_layak', 'lemah'];
+   252→  const vals = Object.values(form).map(v => v.value);
+   253→  if (vals.some(v => highVals.includes(v))) return 'tinggi';
+   254→  if (vals.some(v => medVals.includes(v))) return 'sedang';
+   255→  return 'rendah';
+   256→};
+   257→
+   258→const generateRecommendations = (form: ScreeningFormState): string[] => {
+   259→  const recs: string[] = [];
+   260→  if (form.housing.value === 'tidak_layak' || form.housing.value === 'kurang_layak')
+   261→    recs.push('Evaluasi pemenuhan kebutuhan tempat tinggal yang layak, pertimbangkan rujukan ke dinas sosial');
+   262→  if (form.caregiver.value === 'tidak_tersedia' || form.caregiver.value === 'terbatas')
+   263→    recs.push('Identifikasi sumber caregiver alternatif, pertimbangkan home care profesional');
+   264→  if (form.familySupport.value === 'lemah' || form.familySupport.value === 'tidak_ada')
+   265→    recs.push('Konseling keluarga dan edukasi tentang dukungan paliatif, pertimbangkan dukungan komunitas');
+   266→  if (form.transport.value === 'berat' || form.transport.value === 'sedang')
+   267→    recs.push('Fasilitasi transportasi medis atau ambulans untuk kontrol rutin');
+   268→  if (form.economic.value === 'berat' || form.economic.value === 'sedang')
+   269→    recs.push('Evaluasi kelayakan bantuan BPJS, Jamkesda, PKH, dan program sosial lainnya');
+   270→  if (form.healthAccess.value === 'sulit' || form.healthAccess.value === 'sangat_sulit')
+   271→    recs.push('Tingkatkan akses telekonsultasi dan home visit, koordinasi dengan puskesmas terdekat');
+   272→  if (form.medicalEquip.value === 'berat' || form.medicalEquip.value === 'sedang')
+   273→    recs.push('Fasilitasi pengadaan alat kesehatan melalui program bantuan atau sewa');
+   274→  if (form.socialAssist.value === 'berat' || form.socialAssist.value === 'sedang')
+   275→    recs.push('Rujuk ke pekerja sosial untuk pendampingan akses bantuan sosial');
+   276→  if (form.socialIsolation.value === 'tinggi' || form.socialIsolation.value === 'sedang')
+   277→    recs.push('Intervensi psikososial, pertimbangkan kelompok dukungan dan kunjungan sukarelawan');
+   278→  if (recs.length === 0) recs.push('Pertahankan monitoring rutin dan dukungan sosial yang ada');
+   279→  return recs;
+   280→};
+   281→
+   282→// ─── Screening Form State Type ──────────────────────────────────────────────
+   283→
+   284→interface ScreeningField {
+   285→  value: string;
+   286→  notes: string;
+   287→}
+   288→
+   289→interface ScreeningFormState {
+   290→  housing: ScreeningField;
+   291→  caregiver: ScreeningField;
+   292→  familySupport: ScreeningField;
+   293→  transport: ScreeningField;
+   294→  economic: ScreeningField;
+   295→  healthAccess: ScreeningField;
+   296→  medicalEquip: ScreeningField;
+   297→  socialAssist: ScreeningField;
+   298→  socialIsolation: ScreeningField;
+   299→}
+   300→
+   301→const emptyScreeningForm = (): ScreeningFormState => ({
+   302→  housing: { value: '', notes: '' },
+   303→  caregiver: { value: '', notes: '' },
+   304→  familySupport: { value: '', notes: '' },
+   305→  transport: { value: '', notes: '' },
+   306→  economic: { value: '', notes: '' },
+   307→  healthAccess: { value: '', notes: '' },
+   308→  medicalEquip: { value: '', notes: '' },
+   309→  socialAssist: { value: '', notes: '' },
+   310→  socialIsolation: { value: '', notes: '' },
+   311→});
+   312→
+   313→// ─── Zarit Questions ────────────────────────────────────────────────────────
+   314→
+   315→const zaritQuestions = [
+   316→  'Apakah Anda merasa kelelahan karena merawat pasien?',
+   317→  'Apakah Anda merasa tidak punya waktu untuk diri sendiri?',
+   318→  'Apakah Anda merasa tertekan antara merawat pasien dan tanggung jawab lain?',
+   319→  'Apakah Anda merasa malu dengan kondisi pasien?',
+   320→  'Apakah Anda merasa terisolasi atau kesepian?',
+   321→  'Apakah Anda merasa kehilangan kendali atas hidup Anda?',
+   322→  'Apakah Anda tidak tahu lagi apa yang harus dilakukan untuk pasien?',
+   323→  'Apakah Anda merasa pasien mengharapkan Anda merawatnya seolah-olah Anda satu-satunya yang bisa?',
+   324→  'Apakah Anda merasa tidak punya privasi karena merawat pasien?',
+   325→  'Apakah Anda merasa hubungan sosial Anda terganggu?',
+   326→  'Apakah Anda merasa kesehatan Anda memburuk karena merawat pasien?',
+   327→  'Apakah Anda merasa kehilangan kendali atas hidup Anda sejak penyakit pasien?',
+   328→];
+   329→
+   330→// ─── APGAR Questions ────────────────────────────────────────────────────────
+   331→
+   332→const apgarQuestions = [
+   333→  'Apakah Anda merasa puas bahwa Anda bisa mendapatkan bantuan dari keluarga saat sesuatu terjadi?',
+   334→  'Apakah Anda merasa puas dengan cara keluarga mendiskusikan hal penting dan berbagi masalah?',
+   335→  'Apakah Anda merasa puas bahwa keluarga menerima dan mendukung keinginan Anda?',
+   336→  'Apakah Anda merasa puas dengan cara keluarga mengungkapkan kasih sayang dan merespons emosi Anda?',
+   337→  'Apakah Anda merasa puas dengan waktu keluarga bersama-sama?',
+   338→];
+   339→
+   340→// ─── Main Component ─────────────────────────────────────────────────────────
+   341→
+   342→export default function SocialSupportPanel({ palliativePatientId }: SocialSupportPanelProps) {
+   343→  const { toast } = useToast();
+   344→
+   345→  const {
+   346→    socialAssessments, addSocialAssessment, updateSocialAssessment,
+   347→    caregivers, addCaregiver, updateCaregiver, removeCaregiver,
+   348→    familyMeetings, addFamilyMeeting, updateFamilyMeeting,
+   349→    eduMaterials, logEduMaterialAccess,
+   350→    familyCoordinationNotes, addFamilyCoordinationNote, updateFamilyCoordinationNote,
+   351→    emergencyContacts, addEmergencyContact, updateEmergencyContact, removeEmergencyContact,
+   352→    financialSupportRecords, addFinancialSupportRecord, updateFinancialSupportRecord,
+   353→    transportRecords, addTransportRecord, updateTransportRecord,
+   354→    socialAlerts, addSocialAlert, markSocialAlertRead,
+   355→    palliativePatients,
+   356→    currentUser,
+   357→  } = useStore();
+   358→
+   359→  const [activeTab, setActiveTab] = useState('dashboard');
+   360→  const tabScrollRef = useRef<HTMLDivElement>(null);
+   361→
+   362→  // Auto-scroll active tab into view
+   363→  useEffect(() => {
+   364→    if (tabScrollRef.current) {
+   365→      const activeTrigger = tabScrollRef.current.querySelector('[data-state="active"]') as HTMLElement;
+   366→      if (activeTrigger) {
+   367→        activeTrigger.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+   368→      }
+   369→    }
+   370→  }, [activeTab]);
+   371→
+   372→  // ─── Filtered Data ──────────────────────────────────────────────────────
+   373→
+   374→  const patient = useMemo(
+   375→    () => palliativePatients.find(p => p.id === palliativePatientId),
+   376→    [palliativePatients, palliativePatientId]
+   377→  );
+   378→
+   379→  const patientAssessments = useMemo(
+   380→    () => socialAssessments.filter(a => a.palliativePatientId === palliativePatientId)
+   381→      .sort((a, b) => new Date(b.assessedAt).getTime() - new Date(a.assessedAt).getTime()),
+   382→    [socialAssessments, palliativePatientId]
+   383→  );
+   384→
+   385→  const patientCaregivers = useMemo(
+   386→    () => caregivers.filter(c => c.palliativePatientId === palliativePatientId && c.isActive),
+   387→    [caregivers, palliativePatientId]
+   388→  );
+   389→
+   390→  const patientMeetings = useMemo(
+   391→    () => familyMeetings.filter(m => m.palliativePatientId === palliativePatientId)
+   392→      .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()),
+   393→    [familyMeetings, palliativePatientId]
+   394→  );
+   395→
+   396→  const patientContacts = useMemo(
+   397→    () => emergencyContacts.filter(c => c.palliativePatientId === palliativePatientId),
+   398→    [emergencyContacts, palliativePatientId]
+   399→  );
+   400→
+   401→  const patientFinancials = useMemo(
+   402→    () => financialSupportRecords.filter(f => f.palliativePatientId === palliativePatientId),
+   403→    [financialSupportRecords, palliativePatientId]
+   404→  );
+   405→
+   406→  const patientTransport = useMemo(
+   407→    () => transportRecords.filter(t => t.palliativePatientId === palliativePatientId)
+   408→      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+   409→    [transportRecords, palliativePatientId]
+   410→  );
+   411→
+   412→  const patientCoordNotes = useMemo(
+   413→    () => familyCoordinationNotes.filter(n => n.palliativePatientId === palliativePatientId)
+   414→      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+   415→    [familyCoordinationNotes, palliativePatientId]
+   416→  );
+   417→
+   418→  const patientAlerts = useMemo(
+   419→    () => socialAlerts.filter(a => a.patientId === palliativePatientId),
+   420→    [socialAlerts, palliativePatientId]
+   421→  );
+   422→
+   423→  const unreadAlerts = useMemo(() => patientAlerts.filter(a => !a.isRead), [patientAlerts]);
+   424→
+   425→  // ─── Trend Data ─────────────────────────────────────────────────────────
+   426→
+   427→  const trendData = useMemo(() => {
+   428→    if (!palliativePatientId) return [];
+   429→    const sorted = [...patientAssessments].sort(
+   430→      (a, b) => new Date(a.assessedAt).getTime() - new Date(b.assessedAt).getTime()
+   431→    );
+   432→    return sorted.map(a => ({
+   433→      date: new Date(a.assessedAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }),
+   434→      skor: calculateSocialScore(a),
+   435→    }));
+   436→  }, [patientAssessments, palliativePatientId]);
+   437→
+   438→  // ─── Dashboard summary metrics ──────────────────────────────────────────
+   439→
+   440→  const latestAssessment = patientAssessments[0];
+   441→  const familySupportStatus = useMemo(() => {
+   442→    if (!latestAssessment) return 'unknown';
+   443→    const fsl = latestAssessment.familySupportLevel;
+   444→    if (fsl === 'kuat') return 'green';
+   445→    if (fsl === 'cukup') return 'yellow';
+   446→    return 'red';
+   447→  }, [latestAssessment]);
+   448→
+   449→  const primaryCaregiver = patientCaregivers.find(c => c.role === 'utama');
+   450→  const assistanceCount = useMemo(() => {
+   451→    if (!latestAssessment) return 0;
+   452→    const fields = [latestAssessment.transportDifficulty, latestAssessment.economicConstraint,
+   453→      latestAssessment.healthcareAccess, latestAssessment.medicalEquipmentNeed,
+   454→      latestAssessment.socialAssistanceNeed];
+   455→    return fields.filter(f => f !== 'tidak_ada' && f !== 'mudah').length;
+   456→  }, [latestAssessment]);
+   457→
+   458→  // ─── Empty State ────────────────────────────────────────────────────────
+   459→
+   460→  if (!palliativePatientId) {
+   461→    return (
+   462→      <div className="flex flex-col items-center justify-center h-64 text-slate-500 gap-3">
+   463→        <Users className="h-12 w-12 opacity-40" />
+   464→        <p className="text-lg font-medium">Pilih pasien terlebih dahulu</p>
+   465→        <p className="text-sm">Pilih pasien paliatif untuk melihat dukungan sosial</p>
+   466→      </div>
+   467→    );
+   468→  }
+   469→
+   470→  // ─── Tab Content Components ─────────────────────────────────────────────
+   471→
+   472→  // ── 1. Dashboard ──────────────────────────────────────────────────────
+   473→
+   474→  const renderDashboard = () => (
+   475→    <div className="space-y-4">
+   476→      {/* Summary Cards */}
+   477→      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 min-w-0">
+   478→        {/* Status Dukungan Keluarga */}
+   479→        <Card className="p-4">
+   480→          <div className="flex items-center gap-2 mb-2">
+   481→            <Heart className="h-4 w-4 text-slate-500" />
+   482→            <span className="text-xs text-slate-500">Dukungan Keluarga</span>
+   483→          </div>
+   484→          <div className="flex items-center gap-2">
+   485→            <div className={`h-3 w-3 rounded-full ${
+   486→              familySupportStatus === 'green' ? 'bg-emerald-500' :
+   487→              familySupportStatus === 'yellow' ? 'bg-amber-500' : 'bg-red-500'
+   488→            }`} />
+   489→            <span className="text-sm font-semibold">
+   490→              {latestAssessment ?
+   491→                (latestAssessment.familySupportLevel === 'kuat' ? 'Kuat' :
+   492→                 latestAssessment.familySupportLevel === 'cukup' ? 'Cukup' :
+   493→                 latestAssessment.familySupportLevel === 'lemah' ? 'Lemah' : 'Tidak Ada') :
+   494→                'Belum dinilai'}
+   495→            </span>
+   496→          </div>
+   497→        </Card>
+   498→
+   499→        {/* Status Caregiver */}
+   500→        <Card className="p-4">
+   501→          <div className="flex items-center gap-2 mb-2">
+   502→            <UserCheck className="h-4 w-4 text-slate-500" />
+   503→            <span className="text-xs text-slate-500">Status Caregiver</span>
+   504→          </div>
+   505→          <div className="flex items-center gap-2">
+   506→            <span className="text-sm font-semibold">
+   507→              {primaryCaregiver?.name || 'Belum ada'}
+   508→            </span>
+   509→            {primaryCaregiver?.zaritScore != null && (
+   510→              <Badge className="bg-slate-100 text-slate-700 border-slate-300 border text-xs">
+   511→                Zarit: {primaryCaregiver.zaritScore}
+   512→              </Badge>
+   513→            )}
+   514→          </div>
+   515→        </Card>
+   516→
+   517→        {/* Skrining Terbaru */}
+   518→        <Card className="p-4">
+   519→          <div className="flex items-center gap-2 mb-2">
+   520→            <ClipboardCheck className="h-4 w-4 text-slate-500" />
+   521→            <span className="text-xs text-slate-500">Skrining Terbaru</span>
+   522→          </div>
+   523→          <div className="flex items-center gap-2">
+   524→            {latestAssessment ? (
+   525→              <>
+   526→                <span className="text-sm font-semibold">{fmtDate(latestAssessment.assessedAt)}</span>
+   527→                {priorityBadge(latestAssessment.priorityLevel)}
+   528→              </>
+   529→            ) : (
+   530→              <span className="text-sm text-slate-400">Belum ada</span>
+   531→            )}
+   532→          </div>
+   533→        </Card>
+   534→
+   535→        {/* Kebutuhan Bantuan Sosial */}
+   536→        <Card className="p-4">
+   537→          <div className="flex items-center gap-2 mb-2">
+   538→            <Shield className="h-4 w-4 text-slate-500" />
+   539→            <span className="text-xs text-slate-500">Kebutuhan Bantuan</span>
+   540→          </div>
+   541→          <span className="text-2xl font-bold">{assistanceCount}</span>
+   542→          <span className="text-xs text-slate-500 ml-1">area</span>
+   543→        </Card>
+   544→
+   545→        {/* Riwayat Family Meeting */}
+   546→        <Card className="p-4">
+   547→          <div className="flex items-center gap-2 mb-2">
+   548→            <Video className="h-4 w-4 text-slate-500" />
+   549→            <span className="text-xs text-slate-500">Family Meeting</span>
+   550→          </div>
+   551→          <span className="text-2xl font-bold">{patientMeetings.length}</span>
+   552→          <span className="text-xs text-slate-500 ml-1">riwayat</span>
+   553→        </Card>
+   554→
+   555→        {/* Notifikasi Risiko */}
+   556→        <Card className="p-4">
+   557→          <div className="flex items-center gap-2 mb-2">
+   558→            <Bell className="h-4 w-4 text-slate-500" />
+   559→            <span className="text-xs text-slate-500">Notifikasi Risiko</span>
+   560→          </div>
+   561→          <span className="text-2xl font-bold text-red-600">{unreadAlerts.length}</span>
+   562→          <span className="text-xs text-slate-500 ml-1">belum dibaca</span>
+   563→        </Card>
+   564→      </div>
+   565→
+   566→      {/* Social Alerts */}
+   567→      {patientAlerts.length > 0 && (
+   568→        <Card>
+   569→          <CardHeader className="pb-2">
+   570→            <CardTitle className="text-sm flex items-center gap-2">
+   571→              <AlertTriangle className="h-4 w-4 text-amber-500" />
+   572→              Notifikasi Risiko Sosial
+   573→            </CardTitle>
+   574→          </CardHeader>
+   575→          <CardContent>
+   576→            <div className="max-h-48 overflow-y-auto custom-scrollbar pr-1">
+   577→              <div className="space-y-2">
+   578→                {patientAlerts.map(alert => (
+   579→                  <div
+   580→                    key={alert.id}
+   581→                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+   582→                      alert.isRead ? 'bg-slate-50 border-slate-200' : 'bg-amber-50 border-amber-200'
+   583→                    }`}
+   584→                    onClick={() => {
+   585→                      if (!alert.isRead) {
+   586→                        markSocialAlertRead(alert.id);
+   587→                        toast({ title: 'Notifikasi ditandai telah dibaca' });
+   588→                      }
+   589→                    }}
+   590→                  >
+   591→                    <AlertTriangle className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
+   592→                      alert.severity === 'critical' ? 'text-red-500' :
+   593→                      alert.severity === 'warning' ? 'text-amber-500' : 'text-slate-400'
+   594→                    }`} />
+   595→                    <div className="flex-1 min-w-0">
+   596→                      <div className="flex items-center gap-2 mb-1">
+   597→                        <span className="text-sm font-medium">{alert.title}</span>
+   598→                        {severityBadge(alert.severity)}
+   599→                      </div>
+   600→                      <p className="text-xs text-slate-600">{alert.description}</p>
+   601→                      <p className="text-xs text-slate-400 mt-1">{fmtDateTime(alert.createdAt)}</p>
+   602→                    </div>
+   603→                    {!alert.isRead && <div className="h-2 w-2 rounded-full bg-amber-500 flex-shrink-0 mt-1" />}
+   604→                  </div>
+   605→                ))}
+   606→              </div>
+   607→            </div>
+   608→          </CardContent>
+   609→        </Card>
+   610→      )}
+   611→
+   612→      {/* Trend Chart */}
+   613→      {trendData.length > 0 && (
+   614→        <Card>
+   615→          <CardHeader className="pb-2">
+   616→            <CardTitle className="text-sm flex items-center gap-2">
+   617→              <TrendingUp className="h-4 w-4 text-teal-600" />
+   618→              Tren Kondisi Sosial
+   619→            </CardTitle>
+   620→            <CardDescription className="text-xs">Skor semakin rendah = kondisi semakin baik (maks 24)</CardDescription>
+   621→          </CardHeader>
+   622→          <CardContent>
+   623→            <div className="w-full overflow-x-auto scroll-x-container">
+   624→            <div className="min-w-[300px]">
+   625→            <ResponsiveContainer width="100%" height={200}>
+   626→              <LineChart data={trendData}>
+   627→                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+   628→                <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
+   629→                <YAxis domain={[0, 24]} tick={{ fontSize: 11 }} stroke="#94a3b8" />
+   630→                <RechartsTooltip
+   631→                  contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
+   632→                  formatter={(value: number) => [`Skor: ${value}`, 'Kondisi Sosial']}
+   633→                />
+   634→                <Line type="monotone" dataKey="skor" stroke="#0d9488" strokeWidth={2}
+   635→                  dot={{ fill: '#0d9488', r: 4 }} activeDot={{ r: 6 }} />
+   636→              </LineChart>
+   637→            </ResponsiveContainer>
+   638→            </div>
+   639→            </div>
+   640→          </CardContent>
+   641→        </Card>
+   642→      )}
+   643→
+   644→      {/* Quick Access Buttons */}
+   645→      <Card>
+   646→        <CardHeader className="pb-2">
+   647→          <CardTitle className="text-sm">Akses Cepat</CardTitle>
+   648→        </CardHeader>
+   649→        <CardContent>
+   650→          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+   651→            {[
+   652→              { key: 'screening', label: 'Skrining Sosial', icon: ClipboardCheck, color: 'text-teal-600' },
+   653→              { key: 'family', label: 'Family Dashboard', icon: Heart, color: 'text-pink-600' },
+   654→              { key: 'meetings', label: 'Family Meeting', icon: Video, color: 'text-purple-600' },
+   655→              { key: 'caregiver', label: 'Caregiver', icon: UserCheck, color: 'text-amber-600' },
+   656→              { key: 'emergency', label: 'Kontak Darurat', icon: Phone, color: 'text-red-600' },
+   657→              { key: 'transport', label: 'Transportasi', icon: Car, color: 'text-slate-600' },
+   658→            ].map(item => (
+   659→              <Button
+   660→                key={item.key}
+   661→                variant="outline"
+   662→                className="h-auto py-3 px-3 flex flex-col items-center gap-1.5 text-xs"
+   663→                onClick={() => setActiveTab(item.key)}
+   664→              >
+   665→                <item.icon className={`h-5 w-5 ${item.color}`} />
+   666→                <span>{item.label}</span>
+   667→              </Button>
+   668→            ))}
+   669→          </div>
+   670→        </CardContent>
+   671→      </Card>
+   672→    </div>
+   673→  );
+   674→
+   675→  // ── 2. Skrining Kebutuhan Sosial ────────────────────────────────────────
+   676→
+   677→  const ScreeningTab = () => (
+   678→    <div className="h-[calc(100vh-300px)] min-h-[500px]">
+   679→      <SocialNeedsScreeningPanel embedded />
+   680→    </div>
+   681→  );
+   682→
+   683→  // ── Legacy ScreeningTab (kept for reference / fallback) ──────────────
+   684→
+   685→  const ScreeningTabLegacy = () => {
+   686→    const [form, setForm] = useState<ScreeningFormState>(emptyScreeningForm());
+   687→    const [showResult, setShowResult] = useState(false);
+   688→
+   689→    const priority = calculatePriority(form);
+   690→    const recs = generateRecommendations(form);
+   691→    const allFilled = Object.values(form).every(f => f.value !== '');
+   692→
+   693→    const updateField = (key: keyof ScreeningFormState, value: string, notes?: string) => {
+   694→      setForm(prev => ({
+   695→        ...prev,
+   696→        [key]: { value, notes: notes ?? prev[key].notes },
+   697→      }));
+   698→    };
+   699→
+   700→    const updateNotes = (key: keyof ScreeningFormState, notes: string) => {
+   701→      setForm(prev => ({
+   702→        ...prev,
+   703→        [key]: { ...prev[key], notes },
+   704→      }));
+   705→    };
+   706→
+   707→    const handleSave = () => {
+   708→      if (!allFilled) {
+   709→        toast({ title: 'Lengkapi semua item skrining', description: 'Semua item harus diisi', variant: 'destructive' });
+   710→        return;
+   711→      }
+   712→      const now = new Date().toISOString();
+   713→      const record: SocialAssessmentRecord = {
+   714→        id: genId('sa'),
+   715→        palliativePatientId: palliativePatientId!,
+   716→        housingCondition: form.housing.value as HousingCondition,
+   717→        housingNotes: form.housing.notes || undefined,
+   718→        caregiverAvailability: form.caregiver.value as CaregiverAvailability,
+   719→        caregiverNotes: form.caregiver.notes || undefined,
+   720→        familySupportLevel: form.familySupport.value as FamilySupportLevel,
+   721→        familySupportNotes: form.familySupport.notes || undefined,
+   722→        transportDifficulty: form.transport.value as TransportDifficulty,
+   723→        transportNotes: form.transport.notes || undefined,
+   724→        economicConstraint: form.economic.value as EconomicConstraint,
+   725→        economicNotes: form.economic.notes || undefined,
+   726→        healthcareAccess: form.healthAccess.value as HealthcareAccess,
+   727→        healthcareAccessNotes: form.healthAccess.notes || undefined,
+   728→        medicalEquipmentNeed: form.medicalEquip.value as MedicalEquipmentNeed,
+   729→        medicalEquipmentNotes: form.medicalEquip.notes || undefined,
+   730→        socialAssistanceNeed: form.socialAssist.value as SocialAssistanceNeed,
+   731→        socialAssistanceNotes: form.socialAssist.notes || undefined,
+   732→        socialIsolationRisk: form.socialIsolation.value as SocialIsolationRisk,
+   733→        socialIsolationNotes: form.socialIsolation.notes || undefined,
+   734→        overallStatus: 'lengkap',
+   735→        priorityLevel: priority,
+   736→        recommendations: recs,
+   737→        assessedBy: currentUser?.name || 'Tim Paliatif',
+   738→        assessedByRole: 'palliative_team',
+   739→        assessedAt: now,
+   740→        createdAt: now,
+   741→        updatedAt: now,
+   742→      };
+   743→      addSocialAssessment(record);
+   744→
+   745→      // Auto-generate alerts for high priority
+   746→      if (priority === 'tinggi') {
+   747→        addSocialAlert({
+   748→          id: genId('sal'),
+   749→          patientId: palliativePatientId!,
+   750→          patientName: patient?.patientName,
+   751→          type: 'dukungan_keluarga',
+   752→          severity: 'critical',
+   753→          title: 'Skrining Sosial: Prioritas Tinggi',
+   754→          description: `Pasien memerlukan intervensi sosial segera. ${recs[0]}`,
+   755→          isRead: false,
+   756→          createdAt: now,
+   757→        });
+   758→      }
+   759→
+   760→      toast({ title: 'Skrining sosial berhasil disimpan', description: `Prioritas: ${priority}` });
+   761→      setForm(emptyScreeningForm());
+   762→      setShowResult(false);
+   763→    };
+   764→
+   765→    const screeningItems: { key: keyof ScreeningFormState; label: string; options: { value: string; label: string }[] }[] = [
+   766→      {
+   767→        key: 'housing', label: 'Kondisi Tempat Tinggal',
+   768→        options: [
+   769→          { value: 'layak', label: 'Layak' }, { value: 'kurang_layak', label: 'Kurang Layak' },
+   770→          { value: 'tidak_layak', label: 'Tidak Layak' },
+   771→        ],
+   772→      },
+   773→      {
+   774→        key: 'caregiver', label: 'Ketersediaan Caregiver',
+   775→        options: [
+   776→          { value: 'tersedia', label: 'Tersedia' }, { value: 'terbatas', label: 'Terbatas' },
+   777→          { value: 'tidak_tersedia', label: 'Tidak Tersedia' },
+   778→        ],
+   779→      },
+   780→      {
+   781→        key: 'familySupport', label: 'Dukungan Keluarga',
+   782→        options: [
+   783→          { value: 'kuat', label: 'Kuat' }, { value: 'cukup', label: 'Cukup' },
+   784→          { value: 'lemah', label: 'Lemah' }, { value: 'tidak_ada', label: 'Tidak Ada' },
+   785→        ],
+   786→      },
+   787→      {
+   788→        key: 'transport', label: 'Kendala Transportasi',
+   789→        options: [
+   790→          { value: 'tidak_ada', label: 'Tidak Ada' }, { value: 'ringan', label: 'Ringan' },
+   791→          { value: 'sedang', label: 'Sedang' }, { value: 'berat', label: 'Berat' },
+   792→        ],
+   793→      },
+   794→      {
+   795→        key: 'economic', label: 'Kendala Ekonomi',
+   796→        options: [
+   797→          { value: 'tidak_ada', label: 'Tidak Ada' }, { value: 'ringan', label: 'Ringan' },
+   798→          { value: 'sedang', label: 'Sedang' }, { value: 'berat', label: 'Berat' },
+   799→        ],
+   800→      },
+   801→      {
+   802→        key: 'healthAccess', label: 'Akses Layanan Kesehatan',
+   803→        options: [
+   804→          { value: 'mudah', label: 'Mudah' }, { value: 'cukup', label: 'Cukup' },
+   805→          { value: 'sulit', label: 'Sulit' }, { value: 'sangat_sulit', label: 'Sangat Sulit' },
+   806→        ],
+   807→      },
+   808→      {
+   809→        key: 'medicalEquip', label: 'Kebutuhan Alat Kesehatan',
+   810→        options: [
+   811→          { value: 'tidak_ada', label: 'Tidak Ada' }, { value: 'ringan', label: 'Ringan' },
+   812→          { value: 'sedang', label: 'Sedang' }, { value: 'berat', label: 'Berat' },
+   813→        ],
+   814→      },
+   815→      {
+   816→        key: 'socialAssist', label: 'Kebutuhan Bantuan Sosial',
+   817→        options: [
+   818→          { value: 'tidak_ada', label: 'Tidak Ada' }, { value: 'ringan', label: 'Ringan' },
+   819→          { value: 'sedang', label: 'Sedang' }, { value: 'berat', label: 'Berat' },
+   820→        ],
+   821→      },
+   822→      {
+   823→        key: 'socialIsolation', label: 'Risiko Isolasi Sosial',
+   824→        options: [
+   825→          { value: 'rendah', label: 'Rendah' }, { value: 'sedang', label: 'Sedang' },
+   826→          { value: 'tinggi', label: 'Tinggi' },
+   827→        ],
+   828→      },
+   829→    ];
+   830→
+   831→    return (
+   832→      <div className="space-y-4">
+   833→        <Card>
+   834→          <CardHeader className="pb-3">
+   835→            <CardTitle className="text-sm flex items-center gap-2">
+   836→              <ClipboardCheck className="h-4 w-4 text-teal-600" />
+   837→              Form Skrining Kebutuhan Sosial
+   838→            </CardTitle>
+   839→          </CardHeader>
+   840→          <CardContent className="space-y-4">
+   841→            {screeningItems.map(item => (
+   842→              <div key={item.key} className="space-y-2 p-3 rounded-lg border border-slate-200 bg-slate-50/50">
+   843→                <Label className="text-sm font-medium">{item.label}</Label>
+   844→                <div className="flex flex-col sm:flex-row gap-2">
+   845→                  <Select value={form[item.key].value} onValueChange={v => updateField(item.key, v)}>
+   846→                    <SelectTrigger className="flex-1">
+   847→                      <SelectValue placeholder="Pilih..." />
+   848→                    </SelectTrigger>
+   849→                    <SelectContent>
+   850→                      {item.options.map(opt => (
+   851→                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+   852→                      ))}
+   853→                    </SelectContent>
+   854→                  </Select>
+   855→                </div>
+   856→                <Textarea
+   857→                  placeholder="Catatan tambahan (opsional)..."
+   858→                  className="text-xs min-h-[48px]"
+   859→                  value={form[item.key].notes}
+   860→                  onChange={e => updateNotes(item.key, e.target.value)}
+   861→                />
+   862→              </div>
+   863→            ))}
+   864→
+   865→            {/* Result Preview */}
+   866→            {allFilled && (
+   867→              <Alert className={priority === 'tinggi' ? 'border-red-300 bg-red-50' :
+   868→                priority === 'sedang' ? 'border-amber-300 bg-amber-50' :
+   869→                'border-emerald-300 bg-emerald-50'}>
+   870→                <AlertTriangle className="h-4 w-4" />
+   871→                <AlertTitle className="flex items-center gap-2">
+   872→                  Hasil Skrining {priorityBadge(priority)}
+   873→                </AlertTitle>
+   874→                <AlertDescription>
+   875→                  <ul className="list-disc pl-4 mt-2 space-y-1">
+   876→                    {recs.map((r, i) => (
+   877→                      <li key={i} className="text-xs">{r}</li>
+   878→                    ))}
+   879→                  </ul>
+   880→                </AlertDescription>
+   881→              </Alert>
+   882→            )}
+   883→
+   884→            <div className="flex gap-2">
+   885→              <Button
+   886→                onClick={handleSave}
+   887→                disabled={!allFilled}
+   888→                className="bg-teal-600 hover:bg-teal-700 text-white"
+   889→              >
+   890→                Simpan Skrining
+   891→              </Button>
+   892→            </div>
+   893→          </CardContent>
+   894→        </Card>
+   895→
+   896→        {/* History */}
+   897→        {patientAssessments.length > 0 && (
+   898→          <Card>
+   899→            <CardHeader className="pb-2">
+   900→              <CardTitle className="text-sm">Riwayat Skrining</CardTitle>
+   901→            </CardHeader>
+   902→            <CardContent>
+   903→              <div className="max-h-96 overflow-y-auto custom-scrollbar pr-1">
+   904→                <div className="space-y-3">
+   905→                  {patientAssessments.map((a, idx) => (
+   906→                    <div key={a.id} className="border rounded-lg p-3">
+   907→                      <div className="flex items-center justify-between mb-2">
+   908→                        <div className="flex items-center gap-2">
+   909→                          <div className={`h-8 w-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+   910→                            idx === 0 ? 'bg-teal-600' : 'bg-slate-400'
+   911→                          }`}>
+   912→                            {patientAssessments.length - idx}
+   913→                          </div>
+   914→                          <div>
+   915→                            <p className="text-sm font-medium">{fmtDateTime(a.assessedAt)}</p>
+   916→                            <p className="text-xs text-slate-500">Oleh: {a.assessedBy}</p>
+   917→                          </div>
+   918→                        </div>
+   919→                        {priorityBadge(a.priorityLevel)}
+   920→                      </div>
+   921→                      <div className="grid grid-cols-3 gap-1 text-xs text-slate-600">
+   922→                        <span>Tempat Tinggal: {a.housingCondition.replace('_', ' ')}</span>
+   923→                        <span>Caregiver: {a.caregiverAvailability.replace('_', ' ')}</span>
+   924→                        <span>Keluarga: {a.familySupportLevel.replace('_', ' ')}</span>
+   925→                      </div>
+   926→                    </div>
+   927→                  ))}
+   928→                </div>
+   929→              </div>
+   930→            </CardContent>
+   931→          </Card>
+   932→        )}
+   933→      </div>
+   934→    );
+   935→  };
+   936→
+   937→  // ── 3. Family Dashboard ────────────────────────────────────────────────
+   938→
+   939→  const FamilyDashboardTab = () => (
+   940→    <div className="space-y-4">
+   941→      {/* Patient Summary */}
+   942→      <Card>
+   943→        <CardHeader className="pb-2">
+   944→          <CardTitle className="text-sm flex items-center gap-2">
+   945→            <Heart className="h-4 w-4 text-pink-600" />
+   946→            Ringkasan Pasien
+   947→          </CardTitle>
+   948→        </CardHeader>
+   949→        <CardContent>
+   950→          {patient ? (
+   951→            <div className="grid grid-cols-2 gap-3 text-sm">
+   952→              <div><span className="text-slate-500 text-xs">Nama</span><p className="font-medium">{patient.patientName}</p></div>
+   953→              <div><span className="text-slate-500 text-xs">RM</span><p className="font-medium">{patient.rmNumber}</p></div>
+   954→              <div><span className="text-slate-500 text-xs">Diagnosis</span><p className="font-medium">{patient.primaryDiagnosis}</p></div>
+   955→              <div><span className="text-slate-500 text-xs">Dokter</span><p className="font-medium">{patient.attendingDoctorName}</p></div>
+   956→              <div><span className="text-slate-500 text-xs">Status</span><p>{patient.careStatus.replace('_', ' ')}</p></div>
+   957→              <div><span className="text-slate-500 text-xs">Kontak Keluarga</span><p>{patient.familyContactName} ({patient.familyContactRelation})</p></div>
+   958→            </div>
+   959→          ) : (
+   960→            <p className="text-sm text-slate-400">Data pasien tidak tersedia</p>
+   961→          )}
+   962→        </CardContent>
+   963→      </Card>
+   964→
+   965→      {/* Schedule Cards */}
+   966→      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   967→        <Card className="p-4">
+   968→          <div className="flex items-center gap-2 mb-3">
+   969→            <Calendar className="h-4 w-4 text-teal-600" />
+   970→            <span className="text-sm font-medium">Jadwal Kontrol</span>
+   971→          </div>
+   972→          {patientMeetings.filter(m => m.status === 'dijadwalkan').slice(0, 2).map(m => (
+   973→            <div key={m.id} className="flex items-center gap-2 py-1.5 border-b border-slate-100 last:border-0">
+   974→              <Clock className="h-3 w-3 text-slate-400" />
+   975→              <span className="text-xs">{fmtDateTime(m.scheduledAt)}</span>
+   976→              <span className="text-xs text-slate-500">- {m.title}</span>
+   977→            </div>
+   978→          ))}
+   979→          {patientMeetings.filter(m => m.status === 'dijadwalkan').length === 0 && (
+   980→            <p className="text-xs text-slate-400">Belum ada jadwal kontrol</p>
+   981→          )}
+   982→        </Card>
+   983→
+   984→        <Card className="p-4">
+   985→          <div className="flex items-center gap-2 mb-3">
+   986→            <Activity className="h-4 w-4 text-amber-600" />
+   987→            <span className="text-sm font-medium">Jadwal Pengobatan</span>
+   988→          </div>
+   989→          <div className="space-y-1.5">
+   990→            {useStore.getState().palliativeMedications
+   991→              .filter(m => m.palliativePatientId === palliativePatientId && m.isActive)
+   992→              .slice(0, 3)
+   993→              .map(med => (
+   994→                <div key={med.id} className="flex items-center gap-2 text-xs">
+   995→                  <Circle className="h-2 w-2 text-teal-500 fill-teal-500" />
+   996→                  <span>{med.medicineName} - {med.frequency}</span>
+   997→                </div>
+   998→              ))
+   999→            }
+  1000→          </div>
+  1001→        </Card>
+  1002→      </div>
+  1003→
+  1004→      {/* Screening Results Summary */}
+  1005→      {latestAssessment && (
+  1006→        <Card>
+  1007→          <CardHeader className="pb-2">
+  1008→            <CardTitle className="text-sm flex items-center gap-2">
+  1009→              <ClipboardCheck className="h-4 w-4 text-teal-600" />
+  1010→              Hasil Skrining Sosial Terakhir
+  1011→            </CardTitle>
+  1012→          </CardHeader>
+  1013→          <CardContent>
+  1014→            <div className="flex items-center gap-2 mb-3">
+  1015→              <span className="text-xs text-slate-500">Tanggal: {fmtDate(latestAssessment.assessedAt)}</span>
+  1016→              {priorityBadge(latestAssessment.priorityLevel)}
+  1017→            </div>
+  1018→            <div className="grid grid-cols-3 gap-2 text-xs">
+  1019→              {[
+  1020→                { label: 'Tempat Tinggal', value: latestAssessment.housingCondition },
+  1021→                { label: 'Caregiver', value: latestAssessment.caregiverAvailability },
+  1022→                { label: 'Dukungan Keluarga', value: latestAssessment.familySupportLevel },
+  1023→                { label: 'Transportasi', value: latestAssessment.transportDifficulty },
+  1024→                { label: 'Ekonomi', value: latestAssessment.economicConstraint },
+  1025→                { label: 'Akses Kesehatan', value: latestAssessment.healthcareAccess },
+  1026→              ].map((item, i) => (
+  1027→                <div key={i} className="p-2 rounded border border-slate-100 bg-slate-50/50">
+  1028→                  <p className="text-slate-500 text-[10px]">{item.label}</p>
+  1029→                  <p className="font-medium capitalize">{item.value.replace(/_/g, ' ')}</p>
+  1030→                </div>
+  1031→              ))}
+  1032→            </div>
+  1033→          </CardContent>
+  1034→        </Card>
+  1035→      )}
+  1036→
+  1037→      {/* Caregiver Task Checklist */}
+  1038→      {patientCaregivers.length > 0 && (
+  1039→        <Card>
+  1040→          <CardHeader className="pb-2">
+  1041→            <CardTitle className="text-sm flex items-center gap-2">
+  1042→              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+  1043→              Tugas Caregiver
+  1044→            </CardTitle>
+  1045→          </CardHeader>
+  1046→          <CardContent>
+  1047→            <div className="max-h-48 overflow-y-auto custom-scrollbar pr-1">
+  1048→              <div className="space-y-2">
+  1049→                {patientCaregivers.flatMap(cg =>
+  1050→                  (cg.tasks || []).map((task, i) => (
+  1051→                    <div key={`${cg.id}-${i}`} className="flex items-center gap-2 text-sm">
+  1052→                      <CheckCircle2 className="h-4 w-4 text-slate-300" />
+  1053→                      <span>{task}</span>
+  1054→                      <span className="text-xs text-slate-400 ml-auto">{cg.name}</span>
+  1055→                    </div>
+  1056→                  ))
+  1057→                )}
+  1058→                {patientCaregivers.every(cg => !cg.tasks || cg.tasks.length === 0) && (
+  1059→                  <p className="text-xs text-slate-400">Belum ada tugas yang ditugaskan</p>
+  1060→                )}
+  1061→              </div>
+  1062→            </div>
+  1063→          </CardContent>
+  1064→        </Card>
+  1065→      )}
+  1066→    </div>
+  1067→  );
+  1068→
+  1069→  // ── 4. Family Meeting Virtual ──────────────────────────────────────────
+  1070→
+  1071→  const MeetingTab = () => {
+  1072→    const [showDialog, setShowDialog] = useState(false);
+  1073→    const [newMeeting, setNewMeeting] = useState({
+  1074→      title: '', scheduledAt: '', duration: '60', agenda: '',
+  1075→      participantName: '', participantRole: '',
+  1076→    });
+  1077→    const [participants, setParticipants] = useState<FamilyMeetingParticipant[]>([]);
+  1078→    const [editMeetingId, setEditMeetingId] = useState<string | null>(null);
+  1079→
+  1080→    const addParticipant = () => {
+  1081→      if (!newMeeting.participantName || !newMeeting.participantRole) return;
+  1082→      setParticipants(prev => [...prev, {
+  1083→        name: newMeeting.participantName,
+  1084→        role: newMeeting.participantRole,
+  1085→        attended: false,
+  1086→      }]);
+  1087→      setNewMeeting(prev => ({ ...prev, participantName: '', participantRole: '' }));
+  1088→    };
+  1089→
+  1090→    const removeParticipant = (idx: number) => {
+  1091→      setParticipants(prev => prev.filter((_, i) => i !== idx));
+  1092→    };
+  1093→
+  1094→    const handleSaveMeeting = () => {
+  1095→      if (!newMeeting.title || !newMeeting.scheduledAt) {
+  1096→        toast({ title: 'Judul dan jadwal wajib diisi', variant: 'destructive' });
+  1097→        return;
+  1098→      }
+  1099→      const now = new Date().toISOString();
+  1100→      if (editMeetingId) {
+  1101→        updateFamilyMeeting(editMeetingId, {
+  1102→          title: newMeeting.title,
+  1103→          scheduledAt: newMeeting.scheduledAt,
+  1104→          duration: parseInt(newMeeting.duration) || 60,
+  1105→          agenda: newMeeting.agenda || undefined,
+  1106→          participants,
+  1107→        });
+  1108→        toast({ title: 'Meeting berhasil diperbarui' });
+  1109→      } else {
+  1110→        addFamilyMeeting({
+  1111→          id: genId('fm'),
+  1112→          palliativePatientId: palliativePatientId!,
+  1113→          title: newMeeting.title,
+  1114→          scheduledAt: newMeeting.scheduledAt,
+  1115→          duration: parseInt(newMeeting.duration) || 60,
+  1116→          status: 'dijadwalkan',
+  1117→          participants,
+  1118→          agenda: newMeeting.agenda || undefined,
+  1119→          createdBy: currentUser?.name || 'Dokter',
+  1120→          createdAt: now,
+  1121→          updatedAt: now,
+  1122→        });
+  1123→        toast({ title: 'Meeting berhasil dijadwalkan' });
+  1124→      }
+  1125→      setShowDialog(false);
+  1126→      resetMeetingForm();
+  1127→    };
+  1128→
+  1129→    const resetMeetingForm = () => {
+  1130→      setNewMeeting({ title: '', scheduledAt: '', duration: '60', agenda: '', participantName: '', participantRole: '' });
+  1131→      setParticipants([]);
+  1132→      setEditMeetingId(null);
+  1133→    };
+  1134→
+  1135→    const openEditMeeting = (m: FamilyMeetingRecord) => {
+  1136→      setEditMeetingId(m.id);
+  1137→      setNewMeeting({
+  1138→        title: m.title,
+  1139→        scheduledAt: m.scheduledAt.slice(0, 16),
+  1140→        duration: String(m.duration || 60),
+  1141→        agenda: m.agenda || '',
+  1142→        participantName: '', participantRole: '',
+  1143→      });
+  1144→      setParticipants(m.participants || []);
+  1145→      setShowDialog(true);
+  1146→    };
+  1147→
+  1148→    const completeMeeting = (m: FamilyMeetingRecord) => {
+  1149→      updateFamilyMeeting(m.id, {
+  1150→        status: 'selesai',
+  1151→        discussionNotes: 'Meeting telah selesai',
+  1152→      });
+  1153→      toast({ title: 'Meeting ditandai selesai' });
+  1154→    };
+  1155→
+  1156→    const cancelMeeting = (m: FamilyMeetingRecord) => {
+  1157→      updateFamilyMeeting(m.id, { status: 'dibatalkan' });
+  1158→      toast({ title: 'Meeting dibatalkan' });
+  1159→    };
+  1160→
+  1161→    return (
+  1162→      <div className="space-y-4">
+  1163→        <div className="flex items-center justify-between">
+  1164→          <h3 className="text-sm font-semibold flex items-center gap-2">
+  1165→            <Video className="h-4 w-4 text-purple-600" />
+  1166→            Family Meeting Virtual
+  1167→          </h3>
+  1168→          <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white"
+  1169→            onClick={() => { resetMeetingForm(); setShowDialog(true); }}>
+  1170→            <Plus className="h-4 w-4 mr-1" /> Jadwalkan Meeting
+  1171→          </Button>
+  1172→        </div>
+  1173→
+  1174→        <div className="max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
+  1175→          <div className="space-y-3">
+  1176→            {patientMeetings.map(m => (
+  1177→              <Card key={m.id} className="p-4">
+  1178→                <div className="flex items-start justify-between mb-2">
+  1179→                  <div>
+  1180→                    <p className="text-sm font-medium">{m.title}</p>
+  1181→                    <div className="flex items-center gap-2 mt-1">
+  1182→                      <Clock className="h-3 w-3 text-slate-400" />
+  1183→                      <span className="text-xs text-slate-500">{fmtDateTime(m.scheduledAt)}</span>
+  1184→                      <span className="text-xs text-slate-400">({m.duration || 60} menit)</span>
+  1185→                    </div>
+  1186→                  </div>
+  1187→                  {meetingStatusBadge(m.status)}
+  1188→                </div>
+  1189→                {m.agenda && <p className="text-xs text-slate-600 mb-2">Agenda: {m.agenda}</p>}
+  1190→                {m.participants && m.participants.length > 0 && (
+  1191→                  <div className="flex flex-wrap gap-1 mb-2">
+  1192→                    {m.participants.map((p, i) => (
+  1193→                      <Badge key={i} variant="outline" className="text-xs">
+  1194→                        {p.name} ({p.role})
+  1195→                      </Badge>
+  1196→                    ))}
+  1197→                  </div>
+  1198→                )}
+  1199→                {m.status === 'selesai' && m.discussionNotes && (
+  1200→                  <div className="bg-slate-50 rounded p-2 mt-2">
+  1201→                    <p className="text-xs font-medium text-slate-600">Catatan Diskusi:</p>
+  1202→                    <p className="text-xs text-slate-500">{m.discussionNotes}</p>
+  1203→                    {m.followUpActions && m.followUpActions.length > 0 && (
+  1204→                      <div className="mt-1">
+  1205→                        <p className="text-xs font-medium text-slate-600">Tindak Lanjut:</p>
+  1206→                        <ul className="list-disc pl-4">
+  1207→                          {m.followUpActions.map((a, i) => <li key={i} className="text-xs text-slate-500">{a}</li>)}
+  1208→                        </ul>
+  1209→                      </div>
+  1210→                    )}
+  1211→                  </div>
+  1212→                )}
+  1213→                <div className="flex gap-1 mt-2">
+  1214→                  {m.status === 'dijadwalkan' && (
+  1215→                    <>
+  1216→                      <Button size="sm" variant="outline" className="text-xs h-7"
+  1217→                        onClick={() => openEditMeeting(m)}><Edit className="h-3 w-3 mr-1" /> Edit</Button>
+  1218→                      <Button size="sm" variant="outline" className="text-xs h-7 text-emerald-600"
+  1219→                        onClick={() => completeMeeting(m)}><CheckCircle2 className="h-3 w-3 mr-1" /> Selesai</Button>
+  1220→                      <Button size="sm" variant="outline" className="text-xs h-7 text-red-600"
+  1221→                        onClick={() => cancelMeeting(m)}><XCircle className="h-3 w-3 mr-1" /> Batal</Button>
+  1222→                    </>
+  1223→                  )}
+  1224→                </div>
+  1225→              </Card>
+  1226→            ))}
+  1227→            {patientMeetings.length === 0 && (
+  1228→              <p className="text-sm text-slate-400 text-center py-8">Belum ada family meeting</p>
+  1229→            )}
+  1230→          </div>
+  1231→        </div>
+  1232→
+  1233→        {/* Meeting Dialog */}
+  1234→        <Dialog open={showDialog} onOpenChange={setShowDialog}>
+  1235→          <DialogContent className="max-w-lg max-h-[85vh]">
+  1236→            <DialogHeader className="shrink-0">
+  1237→              <DialogTitle>{editMeetingId ? 'Edit Meeting' : 'Jadwalkan Meeting Baru'}</DialogTitle>
+  1238→              <DialogDescription>Isi detail family meeting virtual</DialogDescription>
+  1239→            </DialogHeader>
+  1240→            <div className="space-y-3 overflow-y-auto custom-scrollbar flex-1 min-h-0 pr-1">
+  1241→              <div>
+  1242→                <Label className="text-xs">Judul Meeting *</Label>
+  1243→                <Input value={newMeeting.title} onChange={e => setNewMeeting(p => ({ ...p, title: e.target.value }))}
+  1244→                  placeholder="Contoh: Rencana Perawatan Lanjutan" />
+  1245→              </div>
+  1246→              <div className="grid grid-cols-2 gap-2">
+  1247→                <div>
+  1248→                  <Label className="text-xs">Tanggal & Waktu *</Label>
+  1249→                  <Input type="datetime-local" value={newMeeting.scheduledAt}
+  1250→                    onChange={e => setNewMeeting(p => ({ ...p, scheduledAt: e.target.value }))} />
+  1251→                </div>
+  1252→                <div>
+  1253→                  <Label className="text-xs">Durasi (menit)</Label>
+  1254→                  <Input type="number" value={newMeeting.duration}
+  1255→                    onChange={e => setNewMeeting(p => ({ ...p, duration: e.target.value }))} />
+  1256→                </div>
+  1257→              </div>
+  1258→              <div>
+  1259→                <Label className="text-xs">Agenda</Label>
+  1260→                <Textarea value={newMeeting.agenda} onChange={e => setNewMeeting(p => ({ ...p, agenda: e.target.value }))}
+  1261→                  placeholder="Topik pembahasan meeting..." />
+  1262→              </div>
+  1263→              <Separator />
+  1264→              <div>
+  1265→                <Label className="text-xs">Tambah Peserta</Label>
+  1266→                <div className="flex gap-2 mt-1">
+  1267→                  <Input placeholder="Nama" className="flex-1" value={newMeeting.participantName}
+  1268→                    onChange={e => setNewMeeting(p => ({ ...p, participantName: e.target.value }))} />
+  1269→                  <Input placeholder="Peran" className="flex-1" value={newMeeting.participantRole}
+  1270→                    onChange={e => setNewMeeting(p => ({ ...p, participantRole: e.target.value }))} />
+  1271→                  <Button size="sm" variant="outline" onClick={addParticipant}><Plus className="h-4 w-4" /></Button>
+  1272→                </div>
+  1273→                {participants.length > 0 && (
+  1274→                  <div className="flex flex-wrap gap-1 mt-2">
+  1275→                    {participants.map((p, i) => (
+  1276→                      <Badge key={i} variant="outline" className="text-xs flex items-center gap-1">
+  1277→                        {p.name} ({p.role})
+  1278→                        <XCircle className="h-3 w-3 cursor-pointer text-slate-400 hover:text-red-500"
+  1279→                          onClick={() => removeParticipant(i)} />
+  1280→                      </Badge>
+  1281→                    ))}
+  1282→                  </div>
+  1283→                )}
+  1284→              </div>
+  1285→            </div>
+  1286→            <DialogFooter className="shrink-0">
+  1287→              <Button variant="outline" onClick={() => setShowDialog(false)}>Batal</Button>
+  1288→              <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSaveMeeting}>
+  1289→                {editMeetingId ? 'Perbarui' : 'Jadwalkan'}
+  1290→              </Button>
+  1291→            </DialogFooter>
+  1292→          </DialogContent>
+  1293→        </Dialog>
+  1294→      </div>
+  1295→    );
+  1296→  };
+  1297→
+  1298→  // ── 5. Family Support Tools ─────────────────────────────────────────────
+  1299→
+  1300→  const EduToolsTab = () => {
+  1301→    const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  1302→
+  1303→    const filtered = useMemo(() => {
+  1304→      const active = eduMaterials.filter(m => m.isActive);
+  1305→      if (categoryFilter === 'all') return active;
+  1306→      return active.filter(m => m.category === categoryFilter);
+  1307→    }, [eduMaterials, categoryFilter]);
+  1308→
+  1309→    const categories: EduMaterialCategory[] = [
+  1310→      'perawatan_rumah', 'panduan_caregiver', 'video_edukasi',
+  1311→      'dukungan_psikososial', 'gawat_darurat', 'end_of_life', 'faq',
+  1312→    ];
+  1313→
+  1314→    return (
+  1315→      <div className="space-y-4">
+  1316→        <h3 className="text-sm font-semibold flex items-center gap-2">
+  1317→          <BookOpen className="h-4 w-4 text-teal-600" />
+  1318→          Materi Edukasi & Dukungan
+  1319→        </h3>
+  1320→
+  1321→        {/* Category filter */}
+  1322→        <div className="flex flex-wrap gap-1">
+  1323→          <Button size="sm" variant={categoryFilter === 'all' ? 'default' : 'outline'}
+  1324→            className={`text-xs h-7 ${categoryFilter === 'all' ? 'bg-teal-600 hover:bg-teal-700 text-white' : ''}`}
+  1325→            onClick={() => setCategoryFilter('all')}>
+  1326→            Semua
+  1327→          </Button>
+  1328→          {categories.map(c => (
+  1329→            <Button key={c} size="sm" variant={categoryFilter === c ? 'default' : 'outline'}
+  1330→              className={`text-xs h-7 ${categoryFilter === c ? 'bg-teal-600 hover:bg-teal-700 text-white' : ''}`}
+  1331→              onClick={() => setCategoryFilter(c)}>
+  1332→              {categoryLabel(c)}
+  1333→            </Button>
+  1334→          ))}
+  1335→        </div>
+  1336→
+  1337→        {/* Material Grid */}
+  1338→        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+  1339→          {filtered.map(mat => (
+  1340→            <Card key={mat.id} className="p-4 cursor-pointer hover:border-teal-300 transition-colors"
+  1341→              onClick={() => {
+  1342→                logEduMaterialAccess(mat.id, currentUser?.name || 'Pengguna');
+  1343→                toast({ title: `Materi "${mat.title}" dibuka` });
+  1344→              }}>
+  1345→              <div className="flex items-start gap-3">
+  1346→                <div className="h-10 w-10 rounded-lg bg-teal-50 flex items-center justify-center flex-shrink-0 text-teal-600">
+  1347→                  {typeIcon(mat.type)}
+  1348→                </div>
+  1349→                <div className="flex-1 min-w-0">
+  1350→                  <p className="text-sm font-medium mb-1">{mat.title}</p>
+  1351→                  <p className="text-xs text-slate-500 line-clamp-2">{mat.description}</p>
+  1352→                  <div className="flex items-center gap-2 mt-2">
+  1353→                    {categoryBadge(mat.category)}
+  1354→                    <span className="text-xs text-slate-400">{mat.accessCount}x diakses</span>
+  1355→                  </div>
+  1356→                </div>
+  1357→              </div>
+  1358→            </Card>
+  1359→          ))}
+  1360→          {filtered.length === 0 && (
+  1361→            <p className="text-sm text-slate-400 col-span-2 text-center py-8">Tidak ada materi untuk kategori ini</p>
+  1362→          )}
+  1363→        </div>
+  1364→      </div>
+  1365→    );
+  1366→  };
+  1367→
+  1368→  // ── 6. Caregiver Management ────────────────────────────────────────────
+  1369→
+  1370→  const CaregiverTab = () => {
+  1371→    const [showDialog, setShowDialog] = useState(false);
+  1372→    const [showZaritDialog, setShowZaritDialog] = useState(false);
+  1373→    const [showApgarDialog, setShowApgarDialog] = useState(false);
+  1374→    const [activeCaregiverId, setActiveCaregiverId] = useState<string | null>(null);
+  1375→    const [editCaregiverId, setEditCaregiverId] = useState<string | null>(null);
+  1376→
+  1377→    const [cgForm, setCgForm] = useState({
+  1378→      name: '', role: 'utama' as CaregiverRole, relation: 'anak' as CaregiverRelation,
+  1379→      relationOther: '', phone: '', email: '', address: '', schedule: '', tasksStr: '',
+  1380→    });
+  1381→
+  1382→    const [zaritAnswers, setZaritAnswers] = useState<number[]>(Array(12).fill(0));
+  1383→    const [apgarAnswers, setApgarAnswers] = useState<number[]>(Array(5).fill(0));
+  1384→
+  1385→    const resetCgForm = () => {
+  1386→      setCgForm({
+  1387→        name: '', role: 'utama', relation: 'anak', relationOther: '',
+  1388→        phone: '', email: '', address: '', schedule: '', tasksStr: '',
+  1389→      });
+  1390→      setEditCaregiverId(null);
+  1391→    };
+  1392→
+  1393→    const handleSaveCaregiver = () => {
+  1394→      if (!cgForm.name || !cgForm.phone) {
+  1395→        toast({ title: 'Nama dan telepon wajib diisi', variant: 'destructive' });
+  1396→        return;
+  1397→      }
+  1398→      const now = new Date().toISOString();
+  1399→      const tasks = cgForm.tasksStr.split(',').map(t => t.trim()).filter(Boolean);
+  1400→      if (editCaregiverId) {
+  1401→        updateCaregiver(editCaregiverId, {
+  1402→          name: cgForm.name, role: cgForm.role, relation: cgForm.relation,
+  1403→          relationOther: cgForm.relation !== 'lainnya' ? undefined : cgForm.relationOther,
+  1404→          phone: cgForm.phone, email: cgForm.email || undefined,
+  1405→          address: cgForm.address || undefined, schedule: cgForm.schedule || undefined,
+  1406→          tasks: tasks.length > 0 ? tasks : undefined,
+  1407→        });
+  1408→        toast({ title: 'Caregiver berhasil diperbarui' });
+  1409→      } else {
+  1410→        addCaregiver({
+  1411→          id: genId('cg'),
+  1412→          palliativePatientId: palliativePatientId!,
+  1413→          name: cgForm.name, role: cgForm.role, relation: cgForm.relation,
+  1414→          relationOther: cgForm.relation !== 'lainnya' ? undefined : cgForm.relationOther,
+  1415→          phone: cgForm.phone, email: cgForm.email || undefined,
+  1416→          address: cgForm.address || undefined, schedule: cgForm.schedule || undefined,
+  1417→          tasks: tasks.length > 0 ? tasks : undefined,
+  1418→          isActive: true,
+  1419→          createdAt: now, updatedAt: now,
+  1420→        });
+  1421→        toast({ title: 'Caregiver berhasil ditambahkan' });
+  1422→      }
+  1423→      setShowDialog(false);
+  1424→      resetCgForm();
+  1425→    };
+  1426→
+  1427→    const openEditCaregiver = (cg: CaregiverInfo) => {
+  1428→      setEditCaregiverId(cg.id);
+  1429→      setCgForm({
+  1430→        name: cg.name, role: cg.role, relation: cg.relation,
+  1431→        relationOther: cg.relationOther || '', phone: cg.phone, email: cg.email || '',
+  1432→        address: cg.address || '', schedule: cg.schedule || '',
+  1433→        tasksStr: (cg.tasks || []).join(', '),
+  1434→      });
+  1435→      setShowDialog(true);
+  1436→    };
+  1437→
+  1438→    const handleSaveZarit = () => {
+  1439→      if (!activeCaregiverId) return;
+  1440→      const score = zaritAnswers.reduce((a, b) => a + b, 0);
+  1441→      const level: 'beban_ringan' | 'beban_sedang' | 'beban_berat' =
+  1442→        score <= 20 ? 'beban_ringan' : score <= 32 ? 'beban_sedang' : 'beban_berat';
+  1443→      updateCaregiver(activeCaregiverId, { zaritScore: score, zaritLevel: level });
+  1444→      toast({ title: `Skor Zarit: ${score}/48 - ${level.replace('_', ' ')}` });
+  1445→      setShowZaritDialog(false);
+  1446→      setZaritAnswers(Array(12).fill(0));
+  1447→    };
+  1448→
+  1449→    const handleSaveApgar = () => {
+  1450→      if (!activeCaregiverId) return;
+  1451→      const score = apgarAnswers.reduce((a, b) => a + b, 0);
+  1452→      const level: CaregiverInfo['familyApgarLevel'] =
+  1453→        score <= 3 ? 'dysfunctional' : score <= 6 ? 'severe_dysfunction' :
+  1454→        score <= 8 ? 'moderate_dysfunction' : score === 9 ? 'good' : 'high_functional';
+  1455→      updateCaregiver(activeCaregiverId, { familyApgarScore: score, familyApgarLevel: level });
+  1456→      toast({ title: `Skor APGAR Keluarga: ${score}/10` });
+  1457→      setShowApgarDialog(false);
+  1458→      setApgarAnswers(Array(5).fill(0));
+  1459→    };
+  1460→
+  1461→    return (
+  1462→      <div className="space-y-4">
+  1463→        <div className="flex items-center justify-between">
+  1464→          <h3 className="text-sm font-semibold flex items-center gap-2">
+  1465→            <UserCheck className="h-4 w-4 text-amber-600" />
+  1466→            Manajemen Caregiver
+  1467→          </h3>
+  1468→          <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white"
+  1469→            onClick={() => { resetCgForm(); setShowDialog(true); }}>
+  1470→            <Plus className="h-4 w-4 mr-1" /> Tambah Caregiver
+  1471→          </Button>
+  1472→        </div>
+  1473→
+  1474→        <div className="max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
+  1475→          <div className="space-y-3">
+  1476→            {patientCaregivers.map(cg => (
+  1477→              <Card key={cg.id} className="p-4">
+  1478→                <div className="flex items-start justify-between mb-2">
+  1479→                  <div className="flex items-center gap-2">
+  1480→                    <div className="h-8 w-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-sm font-bold">
+  1481→                      {cg.name.charAt(0)}
+  1482→                    </div>
+  1483→                    <div>
+  1484→                      <p className="text-sm font-medium">{cg.name}</p>
+  1485→                      <div className="flex items-center gap-1.5 mt-0.5">
+  1486→                        {roleBadge(cg.role)}
+  1487→                        <span className="text-xs text-slate-500 capitalize">{cg.relation.replace('_', ' ')}</span>
+  1488→                      </div>
+  1489→                    </div>
+  1490→                  </div>
+  1491→                </div>
+  1492→                <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 mb-2">
+  1493→                  <div className="flex items-center gap-1"><Phone className="h-3 w-3" />{cg.phone}</div>
+  1494→                  {cg.email && <div className="flex items-center gap-1">{cg.email}</div>}
+  1495→                  {cg.schedule && <div><Clock className="h-3 w-3 inline mr-1" />{cg.schedule}</div>}
+  1496→                </div>
+  1497→                {cg.tasks && cg.tasks.length > 0 && (
+  1498→                  <div className="flex flex-wrap gap-1 mb-2">
+  1499→                    {cg.tasks.map((t, i) => (
+  1500→                      <Badge key={i} variant="outline" className="text-[10px]">{t}</Badge>
+  1501→                    ))}
+  1502→                  </div>
+  1503→                )}
+  1504→                <div className="flex items-center gap-2 mb-2">
+  1505→                  {cg.zaritScore != null && (
+  1506→                    <Badge className="bg-slate-100 text-slate-700 border-slate-300 border text-xs">
+  1507→                      Zarit: {cg.zaritScore}/48
+  1508→                    </Badge>
+  1509→                  )}
+  1510→                  {zaritLevelBadge(cg.zaritLevel)}
+  1511→                  {cg.familyApgarScore != null && (
+  1512→                    <Badge className="bg-slate-100 text-slate-700 border-slate-300 border text-xs">
+  1513→                      APGAR: {cg.familyApgarScore}/10
+  1514→                    </Badge>
+  1515→                  )}
+  1516→                  {apgarLevelBadge(cg.familyApgarLevel)}
+  1517→                </div>
+  1518→                <div className="flex gap-1">
+  1519→                  <Button size="sm" variant="outline" className="text-xs h-7"
+  1520→                    onClick={() => openEditCaregiver(cg)}><Edit className="h-3 w-3 mr-1" /> Edit</Button>
+  1521→                  <Button size="sm" variant="outline" className="text-xs h-7"
+  1522→                    onClick={() => { setActiveCaregiverId(cg.id); setShowZaritDialog(true); }}>
+  1523→                    Zarit
+  1524→                  </Button>
+  1525→                  <Button size="sm" variant="outline" className="text-xs h-7"
+  1526→                    onClick={() => { setActiveCaregiverId(cg.id); setShowApgarDialog(true); }}>
+  1527→                    APGAR
+  1528→                  </Button>
+  1529→                  <Button size="sm" variant="outline" className="text-xs h-7 text-red-600"
+  1530→                    onClick={() => { removeCaregiver(cg.id); toast({ title: 'Caregiver dihapus' }); }}>
+  1531→                    <Trash2 className="h-3 w-3" />
+  1532→                  </Button>
+  1533→                </div>
+  1534→              </Card>
+  1535→            ))}
+  1536→            {patientCaregivers.length === 0 && (
+  1537→              <p className="text-sm text-slate-400 text-center py-8">Belum ada caregiver terdaftar</p>
+  1538→            )}
+  1539→          </div>
+  1540→        </div>
+  1541→
+  1542→        {/* Caregiver Dialog */}
+  1543→        <Dialog open={showDialog} onOpenChange={setShowDialog}>
+  1544→          <DialogContent className="max-w-lg max-h-[85vh]">
+  1545→            <DialogHeader className="shrink-0">
+  1546→              <DialogTitle>{editCaregiverId ? 'Edit Caregiver' : 'Tambah Caregiver'}</DialogTitle>
+  1547→              <DialogDescription>Isi data caregiver pasien</DialogDescription>
+  1548→            </DialogHeader>
+  1549→            <div className="space-y-3 overflow-y-auto custom-scrollbar flex-1 min-h-0 pr-1">
+  1550→              <div>
+  1551→                <Label className="text-xs">Nama *</Label>
+  1552→                <Input value={cgForm.name} onChange={e => setCgForm(p => ({ ...p, name: e.target.value }))} />
+  1553→              </div>
+  1554→              <div className="grid grid-cols-2 gap-2">
+  1555→                <div>
+  1556→                  <Label className="text-xs">Peran</Label>
+  1557→                  <Select value={cgForm.role} onValueChange={v => setCgForm(p => ({ ...p, role: v as CaregiverRole }))}>
+  1558→                    <SelectTrigger><SelectValue /></SelectTrigger>
+  1559→                    <SelectContent>
+  1560→                      <SelectItem value="utama">Utama</SelectItem>
+  1561→                      <SelectItem value="pendamping">Pendamping</SelectItem>
+  1562→                    </SelectContent>
+  1563→                  </Select>
+  1564→                </div>
+  1565→                <div>
+  1566→                  <Label className="text-xs">Hubungan</Label>
+  1567→                  <Select value={cgForm.relation} onValueChange={v => setCgForm(p => ({ ...p, relation: v as CaregiverRelation }))}>
+  1568→                    <SelectTrigger><SelectValue /></SelectTrigger>
+  1569→                    <SelectContent>
+  1570→                      <SelectItem value="suami">Suami</SelectItem>
+  1571→                      <SelectItem value="istri">Istri</SelectItem>
+  1572→                      <SelectItem value="anak">Anak</SelectItem>
+  1573→                      <SelectItem value="orang_tua">Orang Tua</SelectItem>
+  1574→                      <SelectItem value="saudara">Saudara</SelectItem>
+  1575→                      <SelectItem value="teman">Teman</SelectItem>
+  1576→                      <SelectItem value="pembantu">Pembantu</SelectItem>
+  1577→                      <SelectItem value="perawat">Perawat</SelectItem>
+  1578→                      <SelectItem value="lainnya">Lainnya</SelectItem>
+  1579→                    </SelectContent>
+  1580→                  </Select>
+  1581→                </div>
+  1582→              </div>
+  1583→              {cgForm.relation === 'lainnya' && (
+  1584→                <div>
+  1585→                  <Label className="text-xs">Hubungan Lainnya</Label>
+  1586→                  <Input value={cgForm.relationOther}
+  1587→                    onChange={e => setCgForm(p => ({ ...p, relationOther: e.target.value }))} />
+  1588→                </div>
+  1589→              )}
+  1590→              <div className="grid grid-cols-2 gap-2">
+  1591→                <div>
+  1592→                  <Label className="text-xs">Telepon *</Label>
+  1593→                  <Input value={cgForm.phone} onChange={e => setCgForm(p => ({ ...p, phone: e.target.value }))} />
+  1594→                </div>
+  1595→                <div>
+  1596→                  <Label className="text-xs">Email</Label>
+  1597→                  <Input value={cgForm.email} onChange={e => setCgForm(p => ({ ...p, email: e.target.value }))} />
+  1598→                </div>
+  1599→              </div>
+  1600→              <div>
+  1601→                <Label className="text-xs">Alamat</Label>
+  1602→                <Input value={cgForm.address} onChange={e => setCgForm(p => ({ ...p, address: e.target.value }))} />
+  1603→              </div>
+  1604→              <div>
+  1605→                <Label className="text-xs">Jadwal</Label>
+  1606→                <Input value={cgForm.schedule} onChange={e => setCgForm(p => ({ ...p, schedule: e.target.value }))}
+  1607→                  placeholder="Contoh: Senin-Jumat, 08:00-16:00" />
+  1608→              </div>
+  1609→              <div>
+  1610→                <Label className="text-xs">Tugas (pisahkan dengan koma)</Label>
+  1611→                <Input value={cgForm.tasksStr} onChange={e => setCgForm(p => ({ ...p, tasksStr: e.target.value }))}
+  1612→                  placeholder="Contoh: Memberi obat, Menyiapkan makanan" />
+  1613→              </div>
+  1614→            </div>
+  1615→            <DialogFooter className="shrink-0">
+  1616→              <Button variant="outline" onClick={() => setShowDialog(false)}>Batal</Button>
+  1617→              <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSaveCaregiver}>
+  1618→                {editCaregiverId ? 'Perbarui' : 'Simpan'}
+  1619→              </Button>
+  1620→            </DialogFooter>
+  1621→          </DialogContent>
+  1622→        </Dialog>
+  1623→
+  1624→        {/* Zarit Dialog */}
+  1625→        <Dialog open={showZaritDialog} onOpenChange={setShowZaritDialog}>
+  1626→          <DialogContent className="max-w-lg max-h-[85vh]">
+  1627→            <DialogHeader className="shrink-0">
+  1628→              <DialogTitle>Zarit Caregiver Burden Scale</DialogTitle>
+  1629→              <DialogDescription>12 pertanyaan, skor 0-4 per item (total 0-48)</DialogDescription>
+  1630→            </DialogHeader>
+  1631→            <div className="overflow-y-auto custom-scrollbar flex-1 min-h-0 pr-1 space-y-4">
+  1632→              {zaritQuestions.map((q, i) => (
+  1633→                <div key={i} className="space-y-1">
+  1634→                  <p className="text-xs font-medium">{i + 1}. {q}</p>
+  1635→                  <div className="flex gap-1">
+  1636→                    {[0, 1, 2, 3, 4].map(v => (
+  1637→                      <Button key={v} size="sm" variant={zaritAnswers[i] === v ? 'default' : 'outline'}
+  1638→                        className={`text-xs h-7 flex-1 ${zaritAnswers[i] === v ? 'bg-teal-600 text-white' : ''}`}
+  1639→                        onClick={() => {
+  1640→                          const next = [...zaritAnswers];
+  1641→                          next[i] = v;
+  1642→                          setZaritAnswers(next);
+  1643→                        }}>
+  1644→                        {v}
+  1645→                      </Button>
+  1646→                    ))}
+  1647→                  </div>
+  1648→                </div>
+  1649→              ))}
+  1650→            </div>
+  1651→            <div className="flex items-center justify-between shrink-0 mt-2 pt-2 border-t">
+  1652→              <span className="text-sm font-semibold">Total: {zaritAnswers.reduce((a, b) => a + b, 0)}/48</span>
+  1653→              <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSaveZarit}>
+  1654→                Simpan Penilaian
+  1655→              </Button>
+  1656→            </div>
+  1657→          </DialogContent>
+  1658→        </Dialog>
+  1659→
+  1660→        {/* APGAR Dialog */}
+  1661→        <Dialog open={showApgarDialog} onOpenChange={setShowApgarDialog}>
+  1662→          <DialogContent className="max-w-lg max-h-[85vh]">
+  1663→            <DialogHeader className="shrink-0">
+  1664→              <DialogTitle>Family APGAR Scale</DialogTitle>
+  1665→              <DialogDescription>5 pertanyaan, skor 0-2 per item (total 0-10)</DialogDescription>
+  1666→            </DialogHeader>
+  1667→            <div className="space-y-4 overflow-y-auto custom-scrollbar flex-1 min-h-0 pr-1">
+  1668→              {apgarQuestions.map((q, i) => (
+  1669→                <div key={i} className="space-y-1">
+  1670→                  <p className="text-xs font-medium">{i + 1}. {q}</p>
+  1671→                  <div className="flex gap-1">
+  1672→                    {[
+  1673→                      { v: 0, label: 'Tidak Pernah' },
+  1674→                      { v: 1, label: 'Kadang-kadang' },
+  1675→                      { v: 2, label: 'Hampir Selalu' },
+  1676→                    ].map(opt => (
+  1677→                      <Button key={opt.v} size="sm" variant={apgarAnswers[i] === opt.v ? 'default' : 'outline'}
+  1678→                        className={`text-xs h-7 flex-1 ${apgarAnswers[i] === opt.v ? 'bg-teal-600 text-white' : ''}`}
+  1679→                        onClick={() => {
+  1680→                          const next = [...apgarAnswers];
+  1681→                          next[i] = opt.v;
+  1682→                          setApgarAnswers(next);
+  1683→                        }}>
+  1684→                        {opt.label}
+  1685→                      </Button>
+  1686→                    ))}
+  1687→                  </div>
+  1688→                </div>
+  1689→              ))}
+  1690→            </div>
+  1691→            <div className="flex items-center justify-between shrink-0 mt-2 pt-2 border-t">
+  1692→              <span className="text-sm font-semibold">Total: {apgarAnswers.reduce((a, b) => a + b, 0)}/10</span>
+  1693→              <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSaveApgar}>
+  1694→                Simpan Penilaian
+  1695→              </Button>
+  1696→            </div>
+  1697→          </DialogContent>
+  1698→        </Dialog>
+  1699→      </div>
+  1700→    );
+  1701→  };
+  1702→
+  1703→  // ── 7. Koordinasi Keluarga ──────────────────────────────────────────────
+  1704→
+  1705→  const CoordinationTab = () => {
+  1706→    const [showForm, setShowForm] = useState(false);
+  1707→    const [filterType, setFilterType] = useState<string>('all');
+  1708→    const [noteForm, setNoteForm] = useState({
+  1709→      content: '', type: 'perkembangan' as FamilyCoordinationNote['type'], dueDate: '',
+  1710→    });
+  1711→
+  1712→    const filteredNotes = useMemo(() => {
+  1713→      if (filterType === 'all') return patientCoordNotes;
+  1714→      return patientCoordNotes.filter(n => n.type === filterType);
+  1715→    }, [patientCoordNotes, filterType]);
+  1716→
+  1717→    const handleSaveNote = () => {
+  1718→      if (!noteForm.content) {
+  1719→        toast({ title: 'Isi catatan terlebih dahulu', variant: 'destructive' });
+  1720→        return;
+  1721→      }
+  1722→      const now = new Date().toISOString();
+  1723→      addFamilyCoordinationNote({
+  1724→        id: genId('fcn'),
+  1725→        palliativePatientId: palliativePatientId!,
+  1726→        authorName: currentUser?.name || 'Pengguna',
+  1727→        authorRelation: 'Tim Paliatif',
+  1728→        content: noteForm.content,
+  1729→        type: noteForm.type,
+  1730→        isCompleted: false,
+  1731→        dueDate: noteForm.dueDate || undefined,
+  1732→        createdAt: now,
+  1733→        updatedAt: now,
+  1734→      });
+  1735→      toast({ title: 'Catatan berhasil ditambahkan' });
+  1736→      setNoteForm({ content: '', type: 'perkembangan', dueDate: '' });
+  1737→      setShowForm(false);
+  1738→    };
+  1739→
+  1740→    const toggleComplete = (id: string, isCompleted: boolean) => {
+  1741→      updateFamilyCoordinationNote(id, { isCompleted: !isCompleted });
+  1742→    };
+  1743→
+  1744→    return (
+  1745→      <div className="space-y-4">
+  1746→        <div className="flex items-center justify-between">
+  1747→          <h3 className="text-sm font-semibold flex items-center gap-2">
+  1748→            <FolderSync className="h-4 w-4 text-teal-600" />
+  1749→            Koordinasi Keluarga
+  1750→          </h3>
+  1751→          <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white"
+  1752→            onClick={() => setShowForm(true)}>
+  1753→            <Plus className="h-4 w-4 mr-1" /> Tambah Catatan
+  1754→          </Button>
+  1755→        </div>
+  1756→
+  1757→        {/* Filter */}
+  1758→        <div className="flex flex-wrap gap-1">
+  1759→          <Button size="sm" variant={filterType === 'all' ? 'default' : 'outline'}
+  1760→            className={`text-xs h-7 ${filterType === 'all' ? 'bg-teal-600 text-white' : ''}`}
+  1761→            onClick={() => setFilterType('all')}>Semua</Button>
+  1762→          {['perkembangan', 'tugas', 'pengingat_obat', 'pengingat_kontrol', 'tanggung_jawab', 'lainnya'].map(t => (
+  1763→            <Button key={t} size="sm" variant={filterType === t ? 'default' : 'outline'}
+  1764→              className={`text-xs h-7 ${filterType === t ? 'bg-teal-600 text-white' : ''}`}
+  1765→              onClick={() => setFilterType(t)}>
+  1766→              {t === 'pengingat_obat' ? 'Pengingat Obat' :
+  1767→               t === 'pengingat_kontrol' ? 'Pengingat Kontrol' :
+  1768→               t === 'tanggung_jawab' ? 'Tanggung Jawab' :
+  1769→               t.charAt(0).toUpperCase() + t.slice(1)}
+  1770→            </Button>
+  1771→          ))}
+  1772→        </div>
+  1773→
+  1774→        {/* Add Note Form */}
+  1775→        {showForm && (
+  1776→          <Card className="p-4">
+  1777→            <div className="space-y-3">
+  1778→              <div>
+  1779→                <Label className="text-xs">Catatan *</Label>
+  1780→                <Textarea value={noteForm.content}
+  1781→                  onChange={e => setNoteForm(p => ({ ...p, content: e.target.value }))}
+  1782→                  placeholder="Tulis catatan koordinasi..." />
+  1783→              </div>
+  1784→              <div className="grid grid-cols-2 gap-2">
+  1785→                <div>
+  1786→                  <Label className="text-xs">Tipe</Label>
+  1787→                  <Select value={noteForm.type}
+  1788→                    onValueChange={v => setNoteForm(p => ({ ...p, type: v as FamilyCoordinationNote['type'] }))}>
+  1789→                    <SelectTrigger><SelectValue /></SelectTrigger>
+  1790→                    <SelectContent>
+  1791→                      <SelectItem value="perkembangan">Perkembangan</SelectItem>
+  1792→                      <SelectItem value="tugas">Tugas</SelectItem>
+  1793→                      <SelectItem value="pengingat_obat">Pengingat Obat</SelectItem>
+  1794→                      <SelectItem value="pengingat_kontrol">Pengingat Kontrol</SelectItem>
+  1795→                      <SelectItem value="tanggung_jawab">Tanggung Jawab</SelectItem>
+  1796→                      <SelectItem value="lainnya">Lainnya</SelectItem>
+  1797→                    </SelectContent>
+  1798→                  </Select>
+  1799→                </div>
+  1800→                <div>
+  1801→                  <Label className="text-xs">Tenggat Waktu</Label>
+  1802→                  <Input type="date" value={noteForm.dueDate}
+  1803→                    onChange={e => setNoteForm(p => ({ ...p, dueDate: e.target.value }))} />
+  1804→                </div>
+  1805→              </div>
+  1806→              <div className="flex gap-2">
+  1807→                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white"
+  1808→                  onClick={handleSaveNote}>Simpan</Button>
+  1809→                <Button size="sm" variant="outline" onClick={() => setShowForm(false)}>Batal</Button>
+  1810→              </div>
+  1811→            </div>
+  1812→          </Card>
+  1813→        )}
+  1814→
+  1815→        {/* Notes List */}
+  1816→        <div className="max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
+  1817→          <div className="space-y-2">
+  1818→            {filteredNotes.map(note => (
+  1819→              <Card key={note.id} className={`p-3 ${note.isCompleted ? 'opacity-60' : ''}`}>
+  1820→                <div className="flex items-start gap-2">
+  1821→                  <button onClick={() => toggleComplete(note.id, note.isCompleted)} className="mt-0.5">
+  1822→                    {note.isCompleted ?
+  1823→                      <CheckCircle2 className="h-4 w-4 text-emerald-500" /> :
+  1824→                      <Circle className="h-4 w-4 text-slate-300" />}
+  1825→                  </button>
+  1826→                  <div className="flex-1 min-w-0">
+  1827→                    <div className="flex items-center gap-2 mb-1">
+  1828→                      {noteTypeBadge(note.type)}
+  1829→                      <span className="text-xs text-slate-400">{note.authorName} • {fmtDateTime(note.createdAt)}</span>
+  1830→                    </div>
+  1831→                    <p className={`text-sm ${note.isCompleted ? 'line-through text-slate-400' : ''}`}>
+  1832→                      {note.content}
+  1833→                    </p>
+  1834→                    {note.dueDate && (
+  1835→                      <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+  1836→                        <Clock className="h-3 w-3" /> Tenggat: {fmtDate(note.dueDate)}
+  1837→                      </p>
+  1838→                    )}
+  1839→                  </div>
+  1840→                </div>
+  1841→              </Card>
+  1842→            ))}
+  1843→            {filteredNotes.length === 0 && (
+  1844→              <p className="text-sm text-slate-400 text-center py-8">Belum ada catatan koordinasi</p>
+  1845→            )}
+  1846→          </div>
+  1847→        </div>
+  1848→      </div>
+  1849→    );
+  1850→  };
+  1851→
+  1852→  // ── 8. Kontak Darurat ──────────────────────────────────────────────────
+  1853→
+  1854→  const EmergencyContactTab = () => {
+  1855→    const [showDialog, setShowDialog] = useState(false);
+  1856→    const [editContactId, setEditContactId] = useState<string | null>(null);
+  1857→    const [contactForm, setContactForm] = useState({
+  1858→      name: '', role: 'keluarga' as EmergencyContact['role'],
+  1859→      phone: '', alternatePhone: '', isPrimary: false, notes: '',
+  1860→    });
+  1861→
+  1862→    const resetContactForm = () => {
+  1863→      setContactForm({ name: '', role: 'keluarga', phone: '', alternatePhone: '', isPrimary: false, notes: '' });
+  1864→      setEditContactId(null);
+  1865→    };
+  1866→
+  1867→    const handleSaveContact = () => {
+  1868→      if (!contactForm.name || !contactForm.phone) {
+  1869→        toast({ title: 'Nama dan telepon wajib diisi', variant: 'destructive' });
+  1870→        return;
+  1871→      }
+  1872→      const now = new Date().toISOString();
+  1873→      if (editContactId) {
+  1874→        updateEmergencyContact(editContactId, {
+  1875→          name: contactForm.name, role: contactForm.role,
+  1876→          phone: contactForm.phone, alternatePhone: contactForm.alternatePhone || undefined,
+  1877→          isPrimary: contactForm.isPrimary, notes: contactForm.notes || undefined,
+  1878→        });
+  1879→        toast({ title: 'Kontak berhasil diperbarui' });
+  1880→      } else {
+  1881→        addEmergencyContact({
+  1882→          id: genId('ec'),
+  1883→          palliativePatientId: palliativePatientId!,
+  1884→          name: contactForm.name, role: contactForm.role,
+  1885→          phone: contactForm.phone, alternatePhone: contactForm.alternatePhone || undefined,
+  1886→          isPrimary: contactForm.isPrimary, notes: contactForm.notes || undefined,
+  1887→          createdAt: now, updatedAt: now,
+  1888→        });
+  1889→        toast({ title: 'Kontak darurat berhasil ditambahkan' });
+  1890→      }
+  1891→      setShowDialog(false);
+  1892→      resetContactForm();
+  1893→    };
+  1894→
+  1895→    const openEditContact = (c: EmergencyContact) => {
+  1896→      setEditContactId(c.id);
+  1897→      setContactForm({
+  1898→        name: c.name, role: c.role, phone: c.phone,
+  1899→        alternatePhone: c.alternatePhone || '', isPrimary: c.isPrimary, notes: c.notes || '',
+  1900→      });
+  1901→      setShowDialog(true);
+  1902→    };
+  1903→
+  1904→    return (
+  1905→      <div className="space-y-4">
+  1906→        <div className="flex items-center justify-between">
+  1907→          <h3 className="text-sm font-semibold flex items-center gap-2">
+  1908→            <Phone className="h-4 w-4 text-red-600" />
+  1909→            Kontak Darurat
+  1910→          </h3>
+  1911→          <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white"
+  1912→            onClick={() => { resetContactForm(); setShowDialog(true); }}>
+  1913→            <Plus className="h-4 w-4 mr-1" /> Tambah Kontak
+  1914→          </Button>
+  1915→        </div>
+  1916→
+  1917→        <div className="max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
+  1918→          <div className="space-y-3">
+  1919→            {patientContacts.map(c => (
+  1920→              <Card key={c.id} className="p-4">
+  1921→                <div className="flex items-start justify-between mb-2">
+  1922→                  <div className="flex items-center gap-2">
+  1923→                    <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center text-red-700 text-sm font-bold">
+  1924→                      {c.name.charAt(0)}
+  1925→                    </div>
+  1926→                    <div>
+  1927→                      <div className="flex items-center gap-1.5">
+  1928→                        <p className="text-sm font-medium">{c.name}</p>
+  1929→                        {c.isPrimary && <Star className="h-3 w-3 text-amber-500 fill-amber-500" />}
+  1930→                      </div>
+  1931→                      {emergencyRoleBadge(c.role)}
+  1932→                    </div>
+  1933→                  </div>
+  1934→                </div>
+  1935→                <div className="flex items-center gap-2 text-xs text-slate-600 mb-2">
+  1936→                  <Phone className="h-3 w-3" /> {c.phone}
+  1937→                  {c.alternatePhone && <span> / {c.alternatePhone}</span>}
+  1938→                </div>
+  1939→                {c.notes && <p className="text-xs text-slate-500 mb-2">{c.notes}</p>}
+  1940→                <div className="flex gap-1">
+  1941→                  <a href={`tel:${c.phone}`}>
+  1942→                    <Button size="sm" variant="outline" className="text-xs h-7 text-teal-600">
+  1943→                      <PhoneCall className="h-3 w-3 mr-1" /> Hubungi
+  1944→                    </Button>
+  1945→                  </a>
+  1946→                  <a href={`sms:${c.phone}`}>
+  1947→                    <Button size="sm" variant="outline" className="text-xs h-7">
+  1948→                      <MessageSquare className="h-3 w-3 mr-1" /> Pesan
+  1949→                    </Button>
+  1950→                  </a>
+  1951→                  <Button size="sm" variant="outline" className="text-xs h-7"
+  1952→                    onClick={() => openEditContact(c)}><Edit className="h-3 w-3 mr-1" /> Edit</Button>
+  1953→                  <Button size="sm" variant="outline" className="text-xs h-7 text-red-600"
+  1954→                    onClick={() => { removeEmergencyContact(c.id); toast({ title: 'Kontak dihapus' }); }}>
+  1955→                    <Trash2 className="h-3 w-3" />
+  1956→                  </Button>
+  1957→                </div>
+  1958→              </Card>
+  1959→            ))}
+  1960→            {patientContacts.length === 0 && (
+  1961→              <p className="text-sm text-slate-400 text-center py-8">Belum ada kontak darurat</p>
+  1962→            )}
+  1963→          </div>
+  1964→        </div>
+  1965→
+  1966→        {/* Contact Dialog */}
+  1967→        <Dialog open={showDialog} onOpenChange={setShowDialog}>
+  1968→          <DialogContent className="max-w-lg max-h-[85vh]">
+  1969→            <DialogHeader className="shrink-0">
+  1970→              <DialogTitle>{editContactId ? 'Edit Kontak Darurat' : 'Tambah Kontak Darurat'}</DialogTitle>
+  1971→              <DialogDescription>Isi data kontak darurat</DialogDescription>
+  1972→            </DialogHeader>
+  1973→            <div className="space-y-3 overflow-y-auto custom-scrollbar flex-1 min-h-0 pr-1">
+  1974→              <div>
+  1975→                <Label className="text-xs">Nama *</Label>
+  1976→                <Input value={contactForm.name}
+  1977→                  onChange={e => setContactForm(p => ({ ...p, name: e.target.value }))} />
+  1978→              </div>
+  1979→              <div>
+  1980→                <Label className="text-xs">Peran</Label>
+  1981→                <Select value={contactForm.role}
+  1982→                  onValueChange={v => setContactForm(p => ({ ...p, role: v as EmergencyContact['role'] }))}>
+  1983→                  <SelectTrigger><SelectValue /></SelectTrigger>
+  1984→                  <SelectContent>
+  1985→                    <SelectItem value="dokter">Dokter</SelectItem>
+  1986→                    <SelectItem value="perawat">Perawat</SelectItem>
+  1987→                    <SelectItem value="caregiver_utama">Caregiver Utama</SelectItem>
+  1988→                    <SelectItem value="keluarga">Keluarga</SelectItem>
+  1989→                    <SelectItem value="ambulans">Ambulans</SelectItem>
+  1990→                    <SelectItem value="rumah_sakit">Rumah Sakit</SelectItem>
+  1991→                    <SelectItem value="gawat_darurat">Gawat Darurat</SelectItem>
+  1992→                    <SelectItem value="lainnya">Lainnya</SelectItem>
+  1993→                  </SelectContent>
+  1994→                </Select>
+  1995→              </div>
+  1996→              <div className="grid grid-cols-2 gap-2">
+  1997→                <div>
+  1998→                  <Label className="text-xs">Telepon *</Label>
+  1999→                  <Input value={contactForm.phone}
+  2000→                    onChange={e => setContactForm(p => ({ ...p, phone: e.target.value }))} />
+
+[showing lines 1-2000 of 2576; use offset=2001 with limit to continue reading]

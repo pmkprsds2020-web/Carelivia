@@ -144,10 +144,9 @@
   }
 }
 
-/* Custom scrollbar - Vertical */
+/* Custom scrollbar (vertical) */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
-  height: 6px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
@@ -160,63 +159,66 @@
   background: oklch(0.55 0.1 170);
 }
 
-/* Custom scrollbar - Firefox */
-.custom-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: oklch(0.7 0.05 170) transparent;
-}
-
-/* Thin scrollbar variant for sidebars and small areas */
-.scrollbar-thin::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-.scrollbar-thin::-webkit-scrollbar-track {
-  background: transparent;
-}
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  background: oklch(0.75 0.04 170);
-  border-radius: 2px;
-}
-.scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.6 0.08 170);
-}
-.scrollbar-thin {
-  scrollbar-width: thin;
-  scrollbar-color: oklch(0.75 0.04 170) transparent;
-}
-
-/* Hide scrollbar but keep scroll functionality */
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-/* Horizontal scrollable container */
-.scroll-x-container {
+/* Horizontal scrollbar for tab navigation */
+.h-scroll-tabs {
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.7 0.05 170) transparent;
+}
+.h-scroll-tabs::-webkit-scrollbar {
+  height: 4px;
+}
+.h-scroll-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+.h-scroll-tabs::-webkit-scrollbar-thumb {
+  background: oklch(0.7 0.05 170);
+  border-radius: 2px;
+}
+.h-scroll-tabs::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.55 0.1 170);
 }
 
-/* Table horizontal scroll wrapper */
-.table-scroll-wrapper {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+/* Scroll fade indicators for tab navigation */
+.h-scroll-wrapper {
+  position: relative;
 }
-.table-scroll-wrapper table {
-  min-width: 600px;
+.h-scroll-wrapper::before,
+.h-scroll-wrapper::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 4px; /* leave space for scrollbar */
+  width: 32px;
+  pointer-events: none;
+  z-index: 10;
+  transition: opacity 0.25s ease;
+}
+.h-scroll-wrapper::before {
+  left: 0;
+  background: linear-gradient(to right, #f1f5f9 20%, transparent);
+  opacity: 0;
+}
+.h-scroll-wrapper::after {
+  right: 0;
+  background: linear-gradient(to left, #f1f5f9 20%, transparent);
+  opacity: 0;
+}
+.h-scroll-wrapper.can-scroll-left::before {
+  opacity: 1;
+}
+.h-scroll-wrapper.can-scroll-right::after {
+  opacity: 1;
 }
 
-/* Ensure no content overflow on all containers */
-.overflow-safe {
-  overflow: auto;
-  max-width: 100%;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
+/* Dark mode fade indicators */
+.dark .h-scroll-wrapper::before {
+  background: linear-gradient(to right, oklch(0.14 0.015 170) 20%, transparent);
+}
+.dark .h-scroll-wrapper::after {
+  background: linear-gradient(to left, oklch(0.14 0.015 170) 20%, transparent);
 }
 
 /* Pulse animation for online status */

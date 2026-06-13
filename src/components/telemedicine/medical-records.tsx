@@ -1027,7 +1027,7 @@ function DoctorMedicalRecordsView() {
         {/* ================================================================= */}
         {/* Tab 1: Daftar Rekam Medis                                         */}
         {/* ================================================================= */}
-        <TabsContent value="records-list" className="space-y-4 mt-0 overflow-y-auto custom-scrollbar">
+        <TabsContent value="records-list" className="space-y-4 mt-0">
           {/* Search & Filter */}
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
@@ -1124,7 +1124,7 @@ function DoctorMedicalRecordsView() {
         {/* ================================================================= */}
         {/* Tab 2: Timeline Pasien                                            */}
         {/* ================================================================= */}
-        <TabsContent value="patient-timeline" className="mt-0 overflow-y-auto custom-scrollbar">
+        <TabsContent value="patient-timeline" className="mt-0">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Patient List */}
             <div className="md:col-span-1 space-y-2">
@@ -1256,7 +1256,7 @@ function DoctorMedicalRecordsView() {
         {/* ================================================================= */}
         {/* Tab 3: Resep Obat                                                 */}
         {/* ================================================================= */}
-        <TabsContent value="prescriptions" className="space-y-4 mt-0 overflow-y-auto custom-scrollbar">
+        <TabsContent value="prescriptions" className="space-y-4 mt-0">
           {prescriptionList.length === 0 ? (
             <Card className="border-0">
               <CardContent className="p-8 text-center">
@@ -1363,7 +1363,7 @@ function DoctorMedicalRecordsView() {
         {/* ================================================================= */}
         {/* Tab 4: Skrining Komprehensif                                      */}
         {/* ================================================================= */}
-        <TabsContent value="screening" className="space-y-4 mt-0 overflow-y-auto custom-scrollbar">
+        <TabsContent value="screening" className="space-y-4 mt-0">
           {(() => {
             const doctorScreenings = screeningForms
               .filter((f: ScreeningForm) => f.doctorId === currentUser?.id)
@@ -1502,10 +1502,10 @@ function DoctorMedicalRecordsView() {
           }
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           {selectedRecord && (
             <>
-              <DialogHeader className="shrink-0">
+              <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 flex-wrap">
                   <FileText className="w-5 h-5 text-primary" />
                   <span>Detail Rekam Medis</span>
@@ -1518,7 +1518,7 @@ function DoctorMedicalRecordsView() {
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
+              <div className="space-y-4">
                 {/* Patient Info */}
                 <div className="flex items-center gap-3 bg-muted/50 rounded-lg p-3">
                   <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -1702,7 +1702,7 @@ function DoctorMedicalRecordsView() {
                 </div>
               </div>
 
-              <DialogFooter className="shrink-0 mt-4">
+              <DialogFooter className="mt-4">
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -1727,7 +1727,7 @@ function DoctorMedicalRecordsView() {
           if (!open) setSelectedScreeningId(null);
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           {selectedScreeningId && (() => {
             const form = screeningForms.find((f: ScreeningForm) => f.id === selectedScreeningId);
             if (!form) return null;
@@ -1777,7 +1777,7 @@ function DoctorMedicalRecordsView() {
 
             return (
               <>
-                <DialogHeader className="shrink-0">
+                <DialogHeader>
                   <DialogTitle className="flex items-center gap-2 flex-wrap">
                     <ClipboardCheck className="w-5 h-5 text-primary" />
                     <span>Detail Skrining Komprehensif</span>
@@ -1787,7 +1787,7 @@ function DoctorMedicalRecordsView() {
                   </DialogTitle>
                 </DialogHeader>
 
-                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
+                <div className="space-y-4">
                   {/* Patient Info */}
                   <div className="flex items-center gap-3 bg-muted/50 rounded-lg p-3">
                     <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -2011,7 +2011,7 @@ function DoctorMedicalRecordsView() {
                   </div>
                 </div>
 
-                <DialogFooter className="shrink-0 mt-4 flex gap-2">
+                <DialogFooter className="mt-4 flex gap-2">
                   {(form.status === 'completed') && (
                     <Button
                       className="bg-violet-600 hover:bg-violet-700 text-white"
@@ -2662,7 +2662,7 @@ function PatientMedicalRecordsView() {
             </TabsList>
 
             {/* Tab 1: Riwayat Konsultasi */}
-            <TabsContent value="consultations" className="space-y-3 mt-0 overflow-y-auto custom-scrollbar">
+            <TabsContent value="consultations" className="space-y-3 mt-0">
               {patientConsultations.length === 0 ? (
                 <Card className="border-0">
                   <CardContent className="p-8 text-center">
@@ -2766,12 +2766,12 @@ function PatientMedicalRecordsView() {
             </TabsContent>
 
             {/* Tab 2: Skrining Kesehatan */}
-            <TabsContent value="screening" className="space-y-3 mt-0 overflow-y-auto custom-scrollbar">
+            <TabsContent value="screening" className="space-y-3 mt-0">
               <PatientScreeningTimeline />
             </TabsContent>
 
             {/* Tab 3: Hasil Lab */}
-            <TabsContent value="lab" className="space-y-3 mt-0 overflow-y-auto custom-scrollbar">
+            <TabsContent value="lab" className="space-y-3 mt-0">
               {demoLabResults.map((lab) => (
                 <Card key={lab.id} className="border-0 hover:shadow-sm transition-shadow">
                   <CardContent className="p-4">
@@ -2828,7 +2828,7 @@ function PatientMedicalRecordsView() {
             </TabsContent>
 
             {/* Tab 3: Resep Obat */}
-            <TabsContent value="prescriptions" className="space-y-3 mt-0 overflow-y-auto custom-scrollbar">
+            <TabsContent value="prescriptions" className="space-y-3 mt-0">
               {patientPrescriptions.length === 0 ? (
                 <Card className="border-0">
                   <CardContent className="p-8 text-center">
@@ -2986,15 +2986,15 @@ function PatientMedicalRecordsView() {
 
       {/* Payment Proof Dialog */}
       <Dialog open={proofDialogOpen} onOpenChange={setProofDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="w-5 h-5 text-primary" />
               Bukti Pembayaran
             </DialogTitle>
           </DialogHeader>
           {proofPrescription && (
-            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
+            <div className="space-y-4">
               {/* Status Banner */}
               <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center shrink-0">
@@ -3048,7 +3048,6 @@ function PatientMedicalRecordsView() {
                   <p className="font-semibold text-sm text-violet-700 dark:text-violet-400">Detail Obat</p>
                 </div>
                 <div className="px-4 py-3">
-                  <div className="overflow-x-auto table-scroll-wrapper">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-border">
@@ -3074,7 +3073,6 @@ function PatientMedicalRecordsView() {
                       ))}
                     </tbody>
                   </table>
-                  </div>
                   <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
                     <span className="font-semibold text-sm">Total Pembayaran</span>
                     <span className="font-bold text-lg text-primary">
@@ -3269,7 +3267,7 @@ function PatientScreeningTimeline() {
 
       {/* Patient Screening Detail Dialog */}
       <Dialog open={!!selectedFormId} onOpenChange={(open) => { if (!open) setSelectedFormId(null); }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           {selectedForm && (() => {
             const triage = selectedForm.triageResult;
             const summary = selectedForm.clinicalSummary;
@@ -3287,7 +3285,7 @@ function PatientScreeningTimeline() {
 
             return (
               <>
-                <DialogHeader className="shrink-0">
+                <DialogHeader>
                   <DialogTitle className="flex items-center gap-2 flex-wrap">
                     <ClipboardCheck className="w-5 h-5 text-primary" />
                     <span>Detail Skrining Komprehensif</span>
@@ -3297,7 +3295,7 @@ function PatientScreeningTimeline() {
                   </DialogTitle>
                 </DialogHeader>
 
-                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
+                <div className="space-y-4">
                   {/* Doctor Info */}
                   <div className="flex items-center gap-3 bg-muted/50 rounded-lg p-3">
                     <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -3503,7 +3501,7 @@ function PatientScreeningTimeline() {
                   )}
                 </div>
 
-                <DialogFooter className="shrink-0 mt-4">
+                <DialogFooter className="mt-4">
                   <Button variant="outline" onClick={() => setSelectedFormId(null)}>
                     Tutup
                   </Button>

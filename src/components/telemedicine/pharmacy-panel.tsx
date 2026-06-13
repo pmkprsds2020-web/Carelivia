@@ -185,7 +185,7 @@ export function PharmacyPanel() {
         </div>
 
         {/* Tab 1: Belanja Obat */}
-        <TabsContent value="shop" className="space-y-4 mt-0 overflow-y-auto custom-scrollbar">
+        <TabsContent value="shop" className="space-y-4 mt-0">
           {/* Search Bar */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -315,7 +315,7 @@ export function PharmacyPanel() {
         </TabsContent>
 
         {/* Tab 2: Keranjang */}
-        <TabsContent value="cart" className="space-y-4 mt-0 overflow-y-auto custom-scrollbar">
+        <TabsContent value="cart" className="space-y-4 mt-0">
           {cart.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16">

@@ -1,0 +1,502 @@
+   200→   200→  setDailyComplaints: (complaints: DailyComplaintRecord[]) => void;
+   201→   201→  addDailyComplaint: (complaint: DailyComplaintRecord) => void;
+   202→   202→
+   203→   203→  // RVSM (Remote Vital Sign Monitoring)
+   204→   204→  rvsmDevices: WearableDevice[];
+   205→   205→  addRvsmDevice: (device: WearableDevice) => void;
+   206→   206→  updateRvsmDevice: (deviceId: string, data: Partial<WearableDevice>) => void;
+   207→   207→  removeRvsmDevice: (deviceId: string) => void;
+   208→   208→  rvsmVitalData: WearableVitalData[];
+   209→   209→  addRvsmVitalData: (data: WearableVitalData) => void;
+   210→   210→  rvsmAlerts: RVSMAlert[];
+   211→   211→  addRvsmAlert: (alert: RVSMAlert) => void;
+   212→   212→  markRvsmAlertRead: (alertId: string) => void;
+   213→   213→  acknowledgeRvsmAlert: (alertId: string, acknowledgedBy: string) => void;
+   214→   214→  rvsmDailyReports: RVSMDailyReport[];
+   215→   215→  addRvsmDailyReport: (report: RVSMDailyReport) => void;
+   216→   216→  rvsmFamilyAccess: RVSMFamilyAccess[];
+   217→   217→  addRvsmFamilyAccess: (access: RVSMFamilyAccess) => void;
+   218→   218→  removeRvsmFamilyAccess: (accessId: string) => void;
+   219→   219→  rvsmAuditLog: RVSMAuditEntry[];
+   220→   220→  addRvsmAuditEntry: (entry: RVSMAuditEntry) => void;
+   221→   221→  rvsmPalliativeEstimates: RVSMPalliativeScoreEstimate[];
+   222→   222→  addRvsmPalliativeEstimate: (estimate: RVSMPalliativeScoreEstimate) => void;
+   223→   223→  rvsmAiSummary: string;
+   224→   224→  setRvsmAiSummary: (summary: string) => void;
+   225→   225→
+   226→   226→  // Medication Monitoring
+   227→   227→  medicationMonitoringForms: MedicationMonitoringFormInfo[];
+   228→   228→  addMedicationMonitoringForm: (form: MedicationMonitoringFormInfo) => void;
+   229→   229→  updateMedicationMonitoringForm: (formId: string, data: Partial<MedicationMonitoringFormInfo>) => void;
+   230→   230→  medicationMonitoringAlerts: MedicationMonitoringAlert[];
+   231→   231→  addMedicationMonitoringAlert: (alert: MedicationMonitoringAlert) => void;
+   232→   232→  markMedicationMonitoringAlertRead: (alertId: string) => void;
+   233→   233→  medicationMonitoringAuditLog: MedicationMonitoringAuditEntry[];
+   234→   234→  addMedicationMonitoringAuditEntry: (entry: MedicationMonitoringAuditEntry) => void;
+   235→   235→  medicationComplianceSummaries: MedicationComplianceSummary[];
+   236→   236→  addMedicationComplianceSummary: (summary: MedicationComplianceSummary) => void;
+   237→   237→
+   238→   238→  // Palliative Resume Medis & Surat Rujukan
+   239→   239→  palliativeResumes: PalliativeResumeMedis[];
+   240→   240→  addPalliativeResume: (resume: PalliativeResumeMedis) => void;
+   241→   241→  updatePalliativeResume: (resumeId: string, data: Partial<PalliativeResumeMedis>) => void;
+   242→   242→  palliativeReferralLetters: PalliativeReferralLetter[];
+   243→   243→  addPalliativeReferralLetter: (letter: PalliativeReferralLetter) => void;
+   244→   244→  updatePalliativeReferralLetter: (letterId: string, data: Partial<PalliativeReferralLetter>) => void;
+   245→   245→  palliativeDocumentAuditLog: PalliativeDocumentAuditEntry[];
+   246→   246→  addPalliativeDocumentAuditEntry: (entry: PalliativeDocumentAuditEntry) => void;
+   247→   247→
+   248→   248→  // Social Support Management
+   249→   249→  socialAssessments: SocialAssessmentRecord[];
+   250→   250→  addSocialAssessment: (record: SocialAssessmentRecord) => void;
+   251→   251→  updateSocialAssessment: (id: string, data: Partial<SocialAssessmentRecord>) => void;
+   252→   252→  caregivers: CaregiverInfo[];
+   253→   253→  addCaregiver: (caregiver: CaregiverInfo) => void;
+   254→   254→  updateCaregiver: (id: string, data: Partial<CaregiverInfo>) => void;
+   255→   255→  removeCaregiver: (id: string) => void;
+   256→   256→  familyMeetings: FamilyMeetingRecord[];
+   257→   257→  addFamilyMeeting: (meeting: FamilyMeetingRecord) => void;
+   258→   258→  updateFamilyMeeting: (id: string, data: Partial<FamilyMeetingRecord>) => void;
+   259→   259→  eduMaterials: EduMaterial[];
+   260→   260→  addEduMaterial: (material: EduMaterial) => void;
+   261→   261→  updateEduMaterial: (id: string, data: Partial<EduMaterial>) => void;
+   262→   262→  logEduMaterialAccess: (materialId: string, accessedBy: string) => void;
+   263→   263→  familyCoordinationNotes: FamilyCoordinationNote[];
+   264→   264→  addFamilyCoordinationNote: (note: FamilyCoordinationNote) => void;
+   265→   265→  updateFamilyCoordinationNote: (id: string, data: Partial<FamilyCoordinationNote>) => void;
+   266→   266→  emergencyContacts: EmergencyContact[];
+   267→   267→  addEmergencyContact: (contact: EmergencyContact) => void;
+   268→   268→  updateEmergencyContact: (id: string, data: Partial<EmergencyContact>) => void;
+   269→   269→  removeEmergencyContact: (id: string) => void;
+   270→   270→  financialSupportRecords: FinancialSupportRecord[];
+   271→   271→  addFinancialSupportRecord: (record: FinancialSupportRecord) => void;
+   272→   272→  updateFinancialSupportRecord: (id: string, data: Partial<FinancialSupportRecord>) => void;
+   273→   273→  transportRecords: TransportRecord[];
+   274→   274→  addTransportRecord: (record: TransportRecord) => void;
+   275→   275→  updateTransportRecord: (id: string, data: Partial<TransportRecord>) => void;
+   276→   276→  socialAlerts: SocialMonitoringAlert[];
+   277→   277→  addSocialAlert: (alert: SocialMonitoringAlert) => void;
+   278→   278→  markSocialAlertRead: (alertId: string) => void;
+   279→   279→
+   280→   280→  // AI Social Needs Analysis
+   281→   281→  aiSocialAnalysisResult: AISocialAnalysisResult | null;
+   282→   282→  setAiSocialAnalysisResult: (result: AISocialAnalysisResult | null) => void;
+   283→   283→  aiSocialAnalysisLoading: boolean;
+   284→   284→  setAiSocialAnalysisLoading: (loading: boolean) => void;
+   285→   285→  aiSocialAnalysisRecords: AISocialAnalysisRecord[];
+   286→   286→  addAiSocialAnalysisRecord: (record: AISocialAnalysisRecord) => void;
+   287→   287→  aiSocialPopulationStats: AISocialPopulationStats | null;
+   288→   288→  setAiSocialPopulationStats: (stats: AISocialPopulationStats | null) => void;
+   289→   289→
+   290→   290→  // Patient Paliatif Module
+   291→   291→  patientTransportRequests: PatientTransportRequest[];
+   292→   292→  addPatientTransportRequest: (request: PatientTransportRequest) => void;
+   293→   293→  updatePatientTransportRequest: (id: string, data: Partial<PatientTransportRequest>) => void;
+   294→   294→  patientCareUpdates: PatientCareUpdate[];
+   295→   295→  addPatientCareUpdate: (update: PatientCareUpdate) => void;
+   296→   296→  markCareUpdateViewed: (id: string) => void;
+   297→   297→  patientPaliatifMessages: PatientPaliatifChatMessage[];
+   298→   298→  addPatientPaliatifMessage: (message: PatientPaliatifChatMessage) => void;
+   299→   299→}
+   300→   300→
+   301→   301→export const useStore = create<TelemedicineStore>((set) => ({
+   302→   302→  // Debug: expose store to window
+   303→   303→  _debugInit: (() => { if (typeof window !== 'undefined') { (window as unknown as Record<string, unknown>).__STORE__ = () => useStore.getState(); } })(),
+   304→   304→  // Navigation
+   305→   305→  activePanel: 'home' as ActivePanel,
+   306→   306→  setActivePanel: (panel) => set({ activePanel: panel }),
+   307→   307→  
+   308→   308→  // User
+   309→   309→  currentUser: null,
+   310→   310→  setCurrentUser: (user) => set({ currentUser: user }),
+   311→   311→  
+   312→   312→  // Dashboard
+   313→   313→  dashboardStats: null,
+   314→   314→  setDashboardStats: (stats) => set({ dashboardStats: stats }),
+   315→   315→  
+   316→   316→  // Doctors
+   317→   317→  doctors: [
+   318→   318→    {
+   319→   319→      id: 'doc-sarah',
+   320→   320→      email: 'sarah@carelivia.id',
+   321→   321→      name: 'dr. Sarah Wijaya',
+   322→   322→      role: 'doctor' as const,
+   323→   323→      avatar: '',
+   324→   324→      isVerified: true,
+   325→   325→      isActive: true,
+   326→   326→      createdAt: new Date().toISOString(),
+   327→   327→      updatedAt: new Date().toISOString(),
+   328→   328→      doctorProfile: {
+   329→   329→        id: 'dp-doc-sarah',
+   330→   330→        userId: 'doc-sarah',
+   331→   331→        specialization: 'umum',
+   332→   332→        rating: 4.9,
+   333→   333→        reviewCount: 156,
+   334→   334→        consultationFee: 150000,
+   335→   335→        isOnline: true,
+   336→   336→        isAvailable: true,
+   337→   337→      }
+   338→   338→    },
+   339→   339→    {
+   340→   340→      id: 'doc-ahmad',
+   341→   341→      email: 'ahmad@carelivia.id',
+   342→   342→      name: 'dr. Ahmad Rizki',
+   343→   343→      role: 'doctor' as const,
+   344→   344→      avatar: '',
+   345→   345→      isVerified: true,
+   346→   346→      isActive: true,
+   347→   347→      createdAt: new Date().toISOString(),
+   348→   348→      updatedAt: new Date().toISOString(),
+   349→   349→      doctorProfile: {
+   350→   350→        id: 'dp-doc-ahmad',
+   351→   351→        userId: 'doc-ahmad',
+   352→   352→        specialization: 'anak',
+   353→   353→        rating: 4.8,
+   354→   354→        reviewCount: 98,
+   355→   355→        consultationFee: 175000,
+   356→   356→        isOnline: true,
+   357→   357→        isAvailable: true,
+   358→   358→      }
+   359→   359→    },
+   360→   360→    {
+   361→   361→      id: 'doc-lisa',
+   362→   362→      email: 'lisa@carelivia.id',
+   363→   363→      name: 'dr. Lisa Permata',
+   364→   364→      role: 'doctor' as const,
+   365→   365→      avatar: '',
+   366→   366→      isVerified: true,
+   367→   367→      isActive: true,
+   368→   368→      createdAt: new Date().toISOString(),
+   369→   369→      updatedAt: new Date().toISOString(),
+   370→   370→      doctorProfile: {
+   371→   371→        id: 'dp-doc-lisa',
+   372→   372→        userId: 'doc-lisa',
+   373→   373→        specialization: 'penyakit_dalam',
+   374→   374→        rating: 4.7,
+   375→   375→        reviewCount: 73,
+   376→   376→        consultationFee: 200000,
+   377→   377→        isOnline: true,
+   378→   378→        isAvailable: true,
+   379→   379→      }
+   380→   380→    },
+   381→   381→    {
+   382→   382→      id: 'doc-dewi',
+   383→   383→      email: 'dewi@carelivia.id',
+   384→   384→      name: 'dr. Dewi Sartika',
+   385→   385→      role: 'doctor' as const,
+   386→   386→      avatar: '',
+   387→   387→      isVerified: true,
+   388→   388→      isActive: true,
+   389→   389→      createdAt: new Date().toISOString(),
+   390→   390→      updatedAt: new Date().toISOString(),
+   391→   391→      doctorProfile: {
+   392→   392→        id: 'dp-doc-dewi',
+   393→   393→        userId: 'doc-dewi',
+   394→   394→        specialization: 'kebidanan',
+   395→   395→        rating: 4.9,
+   396→   396→        reviewCount: 112,
+   397→   397→        consultationFee: 175000,
+   398→   398→        isOnline: false,
+   399→   399→        isAvailable: true,
+   400→   400→      }
+   401→   401→    },
+   402→   402→    {
+   403→   403→      id: 'doc-budi',
+   404→   404→      email: 'budi@carelivia.id',
+   405→   405→      name: 'drg. Budi Santoso',
+   406→   406→      role: 'doctor' as const,
+   407→   407→      avatar: '',
+   408→   408→      isVerified: true,
+   409→   409→      isActive: true,
+   410→   410→      createdAt: new Date().toISOString(),
+   411→   411→      updatedAt: new Date().toISOString(),
+   412→   412→      doctorProfile: {
+   413→   413→        id: 'dp-doc-budi',
+   414→   414→        userId: 'doc-budi',
+   415→   415→        specialization: 'gigi',
+   416→   416→        rating: 4.6,
+   417→   417→        reviewCount: 45,
+   418→   418→        consultationFee: 200000,
+   419→   419→        isOnline: true,
+   420→   420→        isAvailable: true,
+   421→   421→      }
+   422→   422→    }
+   423→   423→  ] as User[],
+   424→   424→  setDoctors: (doctors) => set({ doctors }),
+   425→   425→  onlineDoctors: ['doc-sarah', 'doc-ahmad', 'doc-lisa', 'doc-budi'],
+   426→   426→  setOnlineDoctors: (ids) => set({ onlineDoctors: ids }),
+   427→   427→  
+   428→   428→  // Consultations
+   429→   429→  consultations: [],
+   430→   430→  setConsultations: (consultations) => set({ consultations }),
+   431→   431→  updateConsultation: (consultationId, data) => set((state) => ({
+   432→   432→    consultations: state.consultations.map(c =>
+   433→   433→      c.id === consultationId ? { ...c, ...data, updatedAt: new Date().toISOString() } : c
+   434→   434→    ),
+   435→   435→    activeConsultation: state.activeConsultation?.id === consultationId
+   436→   436→      ? { ...state.activeConsultation, ...data, updatedAt: new Date().toISOString() }
+   437→   437→      : state.activeConsultation,
+   438→   438→  })),
+   439→   439→  activeConsultation: null,
+   440→   440→  setActiveConsultation: (consultation) => set({ activeConsultation: consultation }),
+   441→   441→  messages: [],
+   442→   442→  setMessages: (messages) => set({ messages }),
+   443→   443→  addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
+   444→   444→  typingUsers: new Map(),
+   445→   445→  setTypingUsers: (map) => set({ typingUsers: map }),
+   446→   446→  
+   447→   447→  // Pharmacy
+   448→   448→  medicines: [
+   449→   449→    { id: 'med-1', name: 'Paracetamol 500mg', genericName: 'Paracetamol', category: 'bebas' as MedicineCategory, price: 15000, stock: 150, unit: 'Tablet (10)', manufacturer: 'Kimia Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   450→   450→    { id: 'med-2', name: 'Amoxicillin 500mg', genericName: 'Amoxicillin', category: 'resep' as MedicineCategory, price: 25000, stock: 80, unit: 'Kapsul (10)', manufacturer: 'Sanbe Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   451→   451→    { id: 'med-3', name: 'Omeprazole 20mg', genericName: 'Omeprazole', category: 'resep' as MedicineCategory, price: 35000, stock: 60, unit: 'Kapsul (10)', manufacturer: 'Bernofarm', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   452→   452→    { id: 'med-4', name: 'CTM (Chlorpheniramine)', genericName: 'Chlorpheniramine Maleate', category: 'bebas' as MedicineCategory, price: 8000, stock: 200, unit: 'Tablet (10)', manufacturer: 'Kimia Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   453→   453→    { id: 'med-5', name: 'Vitamin C 1000mg', genericName: 'Ascorbic Acid', category: 'vitamin' as MedicineCategory, price: 45000, stock: 120, unit: 'Tablet (20)', manufacturer: 'Nature Made', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   454→   454→    { id: 'med-6', name: 'Ibuprofen 400mg', genericName: 'Ibuprofen', category: 'bebas' as MedicineCategory, price: 18000, stock: 90, unit: 'Tablet (10)', manufacturer: 'Pharos', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   455→   455→    { id: 'med-7', name: 'Metformin 500mg', genericName: 'Metformin HCl', category: 'resep' as MedicineCategory, price: 22000, stock: 100, unit: 'Tablet (20)', manufacturer: 'Indofarma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   456→   456→    { id: 'med-8', name: 'Loratadine 10mg', genericName: 'Loratadine', category: 'bebas' as MedicineCategory, price: 28000, stock: 75, unit: 'Tablet (10)', manufacturer: 'Kalbe Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   457→   457→    { id: 'med-9', name: 'Termometer Digital', category: 'alat_kesehatan' as MedicineCategory, price: 85000, stock: 30, unit: 'Unit', manufacturer: 'Omron', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   458→   458→    { id: 'med-10', name: 'Tensimeter Digital', category: 'alat_kesehatan' as MedicineCategory, price: 350000, stock: 15, unit: 'Unit', manufacturer: 'Omron', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   459→   459→    { id: 'med-11', name: 'Vitamin D3 1000IU', genericName: 'Cholecalciferol', category: 'vitamin' as MedicineCategory, price: 65000, stock: 85, unit: 'Softgel (30)', manufacturer: 'Nature Made', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   460→   460→    { id: 'med-12', name: 'Antasida Sirup', genericName: 'Aluminium Hydroxide + Magnesium Hydroxide', category: 'bebas' as MedicineCategory, price: 22000, stock: 60, unit: 'Botol (60ml)', manufacturer: 'Kimia Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   461→   461→  ] as Medicine[],
+   462→   462→  setMedicines: (medicines) => set({ medicines }),
+   463→   463→  cart: [],
+   464→   464→  addToCart: (item) => set((state) => {
+   465→   465→    const existing = state.cart.find(c => c.medicine.id === item.medicine.id);
+   466→   466→    if (existing) {
+   467→   467→      return {
+   468→   468→        cart: state.cart.map(c => 
+   469→   469→          c.medicine.id === item.medicine.id 
+   470→   470→            ? { ...c, quantity: c.quantity + item.quantity }
+   471→   471→            : c
+   472→   472→        )
+   473→   473→      };
+   474→   474→    }
+   475→   475→    return { cart: [...state.cart, item] };
+   476→   476→  }),
+   477→   477→  removeFromCart: (medicineId) => set((state) => ({
+   478→   478→    cart: state.cart.filter(c => c.medicine.id !== medicineId)
+   479→   479→  })),
+   480→   480→  updateCartQuantity: (medicineId, quantity) => set((state) => ({
+   481→   481→    cart: state.cart.map(c => 
+   482→   482→      c.medicine.id === medicineId ? { ...c, quantity } : c
+   483→   483→    )
+   484→   484→  })),
+   485→   485→  clearCart: () => set({ cart: [] }),
+   486→   486→  
+   487→   487→  // Home Care
+   488→   488→  homeCareServices: [
+   489→   489→    { id: 'hc-1', name: 'Perawatan Luka', description: 'Perawatan luka di rumah oleh perawat profesional', category: 'perawatan', price: 150000, duration: 60, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   490→   490→    { id: 'hc-2', name: 'Injeksi/Suntik', description: 'Pemberian injeksi obat sesuai resep dokter', category: 'perawatan', price: 100000, duration: 30, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   491→   491→    { id: 'hc-3', name: 'Cek Kesehatan Umum', description: 'Pemeriksaan kesehatan umum di rumah', category: 'pemeriksaan', price: 200000, duration: 45, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   492→   492→    { id: 'hc-4', name: 'Fisioterapi', description: 'Terapi fisik di rumah', category: 'terapi', price: 250000, duration: 60, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   493→   493→    { id: 'hc-5', name: 'Perawatan Lansia', description: 'Perawatan dan pendampingan lansia', category: 'pendampingan', price: 300000, duration: 120, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   494→   494→  ] as HomeCareService[],
+   495→   495→  setHomeCareServices: (services) => set({ homeCareServices: services }),
+   496→   496→  homeCareBookings: [],
+   497→   497→  setHomeCareBookings: (bookings) => set({ homeCareBookings: bookings }),
+   498→   498→  
+   499→   499→  // Medical Records
+   500→   500→  medicalRecords: [],
+   501→   501→  setMedicalRecords: (records) => set({ medicalRecords: records }),
+   502→   502→  addMedicalRecord: (record) => set((state) => ({ medicalRecords: [...state.medicalRecords, record] })),
+   503→   503→  updateMedicalRecord: (recordId, data) => set((state) => ({
+   504→   504→    medicalRecords: state.medicalRecords.map(r => 
+   505→   505→      r.id === recordId ? { ...r, ...data, updatedAt: new Date().toISOString() } : r
+   506→   506→    )
+   507→   507→  })),
+   508→   508→  
+   509→   509→  // Notifications
+   510→   510→  notifications: [
+   511→   511→    { id: 'notif-1', userId: '', title: 'Selamat Datang!', message: "Selamat datang di CareLivia. Mulai konsultasi dengan dokter sekarang!", type: 'chat' as const, isRead: false, createdAt: new Date().toISOString() },
+   512→   512→    { id: 'notif-2', userId: '', title: 'Promo Spesial', message: 'Diskon 20% untuk pembelian vitamin minggu ini!', type: 'pharmacy' as const, isRead: false, createdAt: new Date(Date.now() - 3600000).toISOString() },
+   513→   513→    { id: 'notif-3', userId: '', title: 'Jadwal Konsultasi', message: 'Konsultasi Anda akan dimulai dalam 30 menit', type: 'consultation' as const, isRead: true, createdAt: new Date(Date.now() - 7200000).toISOString() },
+   514→   514→  ] as Notification[],
+   515→   515→  setNotifications: (notifications) => set({ notifications }),
+   516→   516→  unreadCount: 0,
+   517→   517→  setUnreadCount: (count) => set({ unreadCount: count }),
+   518→   518→  
+   519→   519→  // Payments
+   520→   520→  payments: [],
+   521→   521→  setPayments: (payments) => set({ payments }),
+   522→   522→  
+   523→   523→  // Prescriptions
+   524→   524→  prescriptions: [],
+   525→   525→  setPrescriptions: (prescriptions) => set({ prescriptions }),
+   526→   526→  addPrescription: (prescription) => set((state) => ({ prescriptions: [...state.prescriptions, prescription] })),
+   527→   527→  updatePrescriptionStatus: (prescriptionId, status) => set((state) => ({
+   528→   528→    prescriptions: state.prescriptions.map(p => 
+   529→   529→      p.id === prescriptionId ? { ...p, status } : p
+   530→   530→    )
+   531→   531→  })),
+   532→   532→  
+   533→   533→  // Articles
+   534→   534→  articles: [],
+   535→   535→  setArticles: (articles) => set({ articles }),
+   536→   536→  
+   537→   537→  // UI
+   538→   538→  sidebarOpen: true,
+   539→   539→  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+   540→   540→  isLoading: false,
+   541→   541→  setIsLoading: (loading) => set({ isLoading: loading }),
+   542→   542→  selectedChatDoctor: null,
+   543→   543→  setSelectedChatDoctor: (doctor) => set({ selectedChatDoctor: doctor }),
+   544→   544→
+   545→   545→  // Prescription Checkout
+   546→   546→  pendingPrescriptionCheckout: null,
+   547→   547→  setPendingPrescriptionCheckout: (prescription) => set({ pendingPrescriptionCheckout: prescription }),
+   548→   548→
+   549→   549→  // Screening
+   550→   550→  screeningForms: [],
+   551→   551→  setScreeningForms: (forms) => set({ screeningForms: forms }),
+   552→   552→  addScreeningForm: (form) => set((state) => ({ screeningForms: [...state.screeningForms, form] })),
+   553→   553→  updateScreeningForm: (formId, data) => set((state) => ({
+   554→   554→    screeningForms: state.screeningForms.map((f) =>
+   555→   555→      f.id === formId ? { ...f, ...data, updatedAt: new Date().toISOString() } : f
+   556→   556→    ),
+   557→   557→  })),
+   558→   558→  screeningAuditLog: [],
+   559→   559→  addAuditLog: (log) => set((state) => ({ screeningAuditLog: [...state.screeningAuditLog, log] })),
+   560→   560→  clinicalAlerts: [],
+   561→   561→  addClinicalAlert: (alert) => set((state) => ({ clinicalAlerts: [...state.clinicalAlerts, alert] })),
+   562→   562→
+   563→   563→  // Palliative Screening
+   564→   564→  palliativeScreeningForms: [],
+   565→   565→  setPalliativeScreeningForms: (forms) => set({ palliativeScreeningForms: forms }),
+   566→   566→  addPalliativeScreeningForm: (form) => set((state) => ({ palliativeScreeningForms: [...state.palliativeScreeningForms, form] })),
+   567→   567→  updatePalliativeScreeningForm: (formId, data) => set((state) => ({
+   568→   568→    palliativeScreeningForms: state.palliativeScreeningForms.map((f) =>
+   569→   569→      f.id === formId ? { ...f, ...data, updatedAt: new Date().toISOString() } : f
+   570→   570→    ),
+   571→   571→  })),
+   572→   572→  activePalliativeFormId: null,
+   573→   573→  setActivePalliativeFormId: (id) => set({ activePalliativeFormId: id }),
+   574→   574→
+   575→   575→  // Palliative Monitoring
+   576→   576→  palliativePatients: [
+   577→   577→    {
+   578→   578→      id: 'pp-1',
+   579→   579→      patientId: 'patient-1',
+   580→   580→      patientName: 'Siti Rahayu',
+   581→   581→      rmNumber: 'RM-2025-001',
+   582→   582→      bpjsNumber: '0001234567890',
+   583→   583→      nik: '3201014505870001',
+   584→   584→      dateOfBirth: '1945-05-08',
+   585→   585→      gender: 'Perempuan',
+   586→   586→      primaryDiagnosis: 'Kanker Payudara Stadium IV',
+   587→   587→      secondaryDiagnosis: 'Diabetes Melitus Tipe 2, Hipertensi',
+   588→   588→      diseaseStage: 'Stadium IV',
+   589→   589→      attendingDoctorId: 'doc-sarah',
+   590→   590→      attendingDoctorName: 'dr. Sarah Wijaya',
+   591→   591→      familyContactName: 'Budi Rahayu',
+   592→   592→      familyContactRelation: 'Anak',
+   593→   593→      familyContactPhone: '081234567890',
+   594→   594→      address: 'Jl. Melati No. 12, Bandung',
+   595→   595→      careStatus: 'home_care',
+   596→   596→      patientStatus: 'aktif',
+   597→   597→      riskLevel: 'merah',
+   598→   598→      notes: 'Pasien memerlukan perawatan paliatif intensif',
+   599→   599→      createdAt: new Date().toISOString(),
+   600→   600→      updatedAt: new Date().toISOString(),
+   601→   601→    },
+   602→   602→    {
+   603→   603→      id: 'pp-2',
+   604→   604→      patientId: 'patient-2',
+   605→   605→      patientName: 'Ahmad Sudrajat',
+   606→   606→      rmNumber: 'RM-2025-002',
+   607→   607→      bpjsNumber: '0009876543210',
+   608→   608→      nik: '3201015003790002',
+   609→   609→      dateOfBirth: '1950-03-15',
+   610→   610→      gender: 'Laki-laki',
+   611→   611→      primaryDiagnosis: 'PPOK Stadium Berat',
+   612→   612→      secondaryDiagnosis: 'Gagal Jantung Kongestif',
+   613→   613→      diseaseStage: 'Stadium Berat',
+   614→   614→      attendingDoctorId: 'doc-lisa',
+   615→   615→      attendingDoctorName: 'dr. Lisa Permata',
+   616→   616→      familyContactName: 'Dewi Sudrajat',
+   617→   617→      familyContactRelation: 'Istri',
+   618→   618→      familyContactPhone: '082345678901',
+   619→   619→      address: 'Jl. Kenanga No. 5, Jakarta',
+   620→   620→      careStatus: 'rawat_jalan',
+   621→   621→      patientStatus: 'aktif',
+   622→   622→      riskLevel: 'kuning',
+   623→   623→      notes: 'Kondisi stabil namun perlu monitoring rutin',
+   624→   624→      createdAt: new Date(Date.now() - 86400000).toISOString(),
+   625→   625→      updatedAt: new Date(Date.now() - 86400000).toISOString(),
+   626→   626→    },
+   627→   627→    {
+   628→   628→      id: 'pp-3',
+   629→   629→      patientId: 'patient-3',
+   630→   630→      patientName: 'Maria Susanti',
+   631→   631→      rmNumber: 'RM-2025-003',
+   632→   632→      primaryDiagnosis: 'Stroke Berat',
+   633→   633→      secondaryDiagnosis: 'Hipertensi',
+   634→   634→      diseaseStage: 'Kronis',
+   635→   635→      attendingDoctorId: 'doc-sarah',
+   636→   636→      attendingDoctorName: 'dr. Sarah Wijaya',
+   637→   637→      familyContactName: 'Yohanes Susanti',
+   638→   638→      familyContactRelation: 'Suami',
+   639→   639→      familyContactPhone: '083456789012',
+   640→   640→      address: 'Jl. Anggrek No. 8, Surabaya',
+   641→   641→      careStatus: 'hospice',
+   642→   642→      patientStatus: 'aktif',
+   643→   643→      riskLevel: 'merah',
+   644→   644→      notes: 'Pasien bed rest total, perlu perawatan paliatif penuh',
+   645→   645→      createdAt: new Date(Date.now() - 172800000).toISOString(),
+   646→   646→      updatedAt: new Date(Date.now() - 172800000).toISOString(),
+   647→   647→    },
+   648→   648→  ] as PalliativePatientInfo[],
+   649→   649→  setPalliativePatients: (patients) => set({ palliativePatients: patients }),
+   650→   650→  addPalliativePatient: (patient) => set((state) => ({ palliativePatients: [...state.palliativePatients, patient] })),
+   651→   651→  updatePalliativePatient: (patientId, data) => set((state) => ({
+   652→   652→    palliativePatients: state.palliativePatients.map(p =>
+   653→   653→      p.id === patientId ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
+   654→   654→    ),
+   655→   655→  })),
+   656→   656→  removePalliativePatient: (patientId) => set((state) => ({
+   657→   657→    palliativePatients: state.palliativePatients.filter(p => p.id !== patientId),
+   658→   658→  })),
+   659→   659→  selectedPalliativePatientId: null,
+   660→   660→  setSelectedPalliativePatientId: (id) => set({ selectedPalliativePatientId: id }),
+   661→   661→  vitalSignRecords: [
+   662→   662→    {
+   663→   663→      id: 'vs-1', palliativePatientId: 'pp-1', recordedBy: 'doctor',
+   664→   664→      systolicBP: 110, diastolicBP: 70, heartRate: 88, respiratoryRate: 22,
+   665→   665→      temperature: 36.8, oxygenSat: 93, weight: 52, height: 155, bmi: 21.6,
+   666→   666→      notes: 'Saturasi perlu dimonitor', recordedAt: new Date(Date.now() - 3600000).toISOString(), createdAt: new Date(Date.now() - 3600000).toISOString(),
+   667→   667→    },
+   668→   668→    {
+   669→   669→      id: 'vs-2', palliativePatientId: 'pp-1', recordedBy: 'family',
+   670→   670→      systolicBP: 105, diastolicBP: 65, heartRate: 92, respiratoryRate: 24,
+   671→   671→      temperature: 37.1, oxygenSat: 91, weight: 51.5, height: 155, bmi: 21.4,
+   672→   672→      notes: 'Pasien sesak ringan', recordedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString(),
+   673→   673→    },
+   674→   674→    {
+   675→   675→      id: 'vs-3', palliativePatientId: 'pp-1', recordedBy: 'nurse',
+   676→   676→      systolicBP: 115, diastolicBP: 72, heartRate: 85, respiratoryRate: 20,
+   677→   677→      temperature: 36.5, oxygenSat: 95, weight: 52.5, height: 155, bmi: 21.8,
+   678→   678→      recordedAt: new Date(Date.now() - 172800000).toISOString(), createdAt: new Date(Date.now() - 172800000).toISOString(),
+   679→   679→    },
+   680→   680→    {
+   681→   681→      id: 'vs-4', palliativePatientId: 'pp-2', recordedBy: 'doctor',
+   682→   682→      systolicBP: 135, diastolicBP: 85, heartRate: 78, respiratoryRate: 18,
+   683→   683→      temperature: 36.6, oxygenSat: 96, weight: 68, height: 170, bmi: 23.5,
+   684→   684→      recordedAt: new Date(Date.now() - 7200000).toISOString(), createdAt: new Date(Date.now() - 7200000).toISOString(),
+   685→   685→    },
+   686→   686→    {
+   687→   687→      id: 'vs-5', palliativePatientId: 'pp-2', recordedBy: 'patient',
+   688→   688→      systolicBP: 130, diastolicBP: 82, heartRate: 80, respiratoryRate: 20,
+   689→   689→      temperature: 36.7, oxygenSat: 94, weight: 67.5, height: 170, bmi: 23.4,
+   690→   690→      recordedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString(),
+   691→   691→    },
+   692→   692→    {
+   693→   693→      id: 'vs-6', palliativePatientId: 'pp-3', recordedBy: 'nurse',
+   694→   694→      systolicBP: 90, diastolicBP: 60, heartRate: 95, respiratoryRate: 26,
+   695→   695→      temperature: 37.5, oxygenSat: 88, weight: 45, height: 160, bmi: 17.6,
+   696→   696→      notes: 'Tekanan darah rendah, saturasi kritis', recordedAt: new Date(Date.now() - 1800000).toISOString(), createdAt: new Date(Date.now() - 1800000).toISOString(),
+   697→   697→    },
+   698→   698→  ] as VitalSignRecordInfo[],
+   699→   699→  setVitalSignRecords: (records) => set({ vitalSignRecords: records }),
+
+[showing lines 200-699 of 1690; use offset=700 with limit to continue reading]

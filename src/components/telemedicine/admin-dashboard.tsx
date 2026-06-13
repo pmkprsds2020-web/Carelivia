@@ -207,7 +207,6 @@ export function AdminDashboard() {
                 Belum ada data
               </div>
             ) : (
-              <div className="w-full overflow-hidden">
               <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={monthlyData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -240,7 +239,6 @@ export function AdminDashboard() {
                   />
                 </LineChart>
               </ResponsiveContainer>
-              </div>
             )}
           </CardContent>
         </Card>
@@ -259,7 +257,6 @@ export function AdminDashboard() {
                 Belum ada data
               </div>
             ) : (
-              <div className="w-full overflow-hidden">
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
                   <Pie
@@ -295,7 +292,6 @@ export function AdminDashboard() {
                   />
                 </PieChart>
               </ResponsiveContainer>
-              </div>
             )}
           </CardContent>
         </Card>
@@ -318,7 +314,6 @@ export function AdminDashboard() {
               </div>
             ) : (
               <div className="max-h-96 overflow-y-auto custom-scrollbar">
-                <div className="overflow-x-auto table-scroll-wrapper">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -365,7 +360,6 @@ export function AdminDashboard() {
                     ))}
                   </TableBody>
                 </Table>
-                </div>
               </div>
             )}
           </CardContent>
@@ -386,7 +380,6 @@ export function AdminDashboard() {
               </div>
             ) : (
               <div className="max-h-96 overflow-y-auto custom-scrollbar">
-                <div className="overflow-x-auto table-scroll-wrapper">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -425,7 +418,6 @@ export function AdminDashboard() {
                     ))}
                   </TableBody>
                 </Table>
-                </div>
               </div>
             )}
           </CardContent>

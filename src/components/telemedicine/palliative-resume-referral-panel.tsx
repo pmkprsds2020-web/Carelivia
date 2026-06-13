@@ -10,6 +10,10 @@ import type {
   PalliativeDocumentAuditEntry,
   PalliativeAuditEntry,
   PalliativeChatMessage,
+  PalliativeResumeDataPasien,
+  PalliativeResumeTTVRecord,
+  PalliativeResumeKeluhan,
+  PalliativeResumeAIAnalysis,
   ReferralTargetDepartment,
   ReferralStatus,
 } from '@/lib/types';
@@ -40,7 +44,6 @@ import {
 } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Table,
   TableBody,
@@ -71,6 +74,20 @@ import {
   Archive,
   ChevronDown,
   AlertCircle,
+  Activity,
+  Heart,
+  Pill,
+  Apple,
+  Users,
+  ScrollText,
+  Brain,
+  TrendingUp,
+  Save,
+  AlertTriangle,
+  Thermometer,
+  Droplets,
+  Wind,
+  Gauge,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import QRCode from 'qrcode';
@@ -79,9 +96,50 @@ import QRCode from 'qrcode';
 
 type DocTab = 'resume' | 'referral' | 'history';
 
+interface KeluhanEntry {
+  kondisiHariIni?: string;
+  kondisiNyeri?: string;
+  kondisiSesak?: string;
+  makanMinum?: string;
+  tidur?: string;
+  masalahObat?: string;
+  severityLevel?: string;
+  submittedAt?: string;
+  alasanKondisi?: string | null;
+  deskripsiKeluhanBaru?: string | null;
+  alasanMakanMinum?: string | null;
+  alasanTidur?: string | null;
+  deskripsiMasalahObat?: string | null;
+}
+
+interface EsasScoreEntry {
+  score?: number;
+  performedAt?: string;
+  nyeri?: number;
+  kelelahan?: number;
+  mengantuk?: number;
+  mual?: number;
+  nafsuMakan?: number;
+  sesak?: number;
+  kecemasan?: number;
+  depresi?: number;
+  kesejahteraan?: number;
+}
+
+interface MedicationEntry {
+  medicineName?: string;
+  dosage?: string;
+  frequency?: string;
+  route?: string | null;
+  indication?: string | null;
+  isActive?: boolean;
+  adherences?: unknown[];
+}
+
 // ── Helper Functions ─────────────────────────────────────────────────────
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '-';
   try {
     return new Date(dateStr).toLocaleDateString('id-ID', {
       day: 'numeric',
@@ -93,7 +151,8 @@ function formatDate(dateStr: string): string {
   }
 }
 
-function formatDateTime(dateStr: string): string {
+function formatDateTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return '-';
   try {
     return new Date(dateStr).toLocaleDateString('id-ID', {
       day: 'numeric',
@@ -147,6 +206,349 @@ function getReferralStatusLabel(status: ReferralStatus): { label: string; classN
   }
 }
 
+function getTrendBadge(trend: string) {
+  const t = trend?.toLowerCase() || '';
+  if (t.includes('membaik')) return { label: 'Membaik', className: 'bg-green-100 text-green-800 border-green-300' };
+  if (t.includes('stabil')) return { label: 'Stabil', className: 'bg-blue-100 text-blue-800 border-blue-300' };
+  if (t.includes('fluktuatif')) return { label: 'Fluktuatif', className: 'bg-amber-100 text-amber-800 border-amber-300' };
+  if (t.includes('memburuk')) return { label: 'Memburuk', className: 'bg-orange-100 text-orange-800 border-orange-300' };
+  if (t.includes('terminal')) return { label: 'Terminal', className: 'bg-red-100 text-red-800 border-red-300' };
+  if (t.includes('end of life') || t.includes('end_of_life')) return { label: 'End of Life', className: 'bg-red-200 text-red-900 border-red-400' };
+  return { label: trend || 'N/A', className: 'bg-slate-100 text-slate-700 border-slate-300' };
+}
+
+function getSeverityBadge(level: string | undefined) {
+  if (!level) return null;
+  const l = level.toLowerCase();
+  if (l.includes('ringan')) return <Badge className="bg-green-100 text-green-800 border border-green-300 text-[10px]">Ringan</Badge>;
+  if (l.includes('sedang')) return <Badge className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px]">Sedang</Badge>;
+  if (l.includes('berat') || l.includes('kritis')) return <Badge className="bg-red-100 text-red-800 border border-red-300 text-[10px]">Berat</Badge>;
+  return <Badge variant="outline" className="text-[10px]">{level}</Badge>;
+}
+
+function nullish(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '-';
+  return String(v);
+}
+
+function getEsasColor(val: number | undefined | null): string {
+  if (val == null) return 'bg-slate-100 text-slate-500';
+  if (val <= 3) return 'bg-green-50 text-green-800';
+  if (val <= 6) return 'bg-amber-50 text-amber-800';
+  return 'bg-red-50 text-red-800';
+}
+
+// ── Generic record renderer for unknown[] data ──
+function renderGenericRecords(records: unknown[], title: string): React.ReactNode {
+  if (!records || !Array.isArray(records) || records.length === 0) return null;
+  return (
+    <div className="space-y-3 mb-3">
+      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{title} ({records.length})</h4>
+      {records.map((rec, idx) => {
+        if (typeof rec !== 'object' || rec === null) return null;
+        const entries = Object.entries(rec as Record<string, unknown>)
+          .filter(([k, v]) => v != null && v !== '' && !['id', 'patientId', 'createdAt', 'updatedAt'].includes(k));
+        if (entries.length === 0) return null;
+        return (
+          <div key={idx} className="rounded-lg border p-2.5 bg-muted/20 text-sm">
+            {entries.map(([key, val]) => (
+              <div key={key} className="flex items-start gap-2 py-0.5">
+                <span className="text-xs text-muted-foreground w-36 shrink-0">{key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</span>
+                <span className="text-xs">{String(val)}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── ACP Document renderer with specific labels ──
+function renderAcpDocument(doc: Record<string, unknown>, idx: number): React.ReactNode {
+  const prefLabels: Record<string, string> = {
+    careGoal: 'Tujuan Perawatan',
+    preferredCareLocation: 'Preferensi Tempat Perawatan',
+    resuscitationPref: 'Resusitasi',
+    ventilatorPref: 'Ventilator',
+    icuPref: 'ICU',
+    artificialNutrition: 'Nutrisi Buatan',
+    dialysisPref: 'Dialisis',
+    organDonation: 'Donasi Organ',
+    decisionMakerName: 'Pengambil Keputusan',
+    decisionMakerRelation: 'Hubungan',
+    patientHopes: 'Harapan Pasien',
+    patientWorries: 'Kekhawatiran Pasien',
+    lifeValues: 'Nilai Hidup Penting',
+    endOfLifePrefs: 'Preferensi Akhir Hayat',
+    status: 'Status',
+    signedAt: 'Tanggal Tanda Tangan',
+    createdAt: 'Tanggal Dibuat',
+    documentType: 'Jenis Dokumen',
+    notes: 'Catatan',
+  };
+
+  const entries = Object.entries(doc)
+    .filter(([k, v]) => v != null && v !== '' && !['id', 'patientId', 'updatedAt'].includes(k));
+
+  if (entries.length === 0) return null;
+
+  return (
+    <div key={idx} className="rounded-lg border p-3 bg-muted/10 text-sm">
+      {entries.map(([key, val]) => {
+        const label = prefLabels[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+        const displayVal = key === 'signedAt' || key === 'createdAt'
+          ? formatDate(String(val))
+          : String(val);
+        return (
+          <div key={key} className="flex items-start gap-2 py-1 border-b border-muted/50 last:border-b-0">
+            <span className="text-xs text-muted-foreground w-40 shrink-0 font-medium">{label}</span>
+            <span className="text-xs flex-1 whitespace-pre-wrap">{displayVal}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Print HTML builder for structured resume ──
+function buildResumePrintHtml(doc: PalliativeResumeMedis): string {
+  const dp = doc.dataPasien as PalliativeResumeDataPasien | undefined;
+  const ttv = doc.ttvSerial as { ttvAwal: PalliativeResumeTTVRecord | null; ttvKritis: PalliativeResumeTTVRecord | null; ttvTerakhir: PalliativeResumeTTVRecord | null } | undefined;
+  const keluhan = doc.keluhanHarian as PalliativeResumeKeluhan | undefined;
+  const esas = doc.esasScores as { skorAwal: Record<string, unknown> | null; skorTertinggi: Record<string, unknown> | null; skorTerakhir: Record<string, unknown> | null } | undefined;
+  const obat = doc.obat as Record<string, unknown> | undefined;
+  const nutrisi = doc.nutrisi as { catatan?: unknown[]; ringkasan?: string } | undefined;
+  const sosial = doc.sosial as { penilaianSosial?: unknown[]; caregiver?: unknown[]; pertemuanKeluarga?: unknown[]; dukunganKeuangan?: unknown[]; ringkasan?: string } | undefined;
+  const acp = doc.acp as { dokumen?: unknown[]; ringkasan?: string } | undefined;
+  const ai = doc.aiAnalysis as PalliativeResumeAIAnalysis | undefined;
+
+  const escHtml = (s: string | null | undefined) => (s ?? '-').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const sectionHeader = (title: string) => `<h2 style="background:#f0fdf8;color:#1a5c4a;padding:6px 10px;margin:18px 0 8px;font-size:12pt;border-left:4px solid #2D8C7A;">${title}</h2>`;
+  const kvRow = (label: string, value: string | null | undefined) => `<tr><td style="padding:3px 8px;font-size:9pt;color:#666;width:180px;vertical-align:top;">${escHtml(label)}</td><td style="padding:3px 8px;font-size:9pt;">${escHtml(value)}</td></tr>`;
+  const kvTable = (rows: string[]) => `<table style="width:100%;border-collapse:collapse;">${rows.join('')}</table>`;
+
+  let html = '';
+
+  // DATA PASIEN
+  html += sectionHeader('DATA PASIEN');
+  html += kvTable([
+    kvRow('Nama', dp?.nama || doc.patientName),
+    kvRow('No. RM', dp?.noRM || doc.rmNumber),
+    kvRow('NIK', dp?.nik),
+    kvRow('Tanggal Lahir', dp?.tanggalLahir),
+    kvRow('Jenis Kelamin', dp?.jenisKelamin),
+    kvRow('Alamat', dp?.alamat),
+    kvRow('Diagnosa Utama', dp?.diagnosaUtama),
+    kvRow('Diagnosa Penyerta', dp?.diagnosaPenyerta),
+    kvRow('Stadium', dp?.stadiumPenyakit),
+    kvRow('Status Perawatan', dp?.statusPerawatan),
+    kvRow('Tingkat Risiko', dp?.tingkatRisiko),
+    kvRow('Kontak Keluarga', `${dp?.kontakKeluarga?.nama || '-'} (${dp?.kontakKeluarga?.hubungan || '-'}) - ${dp?.kontakKeluarga?.telepon || '-'}`),
+  ]);
+
+  // TTV SERIAL
+  if (ttv?.ttvAwal || ttv?.ttvKritis || ttv?.ttvTerakhir) {
+    html += sectionHeader('TTV SERIAL');
+    const renderTtvBlock = (title: string, d: PalliativeResumeTTVRecord | null | undefined) => {
+      if (!d) return '';
+      return `<h3 style="font-size:10pt;margin:8px 0 4px;color:#2D8C7A;">${title} (${formatDate(d.tanggal)})</h3>` +
+        kvTable([
+          kvRow('Tekanan Darah', d.sistolik != null && d.diastolik != null ? `${d.sistolik}/${d.diastolik} mmHg` : '-'),
+          kvRow('Nadi', d.nadi != null ? `${d.nadi} x/mnt` : '-'),
+          kvRow('RR', d.rr != null ? `${d.rr} x/mnt` : '-'),
+          kvRow('Suhu', d.suhu != null ? `${d.suhu}°C` : '-'),
+          kvRow('SpO2', d.spo2 != null ? `${d.spo2}%` : '-'),
+          kvRow('Berat Badan', d.berat != null ? `${d.berat} kg` : '-'),
+          kvRow('BMI', d.bmi != null ? String(d.bmi) : '-'),
+        ]);
+    };
+    html += renderTtvBlock('TTV Awal', ttv.ttvAwal);
+    html += renderTtvBlock('TTV Kritis', ttv.ttvKritis);
+    html += renderTtvBlock('TTV Terakhir', ttv.ttvTerakhir);
+  }
+
+  // KELUHAN HARIAN
+  if (keluhan?.keluhanAwal || keluhan?.keluhanTerberat || keluhan?.keluhanTerakhir) {
+    html += sectionHeader('KELUHAN HARIAN');
+    const renderKeluhanBlock = (title: string, k: Record<string, unknown> | null | undefined) => {
+      if (!k) return '';
+      return `<h3 style="font-size:10pt;margin:8px 0 4px;color:#D9B26F;">${title}</h3>` +
+        kvTable([
+          kvRow('Kondisi', String(k.kondisiHariIni ?? '-')),
+          kvRow('Nyeri', String(k.kondisiNyeri ?? '-')),
+          kvRow('Sesak', String(k.kondisiSesak ?? '-')),
+          kvRow('Makan/Minum', String(k.makanMinum ?? '-')),
+          kvRow('Tidur', String(k.tidur ?? '-')),
+          kvRow('Masalah Obat', String(k.masalahObat ?? '-')),
+          kvRow('Severity', String(k.severityLevel ?? '-')),
+        ]);
+    };
+    html += renderKeluhanBlock('Keluhan Awal', keluhan.keluhanAwal as Record<string, unknown> | null);
+    html += renderKeluhanBlock('Keluhan Terberat', keluhan.keluhanTerberat as Record<string, unknown> | null);
+    html += renderKeluhanBlock('Keluhan Terakhir', keluhan.keluhanTerakhir as Record<string, unknown> | null);
+    if (keluhan.analisis) {
+      html += `<p style="font-size:9pt;color:#666;margin:4px 0;"><i>Analisis: ${escHtml(keluhan.analisis)}</i></p>`;
+    }
+  }
+
+  // ESAS
+  if (esas?.skorAwal || esas?.skorTertinggi || esas?.skorTerakhir) {
+    html += sectionHeader('ESAS (Edmonton Symptom Assessment System)');
+    const symptoms = ['nyeri', 'kelelahan', 'mengantuk', 'mual', 'nafsuMakan', 'sesak', 'kecemasan', 'depresi', 'kesejahteraan'];
+    const symptomLabels: Record<string, string> = { nyeri: 'Nyeri', kelelahan: 'Kelelahan', mengantuk: 'Mengantuk', mual: 'Mual', nafsuMakan: 'Nafsu Makan', sesak: 'Sesak', kecemasan: 'Kecemasan', depresi: 'Depresi', kesejahteraan: 'Kesejahteraan' };
+    html += '<table style="width:100%;border-collapse:collapse;font-size:9pt;"><tr style="background:#f5f5f5;"><th style="padding:4px;border:1px solid #ddd;">Parameter</th><th style="padding:4px;border:1px solid #ddd;">Awal</th><th style="padding:4px;border:1px solid #ddd;">Tertinggi</th><th style="padding:4px;border:1px solid #ddd;">Terakhir</th></tr>';
+    for (const s of symptoms) {
+      const awal = (esas.skorAwal as Record<string, unknown>)?.[s];
+      const tinggi = (esas.skorTertinggi as Record<string, unknown>)?.[s];
+      const akhir = (esas.skorTerakhir as Record<string, unknown>)?.[s];
+      html += `<tr><td style="padding:3px 6px;border:1px solid #ddd;">${symptomLabels[s] || s}</td><td style="padding:3px 6px;border:1px solid #ddd;text-align:center;">${awal != null ? String(awal) : '-'}</td><td style="padding:3px 6px;border:1px solid #ddd;text-align:center;">${tinggi != null ? String(tinggi) : '-'}</td><td style="padding:3px 6px;border:1px solid #ddd;text-align:center;">${akhir != null ? String(akhir) : '-'}</td></tr>`;
+    }
+    html += '</table>';
+  }
+
+  // TERAPI OBAT
+  if (obat) {
+    html += sectionHeader('TERAPI OBAT');
+    const renderMedBlock = (title: string, meds: unknown[]) => {
+      if (!Array.isArray(meds) || meds.length === 0) return '';
+      let t = `<h3 style="font-size:10pt;margin:6px 0 4px;">${escHtml(title)}</h3>`;
+      t += '<table style="width:100%;border-collapse:collapse;font-size:9pt;"><tr style="background:#f5f5f5;"><th style="padding:3px 6px;border:1px solid #ddd;">Obat</th><th style="padding:3px 6px;border:1px solid #ddd;">Dosis</th><th style="padding:3px 6px;border:1px solid #ddd;">Frekuensi</th><th style="padding:3px 6px;border:1px solid #ddd;">Indikasi</th></tr>';
+      for (const m of meds) {
+        const r = m as Record<string, unknown>;
+        t += `<tr><td style="padding:2px 6px;border:1px solid #ddd;">${escHtml(String(r.medicineName ?? '-'))}</td><td style="padding:2px 6px;border:1px solid #ddd;">${escHtml(String(r.dosage ?? '-'))}</td><td style="padding:2px 6px;border:1px solid #ddd;">${escHtml(String(r.frequency ?? '-'))}</td><td style="padding:2px 6px;border:1px solid #ddd;">${escHtml(String(r.indication ?? '-'))}</td></tr>`;
+      }
+      t += '</table>';
+      return t;
+    };
+    html += renderMedBlock('Analgesik', obat.analgesik as unknown[] ?? []);
+    const simtomatik = obat.simtomatik as Record<string, unknown[]> | undefined;
+    if (simtomatik) {
+      for (const [cat, meds] of Object.entries(simtomatik)) {
+        html += renderMedBlock(cat.charAt(0).toUpperCase() + cat.slice(1), meds);
+      }
+    }
+    html += renderMedBlock('Obat Lainnya', obat.obatLainnya as unknown[] ?? []);
+  }
+
+  // NUTRISI
+  if (nutrisi?.catatan || nutrisi?.ringkasan) {
+    html += sectionHeader('NUTRISI');
+    if (nutrisi.catatan && Array.isArray(nutrisi.catatan)) {
+      for (const rec of nutrisi.catatan) {
+        if (typeof rec !== 'object' || rec === null) continue;
+        const entries = Object.entries(rec as Record<string, unknown>).filter(([k, v]) => v != null && v !== '' && !['id', 'patientId', 'updatedAt'].includes(k));
+        if (entries.length > 0) {
+          html += kvTable(entries.map(([k, v]) => kvRow(k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()), String(v))));
+        }
+      }
+    }
+    if (nutrisi.ringkasan) {
+      html += `<p style="font-size:9pt;color:#22c55e;margin:6px 0;padding:6px;background:#f0fdf4;border:1px solid #dcfce7;"><b>Ringkasan AI:</b> ${escHtml(nutrisi.ringkasan)}</p>`;
+    }
+  }
+
+  // SOSIAL
+  if (sosial?.penilaianSosial || sosial?.caregiver || sosial?.pertemuanKeluarga || sosial?.dukunganKeuangan || sosial?.ringkasan) {
+    html += sectionHeader('SOSIAL');
+    const renderRecords = (title: string, recs: unknown[]) => {
+      if (!Array.isArray(recs) || recs.length === 0) return '';
+      let r = `<h3 style="font-size:10pt;margin:6px 0 4px;color:#3b82f6;">${escHtml(title)} (${recs.length})</h3>`;
+      for (const rec of recs) {
+        if (typeof rec !== 'object' || rec === null) continue;
+        const entries = Object.entries(rec as Record<string, unknown>).filter(([k, v]) => v != null && v !== '' && !['id', 'patientId', 'updatedAt'].includes(k));
+        if (entries.length > 0) {
+          r += kvTable(entries.map(([k, v]) => kvRow(k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()), String(v))));
+          r += '<hr style="border:none;border-top:1px solid #eee;margin:4px 0;"/>';
+        }
+      }
+      return r;
+    };
+    html += renderRecords('Penilaian Sosial', sosial.penilaianSosial ?? []);
+    html += renderRecords('Caregiver', sosial.caregiver ?? []);
+    html += renderRecords('Pertemuan Keluarga', sosial.pertemuanKeluarga ?? []);
+    html += renderRecords('Dukungan Keuangan', sosial.dukunganKeuangan ?? []);
+    if (sosial.ringkasan) {
+      html += `<p style="font-size:9pt;color:#3b82f6;margin:6px 0;padding:6px;background:#eff6ff;border:1px solid #dbeafe;"><b>Ringkasan AI:</b> ${escHtml(sosial.ringkasan)}</p>`;
+    }
+  }
+
+  // ACP
+  if (acp?.dokumen || acp?.ringkasan) {
+    html += sectionHeader('ADVANCE CARE PLANNING (ACP)');
+    const prefLabels: Record<string, string> = {
+      careGoal: 'Tujuan Perawatan', preferredCareLocation: 'Preferensi Tempat Perawatan',
+      resuscitationPref: 'Resusitasi', ventilatorPref: 'Ventilator', icuPref: 'ICU',
+      artificialNutrition: 'Nutrisi Buatan', dialysisPref: 'Dialisis', organDonation: 'Donasi Organ',
+      decisionMakerName: 'Pengambil Keputusan', decisionMakerRelation: 'Hubungan',
+      patientHopes: 'Harapan Pasien', patientWorries: 'Kekhawatiran Pasien',
+      lifeValues: 'Nilai Hidup Penting', endOfLifePrefs: 'Preferensi Akhir Hayat',
+      status: 'Status', signedAt: 'Tanggal Tanda Tangan', createdAt: 'Tanggal Dibuat',
+      documentType: 'Jenis Dokumen', notes: 'Catatan',
+    };
+    if (acp.dokumen && Array.isArray(acp.dokumen)) {
+      for (let i = 0; i < acp.dokumen.length; i++) {
+        const d = acp.dokumen[i] as Record<string, unknown>;
+        if (typeof d !== 'object' || d === null) continue;
+        html += `<h3 style="font-size:10pt;margin:6px 0 4px;color:#D9B26F;">Dokumen ACP #${i + 1}</h3>`;
+        const entries = Object.entries(d).filter(([k, v]) => v != null && v !== '' && !['id', 'patientId', 'updatedAt'].includes(k));
+        html += kvTable(entries.map(([k, v]) => kvRow(prefLabels[k] || k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()), String(v))));
+      }
+    }
+    if (acp.ringkasan) {
+      html += `<p style="font-size:9pt;color:#D9B26F;margin:6px 0;padding:6px;background:#fefce8;border:1px solid #fef08a;"><b>Ringkasan AI:</b> ${escHtml(acp.ringkasan)}</p>`;
+    }
+  }
+
+  // AI ANALISIS
+  if (ai) {
+    html += sectionHeader('AI ANALISIS');
+    if (ai.ringkasanPerjalananKlinis) html += `<p style="font-size:9pt;margin:4px 0;"><b>Ringkasan Perjalanan Klinis:</b> ${escHtml(ai.ringkasanPerjalananKlinis)}</p>`;
+    if (ai.identifikasiKondisiKritis) html += `<p style="font-size:9pt;margin:4px 0;"><b>Identifikasi Kondisi Kritis:</b> ${escHtml(ai.identifikasiKondisiKritis)}</p>`;
+    if (ai.analisisTrenPasien) html += `<p style="font-size:9pt;margin:4px 0;"><b>Analisis Tren Pasien:</b> ${escHtml(ai.analisisTrenPasien)}</p>`;
+    if (ai.rekomendasi && ai.rekomendasi.length > 0) {
+      html += '<h3 style="font-size:10pt;margin:8px 0 4px;">Rekomendasi</h3><ol style="font-size:9pt;margin:2px 0 2px 18px;">';
+      for (const r of ai.rekomendasi) { html += `<li>${escHtml(r)}</li>`; }
+      html += '</ol>';
+    }
+  }
+
+  return html;
+}
+
+// ── Section Wrapper ──────────────────────────────────────────────────────
+
+function SectionCard({
+  title,
+  icon,
+  accentColor = '#2D8C7A',
+  children,
+  className,
+}: {
+  title: string;
+  icon?: React.ReactNode;
+  accentColor?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'rounded-lg border bg-white overflow-hidden',
+        className
+      )}
+      style={{ borderLeftWidth: '4px', borderLeftColor: accentColor }}
+    >
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50/80 border-b">
+        {icon}
+        <h3 className="font-semibold text-sm">{title}</h3>
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  );
+}
+
 // ── Main Component ───────────────────────────────────────────────────────
 
 interface Props {
@@ -172,6 +574,13 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
   const [resumeQrDataUrl, setResumeQrDataUrl] = useState<string | null>(null);
   const [referralQrDataUrl, setReferralQrDataUrl] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [savingFinal, setSavingFinal] = useState(false);
+
+  // Editable AI narrative fields
+  const [editRingkasanPerjalananKlinis, setEditRingkasanPerjalananKlinis] = useState('');
+  const [editIdentifikasiKondisiKritis, setEditIdentifikasiKondisiKritis] = useState('');
+  const [editAnalisisTrenPasien, setEditAnalisisTrenPasien] = useState('');
+
   const resumeContentRef = useRef<HTMLDivElement>(null);
   const referralContentRef = useRef<HTMLDivElement>(null);
 
@@ -186,6 +595,11 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
     addPalliativeAuditEntry,
     addPalliativeChatMessage,
     currentUser,
+    nutritionRecords,
+    socialAssessments,
+    caregivers,
+    familyMeetings,
+    financialSupportRecords,
   } = useStore();
 
   const { toast } = useToast();
@@ -209,6 +623,15 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
 
   const latestResume = patientResumes[0] || null;
   const latestReferral = patientReferrals[0] || null;
+
+  // Sync editable fields when selected resume changes
+  useEffect(() => {
+    if (selectedResume?.aiAnalysis) {
+      setEditRingkasanPerjalananKlinis(selectedResume.aiAnalysis.ringkasanPerjalananKlinis || '');
+      setEditIdentifikasiKondisiKritis(selectedResume.aiAnalysis.identifikasiKondisiKritis || '');
+      setEditAnalisisTrenPasien(selectedResume.aiAnalysis.analisisTrenPasien || '');
+    }
+  }, [selectedResume?.id, selectedResume?.aiAnalysis]);
 
   // ── QR Code Generation ──
   useEffect(() => {
@@ -257,7 +680,16 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
       const response = await fetch('/api/palliative-resume', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ palliativePatientId: patient.id }),
+        body: JSON.stringify({
+          palliativePatientId: patient.id,
+          additionalData: {
+            nutritionRecords: nutritionRecords.filter(r => r.patientId === patient.id),
+            socialAssessmentRecords: socialAssessments.filter(r => r.patientId === patient.id),
+            caregivers: caregivers.filter(c => c.patientId === patient.id),
+            familyMeetings: familyMeetings.filter(m => m.patientId === patient.id),
+            financialSupportRecords: financialSupportRecords.filter(r => r.patientId === patient.id),
+          },
+        }),
       });
 
       let resumeData;
@@ -265,7 +697,6 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
         const data = await response.json();
         resumeData = data.resume;
       } else {
-        // Fallback: generate locally
         resumeData = generateLocalResumeData(patient);
       }
 
@@ -274,20 +705,30 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
         palliativePatientId: patient.id,
         patientName: patient.patientName,
         rmNumber: patient.rmNumber,
-        documentNumber: genDocNumber('RM-PAL'),
+        documentNumber: resumeData?.documentNumber || genDocNumber('RM-PAL'),
         generatedAt: new Date().toISOString(),
         generatedBy: currentUser?.name || 'Dokter',
         generatedByRole: 'doctor',
         doctorSip: doctorSip || undefined,
         doctorName: currentUser?.name || 'Dokter',
-        ringkasanKondisi: resumeData.ringkasanKondisi,
-        ringkasanPemeriksaan: resumeData.ringkasanPemeriksaan,
-        ringkasanTerapi: resumeData.ringkasanTerapi,
-        ringkasanACP: resumeData.ringkasanACP,
-        kesimpulanKlinis: resumeData.kesimpulanKlinis,
-        rekomendasiAI: resumeData.rekomendasiAI || [],
-        fullContent: resumeData.fullContent,
-        version: latestResume ? latestResume.version + 1 : 1,
+        dataPasien: resumeData?.dataPasien,
+        ttvSerial: resumeData?.ttvSerial,
+        keluhanHarian: resumeData?.keluhanHarian,
+        skriningPaliatif: resumeData?.skriningPaliatif,
+        esasScores: resumeData?.esasScores,
+        obat: resumeData?.obat,
+        nutrisi: resumeData?.nutrisi,
+        sosial: resumeData?.sosial,
+        acp: resumeData?.acp,
+        aiAnalysis: resumeData?.aiAnalysis,
+        ringkasanKondisi: resumeData?.ringkasanKondisi || resumeData?.aiAnalysis?.ringkasanPerjalananKlinis,
+        ringkasanPemeriksaan: resumeData?.ringkasanPemeriksaan,
+        ringkasanTerapi: resumeData?.ringkasanTerapi,
+        ringkasanACP: resumeData?.ringkasanACP || resumeData?.aiAnalysis?.ringkasanACP,
+        kesimpulanKlinis: resumeData?.kesimpulanKlinis,
+        rekomendasiAI: resumeData?.rekomendasiAI || resumeData?.aiAnalysis?.rekomendasi || [],
+        fullContent: resumeData?.fullContent || '',
+        version: latestResume ? latestResume.version + 1 : (resumeData?.version || 1),
         previousVersionId: latestResume?.id,
         isSigned: false,
         downloadCount: 0,
@@ -298,7 +739,6 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
 
       addPalliativeResume(resume);
 
-      // Audit entry
       const auditEntry: PalliativeDocumentAuditEntry = {
         id: genId('docaudit'),
         documentType: 'resume_medis',
@@ -331,7 +771,6 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
         description: `Resume Medis AI untuk ${patient.patientName || 'Pasien'} telah dihasilkan (v${resume.version}).`,
       });
     } catch {
-      // Fallback
       const resumeData = generateLocalResumeData(patient);
       const resume: PalliativeResumeMedis = {
         id: genId('resume'),
@@ -363,7 +802,7 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
       toast({ title: 'Resume Medis Dibuat (Offline)', description: 'Resume dibuat menggunakan data lokal.' });
     }
     setResumeLoading(false);
-  }, [patient, currentUser, doctorSip, latestResume, addPalliativeResume, addPalliativeDocumentAuditEntry, addPalliativeAuditEntry, toast]);
+  }, [patient, currentUser, doctorSip, latestResume, addPalliativeResume, addPalliativeDocumentAuditEntry, addPalliativeAuditEntry, toast, nutritionRecords, socialAssessments, caregivers, familyMeetings, financialSupportRecords]);
 
   const handleGenerateReferral = useCallback(async () => {
     if (!patient) return;
@@ -617,10 +1056,8 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
 
     setDownloading(true);
     const docLabel = docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan';
-    const fileName = `${docType === 'resume' ? 'Resume_Medis' : 'Surat_Rujukan'}_${doc.patientName || 'Pasien'}_${new Date().toISOString().split('T')[0]}.pdf`;
 
     try {
-      // Try PDF API first
       const referralDoc = docType === 'referral' ? doc as PalliativeReferralLetter : undefined;
       const response = await fetch('/api/palliative-pdf', {
         method: 'POST',
@@ -651,6 +1088,20 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
             referralStatus: referralDoc?.referralStatus,
             version: doc.version,
           },
+          ...(docType === 'resume' && (doc as PalliativeResumeMedis).dataPasien ? {
+            resumeData: {
+              dataPasien: (doc as PalliativeResumeMedis).dataPasien,
+              ttvSerial: (doc as PalliativeResumeMedis).ttvSerial || { ttvAwal: null, ttvKritis: null, ttvTerakhir: null },
+              keluhanHarian: (doc as PalliativeResumeMedis).keluhanHarian || { keluhanAwal: null, keluhanTerberat: null, keluhanTerakhir: null, analisis: '' },
+              skriningPaliatif: (doc as PalliativeResumeMedis).skriningPaliatif || {},
+              esasScores: (doc as PalliativeResumeMedis).esasScores || { skorAwal: null, skorTertinggi: null, skorTerakhir: null },
+              obat: (doc as PalliativeResumeMedis).obat || {},
+              nutrisi: (doc as PalliativeResumeMedis).nutrisi || {},
+              sosial: (doc as PalliativeResumeMedis).sosial || {},
+              acp: (doc as PalliativeResumeMedis).acp || {},
+              aiAnalysis: (doc as PalliativeResumeMedis).aiAnalysis,
+            },
+          } : {}),
         }),
       });
 
@@ -659,22 +1110,16 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = fileName;
+        a.download = `${docType === 'resume' ? 'Resume_Medis' : 'Surat_Rujukan'}_${doc.patientName || 'Pasien'}_${new Date().toISOString().split('T')[0]}.pdf`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
         if (docType === 'resume') {
-          updatePalliativeResume(docId, {
-            downloadCount: (doc.downloadCount || 0) + 1,
-            lastDownloadAt: new Date().toISOString(),
-          });
+          updatePalliativeResume(docId, { downloadCount: (doc.downloadCount || 0) + 1, lastDownloadAt: new Date().toISOString() });
         } else {
-          updatePalliativeReferralLetter(docId, {
-            downloadCount: (doc.downloadCount || 0) + 1,
-            lastDownloadAt: new Date().toISOString(),
-          });
+          updatePalliativeReferralLetter(docId, { downloadCount: (doc.downloadCount || 0) + 1, lastDownloadAt: new Date().toISOString() });
         }
 
         addPalliativeDocumentAuditEntry({
@@ -689,7 +1134,6 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
         throw new Error('PDF API failed');
       }
     } catch {
-      // Fallback to text file download
       const content = doc.fullContent;
       const header = docType === 'resume'
         ? `RESUME MEDIS PALIATIF\nNo. Dokumen: ${doc.documentNumber}\nPasien: ${doc.patientName || '-'}\nRM: ${doc.rmNumber || '-'}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}${doc.isSigned ? `\nSIP: ${doc.doctorSip || '-'}` : ''}\n${'='.repeat(60)}\n\n`
@@ -707,15 +1151,9 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
       URL.revokeObjectURL(url);
 
       if (docType === 'resume') {
-        updatePalliativeResume(docId, {
-          downloadCount: (doc.downloadCount || 0) + 1,
-          lastDownloadAt: new Date().toISOString(),
-        });
+        updatePalliativeResume(docId, { downloadCount: (doc.downloadCount || 0) + 1, lastDownloadAt: new Date().toISOString() });
       } else {
-        updatePalliativeReferralLetter(docId, {
-          downloadCount: (doc.downloadCount || 0) + 1,
-          lastDownloadAt: new Date().toISOString(),
-        });
+        updatePalliativeReferralLetter(docId, { downloadCount: (doc.downloadCount || 0) + 1, lastDownloadAt: new Date().toISOString() });
       }
 
       addPalliativeDocumentAuditEntry({
@@ -739,6 +1177,11 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
+    // Build structured content for resume, raw fullContent for referral
+    const resumeContent = docType === 'resume' && (doc as PalliativeResumeMedis).dataPasien
+      ? buildResumePrintHtml(doc as PalliativeResumeMedis)
+      : `<div class="content">${doc.fullContent}</div>`;
+
     const html = `
       <!DOCTYPE html>
       <html>
@@ -756,6 +1199,7 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
           .footer { margin-top: 40px; border-top: 1px solid #333; padding-top: 15px; }
           .signature { margin-top: 30px; text-align: right; }
           .signature-line { display: inline-block; width: 200px; text-align: center; }
+          @media print { body { margin: 20px; } }
         </style>
       </head>
       <body>
@@ -767,9 +1211,10 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
         <div class="doc-info">
           <span>No. Dokumen: ${doc.documentNumber}</span>
           <span>Tanggal: ${formatDate(doc.generatedAt)}</span>
+          ${docType === 'resume' ? '<span>Versi: ' + (doc as PalliativeResumeMedis).version + '</span>' : ''}
         </div>
-        <h1>${docType === 'resume' ? 'RESUME MEDIS PALIATIF' : 'SURAT RUJUKAN'}</h1>
-        <div class="content">${doc.fullContent}</div>
+        <h1>${docType === 'resume' ? 'RESUME MEDIS TELEPALIATIF' : 'SURAT RUJUKAN'}</h1>
+        ${resumeContent}
         <div class="footer">
           <div class="signature">
             <p>Dokter Penanggung Jawab,</p>
@@ -789,15 +1234,9 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
     printWindow.print();
 
     if (docType === 'resume') {
-      updatePalliativeResume(docId, {
-        printCount: (doc.printCount || 0) + 1,
-        lastPrintAt: new Date().toISOString(),
-      });
+      updatePalliativeResume(docId, { printCount: (doc.printCount || 0) + 1, lastPrintAt: new Date().toISOString() });
     } else {
-      updatePalliativeReferralLetter(docId, {
-        printCount: (doc.printCount || 0) + 1,
-        lastPrintAt: new Date().toISOString(),
-      });
+      updatePalliativeReferralLetter(docId, { printCount: (doc.printCount || 0) + 1, lastPrintAt: new Date().toISOString() });
     }
 
     addPalliativeDocumentAuditEntry({
@@ -807,6 +1246,49 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
       details: `${docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'} dicetak`, createdAt: new Date().toISOString(),
     });
   }, [palliativeResumes, palliativeReferralLetters, patient, currentUser, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry]);
+
+  // Save as Final handler
+  const handleSaveAsFinal = useCallback(() => {
+    if (!selectedResume) return;
+    setSavingFinal(true);
+
+    const updatedAiAnalysis: PalliativeResumeAIAnalysis = {
+      ...(selectedResume.aiAnalysis || {
+        ringkasanPerjalananKlinis: '',
+        identifikasiKondisiKritis: '',
+        analisisTrenPasien: '',
+        ringkasanSkrining: { domainFisik: '', domainPsikologis: '', domainSosial: '', domainSpiritual: '', kebutuhanEdukasi: '', bebanCaregiver: '' },
+        ringkasanNutrisi: '',
+        ringkasanSosial: '',
+        ringkasanACP: '',
+        kesimpulanTelepaliatif: { diagnosisUtama: '', statusFungsionalAwal: '', statusFungsionalTerakhir: '', masalahPaliatifUtama: '', keluhanDominan: '', kondisiPalingKritis: '', responsTerhadapIntervensi: '', kondisiKlinisSaatIni: '', tujuanPerawatanSaatIni: '', rencanaTindakLanjut: '', lokasiPerawatanSaatIni: '', jadwalMonitoringBerikutnya: '' },
+        rekomendasi: [],
+      }),
+      ringkasanPerjalananKlinis: editRingkasanPerjalananKlinis,
+      identifikasiKondisiKritis: editIdentifikasiKondisiKritis,
+      analisisTrenPasien: editAnalisisTrenPasien,
+    };
+
+    updatePalliativeResume(selectedResume.id, {
+      aiAnalysis: updatedAiAnalysis,
+      updatedAt: new Date().toISOString(),
+    });
+
+    addPalliativeDocumentAuditEntry({
+      id: genId('docaudit'),
+      documentType: 'resume_medis',
+      documentId: selectedResume.id,
+      patientId: patient?.id || '',
+      action: 'generated',
+      performedBy: currentUser?.name || 'Dokter',
+      performedByRole: 'doctor',
+      details: `Resume Medis disimpan sebagai final (v${selectedResume.version})`,
+      createdAt: new Date().toISOString(),
+    });
+
+    setSavingFinal(false);
+    toast({ title: 'Resume Disimpan', description: 'Resume Medis telah disimpan sebagai final di Riwayat Resume.' });
+  }, [selectedResume, editRingkasanPerjalananKlinis, editIdentifikasiKondisiKritis, editAnalisisTrenPasien, updatePalliativeResume, addPalliativeDocumentAuditEntry, patient, currentUser, toast]);
 
   // ── Local fallback generators ──
   function generateLocalResumeData(p: PalliativePatientInfo) {
@@ -875,6 +1357,18 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
     };
   }
 
+  // ── Data extraction helpers ──
+  const resumeDataPasien = selectedResume?.dataPasien as PalliativeResumeDataPasien | undefined;
+  const resumeTtv = selectedResume?.ttvSerial;
+  const resumeKeluhan = selectedResume?.keluhanHarian as PalliativeResumeKeluhan | undefined;
+  const resumeSkrining = selectedResume?.skriningPaliatif as Record<string, unknown[]> | undefined;
+  const resumeEsas = selectedResume?.esasScores as { skorAwal: EsasScoreEntry | null; skorTertinggi: EsasScoreEntry | null; skorTerakhir: EsasScoreEntry | null } | undefined;
+  const resumeObat = selectedResume?.obat as Record<string, unknown> | undefined;
+  const resumeNutrisi = selectedResume?.nutrisi as { catatan?: unknown[]; ringkasan?: string } | undefined;
+  const resumeSosial = selectedResume?.sosial as { penilaianSosial?: unknown[]; caregiver?: unknown[]; pertemuanKeluarga?: unknown[]; dukunganKeuangan?: unknown[]; ringkasan?: string } | undefined;
+  const resumeAcp = selectedResume?.acp as { dokumen?: unknown[]; ringkasan?: string } | undefined;
+  const resumeAiAnalysis = selectedResume?.aiAnalysis as PalliativeResumeAIAnalysis | undefined;
+
   // ── Render ──
   if (!patient) {
     return (
@@ -886,13 +1380,816 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
     );
   }
 
+  // ── Resume Tab Content ──
+  const renderResumeContent = () => {
+    if (!selectedResume) {
+      if (patientResumes.length > 0) {
+        return (
+          <Card className="p-6 text-center text-muted-foreground">
+            <FileText className="w-10 h-10 mx-auto mb-3 opacity-50" />
+            <p>Klik pada resume di riwayat untuk melihat detail.</p>
+          </Card>
+        );
+      }
+      return (
+        <Card className="p-8 text-center text-muted-foreground">
+          <Sparkles className="w-12 h-12 mx-auto mb-3 opacity-50" />
+          <p className="font-medium mb-2">Belum Ada Resume Medis</p>
+          <p className="text-sm mb-4">
+            Klik &quot;Generate Resume AI&quot; untuk membuat resume medis otomatis dari seluruh data pasien.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left max-w-md mx-auto text-sm">
+            <div className="flex items-center gap-2"><FileText className="w-4 h-4 text-primary" />Data Pasien</div>
+            <div className="flex items-center gap-2"><Activity className="w-4 h-4 text-primary" />TTV Serial</div>
+            <div className="flex items-center gap-2"><Heart className="w-4 h-4 text-primary" />Keluhan Harian</div>
+            <div className="flex items-center gap-2"><Brain className="w-4 h-4 text-primary" />Skrining Paliatif</div>
+            <div className="flex items-center gap-2"><Gauge className="w-4 h-4 text-primary" />ESAS Score</div>
+            <div className="flex items-center gap-2"><Pill className="w-4 h-4 text-primary" />Terapi Obat</div>
+            <div className="flex items-center gap-2"><Apple className="w-4 h-4 text-primary" />Nutrisi</div>
+            <div className="flex items-center gap-2"><Users className="w-4 h-4 text-primary" />Sosial</div>
+            <div className="flex items-center gap-2"><ScrollText className="w-4 h-4 text-primary" />ACP</div>
+            <div className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" />AI Analisis</div>
+          </div>
+        </Card>
+      );
+    }
+
+    return (
+      <div className="space-y-4" ref={resumeContentRef}>
+        {/* Sticky Action Bar */}
+        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b pb-3 -mx-1 px-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleDownloadPdf('resume', selectedResume.id)}
+              disabled={downloading}
+              className="gap-1.5"
+            >
+              {downloading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+              PDF
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePrint('resume', selectedResume.id)}
+              className="gap-1.5"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              Cetak
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setSendDocType('resume'); setSendDocId(selectedResume.id); setShowSendDialog(true); }}
+              className="gap-1.5"
+            >
+              <Send className="w-3.5 h-3.5" />
+              Kirim
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSaveAsFinal}
+              disabled={savingFinal}
+              className="gap-1.5 bg-[#2D8C7A] hover:bg-[#247A6A]"
+            >
+              {savingFinal ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              Save as Final
+            </Button>
+            {!selectedResume.isSigned && (
+              <Button
+                size="sm"
+                onClick={() => { setSignDocType('resume'); setSignDocId(selectedResume.id); setShowSignDialog(true); }}
+                className="gap-1.5"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Tanda Tangan
+              </Button>
+            )}
+            {selectedResume.isSigned && (
+              <Badge className="bg-green-100 text-green-800 border border-green-300">
+                <CheckCircle2 className="w-3 h-3 mr-1" />
+                Ditandatangani
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* Resume Document */}
+        <Card className="overflow-hidden">
+          {/* ── Header ── */}
+          <div className="bg-gradient-to-r from-[#2D8C7A] to-[#6DB8A8] text-white p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-8 h-8 rounded-md bg-white/20 flex items-center justify-center text-sm font-bold">C</div>
+                  <span className="text-sm font-medium opacity-80">CareLivia</span>
+                </div>
+                <h2 className="text-xl font-bold tracking-wide">RESUME MEDIS TELEPALIATIF</h2>
+                <div className="flex items-center gap-3 mt-1 text-sm opacity-90">
+                  <span>No. {selectedResume.documentNumber}</span>
+                  <span>|</span>
+                  <span>v{selectedResume.version}</span>
+                  <span>|</span>
+                  <span>{formatDate(selectedResume.generatedAt)}</span>
+                </div>
+              </div>
+              <div className="text-right text-sm opacity-90">
+                <p className="font-medium">{selectedResume.doctorName || '-'}</p>
+                <p>DPJP{selectedResume.doctorSip ? ` • SIP: ${selectedResume.doctorSip}` : ''}</p>
+                <div className="flex items-center justify-end gap-1.5 mt-1">
+                  {resumeDataPasien?.tingkatRisiko && (
+                    <Badge className={cn(
+                      'text-[10px] border',
+                      resumeDataPasien.tingkatRisiko === 'merah' ? 'bg-red-200/80 text-red-900 border-red-400' :
+                      resumeDataPasien.tingkatRisiko === 'kuning' ? 'bg-amber-200/80 text-amber-900 border-amber-400' :
+                      'bg-green-200/80 text-green-900 border-green-400'
+                    )}>
+                      Risiko: {resumeDataPasien.tingkatRisiko}
+                    </Badge>
+                  )}
+                  {resumeDataPasien?.statusPerawatan && (
+                    <Badge className="bg-white/20 text-white border border-white/30 text-[10px]">
+                      {resumeDataPasien.statusPerawatan}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Scrollable Content ── */}
+          <div className="max-h-[85vh] overflow-y-auto custom-scrollbar p-5 space-y-5">
+
+            {/* ═══ Section 1: DATA PASIEN ═══ */}
+            <SectionCard
+              title="DATA PASIEN"
+              icon={<FileText className="w-4 h-4 text-[#2D8C7A]" />}
+              accentColor="#2D8C7A"
+            >
+              <Table>
+                <TableBody>
+                  {[
+                    ['Nama', resumeDataPasien?.nama || selectedResume.patientName],
+                    ['No. RM', resumeDataPasien?.noRM || selectedResume.rmNumber],
+                    ['NIK', resumeDataPasien?.nik],
+                    ['Tanggal Lahir', resumeDataPasien?.tanggalLahir ? formatDate(resumeDataPasien.tanggalLahir) : null],
+                    ['Umur', resumeDataPasien?.umur],
+                    ['Jenis Kelamin', resumeDataPasien?.jenisKelamin],
+                    ['No. BPJS', resumeDataPasien?.noBPJS],
+                    ['Alamat', resumeDataPasien?.alamat],
+                    ['No. Telepon', resumeDataPasien?.noTelepon],
+                    ['Diagnosa Utama', resumeDataPasien?.diagnosaUtama || patient.primaryDiagnosis],
+                    ['Diagnosa Penyerta', resumeDataPasien?.diagnosaPenyerta || patient.secondaryDiagnosis],
+                    ['DPJP', resumeDataPasien?.dpjp ? `${resumeDataPasien.dpjp}${resumeDataPasien.dpjpSpesialisasi ? ` (${resumeDataPasien.dpjpSpesialisasi})` : ''}` : null],
+                    ['Tanggal Registrasi', resumeDataPasien?.tanggalRegistrasi ? formatDate(resumeDataPasien.tanggalRegistrasi) : null],
+                  ].map(([label, value], i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-medium text-xs text-muted-foreground w-40 whitespace-nowrap">{label}</TableCell>
+                      <TableCell className="text-sm">{nullish(value)}</TableCell>
+                    </TableRow>
+                  ))}
+                  {resumeDataPasien?.kontakKeluarga && (
+                    <TableRow>
+                      <TableCell className="font-medium text-xs text-muted-foreground">Kontak Keluarga</TableCell>
+                      <TableCell className="text-sm">
+                        {nullish(resumeDataPasien.kontakKeluarga.nama)}
+                        {resumeDataPasien.kontakKeluarga.hubungan && ` (${resumeDataPasien.kontakKeluarga.hubungan})`}
+                        {resumeDataPasien.kontakKeluarga.telepon && ` • ${resumeDataPasien.kontakKeluarga.telepon}`}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </SectionCard>
+
+            {/* ═══ Section 2: TTV SERIAL ═══ */}
+            <SectionCard
+              title="TTV SERIAL"
+              icon={<Activity className="w-4 h-4 text-[#2D8C7A]" />}
+              accentColor="#2D8C7A"
+            >
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* TTV Awal */}
+                {renderTtvCard('TTV Awal', resumeTtv?.ttvAwal as PalliativeResumeTTVRecord | null, '#22c55e', 'awal')}
+                {/* TTV Kritis */}
+                {renderTtvCard('TTV Kritis', resumeTtv?.ttvKritis as PalliativeResumeTTVRecord | null, '#ef4444', 'kritis')}
+                {/* TTV Terakhir */}
+                {renderTtvCard('TTV Terakhir', resumeTtv?.ttvTerakhir as PalliativeResumeTTVRecord | null, '#3b82f6', 'terakhir')}
+              </div>
+              {!resumeTtv?.ttvAwal && !resumeTtv?.ttvKritis && !resumeTtv?.ttvTerakhir && (
+                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data TTV</p>
+              )}
+            </SectionCard>
+
+            {/* ═══ Section 3: KELUHAN HARIAN ═══ */}
+            <SectionCard
+              title="KELUHAN HARIAN"
+              icon={<Heart className="w-4 h-4 text-[#D9B26F]" />}
+              accentColor="#D9B26F"
+            >
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {renderKeluhanCard('Keluhan Awal', resumeKeluhan?.keluhanAwal as KeluhanEntry | null, '#6b7280')}
+                {renderKeluhanCard('Keluhan Terberat', resumeKeluhan?.keluhanTerberat as KeluhanEntry | null, '#ef4444')}
+                {renderKeluhanCard('Keluhan Terakhir', resumeKeluhan?.keluhanTerakhir as KeluhanEntry | null, '#14b8a6')}
+              </div>
+              {resumeKeluhan?.analisis && (
+                <div className="mt-4 p-3 bg-[#2D8C7A]/5 rounded-lg border border-[#2D8C7A]/20">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Sparkles className="w-3.5 h-3.5 text-[#2D8C7A]" />
+                    <span className="text-xs font-semibold text-[#2D8C7A]">Analisis Frekuensi Gejala</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{resumeKeluhan.analisis}</p>
+                </div>
+              )}
+              {!resumeKeluhan?.keluhanAwal && !resumeKeluhan?.keluhanTerberat && !resumeKeluhan?.keluhanTerakhir && !resumeKeluhan?.analisis && (
+                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data Keluhan</p>
+              )}
+            </SectionCard>
+
+            {/* ═══ Section 4: SKRINING PALIATIF ═══ */}
+            <SectionCard
+              title="SKRINING PALIATIF"
+              icon={<Brain className="w-4 h-4 text-[#8B5CF6]" />}
+              accentColor="#8B5CF6"
+            >
+              {resumeAiAnalysis?.ringkasanSkrining ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    { title: 'Domain Fisik', content: resumeAiAnalysis.ringkasanSkrining.domainFisik, icon: <Activity className="w-4 h-4" />, color: '#22c55e' },
+                    { title: 'Domain Psikologis', content: resumeAiAnalysis.ringkasanSkrining.domainPsikologis, icon: <Brain className="w-4 h-4" />, color: '#8B5CF6' },
+                    { title: 'Domain Sosial', content: resumeAiAnalysis.ringkasanSkrining.domainSosial, icon: <Users className="w-4 h-4" />, color: '#3b82f6' },
+                    { title: 'Domain Spiritual', content: resumeAiAnalysis.ringkasanSkrining.domainSpiritual, icon: <Heart className="w-4 h-4" />, color: '#D9B26F' },
+                    { title: 'Kebutuhan Edukasi', content: resumeAiAnalysis.ringkasanSkrining.kebutuhanEdukasi, icon: <FileCheck className="w-4 h-4" />, color: '#f59e0b' },
+                    { title: 'Beban Caregiver', content: resumeAiAnalysis.ringkasanSkrining.bebanCaregiver, icon: <AlertTriangle className="w-4 h-4" />, color: '#ef4444' },
+                  ].map((domain) => (
+                    <div key={domain.title} className="rounded-lg border p-3" style={{ borderLeftWidth: '3px', borderLeftColor: domain.color }}>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span style={{ color: domain.color }}>{domain.icon}</span>
+                        <span className="text-xs font-semibold">{domain.title}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{domain.content || 'Tidak Ada Data'}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div>
+                  {resumeSkrining && Object.keys(resumeSkrining).length > 0 ? (
+                    <div className="space-y-2">
+                      {Object.entries(resumeSkrining).map(([key, value]) => (
+                        <div key={key} className="flex items-center justify-between p-2 rounded-lg bg-muted/50 text-sm">
+                          <span className="font-medium capitalize">{key}</span>
+                          <Badge variant="outline" className="text-[10px]">{Array.isArray(value) ? `${value.length} record(s)` : 'N/A'}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data Skrining</p>
+                  )}
+                </div>
+              )}
+            </SectionCard>
+
+            {/* ═══ Section 5: ESAS ═══ */}
+            <SectionCard
+              title="ESAS (Edmonton Symptom Assessment System)"
+              icon={<Gauge className="w-4 h-4 text-[#2D8C7A]" />}
+              accentColor="#2D8C7A"
+            >
+              {resumeEsas?.skorAwal || resumeEsas?.skorTertinggi || resumeEsas?.skorTerakhir ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Parameter</TableHead>
+                        <TableHead className="text-xs text-center">Skor Awal</TableHead>
+                        <TableHead className="text-xs text-center">Skor Tertinggi</TableHead>
+                        <TableHead className="text-xs text-center">Skor Terakhir</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {[
+                        { label: 'Nyeri', awal: resumeEsas.skorAwal?.nyeri, tinggi: resumeEsas.skorTertinggi?.nyeri, akhir: resumeEsas.skorTerakhir?.nyeri },
+                        { label: 'Kelelahan', awal: resumeEsas.skorAwal?.kelelahan, tinggi: resumeEsas.skorTertinggi?.kelelahan, akhir: resumeEsas.skorTerakhir?.kelelahan },
+                        { label: 'Mengantuk', awal: resumeEsas.skorAwal?.mengantuk, tinggi: resumeEsas.skorTertinggi?.mengantuk, akhir: resumeEsas.skorTerakhir?.mengantuk },
+                        { label: 'Mual', awal: resumeEsas.skorAwal?.mual, tinggi: resumeEsas.skorTertinggi?.mual, akhir: resumeEsas.skorTerakhir?.mual },
+                        { label: 'Nafsu Makan', awal: resumeEsas.skorAwal?.nafsuMakan, tinggi: resumeEsas.skorTertinggi?.nafsuMakan, akhir: resumeEsas.skorTerakhir?.nafsuMakan },
+                        { label: 'Sesak', awal: resumeEsas.skorAwal?.sesak, tinggi: resumeEsas.skorTertinggi?.sesak, akhir: resumeEsas.skorTerakhir?.sesak },
+                        { label: 'Kecemasan', awal: resumeEsas.skorAwal?.kecemasan, tinggi: resumeEsas.skorTertinggi?.kecemasan, akhir: resumeEsas.skorTerakhir?.kecemasan },
+                        { label: 'Depresi', awal: resumeEsas.skorAwal?.depresi, tinggi: resumeEsas.skorTertinggi?.depresi, akhir: resumeEsas.skorTerakhir?.depresi },
+                        { label: 'Kesejahteraan Umum', awal: resumeEsas.skorAwal?.kesejahteraan, tinggi: resumeEsas.skorTertinggi?.kesejahteraan, akhir: resumeEsas.skorTerakhir?.kesejahteraan },
+                      ].map((row) => (
+                        <TableRow key={row.label}>
+                          <TableCell className="text-sm font-medium">{row.label}</TableCell>
+                          <TableCell className="text-center">
+                            <span className={cn('inline-block px-2 py-0.5 rounded text-xs font-medium', getEsasColor(row.awal))}>
+                              {row.awal != null ? row.awal : '-'}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className={cn('inline-block px-2 py-0.5 rounded text-xs font-medium', getEsasColor(row.tinggi))}>
+                              {row.tinggi != null ? row.tinggi : '-'}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className={cn('inline-block px-2 py-0.5 rounded text-xs font-medium', getEsasColor(row.akhir))}>
+                              {row.akhir != null ? row.akhir : '-'}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {/* Total Score Row */}
+                      <TableRow className="border-t-2">
+                        <TableCell className="text-sm font-bold">Total Skor</TableCell>
+                        <TableCell className="text-center">
+                          <span className="font-bold text-sm">{resumeEsas.skorAwal?.score != null ? resumeEsas.skorAwal.score : '-'}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="font-bold text-sm">{resumeEsas.skorTertinggi?.score != null ? resumeEsas.skorTertinggi.score : '-'}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="font-bold text-sm">{resumeEsas.skorTerakhir?.score != null ? resumeEsas.skorTerakhir.score : '-'}</span>
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                  <div className="flex items-center gap-4 mt-3 text-[10px] text-muted-foreground">
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-50 border border-green-200" /> 0–3 Ringan</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-50 border border-amber-200" /> 4–6 Sedang</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-50 border border-red-200" /> 7–10 Berat</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data ESAS</p>
+              )}
+            </SectionCard>
+
+            {/* ═══ Section 6: TERAPI OBAT ═══ */}
+            <SectionCard
+              title="TERAPI OBAT"
+              icon={<Pill className="w-4 h-4 text-[#D9B26F]" />}
+              accentColor="#D9B26F"
+            >
+              {resumeObat ? (
+                <div className="space-y-4">
+                  {/* Analgesik */}
+                  {renderMedicationTable('Analgesik', resumeObat.analgesik as MedicationEntry[] | undefined, '#ef4444')}
+
+                  {/* Obat Simtomatik */}
+                  {(resumeObat.simtomatik as Record<string, MedicationEntry[]>) && (
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Obat Simtomatik</h4>
+                      {Object.entries(resumeObat.simtomatik as Record<string, MedicationEntry[]>).map(([category, meds]) => (
+                        <div key={category}>
+                          {renderMedicationTable(category.charAt(0).toUpperCase() + category.slice(1), meds, '#3b82f6')}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Obat Lainnya */}
+                  {renderMedicationTable('Obat Lainnya', resumeObat.obatLainnya as MedicationEntry[] | undefined, '#6b7280')}
+
+                  {/* Summary Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                    <div className="rounded-lg border p-3 bg-muted/30">
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">Kepatuhan</div>
+                      <p className="text-sm">{nullish(resumeObat.kepatuhan)}</p>
+                    </div>
+                    <div className="rounded-lg border p-3 bg-muted/30">
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">Perubahan Regimen</div>
+                      <p className="text-sm">{nullish(resumeObat.perubahanRegimen)}</p>
+                    </div>
+                    <div className="rounded-lg border p-3 bg-muted/30">
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">Respons Terapi</div>
+                      <p className="text-sm">{nullish(resumeObat.responsTerapi)}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data Terapi Obat</p>
+              )}
+            </SectionCard>
+
+            {/* ═══ Section 7: NUTRISI ═══ */}
+            <SectionCard
+              title="NUTRISI"
+              icon={<Apple className="w-4 h-4 text-[#22c55e]" />}
+              accentColor="#22c55e"
+            >
+              {resumeNutrisi?.catatan || resumeNutrisi?.ringkasan || resumeAiAnalysis?.ringkasanNutrisi ? (
+                <div className="space-y-3">
+                  {/* Actual nutrition records */}
+                  {resumeNutrisi?.catatan && Array.isArray(resumeNutrisi.catatan) && resumeNutrisi.catatan.length > 0 && (
+                    renderGenericRecords(resumeNutrisi.catatan, 'Catatan Nutrisi')
+                  )}
+                  {/* AI Summary */}
+                  {(resumeAiAnalysis?.ringkasanNutrisi || resumeNutrisi?.ringkasan) && (
+                    <div className="p-3 bg-[#22c55e]/5 rounded-lg border border-[#22c55e]/20">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Sparkles className="w-3.5 h-3.5 text-[#22c55e]" />
+                        <span className="text-xs font-semibold text-[#22c55e]">Ringkasan Nutrisi AI</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                        {resumeAiAnalysis?.ringkasanNutrisi || resumeNutrisi?.ringkasan}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data Nutrisi</p>
+              )}
+            </SectionCard>
+
+            {/* ═══ Section 8: SOSIAL ═══ */}
+            <SectionCard
+              title="SOSIAL"
+              icon={<Users className="w-4 h-4 text-[#3b82f6]" />}
+              accentColor="#3b82f6"
+            >
+              {resumeSosial?.penilaianSosial || resumeSosial?.caregiver || resumeSosial?.pertemuanKeluarga || resumeSosial?.dukunganKeuangan || resumeSosial?.ringkasan || resumeAiAnalysis?.ringkasanSosial ? (
+                <div className="space-y-3">
+                  {/* Penilaian Sosial */}
+                  {resumeSosial?.penilaianSosial && Array.isArray(resumeSosial.penilaianSosial) && resumeSosial.penilaianSosial.length > 0 && (
+                    renderGenericRecords(resumeSosial.penilaianSosial, 'Penilaian Sosial')
+                  )}
+                  {/* Caregiver */}
+                  {resumeSosial?.caregiver && Array.isArray(resumeSosial.caregiver) && resumeSosial.caregiver.length > 0 && (
+                    renderGenericRecords(resumeSosial.caregiver, 'Caregiver')
+                  )}
+                  {/* Pertemuan Keluarga */}
+                  {resumeSosial?.pertemuanKeluarga && Array.isArray(resumeSosial.pertemuanKeluarga) && resumeSosial.pertemuanKeluarga.length > 0 && (
+                    renderGenericRecords(resumeSosial.pertemuanKeluarga, 'Pertemuan Keluarga')
+                  )}
+                  {/* Dukungan Keuangan */}
+                  {resumeSosial?.dukunganKeuangan && Array.isArray(resumeSosial.dukunganKeuangan) && resumeSosial.dukunganKeuangan.length > 0 && (
+                    renderGenericRecords(resumeSosial.dukunganKeuangan, 'Dukungan Keuangan')
+                  )}
+                  {/* AI Summary */}
+                  {(resumeAiAnalysis?.ringkasanSosial || resumeSosial?.ringkasan) && (
+                    <div className="p-3 bg-[#3b82f6]/5 rounded-lg border border-[#3b82f6]/20">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Sparkles className="w-3.5 h-3.5 text-[#3b82f6]" />
+                        <span className="text-xs font-semibold text-[#3b82f6]">Ringkasan Sosial AI</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                        {resumeAiAnalysis?.ringkasanSosial || resumeSosial?.ringkasan}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data Sosial</p>
+              )}
+            </SectionCard>
+
+            {/* ═══ Section 9: ACP ═══ */}
+            <SectionCard
+              title="ADVANCE CARE PLANNING (ACP)"
+              icon={<ScrollText className="w-4 h-4 text-[#D9B26F]" />}
+              accentColor="#D9B26F"
+            >
+              {resumeAcp?.dokumen || resumeAcp?.ringkasan || resumeAiAnalysis?.ringkasanACP ? (
+                <div className="space-y-3">
+                  {/* ACP Documents */}
+                  {resumeAcp?.dokumen && Array.isArray(resumeAcp.dokumen) && resumeAcp.dokumen.length > 0 && (
+                    <div className="space-y-3 mb-3">
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dokumen ACP ({resumeAcp.dokumen.length})</h4>
+                      {resumeAcp.dokumen.map((doc, idx) => {
+                        if (typeof doc !== 'object' || doc === null) return null;
+                        return renderAcpDocument(doc as Record<string, unknown>, idx);
+                      })}
+                    </div>
+                  )}
+                  {/* AI Summary */}
+                  {(resumeAiAnalysis?.ringkasanACP || resumeAcp?.ringkasan) && (
+                    <div className="p-3 bg-[#D9B26F]/5 rounded-lg border border-[#D9B26F]/20">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Sparkles className="w-3.5 h-3.5 text-[#D9B26F]" />
+                        <span className="text-xs font-semibold text-[#D9B26F]">Ringkasan ACP AI</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                        {resumeAiAnalysis?.ringkasanACP || resumeAcp?.ringkasan}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data ACP</p>
+              )}
+            </SectionCard>
+
+            {/* ═══ Section 10: AI ANALISIS ═══ */}
+            <SectionCard
+              title="AI ANALISIS"
+              icon={<Sparkles className="w-4 h-4 text-[#2D8C7A]" />}
+              accentColor="#2D8C7A"
+            >
+              {resumeAiAnalysis ? (
+                <div className="space-y-4">
+                  {/* Ringkasan Perjalanan Klinis */}
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <TrendingUp className="w-3.5 h-3.5 text-[#2D8C7A]" />
+                      <Label className="text-xs font-semibold">Ringkasan Perjalanan Klinis</Label>
+                    </div>
+                    <Textarea
+                      value={editRingkasanPerjalananKlinis}
+                      onChange={(e) => setEditRingkasanPerjalananKlinis(e.target.value)}
+                      className="min-h-[100px] text-sm resize-y"
+                      placeholder="Ringkasan perjalanan klinis pasien..."
+                    />
+                  </div>
+
+                  {/* Identifikasi Kondisi Kritis */}
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                      <Label className="text-xs font-semibold">Identifikasi Kondisi Kritis</Label>
+                    </div>
+                    <Textarea
+                      value={editIdentifikasiKondisiKritis}
+                      onChange={(e) => setEditIdentifikasiKondisiKritis(e.target.value)}
+                      className="min-h-[100px] text-sm resize-y"
+                      placeholder="Identifikasi kondisi kritis pasien..."
+                    />
+                  </div>
+
+                  {/* Analisis Tren Pasien */}
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <Activity className="w-3.5 h-3.5 text-blue-500" />
+                      <Label className="text-xs font-semibold">Analisis Tren Pasien</Label>
+                      {(() => {
+                        const badge = getTrendBadge(editAnalisisTrenPasien);
+                        return editAnalisisTrenPasien ? (
+                          <Badge variant="outline" className={cn('text-[10px] ml-1', badge.className)}>
+                            {badge.label}
+                          </Badge>
+                        ) : null;
+                      })()}
+                    </div>
+                    <Textarea
+                      value={editAnalisisTrenPasien}
+                      onChange={(e) => setEditAnalisisTrenPasien(e.target.value)}
+                      className="min-h-[100px] text-sm resize-y"
+                      placeholder="Analisis tren pasien..."
+                    />
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data AI Analisis</p>
+              )}
+            </SectionCard>
+
+            {/* ═══ Section 11: KESIMPULAN TELEPALIATIF ═══ */}
+            {resumeAiAnalysis?.kesimpulanTelepaliatif && (
+              <SectionCard
+                title="KESIMPULAN TELEPALIATIF"
+                icon={<FileCheck className="w-4 h-4 text-[#2D8C7A]" />}
+                accentColor="#2D8C7A"
+              >
+                <Table>
+                  <TableBody>
+                    {Object.entries(resumeAiAnalysis.kesimpulanTelepaliatif).map(([key, value]) => (
+                      <TableRow key={key}>
+                        <TableCell className="font-medium text-xs text-muted-foreground w-48 whitespace-nowrap">
+                          {key.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase())}
+                        </TableCell>
+                        <TableCell className="text-sm">{nullish(value)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </SectionCard>
+            )}
+
+            {/* ═══ Section 12: REKOMENDASI ═══ */}
+            {resumeAiAnalysis?.rekomendasi && resumeAiAnalysis.rekomendasi.length > 0 && (
+              <SectionCard
+                title="REKOMENDASI"
+                icon={<Sparkles className="w-4 h-4 text-[#2D8C7A]" />}
+                accentColor="#2D8C7A"
+              >
+                <div className="space-y-2">
+                  {resumeAiAnalysis.rekomendasi.map((rec, i) => (
+                    <div key={i} className="flex items-start gap-2.5 text-sm">
+                      <span className="bg-[#2D8C7A] text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+                        {i + 1}
+                      </span>
+                      <span className="text-muted-foreground">{rec}</span>
+                    </div>
+                  ))}
+                </div>
+              </SectionCard>
+            )}
+
+            {/* ── Signature Area ── */}
+            <div className="border-t pt-4">
+              <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+                <div className="text-sm">
+                  <Badge variant="outline" className="text-[10px]">
+                    Unduh: {selectedResume.downloadCount}x | Cetak: {selectedResume.printCount}x
+                  </Badge>
+                </div>
+                {selectedResume.isSigned ? (
+                  <div className="flex items-end gap-3">
+                    <div className="text-right">
+                      <p className="text-sm font-medium">{selectedResume.doctorName || '-'}</p>
+                      <p className="text-xs text-muted-foreground">SIP: {selectedResume.doctorSip || '-'}</p>
+                      <div className="flex items-center justify-end gap-1 mt-1">
+                        <QrCode className="w-3 h-3 text-green-600" />
+                        <span className="text-xs text-green-600">Tanda Tangan Elektronik Terverifikasi</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Ditandatangani: {formatDateTime(selectedResume.signedAt)}
+                      </p>
+                    </div>
+                    {resumeQrDataUrl && (
+                      <div className="flex flex-col items-center">
+                        <img src={resumeQrDataUrl} alt="QR Verifikasi" className="w-[60px] h-[60px]" />
+                        <span className="text-[9px] text-muted-foreground mt-0.5">Scan untuk verifikasi</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-amber-600">Belum ditandatangani</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Version History (below the resume) */}
+        {patientResumes.length > 1 && (
+          <Card className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <History className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-semibold">Versi Sebelumnya</span>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {patientResumes.slice(1).map((r) => (
+                <Button
+                  key={r.id}
+                  variant="outline"
+                  size="sm"
+                  className={cn('text-xs', selectedResume?.id === r.id && 'ring-2 ring-primary')}
+                  onClick={() => setSelectedResume(r)}
+                >
+                  v{r.version} • {formatDateTime(r.generatedAt)}
+                  {r.isSigned ? <CheckCircle2 className="w-3 h-3 ml-1 text-green-500" /> : null}
+                </Button>
+              ))}
+            </div>
+          </Card>
+        )}
+      </div>
+    );
+  };
+
+  // ── TTV Card renderer ──
+  function renderTtvCard(title: string, data: PalliativeResumeTTVRecord | null | undefined, color: string, type: string) {
+    if (!data) return null;
+    return (
+      <div className="rounded-lg border p-3" style={{ borderLeftWidth: '3px', borderLeftColor: color }}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold" style={{ color }}>{title}</span>
+          <span className="text-[10px] text-muted-foreground">{formatDate(data.tanggal)}</span>
+        </div>
+        <Table>
+          <TableBody>
+            <TableRow>
+              <TableCell className="py-1 text-xs text-muted-foreground">TD</TableCell>
+              <TableCell className="py-1 text-sm text-right">{data.sistolik != null && data.diastolik != null ? `${data.sistolik}/${data.diastolik}` : '-'} mmHg</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell className="py-1 text-xs text-muted-foreground">Nadi</TableCell>
+              <TableCell className="py-1 text-sm text-right">{data.nadi != null ? `${data.nadi} x/mnt` : '-'}</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell className="py-1 text-xs text-muted-foreground">RR</TableCell>
+              <TableCell className="py-1 text-sm text-right">{data.rr != null ? `${data.rr} x/mnt` : '-'}</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell className="py-1 text-xs text-muted-foreground">Suhu</TableCell>
+              <TableCell className="py-1 text-sm text-right">{data.suhu != null ? `${data.suhu}°C` : '-'}</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell className="py-1 text-xs text-muted-foreground">SpO2</TableCell>
+              <TableCell className="py-1 text-sm text-right">{data.spo2 != null ? `${data.spo2}%` : '-'}</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell className="py-1 text-xs text-muted-foreground">BB</TableCell>
+              <TableCell className="py-1 text-sm text-right">{data.berat != null ? `${data.berat} kg` : '-'}</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell className="py-1 text-xs text-muted-foreground">BMI</TableCell>
+              <TableCell className="py-1 text-sm text-right">{data.bmi != null ? `${data.bmi}` : '-'}</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+        {type === 'kritis' && data.alasanKritis && data.alasanKritis.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {data.alasanKritis.map((reason, i) => (
+              <Badge key={i} className="bg-red-100 text-red-800 border border-red-300 text-[10px]">
+                <AlertTriangle className="w-2.5 h-2.5 mr-0.5" />
+                {reason}
+              </Badge>
+            ))}
+          </div>
+        )}
+        {data.catatan && (
+          <p className="mt-2 text-[10px] text-muted-foreground italic">Catatan: {data.catatan}</p>
+        )}
+      </div>
+    );
+  }
+
+  // ── Keluhan Card renderer ──
+  function renderKeluhanCard(title: string, data: KeluhanEntry | null | undefined, color: string) {
+    if (!data) return null;
+    return (
+      <div className="rounded-lg border p-3" style={{ borderLeftWidth: '3px', borderLeftColor: color }}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold" style={{ color }}>{title}</span>
+          <div className="flex items-center gap-1.5">
+            {data.severityLevel && getSeverityBadge(data.severityLevel)}
+            {data.submittedAt && <span className="text-[10px] text-muted-foreground">{formatDate(data.submittedAt)}</span>}
+          </div>
+        </div>
+        <div className="space-y-1.5 text-sm">
+          {[
+            { label: 'Kondisi', value: data.kondisiHariIni, reason: data.alasanKondisi },
+            { label: 'Nyeri', value: data.kondisiNyeri },
+            { label: 'Sesak', value: data.kondisiSesak },
+            { label: 'Makan/Minum', value: data.makanMinum, reason: data.alasanMakanMinum },
+            { label: 'Tidur', value: data.tidur, reason: data.alasanTidur },
+            { label: 'Masalah Obat', value: data.masalahObat, reason: data.deskripsiMasalahObat },
+          ].map((item) => (
+            <div key={item.label} className="flex items-start gap-2">
+              <span className="text-xs text-muted-foreground w-24 shrink-0">{item.label}</span>
+              <span className="text-sm">{nullish(item.value)}</span>
+            </div>
+          ))}
+          {data.deskripsiKeluhanBaru && (
+            <div className="mt-2 p-2 bg-amber-50/50 rounded border border-amber-200/50 text-xs text-amber-800">
+              {data.deskripsiKeluhanBaru}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Medication Table renderer ──
+  function renderMedicationTable(title: string, meds: MedicationEntry[] | undefined, color: string) {
+    if (!meds || !Array.isArray(meds) || meds.length === 0) return null;
+    return (
+      <div className="mb-3">
+        <h5 className="text-xs font-semibold mb-2" style={{ color }}>{title}</h5>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-[10px]">Obat</TableHead>
+                <TableHead className="text-[10px]">Dosis</TableHead>
+                <TableHead className="text-[10px]">Frekuensi</TableHead>
+                <TableHead className="text-[10px]">Rute</TableHead>
+                <TableHead className="text-[10px]">Indikasi</TableHead>
+                <TableHead className="text-[10px]">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {meds.map((med, i) => (
+                <TableRow key={i}>
+                  <TableCell className="text-xs font-medium">{med.medicineName || '-'}</TableCell>
+                  <TableCell className="text-xs">{med.dosage || '-'}</TableCell>
+                  <TableCell className="text-xs">{med.frequency || '-'}</TableCell>
+                  <TableCell className="text-xs">{med.route || '-'}</TableCell>
+                  <TableCell className="text-xs">{med.indication || '-'}</TableCell>
+                  <TableCell className="text-xs">
+                    {med.isActive ? (
+                      <Badge className="bg-green-100 text-green-800 border border-green-300 text-[9px]">Aktif</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[9px]">Non-aktif</Badge>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <FileText className="w-5 h-5 text-primary" />
+            <FileText className="w-5 h-5 text-[#2D8C7A]" />
             Resume Medis & Surat Rujukan AI
           </h2>
           <p className="text-sm text-muted-foreground">
@@ -903,7 +2200,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
           <Button
             onClick={handleGenerateResume}
             disabled={resumeLoading}
-            className="gap-1.5"
+            className="gap-1.5 bg-[#2D8C7A] hover:bg-[#247A6A]"
           >
             {resumeLoading ? (
               <RefreshCw className="w-4 h-4 animate-spin" />
@@ -921,7 +2218,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
                 className="gap-1.5"
               >
                 <Eye className="w-3.5 h-3.5" />
-                Lihat Resume Medis
+                Lihat Resume
               </Button>
               <Button
                 variant="outline"
@@ -931,7 +2228,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
                 className="gap-1.5"
               >
                 <Download className="w-3.5 h-3.5" />
-                Download PDF
+                PDF
               </Button>
             </>
           )}
@@ -946,7 +2243,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
             ) : (
               <Building2 className="w-4 h-4" />
             )}
-            Generate Surat Rujukan AI
+            Generate Surat Rujukan
           </Button>
           {latestReferral && (
             <Button
@@ -957,7 +2254,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
               className="gap-1.5"
             >
               <Download className="w-3.5 h-3.5" />
-              Download Surat Rujukan PDF
+              Rujukan PDF
             </Button>
           )}
         </div>
@@ -1045,213 +2342,13 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
           </TabsTrigger>
         </TabsList>
 
-        {/* Resume Medis Tab */}
-        <TabsContent value="resume" className="mt-4 overflow-y-auto custom-scrollbar">
-          {selectedResume ? (
-            <div className="space-y-4" ref={resumeContentRef}>
-              {/* Resume Actions */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDownloadPdf('resume', selectedResume.id)}
-                  disabled={downloading}
-                >
-                  {downloading ? <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Download className="w-3.5 h-3.5 mr-1.5" />}
-                  Download PDF
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePrint('resume', selectedResume.id)}
-                >
-                  <Printer className="w-3.5 h-3.5 mr-1.5" />
-                  Cetak Resume
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSendDocType('resume');
-                    setSendDocId(selectedResume.id);
-                    setShowSendDialog(true);
-                  }}
-                >
-                  <Send className="w-3.5 h-3.5 mr-1.5" />
-                  Kirim Dokumen
-                </Button>
-                {!selectedResume.isSigned && (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setSignDocType('resume');
-                      setSignDocId(selectedResume.id);
-                      setShowSignDialog(true);
-                    }}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
-                    Tanda Tangan
-                  </Button>
-                )}
-              </div>
-
-              {/* Resume Content */}
-              <Card className="p-6">
-                <div className="space-y-1 mb-4 text-center border-b pb-4">
-                  <h2 className="text-lg font-bold">RESUME MEDIS PALIATIF</h2>
-                  <p className="text-sm text-muted-foreground">
-                    No. Dokumen: {selectedResume.documentNumber} | Versi: {selectedResume.version}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Tanggal: {formatDate(selectedResume.generatedAt)} | Dokter: {selectedResume.doctorName || '-'}
-                    {selectedResume.isSigned && ` (SIP: ${selectedResume.doctorSip || '-'})`}
-                  </p>
-                  <div className="flex items-center justify-center gap-2 mt-2">
-                    {selectedResume.isSigned && (
-                      <Badge className="bg-green-100 text-green-800 border-green-300 border">
-                        <CheckCircle2 className="w-3 h-3 mr-1" />
-                        Ditandatangani
-                      </Badge>
-                    )}
-                    <Badge variant="outline">
-                      Unduh: {selectedResume.downloadCount}x | Cetak: {selectedResume.printCount}x
-                    </Badge>
-                  </div>
-                </div>
-
-                <ScrollArea className="max-h-[calc(100vh-520px)]">
-                  <div className="space-y-6">
-                    {/* Ringkasan Kondisi */}
-                    <div>
-                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-primary" />
-                        Ringkasan Kondisi Pasien
-                      </h3>
-                      <div className="text-sm whitespace-pre-wrap text-muted-foreground bg-muted/50 p-3 rounded-lg">
-                        {selectedResume.ringkasanKondisi}
-                      </div>
-                    </div>
-
-                    {/* Ringkasan Pemeriksaan */}
-                    <div>
-                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
-                        <Stethoscope className="w-4 h-4 text-teal-600" />
-                        Ringkasan Pemeriksaan Terkini
-                      </h3>
-                      <div className="text-sm whitespace-pre-wrap text-muted-foreground bg-muted/50 p-3 rounded-lg">
-                        {selectedResume.ringkasanPemeriksaan}
-                      </div>
-                    </div>
-
-                    {/* Ringkasan Terapi */}
-                    <div>
-                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
-                        <FileCheck className="w-4 h-4 text-amber-600" />
-                        Ringkasan Terapi
-                      </h3>
-                      <div className="text-sm whitespace-pre-wrap text-muted-foreground bg-muted/50 p-3 rounded-lg">
-                        {selectedResume.ringkasanTerapi}
-                      </div>
-                    </div>
-
-                    {/* Ringkasan ACP */}
-                    <div>
-                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
-                        <Shield className="w-4 h-4 text-purple-600" />
-                        Ringkasan Advance Care Planning
-                      </h3>
-                      <div className="text-sm whitespace-pre-wrap text-muted-foreground bg-muted/50 p-3 rounded-lg">
-                        {selectedResume.ringkasanACP}
-                      </div>
-                    </div>
-
-                    {/* Kesimpulan Klinis */}
-                    <div>
-                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 text-red-600" />
-                        Kesimpulan Klinis AI
-                      </h3>
-                      <div className="text-sm whitespace-pre-wrap bg-red-50/50 p-3 rounded-lg border border-red-200 text-red-900">
-                        {selectedResume.kesimpulanKlinis}
-                      </div>
-                    </div>
-
-                    {/* Rekomendasi AI */}
-                    <div>
-                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-primary" />
-                        Rekomendasi AI
-                      </h3>
-                      <div className="space-y-1">
-                        {selectedResume.rekomendasiAI?.map((rec, i) => (
-                          <div key={i} className="flex items-start gap-2 text-sm">
-                            <span className="bg-primary text-primary-foreground w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 mt-0.5">
-                              {i + 1}
-                            </span>
-                            <span className="text-muted-foreground">{rec}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </ScrollArea>
-
-                {/* Signature Area */}
-                <div className="mt-6 border-t pt-4 text-right">
-                  {selectedResume.isSigned ? (
-                    <div className="space-y-1">
-                      <div className="flex items-end justify-end gap-3">
-                        <div className="text-right">
-                          <p className="text-sm font-medium">{selectedResume.doctorName || '-'}</p>
-                          <p className="text-xs text-muted-foreground">SIP: {selectedResume.doctorSip || '-'}</p>
-                          <div className="flex items-center justify-end gap-1 mt-1">
-                            <QrCode className="w-3 h-3 text-green-600" />
-                            <span className="text-xs text-green-600">Tanda Tangan Elektronik Terverifikasi</span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Ditandatangani: {selectedResume.signedAt ? formatDateTime(selectedResume.signedAt) : '-'}
-                          </p>
-                        </div>
-                        {resumeQrDataUrl && (
-                          <div className="flex flex-col items-center">
-                            <img src={resumeQrDataUrl} alt="QR Verifikasi" className="w-[60px] h-[60px]" />
-                            <span className="text-[9px] text-muted-foreground mt-0.5">Scan untuk verifikasi</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-amber-600">Belum ditandatangani</p>
-                  )}
-                </div>
-              </Card>
-            </div>
-          ) : patientResumes.length > 0 ? (
-            <Card className="p-6 text-center text-muted-foreground">
-              <FileText className="w-10 h-10 mx-auto mb-3 opacity-50" />
-              <p>Klik pada resume di riwayat untuk melihat detail.</p>
-            </Card>
-          ) : (
-            <Card className="p-8 text-center text-muted-foreground">
-              <Sparkles className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p className="font-medium mb-2">Belum Ada Resume Medis</p>
-              <p className="text-sm mb-4">
-                Klik &quot;Generate Resume AI&quot; untuk membuat resume medis otomatis dari seluruh data pasien.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left max-w-md mx-auto text-sm">
-                <div className="flex items-center gap-2"><FileText className="w-4 h-4 text-primary" />Ringkasan Kondisi</div>
-                <div className="flex items-center gap-2"><Stethoscope className="w-4 h-4 text-primary" />Pemeriksaan Terkini</div>
-                <div className="flex items-center gap-2"><FileCheck className="w-4 h-4 text-primary" />Ringkasan Terapi</div>
-                <div className="flex items-center gap-2"><Shield className="w-4 h-4 text-primary" />Advance Care Planning</div>
-                <div className="flex items-center gap-2"><AlertCircle className="w-4 h-4 text-primary" />Kesimpulan Klinis</div>
-                <div className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" />Rekomendasi AI</div>
-              </div>
-            </Card>
-          )}
+        {/* ═══ Resume Medis Tab ═══ */}
+        <TabsContent value="resume" className="mt-4">
+          {renderResumeContent()}
         </TabsContent>
 
-        {/* Surat Rujukan Tab */}
-        <TabsContent value="referral" className="mt-4 overflow-y-auto custom-scrollbar">
+        {/* ═══ Surat Rujukan Tab ═══ */}
+        <TabsContent value="referral" className="mt-4">
           {selectedReferral ? (
             <div className="space-y-4" ref={referralContentRef}>
               {/* Referral Actions */}
@@ -1352,42 +2449,40 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
                   </div>
                 </div>
 
-                <ScrollArea className="max-h-[calc(100vh-600px)]">
-                  <div className="space-y-6">
-                    {/* Alasan Rujukan */}
-                    <div>
-                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-primary" />
-                        Alasan Rujukan
-                      </h3>
-                      <div className="text-sm whitespace-pre-wrap text-muted-foreground bg-muted/50 p-3 rounded-lg">
-                        {selectedReferral.referralReason}
-                      </div>
-                    </div>
-
-                    {/* Ringkasan Kondisi Klinis */}
-                    <div>
-                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
-                        <Stethoscope className="w-4 h-4 text-teal-600" />
-                        Ringkasan Kondisi Klinis
-                      </h3>
-                      <div className="text-sm whitespace-pre-wrap text-muted-foreground bg-muted/50 p-3 rounded-lg">
-                        {selectedReferral.clinicalSummary}
-                      </div>
-                    </div>
-
-                    {/* Permintaan Konsultasi */}
-                    <div>
-                      <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-amber-600" />
-                        Permintaan Konsultasi
-                      </h3>
-                      <div className="text-sm whitespace-pre-wrap bg-amber-50/50 p-3 rounded-lg border border-amber-200">
-                        {selectedReferral.consultationRequest}
-                      </div>
+                <div className="space-y-6">
+                  {/* Alasan Rujukan */}
+                  <div>
+                    <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-[#2D8C7A]" />
+                      Alasan Rujukan
+                    </h3>
+                    <div className="text-sm whitespace-pre-wrap text-muted-foreground bg-muted/50 p-3 rounded-lg">
+                      {selectedReferral.referralReason}
                     </div>
                   </div>
-                </ScrollArea>
+
+                  {/* Ringkasan Kondisi Klinis */}
+                  <div>
+                    <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
+                      <Stethoscope className="w-4 h-4 text-teal-600" />
+                      Ringkasan Kondisi Klinis
+                    </h3>
+                    <div className="text-sm whitespace-pre-wrap text-muted-foreground bg-muted/50 p-3 rounded-lg">
+                      {selectedReferral.clinicalSummary}
+                    </div>
+                  </div>
+
+                  {/* Permintaan Konsultasi */}
+                  <div>
+                    <h3 className="font-semibold text-base mb-2 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-[#D9B26F]" />
+                      Permintaan Konsultasi
+                    </h3>
+                    <div className="text-sm whitespace-pre-wrap bg-[#D9B26F]/5 p-3 rounded-lg border border-[#D9B26F]/20">
+                      {selectedReferral.consultationRequest}
+                    </div>
+                  </div>
+                </div>
 
                 {/* Signature Area */}
                 <div className="mt-6 border-t pt-4 text-right">
@@ -1426,31 +2521,31 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
               <Building2 className="w-12 h-12 mx-auto mb-3 opacity-50" />
               <p className="font-medium mb-2">Belum Ada Surat Rujukan</p>
               <p className="text-sm mb-4">
-                Klik &quot;Generate Surat Rujukan AI&quot; untuk membuat surat rujukan otomatis berdasarkan kondisi pasien.
+                Klik &quot;Generate Surat Rujukan&quot; untuk membuat surat rujukan otomatis berdasarkan kondisi pasien.
               </p>
             </Card>
           )}
         </TabsContent>
 
-        {/* History Tab */}
-        <TabsContent value="history" className="mt-4 overflow-y-auto custom-scrollbar">
+        {/* ═══ History Tab ═══ */}
+        <TabsContent value="history" className="mt-4">
           <div className="space-y-4">
             {/* Resume History */}
             <div>
               <h3 className="font-semibold text-base mb-3 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-primary" />
+                <FileText className="w-4 h-4 text-[#2D8C7A]" />
                 Riwayat Resume Medis
               </h3>
               {patientResumes.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Belum ada resume medis yang dibuat.</p>
               ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                   {patientResumes.map((resume) => (
                     <Card
                       key={resume.id}
                       className={cn(
                         'p-3 cursor-pointer hover:shadow-md transition-shadow',
-                        selectedResume?.id === resume.id && 'ring-2 ring-primary'
+                        selectedResume?.id === resume.id && 'ring-2 ring-[#2D8C7A]'
                       )}
                       onClick={() => {
                         setSelectedResume(resume);
@@ -1486,19 +2581,19 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
             {/* Referral History */}
             <div>
               <h3 className="font-semibold text-base mb-3 flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-primary" />
+                <Building2 className="w-4 h-4 text-[#2D8C7A]" />
                 Riwayat Surat Rujukan
               </h3>
               {patientReferrals.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Belum ada surat rujukan yang dibuat.</p>
               ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                   {patientReferrals.map((letter) => (
                     <Card
                       key={letter.id}
                       className={cn(
                         'p-3 cursor-pointer hover:shadow-md transition-shadow',
-                        selectedReferral?.id === letter.id && 'ring-2 ring-primary'
+                        selectedReferral?.id === letter.id && 'ring-2 ring-[#2D8C7A]'
                       )}
                       onClick={() => {
                         setSelectedReferral(letter);
@@ -1532,7 +2627,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
             {/* Document Audit Trail */}
             <div>
               <h3 className="font-semibold text-base mb-3 flex items-center gap-2">
-                <History className="w-4 h-4 text-primary" />
+                <History className="w-4 h-4 text-[#2D8C7A]" />
                 Audit Trail Dokumen
               </h3>
               {(() => {
@@ -1543,11 +2638,11 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
                   return <p className="text-sm text-muted-foreground">Belum ada aktivitas dokumen.</p>;
                 }
                 return (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                  <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                     {docAudits.map((entry) => (
                       <div key={entry.id} className="flex items-start gap-3 text-sm p-2 rounded-lg bg-muted/50">
                         <div className="mt-0.5">
-                          {entry.action === 'generated' && <Sparkles className="w-3.5 h-3.5 text-primary" />}
+                          {entry.action === 'generated' && <Sparkles className="w-3.5 h-3.5 text-[#2D8C7A]" />}
                           {entry.action === 'viewed' && <Eye className="w-3.5 h-3.5 text-muted-foreground" />}
                           {entry.action === 'signed' && <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />}
                           {entry.action === 'downloaded' && <Download className="w-3.5 h-3.5 text-blue-600" />}
@@ -1576,14 +2671,14 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
 
       {/* ── Dialog: Referral Department Selection ── */}
       <Dialog open={showReferralDeptDialog} onOpenChange={setShowReferralDeptDialog}>
-        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-md">
+          <DialogHeader>
             <DialogTitle>Generate Surat Rujukan AI</DialogTitle>
             <DialogDescription>
               Pilih departemen tujuan rujukan untuk {patient.patientName || 'Pasien'}.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
+          <div className="space-y-4">
             <div>
               <Label>Departemen Tujuan</Label>
               <Select value={targetDept} onValueChange={(v) => setTargetDept(v as ReferralTargetDepartment)}>
@@ -1608,7 +2703,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
             <Button variant="outline" onClick={() => setShowReferralDeptDialog(false)}>
               Batal
             </Button>
-            <Button onClick={handleGenerateReferral} disabled={referralLoading}>
+            <Button onClick={handleGenerateReferral} disabled={referralLoading} className="bg-[#2D8C7A] hover:bg-[#247A6A]">
               {referralLoading ? (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
@@ -1627,8 +2722,8 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
 
       {/* ── Dialog: Send Document ── */}
       <Dialog open={showSendDialog} onOpenChange={setShowSendDialog}>
-        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-md">
+          <DialogHeader>
             <DialogTitle>Kirim Dokumen</DialogTitle>
             <DialogDescription>
               Pilih metode pengiriman {sendDocType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'}.
@@ -1658,7 +2753,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
               onClick={() => handleSendToChat(sendDocType, sendDocId)}
             >
               <div className="flex items-center gap-2">
-                <MessageCircle className="w-4 h-4 text-primary" />
+                <MessageCircle className="w-4 h-4 text-[#2D8C7A]" />
                 <div className="text-left">
                   <div className="font-medium">Kirim ke Chat</div>
                   <div className="text-xs text-muted-foreground">Kirim notifikasi dokumen ke chat pasien {patient?.patientName || ''}</div>
@@ -1725,8 +2820,8 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
 
       {/* ── Dialog: Sign Document ── */}
       <Dialog open={showSignDialog} onOpenChange={setShowSignDialog}>
-        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-md">
+          <DialogHeader>
             <DialogTitle>Tanda Tangan Elektronik</DialogTitle>
             <DialogDescription>
               Konfirmasi tanda tangan elektronik untuk {signDocType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'}.
@@ -1756,6 +2851,7 @@ Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${
             <Button
               onClick={() => handleSignDocument(signDocType, signDocId)}
               disabled={!doctorSip}
+              className="bg-[#2D8C7A] hover:bg-[#247A6A]"
             >
               <CheckCircle2 className="w-4 h-4 mr-2" />
               Tanda Tangan

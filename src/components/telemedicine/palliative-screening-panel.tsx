@@ -2227,7 +2227,7 @@ export function PalliativeScreeningPanel() {
       {/* ── Universal Modal ── */}
       <Dialog open={modalOpen} onOpenChange={(open) => { if (!open) handleCloseModal(); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col" onInteractOutside={(e) => e.preventDefault()} onPointerDownOutside={(e) => e.preventDefault()}>
-          <DialogHeader className="shrink-0">
+          <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {activeTool && TOOL_DEFS[activeTool].icon}
               <span>{activeTool ? TOOL_DEFS[activeTool].name : ''}</span>
@@ -2259,7 +2259,7 @@ export function PalliativeScreeningPanel() {
           </div>
 
           {/* Footer Navigation */}
-          <DialogFooter className="shrink-0 flex items-center justify-between border-t border-border pt-3 sm:justify-between">
+          <DialogFooter className="flex items-center justify-between border-t border-border pt-3 sm:justify-between">
             <div className="text-xs text-muted-foreground">
               {showResult ? 'Hasil' : `Langkah ${currentStep + 1} dari ${toolSteps}`}
             </div>
@@ -2333,8 +2333,8 @@ export function PalliativeScreeningPanel() {
 
       {/* ── Detail Result Modal ── */}
       <Dialog open={!!detailResult} onOpenChange={(open) => { if (!open) setDetailResult(null); }}>
-        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-md">
+          <DialogHeader>
             <DialogTitle>Detail Hasil Skrining</DialogTitle>
           </DialogHeader>
           {detailResult && (

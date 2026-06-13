@@ -318,7 +318,7 @@ model Notification {
   userId      String
   title       String
   message     String
-  type        String   // consultation, chat, homecare, pharmacy, payment, reminder
+  type        String   // consultation, chat, homecare, pharmacy, payment, reminder, clinical_alert
   isRead      Boolean  @default(false)
   referenceId String?
   createdAt   DateTime @default(now())
@@ -377,6 +377,8 @@ model PalliativePatient {
   adherences      MedicationAdherence[]
   acpDocuments    AdvanceCarePlan[]
   screeningRecords PalliativeScreeningRecord[]
+  dailyComplaints DailyComplaint[]
+  resumes        PalliativeResume[]
 }
 
 model VitalSignRecord {
@@ -485,6 +487,54 @@ model PalliativeScreeningRecord {
   details               String?  // JSON string
   performedAt           DateTime @default(now())
   createdAt             DateTime @default(now())
+
+  patient PalliativePatient @relation(fields: [palliativePatientId], references: [id], onDelete: Cascade)
+}
+
+model DailyComplaint {
+  id                      String   @id @default(cuid())
+  palliativePatientId     String
+  kondisiHariIni          String   // baik, tidak_baik
+  alasanKondisi           String?  // Required if tidak_baik
+  keluhanBaru             String   // tidak_ada, ada
+  deskripsiKeluhanBaru    String?  // Required if ada
+  kondisiNyeri            String   // tidak_nyeri, berkurang, sama, bertambah
+  kondisiSesak            String   // tidak_sesak, berkurang, sama, bertambah
+  makanMinum              String   // ya, tidak
+  alasanMakanMinum        String?  // Required if tidak
+  tidur                   String   // ya, tidak
+  alasanTidur             String?  // Required if tidak
+  masalahObat             String   // tidak, ya
+  deskripsiMasalahObat    String?  // Required if ya
+  severityLevel           String   @default("hijau") // hijau, kuning, merah
+  sumberPengisian         String   @default("monitoring") // monitoring, chat
+  submittedAt             DateTime @default(now())
+  createdAt               DateTime @default(now())
+
+  patient PalliativePatient @relation(fields: [palliativePatientId], references: [id], onDelete: Cascade)
+}
+
+model PalliativeResume {
+  id                    String   @id @default(cuid())
+  palliativePatientId   String
+  documentNumber        String
+  generatedBy           String
+  generatedByRole       String   @default("doctor") // doctor, admin
+  doctorSip             String?
+  doctorName            String?
+  version               Int      @default(1)
+  previousVersionId     String?
+  isSigned              Boolean  @default(false)
+  signedAt              String?
+  // Structured content as JSON
+  resumeData            String   // JSON string containing all resume sections
+  fullContent           String   // Full markdown/text content
+  // Tracking
+  sentToChatAt          String?
+  downloadCount         Int      @default(0)
+  printCount            Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   patient PalliativePatient @relation(fields: [palliativePatientId], references: [id], onDelete: Cascade)
 }

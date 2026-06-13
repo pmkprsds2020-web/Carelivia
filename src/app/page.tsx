@@ -29,7 +29,6 @@ const PalliativeScreeningPanel = dynamic(() => import('@/components/telemedicine
 const PalliativeMonitoringPanel = dynamic(() => import('@/components/telemedicine/palliative-monitoring-panel').then(m => ({ default: m.PalliativeMonitoringPanel })), { ssr: false });
 const RvsmPanel = dynamic(() => import('@/components/telemedicine/rvsm-panel').then(m => ({ default: m.RvsmPanel })), { ssr: false });
 const PatientPaliatifPanel = dynamic(() => import('@/components/telemedicine/patient-paliatif-panel').then(m => ({ default: m.PatientPaliatifPanel })), { ssr: false });
-const SocialNeedsScreeningPanel = dynamic(() => import('@/components/telemedicine/social-needs-screening-panel').then(m => ({ default: m.SocialNeedsScreeningPanel })), { ssr: false });
 
 function PanelLoader() {
   return (
@@ -115,7 +114,6 @@ export default function TelemedicineApp() {
       case 'palliative-monitoring': return <Suspense fallback={<PanelLoader />}><PalliativeMonitoringPanel /></Suspense>;
       case 'rvsm': return <Suspense fallback={<PanelLoader />}><RvsmPanel /></Suspense>;
       case 'patient-paliatif': return <Suspense fallback={<PanelLoader />}><PatientPaliatifPanel /></Suspense>;
-      case 'social-needs-screening': return <Suspense fallback={<PanelLoader />}><SocialNeedsScreeningPanel /></Suspense>;
       case 'doctor-panel': return <Suspense fallback={<PanelLoader />}><DoctorPanel /></Suspense>;
       case 'pharmacist-panel': return <Suspense fallback={<PanelLoader />}><PharmacistPanel /></Suspense>;
       case 'homecare-staff-panel': return <Suspense fallback={<PanelLoader />}><HomeCareStaffPanel /></Suspense>;
@@ -171,7 +169,6 @@ export default function TelemedicineApp() {
               {activePanel === 'palliative-monitoring' && 'Monitoring Paliatif'}
               {activePanel === 'rvsm' && 'Remote Vital Sign Monitoring'}
               {activePanel === 'patient-paliatif' && 'Pelayanan Paliatif'}
-              {activePanel === 'social-needs-screening' && 'Skrining Sosial'}
               {activePanel === 'doctor-panel' && 'Panel Dokter'}
               {activePanel === 'pharmacist-panel' && 'Panel Apotek'}
               {activePanel === 'homecare-staff-panel' && 'Panel Petugas'}
@@ -194,10 +191,8 @@ export default function TelemedicineApp() {
         </header>
 
         {/* Panel content */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
-          <div className="min-h-full">
-            {renderPanel()}
-          </div>
+        <main className="flex-1 overflow-y-auto custom-scrollbar">
+          {renderPanel()}
         </main>
 
         {/* Footer */}

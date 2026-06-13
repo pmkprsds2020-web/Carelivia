@@ -19,10 +19,12 @@ import type {
   MedicationMonitoringFormAnswers,
   MedicationFormSchedule,
   MedicationMonitoringFormInfo,
+  DailyComplaintRecord,
 } from '@/lib/types';
 import { calculateScreeningResult, type ScreeningScoreResult } from '@/lib/palliative-screening-data';
 import { InlineScreeningForm } from '@/components/telemedicine/inline-screening-form';
 import { MedicationMonitoringForm } from '@/components/telemedicine/medication-monitoring-form';
+import { DailyComplaintForm } from '@/components/telemedicine/daily-complaint-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -667,8 +669,8 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
     setActiveFormMsgId(null);
   }, [patient, currentUser, roomId, activeFormMsgId, addPalliativeChatMessage, addVitalSignRecord, addPalliativeClinicalAlert, addPalliativeAuditEntry, generateAISummary]);
 
-  // Handle Keluhan form submission
-  const handleKeluhanSubmit = useCallback((answers: KeluhanFormAnswers) => {
+  // Handle Keluhan form submission (from unified DailyComplaintForm)
+  const handleKeluhanSubmit = useCallback((complaint: DailyComplaintRecord) => {
     if (!patient || !currentUser) return;
     const responseMsg: PalliativeChatMessage = {
       id: genId('pcm'),
@@ -682,8 +684,8 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
       formResponse: {
         formId: activeFormMsgId || genId('form'),
         formType: 'keluhan',
-        keluhanAnswers: answers,
         submittedAt: new Date().toISOString(),
+        dailyComplaint: complaint,
       },
       status: 'delivered',
       createdAt: new Date().toISOString(),
@@ -695,7 +697,7 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
       action: 'form_submitted',
       performedBy: patient.patientId || patient.id,
       performedByRole: 'patient',
-      details: 'Pasien mengirimkan hasil Form Keluhan Harian',
+      details: `Pasien mengirimkan hasil Form Keluhan Harian (via Chat) - Status: ${complaint.severityLevel}`,
       createdAt: new Date().toISOString(),
     });
     setActiveFormMsgId(null);
@@ -1218,7 +1220,50 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
                 </div>
               )}
 
-              {msg.formResponse.keluhanAnswers && (
+              {msg.formResponse.dailyComplaint && (
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span>Kondisi:</span>
+                    <Badge variant="outline" className={msg.formResponse.dailyComplaint.kondisiHariIni === 'baik' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}>
+                      {msg.formResponse.dailyComplaint.kondisiHariIni === 'baik' ? 'Baik' : 'Tidak Baik'}
+                    </Badge>
+                  </div>
+                  {msg.formResponse.dailyComplaint.keluhanBaru === 'ada' && (
+                    <div className="flex items-center gap-1.5">
+                      <span>Keluhan Baru:</span>
+                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Ada</Badge>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge variant="outline" className={msg.formResponse.dailyComplaint.kondisiNyeri === 'bertambah' ? 'bg-red-50 text-red-700 border-red-200' : msg.formResponse.dailyComplaint.kondisiNyeri === 'sama' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}>
+                      Nyeri: {msg.formResponse.dailyComplaint.kondisiNyeri === 'tidak_nyeri' ? 'Tidak Nyeri' : msg.formResponse.dailyComplaint.kondisiNyeri === 'berkurang' ? 'Berkurang' : msg.formResponse.dailyComplaint.kondisiNyeri === 'sama' ? 'Sama' : 'Bertambah'}
+                    </Badge>
+                    <Badge variant="outline" className={msg.formResponse.dailyComplaint.kondisiSesak === 'bertambah' ? 'bg-red-50 text-red-700 border-red-200' : msg.formResponse.dailyComplaint.kondisiSesak === 'sama' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}>
+                      Sesak: {msg.formResponse.dailyComplaint.kondisiSesak === 'tidak_sesak' ? 'Tidak Sesak' : msg.formResponse.dailyComplaint.kondisiSesak === 'berkurang' ? 'Berkurang' : msg.formResponse.dailyComplaint.kondisiSesak === 'sama' ? 'Sama' : 'Bertambah'}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge variant="outline" className={msg.formResponse.dailyComplaint.makanMinum === 'ya' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}>
+                      Makan/Minum: {msg.formResponse.dailyComplaint.makanMinum === 'ya' ? 'Ya' : 'Tidak'}
+                    </Badge>
+                    <Badge variant="outline" className={msg.formResponse.dailyComplaint.tidur === 'ya' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}>
+                      Tidur: {msg.formResponse.dailyComplaint.tidur === 'ya' ? 'Ya' : 'Tidak'}
+                    </Badge>
+                    <Badge variant="outline" className={msg.formResponse.dailyComplaint.masalahObat === 'tidak' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}>
+                      Obat: {msg.formResponse.dailyComplaint.masalahObat === 'tidak' ? 'Tidak Ada Masalah' : 'Ada Masalah'}
+                    </Badge>
+                  </div>
+                  <Badge className={`text-[10px] border ${
+                    msg.formResponse.dailyComplaint.severityLevel === 'merah' ? 'bg-red-100 text-red-800 border-red-300' :
+                    msg.formResponse.dailyComplaint.severityLevel === 'kuning' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                    'bg-emerald-100 text-emerald-800 border-emerald-300'
+                  }`}>
+                    {msg.formResponse.dailyComplaint.severityLevel === 'merah' ? '🔴 Kritis' : msg.formResponse.dailyComplaint.severityLevel === 'kuning' ? '🟡 Perhatian' : '🟢 Stabil'}
+                  </Badge>
+                </div>
+              )}
+
+              {!msg.formResponse.dailyComplaint && msg.formResponse.keluhanAnswers && (
                 <div className="space-y-1 text-xs">
                   <div>Kondisi: <Badge variant="outline">{msg.formResponse.keluhanAnswers.kondisiHariIni}</Badge></div>
                   {Object.entries(msg.formResponse.keluhanAnswers).filter(([k]) => k !== 'kondisiHariIni' && k !== 'catatanTambahan').map(([key, val]) => (
@@ -1410,22 +1455,23 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
             setActiveScreeningType(null);
           }
         }}>
-          <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
-            <DialogHeader className="shrink-0">
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()} onPointerDownOutside={(e) => e.preventDefault()}>
+            <DialogHeader>
               <DialogTitle>Isi Formulir</DialogTitle>
               <DialogDescription>Silakan isi formulir yang dikirim oleh dokter</DialogDescription>
             </DialogHeader>
-            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
             {formType === 'ttv' && (
               <TTVForm
                 onSubmit={(answers) => handleTTVSubmit(answers)}
                 onSaveDraft={() => {}}
               />
             )}
-            {formType === 'keluhan' && (
-              <KeluhanForm
-                onSubmit={(answers) => handleKeluhanSubmit(answers)}
-                onSaveDraft={() => {}}
+            {formType === 'keluhan' && patient && (
+              <DailyComplaintForm
+                palliativePatientId={patient.id}
+                source="chat"
+                compact
+                onSubmitSuccess={handleKeluhanSubmit}
               />
             )}
             {formType === 'screening' && activeScreeningType && (
@@ -1442,19 +1488,18 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
                 onSaveDraft={() => {}}
               />
             )}
-            </div>
           </DialogContent>
         </Dialog>
       )}
 
       {/* Send Form Dialog */}
       <Dialog open={showFormDialog} onOpenChange={setShowFormDialog}>
-        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-md">
+          <DialogHeader>
             <DialogTitle>Kirim Formulir ke Pasien</DialogTitle>
             <DialogDescription>Pilih jenis formulir yang akan dikirim kepada {patient.patientName}</DialogDescription>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-2 pr-1">
+          <div className="space-y-2">
             <Card className="p-3 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => { setFormType('ttv'); handleSendForm('ttv'); }}>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
@@ -1500,7 +1545,7 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
               </div>
             </Card>
           </div>
-          <DialogFooter className="shrink-0">
+          <DialogFooter>
             <Button variant="outline" onClick={() => setShowFormDialog(false)}>Batal</Button>
           </DialogFooter>
         </DialogContent>
@@ -1508,12 +1553,12 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
 
       {/* Screening Picker Dialog */}
       <Dialog open={showScreeningPicker} onOpenChange={setShowScreeningPicker}>
-        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
             <DialogTitle>Pilih Jenis Skrining</DialogTitle>
             <DialogDescription>Pilih skrining paliatif yang akan dikirim kepada pasien</DialogDescription>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-2 pr-1">
+          <div className="space-y-2">
             {(['pps', 'eortc', 'esas', 'spict', 'distress', 'zarit'] as PalliativeToolType[]).map(tool => (
               <Card key={tool} className="p-3 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSendForm('screening', tool)}>
                 <div className="flex items-center justify-between">
@@ -1526,7 +1571,7 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
               </Card>
             ))}
           </div>
-          <DialogFooter className="shrink-0">
+          <DialogFooter>
             <Button variant="outline" onClick={() => setShowScreeningPicker(false)}>Batal</Button>
           </DialogFooter>
         </DialogContent>
@@ -1534,12 +1579,12 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
 
       {/* Medication Monitoring Selection Dialog */}
       <Dialog open={showMedMonitoringDialog} onOpenChange={setShowMedMonitoringDialog}>
-        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
             <DialogTitle>Kirim Form Monitoring Obat Paliatif</DialogTitle>
             <DialogDescription>Pilih obat dan jadwal monitoring untuk {patient?.patientName}</DialogDescription>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-3 pr-1">
+          <div className="space-y-3">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <Label className="text-sm font-medium">Pilih Obat</Label>
@@ -1597,7 +1642,8 @@ Rekomendasi: ${compliancePercent >= 80 ? 'Kepatuhan baik, lanjutkan monitoring.'
               />
             </div>
           </div>
-          <DialogFooter className="shrink-0">
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowMedMonitoringDialog(false); setSelectedMedIds([]); }}>Batal</Button>
             <Button
               onClick={handleSendMedMonitoringForm}
               disabled={selectedMedIds.length === 0}

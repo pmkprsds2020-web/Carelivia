@@ -1,0 +1,1002 @@
+     1→'use client';
+     2→
+     3→import React, { useState, useMemo } from 'react';
+     4→import { useStore } from '@/lib/store';
+     5→import { useToast } from '@/hooks/use-toast';
+     6→import type {
+     7→  DailyCondition,
+     8→  DailyComplaintYesNo,
+     9→  DailyPainCondition,
+    10→  DailyDyspneaCondition,
+    11→  DailyYesNo,
+    12→  DailyMedicineProblem,
+    13→  DailyComplaintRecord,
+    14→  DailyComplaintFormInput,
+    15→  DailyComplaintSeverity,
+    16→  PalliativeClinicalAlert,
+    17→} from '@/lib/types';
+    18→
+    19→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+    20→import { Button } from '@/components/ui/button';
+    21→import { Label } from '@/components/ui/label';
+    22→import { Textarea } from '@/components/ui/textarea';
+    23→import { Badge } from '@/components/ui/badge';
+    24→import { Separator } from '@/components/ui/separator';
+    25→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+    26→import { Input } from '@/components/ui/input';
+    27→
+    28→import {
+    29→  ClipboardList, Send, AlertTriangle, CheckCircle2, ChevronDown,
+    30→  Search, Calendar, ArrowUpDown, Eye, Heart, Frown, Smile,
+    31→  ThermometerSun, Wind, Utensils, Moon, Pill, AlertCircle, XCircle,
+    32→  Filter, RotateCcw
+    33→} from 'lucide-react';
+    34→
+    35→// ─── Label Maps ──────────────────────────────────────────────────────────
+    36→
+    37→const conditionLabels: Record<DailyCondition, string> = {
+    38→  baik: 'Baik',
+    39→  tidak_baik: 'Tidak Baik',
+    40→};
+    41→
+    42→const complaintYesNoLabels: Record<DailyComplaintYesNo, string> = {
+    43→  tidak_ada: 'Tidak Ada',
+    44→  ada: 'Ada',
+    45→};
+    46→
+    47→const painLabels: Record<DailyPainCondition, string> = {
+    48→  tidak_nyeri: 'Sudah tidak nyeri',
+    49→  berkurang: 'Nyeri sudah berkurang',
+    50→  sama: 'Nyeri masih dirasakan sama',
+    51→  bertambah: 'Nyeri bertambah berat',
+    52→};
+    53→
+    54→const dyspneaLabels: Record<DailyDyspneaCondition, string> = {
+    55→  tidak_sesak: 'Sudah tidak sesak',
+    56→  berkurang: 'Sesak sudah berkurang',
+    57→  sama: 'Sesak masih dirasakan sama',
+    58→  bertambah: 'Sesak bertambah berat',
+    59→};
+    60→
+    61→const yesNoLabels: Record<DailyYesNo, string> = {
+    62→  ya: 'Ya',
+    63→  tidak: 'Tidak',
+    64→};
+    65→
+    66→const medicineProblemLabels: Record<DailyMedicineProblem, string> = {
+    67→  tidak: 'Tidak',
+    68→  ya: 'Ya',
+    69→};
+    70→
+    71→const severityConfig: Record<DailyComplaintSeverity, { label: string; cls: string; icon: React.ReactNode }> = {
+    72→  hijau: { label: 'Stabil', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300', icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
+    73→  kuning: { label: 'Perhatian', cls: 'bg-amber-100 text-amber-800 border-amber-300', icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+    74→  merah: { label: 'Kritis', cls: 'bg-red-100 text-red-800 border-red-300', icon: <AlertCircle className="h-3.5 w-3.5" /> },
+    75→};
+    76→
+    77→// ─── Props ─────────────────────────────────────────────────────────────
+    78→
+    79→interface DailyComplaintPanelProps {
+    80→  palliativePatientId: string | null;
+    81→}
+    82→
+    83→// ─── Radio Option Component ─────────────────────────────────────────────
+    84→
+    85→function RadioOption<T extends string>({
+    86→  options,
+    87→  labels,
+    88→  value,
+    89→  onChange,
+    90→  colorMap,
+    91→}: {
+    92→  options: T[];
+    93→  labels: Record<T, string>;
+    94→  value: T | '';
+    95→  onChange: (val: T) => void;
+    96→  colorMap?: Partial<Record<T, string>>;
+    97→}) {
+    98→  return (
+    99→    <div className="flex flex-wrap gap-2">
+   100→      {options.map((opt) => {
+   101→        const isSelected = value === opt;
+   102→        const colorCls = colorMap?.[opt];
+   103→        return (
+   104→          <button
+   105→            key={opt}
+   106→            type="button"
+   107→            onClick={() => onChange(opt)}
+   108→            className={`px-3 py-2 rounded-lg border text-sm transition-all whitespace-nowrap
+   109→              ${isSelected
+   110→                ? colorCls || 'bg-primary text-primary-foreground border-primary shadow-sm'
+   111→                : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'}
+   112→              `}
+   113→          >
+   114→            {labels[opt]}
+   115→          </button>
+   116→        );
+   117→      })}
+   118→    </div>
+   119→  );
+   120→}
+   121→
+   122→// ─── Conditional Textarea ─────────────────────────────────────────────
+   123→
+   124→function ConditionalTextarea({
+   125→  show,
+   126→  label,
+   127→  value,
+   128→  onChange,
+   129→  placeholder,
+   130→}: {
+   131→  show: boolean;
+   132→  label: string;
+   133→  value: string;
+   134→  onChange: (val: string) => void;
+   135→  placeholder: string;
+   136→}) {
+   137→  if (!show) return null;
+   138→  return (
+   139→    <div className="mt-2 ml-2 pl-3 border-l-2 border-amber-300 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+   140→      <Label className="text-sm font-medium text-amber-800">{label} *</Label>
+   141→      <Textarea
+   142→        value={value}
+   143→        onChange={(e) => onChange(e.target.value)}
+   144→        placeholder={placeholder}
+   145→        className="min-h-[80px] resize-y"
+   146→      />
+   147→    </div>
+   148→  );
+   149→}
+   150→
+   151→// ─── Form Section ─────────────────────────────────────────────────────
+   152→
+   153→function DailyComplaintForm({ palliativePatientId }: { palliativePatientId: string }) {
+   154→  const { toast } = useToast();
+   155→  const addDailyComplaint = useStore((s) => s.addDailyComplaint);
+   156→  const addPalliativeClinicalAlert = useStore((s) => s.addPalliativeClinicalAlert);
+   157→  const addPalliativeMonitoringNotification = useStore((s) => s.addPalliativeMonitoringNotification);
+   158→  const palliativePatients = useStore((s) => s.palliativePatients);
+   159→
+   160→  const [submitting, setSubmitting] = useState(false);
+   161→  const [submitted, setSubmitted] = useState(false);
+   162→
+   163→  // Form state
+   164→  const [kondisiHariIni, setKondisiHariIni] = useState<DailyCondition | ''>('');
+   165→  const [alasanKondisi, setAlasanKondisi] = useState('');
+   166→  const [keluhanBaru, setKeluhanBaru] = useState<DailyComplaintYesNo | ''>('');
+   167→  const [deskripsiKeluhanBaru, setDeskripsiKeluhanBaru] = useState('');
+   168→  const [kondisiNyeri, setKondisiNyeri] = useState<DailyPainCondition | ''>('');
+   169→  const [kondisiSesak, setKondisiSesak] = useState<DailyDyspneaCondition | ''>('');
+   170→  const [makanMinum, setMakanMinum] = useState<DailyYesNo | ''>('');
+   171→  const [alasanMakanMinum, setAlasanMakanMinum] = useState('');
+   172→  const [tidur, setTidur] = useState<DailyYesNo | ''>('');
+   173→  const [alasanTidur, setAlasanTidur] = useState('');
+   174→  const [masalahObat, setMasalahObat] = useState<DailyMedicineProblem | ''>('');
+   175→  const [deskripsiMasalahObat, setDeskripsiMasalahObat] = useState('');
+   176→
+   177→  const patient = palliativePatients.find((p) => p.id === palliativePatientId);
+   178→  const patientName = patient?.patientName || 'Pasien';
+   179→
+   180→  const canSubmit = useMemo(() => {
+   181→    if (!kondisiHariIni || !keluhanBaru || !kondisiNyeri || !kondisiSesak || !makanMinum || !tidur || !masalahObat) return false;
+   182→    if (kondisiHariIni === 'tidak_baik' && !alasanKondisi.trim()) return false;
+   183→    if (keluhanBaru === 'ada' && !deskripsiKeluhanBaru.trim()) return false;
+   184→    if (makanMinum === 'tidak' && !alasanMakanMinum.trim()) return false;
+   185→    if (tidur === 'tidak' && !alasanTidur.trim()) return false;
+   186→    if (masalahObat === 'ya' && !deskripsiMasalahObat.trim()) return false;
+   187→    return true;
+   188→  }, [kondisiHariIni, keluhanBaru, kondisiNyeri, kondisiSesak, makanMinum, tidur, masalahObat,
+   189→      alasanKondisi, deskripsiKeluhanBaru, alasanMakanMinum, alasanTidur, deskripsiMasalahObat]);
+   190→
+   191→  const handleSubmit = async () => {
+   192→    if (!canSubmit) return;
+   193→    setSubmitting(true);
+   194→
+   195→    try {
+   196→      const formData: DailyComplaintFormInput = {
+   197→        palliativePatientId,
+   198→        kondisiHariIni: kondisiHariIni as DailyCondition,
+   199→        alasanKondisi: kondisiHariIni === 'tidak_baik' ? alasanKondisi : undefined,
+   200→        keluhanBaru: keluhanBaru as DailyComplaintYesNo,
+   201→        deskripsiKeluhanBaru: keluhanBaru === 'ada' ? deskripsiKeluhanBaru : undefined,
+   202→        kondisiNyeri: kondisiNyeri as DailyPainCondition,
+   203→        kondisiSesak: kondisiSesak as DailyDyspneaCondition,
+   204→        makanMinum: makanMinum as DailyYesNo,
+   205→        alasanMakanMinum: makanMinum === 'tidak' ? alasanMakanMinum : undefined,
+   206→        tidur: tidur as DailyYesNo,
+   207→        alasanTidur: tidur === 'tidak' ? alasanTidur : undefined,
+   208→        masalahObat: masalahObat as DailyMedicineProblem,
+   209→        deskripsiMasalahObat: masalahObat === 'ya' ? deskripsiMasalahObat : undefined,
+   210→      };
+   211→
+   212→      const res = await fetch('/api/daily-complaints', {
+   213→        method: 'POST',
+   214→        headers: { 'Content-Type': 'application/json' },
+   215→        body: JSON.stringify(formData),
+   216→      });
+   217→
+   218→      if (!res.ok) throw new Error('Gagal menyimpan keluhan harian');
+   219→
+   220→      const data = await res.json();
+   221→      const savedComplaint: DailyComplaintRecord = {
+   222→        ...data.complaint,
+   223→        submittedAt: data.complaint.submittedAt,
+   224→        createdAt: data.complaint.createdAt,
+   225→      };
+   226→
+   227→      // Add to store
+   228→      addDailyComplaint(savedComplaint);
+   229→
+   230→      // Generate clinical alerts in the store
+   231→      if (data.alerts && data.alerts.length > 0) {
+   232→        for (const alert of data.alerts) {
+   233→          addPalliativeClinicalAlert({
+   234→            id: `alert-dc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+   235→            patientId: palliativePatientId,
+   236→            alertType: alert.severity === 'merah' ? 'perburukan' : 'gejala_berat',
+   237→            severity: alert.severity === 'merah' ? 'merah' : 'kuning',
+   238→            title: alert.title,
+   239→            description: alert.message,
+   240→            isRead: false,
+   241→            createdAt: new Date().toISOString(),
+   242→          });
+   243→
+   244→          addPalliativeMonitoringNotification({
+   245→            id: `notif-dc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+   246→            patientId: palliativePatientId,
+   247→            patientName,
+   248→            type: alert.severity === 'merah' ? 'pain_increase' : 'screening_completed',
+   249→            title: alert.title,
+   250→            description: alert.message,
+   251→            severity: alert.severity === 'merah' ? 'critical' : 'warning',
+   252→            isRead: false,
+   253→            referenceId: savedComplaint.id,
+   254→            createdAt: new Date().toISOString(),
+   255→          });
+   256→        }
+   257→      }
+   258→
+   259→      setSubmitted(true);
+   260→      toast({
+   261→        title: 'Keluhan Harian Terkirim',
+   262→        description: 'Terima kasih telah mengisi keluhan harian. Tim paliatif akan memantau kondisi Anda.',
+   263→      });
+   264→    } catch (error) {
+   265→      toast({
+   266→        title: 'Gagal Mengirim',
+   267→        description: 'Terjadi kesalahan saat menyimpan keluhan. Silakan coba lagi.',
+   268→        variant: 'destructive',
+   269→      });
+   270→    } finally {
+   271→      setSubmitting(false);
+   272→    }
+   273→  };
+   274→
+   275→  if (submitted) {
+   276→    return (
+   277→      <Card className="border-emerald-200 bg-emerald-50/50">
+   278→        <CardContent className="py-12 flex flex-col items-center gap-4 text-center">
+   279→          <div className="h-16 w-16 rounded-full bg-emerald-100 flex items-center justify-center">
+   280→            <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+   281→          </div>
+   282→          <div>
+   283→            <h3 className="text-lg font-semibold text-emerald-900">Keluhan Harian Berhasil Dikirim</h3>
+   284→            <p className="text-sm text-emerald-700 mt-1">
+   285→              Terima kasih telah mengisi keluhan harian. Tim paliatif akan memantau kondisi Anda.
+   286→            </p>
+   287→          </div>
+   288→          <Button
+   289→            variant="outline"
+   290→            onClick={() => {
+   291→              setSubmitted(false);
+   292→              setKondisiHariIni('');
+   293→              setAlasanKondisi('');
+   294→              setKeluhanBaru('');
+   295→              setDeskripsiKeluhanBaru('');
+   296→              setKondisiNyeri('');
+   297→              setKondisiSesak('');
+   298→              setMakanMinum('');
+   299→              setAlasanMakanMinum('');
+   300→              setTidur('');
+   301→              setAlasanTidur('');
+   302→              setMasalahObat('');
+   303→              setDeskripsiMasalahObat('');
+   304→            }}
+   305→            className="mt-2"
+   306→          >
+   307→            Isi Keluhan Baru
+   308→          </Button>
+   309→        </CardContent>
+   310→      </Card>
+   311→    );
+   312→  }
+   313→
+   314→  return (
+   315→    <Card>
+   316→      <CardHeader className="pb-4">
+   317→        <div className="flex items-center gap-2">
+   318→          <ClipboardList className="h-5 w-5 text-primary" />
+   319→          <CardTitle className="text-lg">Form Keluhan Harian</CardTitle>
+   320→        </div>
+   321→        <CardDescription>
+   322→          Isilah form berikut untuk melaporkan kondisi Anda hari ini. Data Anda akan dipantau oleh tim paliatif.
+   323→        </CardDescription>
+   324→      </CardHeader>
+   325→      <CardContent className="space-y-6">
+   326→        {/* Q1: Kondisi Hari Ini */}
+   327→        <div className="space-y-2">
+   328→          <Label className="text-sm font-semibold flex items-center gap-1.5">
+   329→            <Smile className="h-4 w-4 text-teal-600" />
+   330→            1. Bagaimana kondisi Anda hari ini?
+   331→          </Label>
+   332→          <RadioOption
+   333→            options={['baik', 'tidak_baik'] as DailyCondition[]}
+   334→            labels={conditionLabels}
+   335→            value={kondisiHariIni}
+   336→            onChange={setKondisiHariIni}
+   337→            colorMap={{
+   338→              baik: 'bg-emerald-600 text-white border-emerald-600 shadow-sm',
+   339→              tidak_baik: 'bg-red-600 text-white border-red-600 shadow-sm',
+   340→            }}
+   341→          />
+   342→          <ConditionalTextarea
+   343→            show={kondisiHariIni === 'tidak_baik'}
+   344→            label="Alasan kondisi tidak baik hari ini"
+   345→            value={alasanKondisi}
+   346→            onChange={setAlasanKondisi}
+   347→            placeholder="Jelaskan alasan kondisi Anda tidak baik..."
+   348→          />
+   349→        </div>
+   350→
+   351→        <Separator />
+   352→
+   353→        {/* Q2: Keluhan Baru */}
+   354→        <div className="space-y-2">
+   355→          <Label className="text-sm font-semibold flex items-center gap-1.5">
+   356→            <AlertCircle className="h-4 w-4 text-teal-600" />
+   357→            2. Apakah ada keluhan baru hari ini?
+   358→          </Label>
+   359→          <RadioOption
+   360→            options={['tidak_ada', 'ada'] as DailyComplaintYesNo[]}
+   361→            labels={complaintYesNoLabels}
+   362→            value={keluhanBaru}
+   363→            onChange={setKeluhanBaru}
+   364→            colorMap={{
+   365→              tidak_ada: 'bg-emerald-600 text-white border-emerald-600 shadow-sm',
+   366→              ada: 'bg-amber-600 text-white border-amber-600 shadow-sm',
+   367→            }}
+   368→          />
+   369→          <ConditionalTextarea
+   370→            show={keluhanBaru === 'ada'}
+   371→            label="Jelaskan keluhan baru yang dirasakan"
+   372→            value={deskripsiKeluhanBaru}
+   373→            onChange={setDeskripsiKeluhanBaru}
+   374→            placeholder="Jelaskan keluhan baru yang Anda rasakan..."
+   375→          />
+   376→        </div>
+   377→
+   378→        <Separator />
+   379→
+   380→        {/* Q3: Nyeri */}
+   381→        <div className="space-y-2">
+   382→          <Label className="text-sm font-semibold flex items-center gap-1.5">
+   383→            <ThermometerSun className="h-4 w-4 text-teal-600" />
+   384→            3. Bagaimana kondisi nyeri yang Anda rasakan?
+   385→          </Label>
+   386→          <RadioOption
+   387→            options={['tidak_nyeri', 'berkurang', 'sama', 'bertambah'] as DailyPainCondition[]}
+   388→            labels={painLabels}
+   389→            value={kondisiNyeri}
+   390→            onChange={setKondisiNyeri}
+   391→            colorMap={{
+   392→              tidak_nyeri: 'bg-emerald-600 text-white border-emerald-600 shadow-sm',
+   393→              berkurang: 'bg-teal-600 text-white border-teal-600 shadow-sm',
+   394→              sama: 'bg-amber-600 text-white border-amber-600 shadow-sm',
+   395→              bertambah: 'bg-red-600 text-white border-red-600 shadow-sm',
+   396→            }}
+   397→          />
+   398→        </div>
+   399→
+   400→        <Separator />
+   401→
+   402→        {/* Q4: Sesak Napas */}
+   403→        <div className="space-y-2">
+   404→          <Label className="text-sm font-semibold flex items-center gap-1.5">
+   405→            <Wind className="h-4 w-4 text-teal-600" />
+   406→            4. Bagaimana kondisi sesak napas yang Anda rasakan?
+   407→          </Label>
+   408→          <RadioOption
+   409→            options={['tidak_sesak', 'berkurang', 'sama', 'bertambah'] as DailyDyspneaCondition[]}
+   410→            labels={dyspneaLabels}
+   411→            value={kondisiSesak}
+   412→            onChange={setKondisiSesak}
+   413→            colorMap={{
+   414→              tidak_sesak: 'bg-emerald-600 text-white border-emerald-600 shadow-sm',
+   415→              berkurang: 'bg-teal-600 text-white border-teal-600 shadow-sm',
+   416→              sama: 'bg-amber-600 text-white border-amber-600 shadow-sm',
+   417→              bertambah: 'bg-red-600 text-white border-red-600 shadow-sm',
+   418→            }}
+   419→          />
+   420→        </div>
+   421→
+   422→        <Separator />
+   423→
+   424→        {/* Q5: Makan & Minum */}
+   425→        <div className="space-y-2">
+   426→          <Label className="text-sm font-semibold flex items-center gap-1.5">
+   427→            <Utensils className="h-4 w-4 text-teal-600" />
+   428→            5. Apakah Anda dapat makan dan minum dengan baik?
+   429→          </Label>
+   430→          <RadioOption
+   431→            options={['ya', 'tidak'] as DailyYesNo[]}
+   432→            labels={yesNoLabels}
+   433→            value={makanMinum}
+   434→            onChange={setMakanMinum}
+   435→            colorMap={{
+   436→              ya: 'bg-emerald-600 text-white border-emerald-600 shadow-sm',
+   437→              tidak: 'bg-red-600 text-white border-red-600 shadow-sm',
+   438→            }}
+   439→          />
+   440→          <ConditionalTextarea
+   441→            show={makanMinum === 'tidak'}
+   442→            label="Jelaskan kendala makan dan minum"
+   443→            value={alasanMakanMinum}
+   444→            onChange={setAlasanMakanMinum}
+   445→            placeholder="Jelaskan kendala yang Anda alami saat makan dan minum..."
+   446→          />
+   447→        </div>
+   448→
+   449→        <Separator />
+   450→
+   451→        {/* Q6: Tidur */}
+   452→        <div className="space-y-2">
+   453→          <Label className="text-sm font-semibold flex items-center gap-1.5">
+   454→            <Moon className="h-4 w-4 text-teal-600" />
+   455→            6. Apakah Anda dapat tidur dengan baik?
+   456→          </Label>
+   457→          <RadioOption
+   458→            options={['ya', 'tidak'] as DailyYesNo[]}
+   459→            labels={yesNoLabels}
+   460→            value={tidur}
+   461→            onChange={setTidur}
+   462→            colorMap={{
+   463→              ya: 'bg-emerald-600 text-white border-emerald-600 shadow-sm',
+   464→              tidak: 'bg-amber-600 text-white border-amber-600 shadow-sm',
+   465→            }}
+   466→          />
+   467→          <ConditionalTextarea
+   468→            show={tidur === 'tidak'}
+   469→            label="Jelaskan gangguan tidur yang dialami"
+   470→            value={alasanTidur}
+   471→            onChange={setAlasanTidur}
+   472→            placeholder="Jelaskan gangguan tidur yang Anda alami..."
+   473→          />
+   474→        </div>
+   475→
+   476→        <Separator />
+   477→
+   478→        {/* Q7: Masalah Obat */}
+   479→        <div className="space-y-2">
+   480→          <Label className="text-sm font-semibold flex items-center gap-1.5">
+   481→            <Pill className="h-4 w-4 text-teal-600" />
+   482→            7. Apakah ada masalah dengan obat yang diberikan?
+   483→          </Label>
+   484→          <RadioOption
+   485→            options={['tidak', 'ya'] as DailyMedicineProblem[]}
+   486→            labels={medicineProblemLabels}
+   487→            value={masalahObat}
+   488→            onChange={setMasalahObat}
+   489→            colorMap={{
+   490→              tidak: 'bg-emerald-600 text-white border-emerald-600 shadow-sm',
+   491→              ya: 'bg-red-600 text-white border-red-600 shadow-sm',
+   492→            }}
+   493→          />
+   494→          <ConditionalTextarea
+   495→            show={masalahObat === 'ya'}
+   496→            label="Jelaskan masalah yang dialami terkait obat"
+   497→            value={deskripsiMasalahObat}
+   498→            onChange={setDeskripsiMasalahObat}
+   499→            placeholder="Jelaskan masalah yang Anda alami terkait obat..."
+   500→          />
+   501→        </div>
+   502→
+   503→        {/* Submit Button */}
+   504→        <div className="pt-4">
+   505→          <Button
+   506→            onClick={handleSubmit}
+   507→            disabled={!canSubmit || submitting}
+   508→            className="w-full bg-teal-600 hover:bg-teal-700 text-white py-3 text-base"
+   509→          >
+   510→            {submitting ? (
+   511→              <>
+   512→                <span className="animate-spin mr-2">⏳</span>
+   513→                Mengirim...
+   514→              </>
+   515→            ) : (
+   516→              <>
+   517→                <Send className="h-4 w-4 mr-2" />
+   518→                Kirim Keluhan Harian
+   519→              </>
+   520→            )}
+   521→          </Button>
+   522→          {!canSubmit && (
+   523→            <p className="text-xs text-muted-foreground mt-2 text-center">
+   524→              Silakan isi semua pertanyaan yang wajib dijawab
+   525→            </p>
+   526→          )}
+   527→        </div>
+   528→      </CardContent>
+   529→    </Card>
+   530→  );
+   531→}
+   532→
+   533→// ─── History Table ─────────────────────────────────────────────────────
+   534→
+   535→function DailyComplaintHistory({ palliativePatientId }: { palliativePatientId: string | null }) {
+   536→  const { toast } = useToast();
+   537→  const dailyComplaints = useStore((s) => s.dailyComplaints);
+   538→  const palliativePatients = useStore((s) => s.palliativePatients);
+   539→
+   540→  const [searchQuery, setSearchQuery] = useState('');
+   541→  const [dateFrom, setDateFrom] = useState('');
+   542→  const [dateTo, setDateTo] = useState('');
+   543→  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+   544→  const [detailRecord, setDetailRecord] = useState<DailyComplaintRecord | null>(null);
+   545→  const [loading, setLoading] = useState(false);
+   546→
+   547→  // Fetch complaints
+   548→  React.useEffect(() => {
+   549→    const fetchComplaints = async () => {
+   550→      setLoading(true);
+   551→      try {
+   552→        const params = new URLSearchParams();
+   553→        if (palliativePatientId) params.set('palliativePatientId', palliativePatientId);
+   554→        const res = await fetch(`/api/daily-complaints?${params.toString()}`);
+   555→        if (res.ok) {
+   556→          const data = await res.json();
+   557→          useStore.getState().setDailyComplaints(data.complaints);
+   558→        }
+   559→      } catch {
+   560→        // Silent fail, use store data
+   561→      } finally {
+   562→        setLoading(false);
+   563→      }
+   564→    };
+   565→    fetchComplaints();
+   566→  }, [palliativePatientId]);
+   567→
+   568→  const filteredComplaints = useMemo(() => {
+   569→    let result = [...dailyComplaints];
+   570→
+   571→    // Filter by patient if specific
+   572→    if (palliativePatientId) {
+   573→      result = result.filter((c) => c.palliativePatientId === palliativePatientId);
+   574→    }
+   575→
+   576→    // Search by patient name
+   577→    if (searchQuery.trim()) {
+   578→      const q = searchQuery.toLowerCase();
+   579→      result = result.filter((c) =>
+   580→        (c.patientName || '').toLowerCase().includes(q)
+   581→      );
+   582→    }
+   583→
+   584→    // Date range filter
+   585→    if (dateFrom) {
+   586→      const from = new Date(dateFrom);
+   587→      result = result.filter((c) => new Date(c.submittedAt) >= from);
+   588→    }
+   589→    if (dateTo) {
+   590→      const to = new Date(dateTo);
+   591→      to.setHours(23, 59, 59, 999);
+   592→      result = result.filter((c) => new Date(c.submittedAt) <= to);
+   593→    }
+   594→
+   595→    // Sort
+   596→    result.sort((a, b) => {
+   597→      const diff = new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime();
+   598→      return sortOrder === 'newest' ? -diff : diff;
+   599→    });
+   600→
+   601→    return result;
+   602→  }, [dailyComplaints, palliativePatientId, searchQuery, dateFrom, dateTo, sortOrder]);
+   603→
+   604→  const resetFilters = () => {
+   605→    setSearchQuery('');
+   606→    setDateFrom('');
+   607→    setDateTo('');
+   608→    setSortOrder('newest');
+   609→  };
+   610→
+   611→  const fmtDate = (d: string) =>
+   612→    new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+   613→
+   614→  const shortLabel = (val: string, labels: Record<string, string>) => labels[val] || val;
+   615→
+   616→  const conditionShort: Record<string, string> = { baik: 'Baik', tidak_baik: 'Tidak Baik' };
+   617→  const complaintShort: Record<string, string> = { tidak_ada: 'Tidak Ada', ada: 'Ada' };
+   618→  const painShort: Record<string, string> = { tidak_nyeri: 'Tidak Nyeri', berkurang: 'Berkurang', sama: 'Sama', bertambah: 'Bertambah' };
+   619→  const dyspneaShort: Record<string, string> = { tidak_sesak: 'Tidak Sesak', berkurang: 'Berkurang', sama: 'Sama', bertambah: 'Bertambah' };
+   620→  const yesNoShort: Record<string, string> = { ya: 'Ya', tidak: 'Tidak' };
+   621→  const medShort: Record<string, string> = { tidak: 'Tidak', ya: 'Ya' };
+   622→
+   623→  return (
+   624→    <div className="space-y-4">
+   625→      {/* Filters */}
+   626→      <Card>
+   627→        <CardContent className="py-4">
+   628→          <div className="flex flex-wrap items-end gap-3">
+   629→            <div className="flex-1 min-w-[180px]">
+   630→              <Label className="text-xs text-muted-foreground mb-1">Cari Pasien</Label>
+   631→              <div className="relative">
+   632→                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+   633→                <Input
+   634→                  value={searchQuery}
+   635→                  onChange={(e) => setSearchQuery(e.target.value)}
+   636→                  placeholder="Nama pasien..."
+   637→                  className="pl-8 h-9 text-sm"
+   638→                />
+   639→              </div>
+   640→            </div>
+   641→            <div className="min-w-[140px]">
+   642→              <Label className="text-xs text-muted-foreground mb-1">Dari Tanggal</Label>
+   643→              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm" />
+   644→            </div>
+   645→            <div className="min-w-[140px]">
+   646→              <Label className="text-xs text-muted-foreground mb-1">Sampai Tanggal</Label>
+   647→              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm" />
+   648→            </div>
+   649→            <div className="min-w-[130px]">
+   650→              <Label className="text-xs text-muted-foreground mb-1">Urutkan</Label>
+   651→              <Button
+   652→                variant="outline"
+   653→                size="sm"
+   654→                onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
+   655→                className="h-9 text-sm w-full"
+   656→              >
+   657→                <ArrowUpDown className="h-3.5 w-3.5 mr-1" />
+   658→                {sortOrder === 'newest' ? 'Terbaru' : 'Terlama'}
+   659→              </Button>
+   660→            </div>
+   661→            <Button variant="ghost" size="sm" onClick={resetFilters} className="h-9 text-sm">
+   662→              <RotateCcw className="h-3.5 w-3.5 mr-1" />
+   663→              Reset
+   664→            </Button>
+   665→          </div>
+   666→        </CardContent>
+   667→      </Card>
+   668→
+   669→      {/* Stats Summary */}
+   670→      {filteredComplaints.length > 0 && (
+   671→        <div className="grid grid-cols-3 gap-3">
+   672→          <Card className="border-emerald-200 bg-emerald-50/50">
+   673→            <CardContent className="py-3 text-center">
+   674→              <div className="text-2xl font-bold text-emerald-700">
+   675→                {filteredComplaints.filter((c) => c.severityLevel === 'hijau').length}
+   676→              </div>
+   677→              <div className="text-xs text-emerald-600">Stabil</div>
+   678→            </CardContent>
+   679→          </Card>
+   680→          <Card className="border-amber-200 bg-amber-50/50">
+   681→            <CardContent className="py-3 text-center">
+   682→              <div className="text-2xl font-bold text-amber-700">
+   683→                {filteredComplaints.filter((c) => c.severityLevel === 'kuning').length}
+   684→              </div>
+   685→              <div className="text-xs text-amber-600">Perhatian</div>
+   686→            </CardContent>
+   687→          </Card>
+   688→          <Card className="border-red-200 bg-red-50/50">
+   689→            <CardContent className="py-3 text-center">
+   690→              <div className="text-2xl font-bold text-red-700">
+   691→                {filteredComplaints.filter((c) => c.severityLevel === 'merah').length}
+   692→              </div>
+   693→              <div className="text-xs text-red-600">Kritis</div>
+   694→            </CardContent>
+   695→          </Card>
+   696→        </div>
+   697→      )}
+   698→
+   699→      {/* Table */}
+   700→      <Card>
+   701→        <CardHeader className="pb-3">
+   702→          <CardTitle className="text-base flex items-center gap-2">
+   703→            <ClipboardList className="h-4 w-4 text-primary" />
+   704→            Riwayat Keluhan Harian
+   705→          </CardTitle>
+   706→          <CardDescription>
+   707→            {filteredComplaints.length} entri ditemukan
+   708→          </CardDescription>
+   709→        </CardHeader>
+   710→        <CardContent>
+   711→          {loading ? (
+   712→            <div className="text-center py-8 text-muted-foreground">Memuat data...</div>
+   713→          ) : filteredComplaints.length === 0 ? (
+   714→            <div className="text-center py-8 text-muted-foreground">
+   715→              <ClipboardList className="h-10 w-10 mx-auto mb-2 opacity-30" />
+   716→              <p>Belum ada data keluhan harian</p>
+   717→            </div>
+   718→          ) : (
+   719→            <div className="overflow-x-auto custom-scrollbar rounded-lg border">
+   720→              <table className="w-full text-sm">
+   721→                <thead>
+   722→                  <tr className="bg-slate-50 border-b">
+   723→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Waktu</th>
+   724→                    {!palliativePatientId && (
+   725→                      <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Pasien</th>
+   726→                    )}
+   727→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Kondisi</th>
+   728→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Keluhan Baru</th>
+   729→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Nyeri</th>
+   730→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Sesak</th>
+   731→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Makan & Minum</th>
+   732→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Tidur</th>
+   733→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Obat</th>
+   734→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Status</th>
+   735→                    <th className="text-center p-2.5 font-medium text-muted-foreground whitespace-nowrap">Detail</th>
+   736→                  </tr>
+   737→                </thead>
+   738→                <tbody>
+   739→                  {filteredComplaints.map((c) => {
+   740→                    const sev = severityConfig[c.severityLevel];
+   741→                    return (
+   742→                      <tr key={c.id} className="border-b hover:bg-slate-50/50 transition-colors">
+   743→                        <td className="p-2.5 whitespace-nowrap text-xs">{fmtDate(c.submittedAt)}</td>
+   744→                        {!palliativePatientId && (
+   745→                          <td className="p-2.5 whitespace-nowrap text-xs font-medium">{c.patientName || '-'}</td>
+   746→                        )}
+   747→                        <td className="p-2.5 whitespace-nowrap">
+   748→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${c.kondisiHariIni === 'baik' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+   749→                            {shortLabel(c.kondisiHariIni, conditionShort)}
+   750→                          </Badge>
+   751→                        </td>
+   752→                        <td className="p-2.5 whitespace-nowrap">
+   753→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${c.keluhanBaru === 'tidak_ada' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+   754→                            {shortLabel(c.keluhanBaru, complaintShort)}
+   755→                          </Badge>
+   756→                        </td>
+   757→                        <td className="p-2.5 whitespace-nowrap">
+   758→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
+   759→                            c.kondisiNyeri === 'tidak_nyeri' || c.kondisiNyeri === 'berkurang' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+   760→                            c.kondisiNyeri === 'sama' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+   761→                            'bg-red-50 text-red-700 border-red-200'
+   762→                          }`}>
+   763→                            {shortLabel(c.kondisiNyeri, painShort)}
+   764→                          </Badge>
+   765→                        </td>
+   766→                        <td className="p-2.5 whitespace-nowrap">
+   767→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
+   768→                            c.kondisiSesak === 'tidak_sesak' || c.kondisiSesak === 'berkurang' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+   769→                            c.kondisiSesak === 'sama' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+   770→                            'bg-red-50 text-red-700 border-red-200'
+   771→                          }`}>
+   772→                            {shortLabel(c.kondisiSesak, dyspneaShort)}
+   773→                          </Badge>
+   774→                        </td>
+   775→                        <td className="p-2.5 whitespace-nowrap">
+   776→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${c.makanMinum === 'ya' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+   777→                            {shortLabel(c.makanMinum, yesNoShort)}
+   778→                          </Badge>
+   779→                        </td>
+   780→                        <td className="p-2.5 whitespace-nowrap">
+   781→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${c.tidur === 'ya' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+   782→                            {shortLabel(c.tidur, yesNoShort)}
+   783→                          </Badge>
+   784→                        </td>
+   785→                        <td className="p-2.5 whitespace-nowrap">
+   786→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${c.masalahObat === 'tidak' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+   787→                            {shortLabel(c.masalahObat, medShort)}
+   788→                          </Badge>
+   789→                        </td>
+   790→                        <td className="p-2.5 whitespace-nowrap">
+   791→                          <Badge className={`text-[10px] px-1.5 py-0 border ${sev.cls}`}>
+   792→                            <span className="mr-0.5">{sev.icon}</span>
+   793→                            {sev.label}
+   794→                          </Badge>
+   795→                        </td>
+   796→                        <td className="p-2.5 text-center">
+   797→                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setDetailRecord(c)}>
+   798→                            <Eye className="h-3.5 w-3.5" />
+   799→                          </Button>
+   800→                        </td>
+   801→                      </tr>
+   802→                    );
+   803→                  })}
+   804→                </tbody>
+   805→              </table>
+   806→            </div>
+   807→          )}
+   808→        </CardContent>
+   809→      </Card>
+   810→
+   811→      {/* Detail Dialog */}
+   812→      <Dialog open={!!detailRecord} onOpenChange={(open) => !open && setDetailRecord(null)}>
+   813→        <DialogContent className="max-w-2xl max-h-[85vh]">
+   814→          <DialogHeader>
+   815→            <DialogTitle className="flex items-center gap-2">
+   816→              <ClipboardList className="h-5 w-5 text-primary" />
+   817→              Detail Keluhan Harian
+   818→            </DialogTitle>
+   819→            <DialogDescription>
+   820→              {detailRecord && fmtDate(detailRecord.submittedAt)}
+   821→              {detailRecord?.patientName && ` — ${detailRecord.patientName}`}
+   822→            </DialogDescription>
+   823→          </DialogHeader>
+   824→          {detailRecord && (
+   825→            <div className="overflow-y-auto custom-scrollbar space-y-4 pr-1" style={{ maxHeight: 'calc(85vh - 8rem)' }}>
+   826→              {/* Severity Badge */}
+   827→              <div className="flex items-center gap-2">
+   828→                <span className="text-sm font-medium">Status:</span>
+   829→                <Badge className={`border ${severityConfig[detailRecord.severityLevel].cls}`}>
+   830→                  {severityConfig[detailRecord.severityLevel].icon}
+   831→                  <span className="ml-1">{severityConfig[detailRecord.severityLevel].label}</span>
+   832→                </Badge>
+   833→              </div>
+   834→
+   835→              <Separator />
+   836→
+   837→              {/* Q1 */}
+   838→              <DetailSection
+   839→                icon={<Smile className="h-4 w-4" />}
+   840→                number={1}
+   841→                question="Kondisi hari ini"
+   842→                answer={conditionLabels[detailRecord.kondisiHariIni]}
+   843→                detail={detailRecord.kondisiHariIni === 'tidak_baik' ? detailRecord.alasanKondisi : undefined}
+   844→                detailLabel="Alasan"
+   845→                isAlert={detailRecord.kondisiHariIni === 'tidak_baik'}
+   846→              />
+   847→
+   848→              {/* Q2 */}
+   849→              <DetailSection
+   850→                icon={<AlertCircle className="h-4 w-4" />}
+   851→                number={2}
+   852→                question="Keluhan baru"
+   853→                answer={complaintYesNoLabels[detailRecord.keluhanBaru]}
+   854→                detail={detailRecord.keluhanBaru === 'ada' ? detailRecord.deskripsiKeluhanBaru : undefined}
+   855→                detailLabel="Deskripsi Keluhan"
+   856→                isAlert={detailRecord.keluhanBaru === 'ada'}
+   857→              />
+   858→
+   859→              {/* Q3 */}
+   860→              <DetailSection
+   861→                icon={<ThermometerSun className="h-4 w-4" />}
+   862→                number={3}
+   863→                question="Kondisi nyeri"
+   864→                answer={painLabels[detailRecord.kondisiNyeri]}
+   865→                isAlert={detailRecord.kondisiNyeri === 'bertambah'}
+   866→              />
+   867→
+   868→              {/* Q4 */}
+   869→              <DetailSection
+   870→                icon={<Wind className="h-4 w-4" />}
+   871→                number={4}
+   872→                question="Kondisi sesak napas"
+   873→                answer={dyspneaLabels[detailRecord.kondisiSesak]}
+   874→                isAlert={detailRecord.kondisiSesak === 'bertambah'}
+   875→              />
+   876→
+   877→              {/* Q5 */}
+   878→              <DetailSection
+   879→                icon={<Utensils className="h-4 w-4" />}
+   880→                number={5}
+   881→                question="Makan dan minum"
+   882→                answer={yesNoLabels[detailRecord.makanMinum]}
+   883→                detail={detailRecord.makanMinum === 'tidak' ? detailRecord.alasanMakanMinum : undefined}
+   884→                detailLabel="Kendala"
+   885→                isAlert={detailRecord.makanMinum === 'tidak'}
+   886→              />
+   887→
+   888→              {/* Q6 */}
+   889→              <DetailSection
+   890→                icon={<Moon className="h-4 w-4" />}
+   891→                number={6}
+   892→                question="Tidur"
+   893→                answer={yesNoLabels[detailRecord.tidur]}
+   894→                detail={detailRecord.tidur === 'tidak' ? detailRecord.alasanTidur : undefined}
+   895→                detailLabel="Gangguan"
+   896→                isAlert={detailRecord.tidur === 'tidak'}
+   897→              />
+   898→
+   899→              {/* Q7 */}
+   900→              <DetailSection
+   901→                icon={<Pill className="h-4 w-4" />}
+   902→                number={7}
+   903→                question="Masalah obat"
+   904→                answer={medicineProblemLabels[detailRecord.masalahObat]}
+   905→                detail={detailRecord.masalahObat === 'ya' ? detailRecord.deskripsiMasalahObat : undefined}
+   906→                detailLabel="Deskripsi Masalah"
+   907→                isAlert={detailRecord.masalahObat === 'ya'}
+   908→              />
+   909→            </div>
+   910→          )}
+   911→        </DialogContent>
+   912→      </Dialog>
+   913→    </div>
+   914→  );
+   915→}
+   916→
+   917→// ─── Detail Section ────────────────────────────────────────────────────
+   918→
+   919→function DetailSection({
+   920→  icon,
+   921→  number,
+   922→  question,
+   923→  answer,
+   924→  detail,
+   925→  detailLabel,
+   926→  isAlert,
+   927→}: {
+   928→  icon: React.ReactNode;
+   929→  number: number;
+   930→  question: string;
+   931→  answer: string;
+   932→  detail?: string;
+   933→  detailLabel?: string;
+   934→  isAlert?: boolean;
+   935→}) {
+   936→  return (
+   937→    <div className={`rounded-lg p-3 ${isAlert ? 'bg-red-50 border border-red-200' : 'bg-slate-50 border border-slate-200'}`}>
+   938→      <div className="flex items-center gap-2 mb-1">
+   939→        <span className={isAlert ? 'text-red-600' : 'text-teal-600'}>{icon}</span>
+   940→        <span className="text-sm font-semibold">{number}. {question}</span>
+   941→        {isAlert && <AlertTriangle className="h-3.5 w-3.5 text-red-500 ml-auto" />}
+   942→      </div>
+   943→      <div className="text-sm ml-6">
+   944→        <span className={`font-medium ${isAlert ? 'text-red-700' : 'text-slate-700'}`}>{answer}</span>
+   945→        {detail && (
+   946→          <div className="mt-1.5 p-2 rounded bg-white border text-xs text-slate-600">
+   947→            <span className="font-medium">{detailLabel}:</span> {detail}
+   948→          </div>
+   949→        )}
+   950→      </div>
+   951→    </div>
+   952→  );
+   953→}
+   954→
+   955→// ─── Main Panel ────────────────────────────────────────────────────────
+   956→
+   957→export default function DailyComplaintPanel({ palliativePatientId }: DailyComplaintPanelProps) {
+   958→  const [activeView, setActiveView] = useState<'form' | 'history'>('form');
+   959→
+   960→  return (
+   961→    <div className="space-y-4">
+   962→      {/* View Toggle */}
+   963→      <div className="flex gap-2">
+   964→        <Button
+   965→          variant={activeView === 'form' ? 'default' : 'outline'}
+   966→          size="sm"
+   967→          onClick={() => setActiveView('form')}
+   968→          className={activeView === 'form' ? 'bg-teal-600 hover:bg-teal-700 text-white' : ''}
+   969→        >
+   970→          <ClipboardList className="h-4 w-4 mr-1.5" />
+   971→          Isi Keluhan
+   972→        </Button>
+   973→        <Button
+   974→          variant={activeView === 'history' ? 'default' : 'outline'}
+   975→          size="sm"
+   976→          onClick={() => setActiveView('history')}
+   977→          className={activeView === 'history' ? 'bg-teal-600 hover:bg-teal-700 text-white' : ''}
+   978→        >
+   979→          <Calendar className="h-4 w-4 mr-1.5" />
+   980→          Riwayat Keluhan
+   981→        </Button>
+   982→      </div>
+   983→
+   984→      {/* Content */}
+   985→      {activeView === 'form' ? (
+   986→        palliativePatientId ? (
+   987→          <DailyComplaintForm palliativePatientId={palliativePatientId} />
+   988→        ) : (
+   989→          <Card>
+   990→            <CardContent className="py-12 text-center text-muted-foreground">
+   991→              <ClipboardList className="h-10 w-10 mx-auto mb-2 opacity-30" />
+   992→              <p>Pilih pasien terlebih dahulu untuk mengisi keluhan harian</p>
+   993→            </CardContent>
+   994→          </Card>
+   995→        )
+   996→      ) : (
+   997→        <DailyComplaintHistory palliativePatientId={palliativePatientId} />
+   998→      )}
+   999→    </div>
+  1000→  );
+  1001→}
+  1002→

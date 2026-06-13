@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useStore } from '@/lib/store';
 import { useToast } from '@/hooks/use-toast';
 import type {
@@ -55,7 +55,6 @@ import {
 } from 'lucide-react';
 
 import AISocialAnalysisTab from './ai-social-analysis-tab';
-import { SocialNeedsScreeningPanel } from './social-needs-screening-panel';
 
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -358,6 +357,43 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
 
   const [activeTab, setActiveTab] = useState('dashboard');
 
+  // ─── Horizontal Tab Scroll State ──────────────────────────────────────────
+  const tabScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollIndicators = useCallback(() => {
+    const el = tabScrollRef.current;
+    if (!el) return;
+    const left = el.scrollLeft;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    setCanScrollLeft(left > 2);
+    setCanScrollRight(left < maxScroll - 2);
+  }, []);
+
+  useEffect(() => {
+    const el = tabScrollRef.current;
+    if (!el) return;
+    updateScrollIndicators();
+    el.addEventListener('scroll', updateScrollIndicators, { passive: true });
+    const observer = new ResizeObserver(updateScrollIndicators);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener('scroll', updateScrollIndicators);
+      observer.disconnect();
+    };
+  }, [updateScrollIndicators, palliativePatientId]);
+
+  // Scroll active tab into view
+  useEffect(() => {
+    const el = tabScrollRef.current;
+    if (!el) return;
+    const activeTrigger = el.querySelector('[data-state="active"]') as HTMLElement | null;
+    if (activeTrigger) {
+      activeTrigger.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+  }, [activeTab]);
+
   // ─── Filtered Data ──────────────────────────────────────────────────────
 
   const patient = useMemo(
@@ -463,7 +499,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
   const renderDashboard = () => (
     <div className="space-y-4">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 min-w-0">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {/* Status Dukungan Keluarga */}
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-2">
@@ -562,7 +598,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="max-h-48 overflow-y-auto custom-scrollbar pr-1">
+            <ScrollArea className="max-h-48">
               <div className="space-y-2">
                 {patientAlerts.map(alert => (
                   <div
@@ -593,7 +629,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
                   </div>
                 ))}
               </div>
-            </div>
+            </ScrollArea>
           </CardContent>
         </Card>
       )}
@@ -609,8 +645,6 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
             <CardDescription className="text-xs">Skor semakin rendah = kondisi semakin baik (maks 24)</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="w-full overflow-x-auto scroll-x-container">
-            <div className="min-w-[300px]">
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={trendData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -624,8 +658,6 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
                   dot={{ fill: '#0d9488', r: 4 }} activeDot={{ r: 6 }} />
               </LineChart>
             </ResponsiveContainer>
-            </div>
-            </div>
           </CardContent>
         </Card>
       )}
@@ -663,15 +695,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
 
   // ── 2. Skrining Kebutuhan Sosial ────────────────────────────────────────
 
-  const ScreeningTab = () => (
-    <div className="h-[calc(100vh-300px)] min-h-[500px]">
-      <SocialNeedsScreeningPanel embedded />
-    </div>
-  );
-
-  // ── Legacy ScreeningTab (kept for reference / fallback) ──────────────
-
-  const ScreeningTabLegacy = () => {
+  const ScreeningTab = () => {
     const [form, setForm] = useState<ScreeningFormState>(emptyScreeningForm());
     const [showResult, setShowResult] = useState(false);
 
@@ -889,7 +913,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
               <CardTitle className="text-sm">Riwayat Skrining</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="max-h-96 overflow-y-auto custom-scrollbar pr-1">
+              <ScrollArea className="max-h-96">
                 <div className="space-y-3">
                   {patientAssessments.map((a, idx) => (
                     <div key={a.id} className="border rounded-lg p-3">
@@ -915,7 +939,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
                     </div>
                   ))}
                 </div>
-              </div>
+              </ScrollArea>
             </CardContent>
           </Card>
         )}
@@ -1033,7 +1057,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="max-h-48 overflow-y-auto custom-scrollbar pr-1">
+            <ScrollArea className="max-h-48">
               <div className="space-y-2">
                 {patientCaregivers.flatMap(cg =>
                   (cg.tasks || []).map((task, i) => (
@@ -1048,7 +1072,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
                   <p className="text-xs text-slate-400">Belum ada tugas yang ditugaskan</p>
                 )}
               </div>
-            </div>
+            </ScrollArea>
           </CardContent>
         </Card>
       )}
@@ -1160,7 +1184,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
           </Button>
         </div>
 
-        <div className="max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
+        <ScrollArea className="max-h-[500px]">
           <div className="space-y-3">
             {patientMeetings.map(m => (
               <Card key={m.id} className="p-4">
@@ -1217,16 +1241,16 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
               <p className="text-sm text-slate-400 text-center py-8">Belum ada family meeting</p>
             )}
           </div>
-        </div>
+        </ScrollArea>
 
         {/* Meeting Dialog */}
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
-          <DialogContent className="max-w-lg max-h-[85vh]">
-            <DialogHeader className="shrink-0">
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
               <DialogTitle>{editMeetingId ? 'Edit Meeting' : 'Jadwalkan Meeting Baru'}</DialogTitle>
               <DialogDescription>Isi detail family meeting virtual</DialogDescription>
             </DialogHeader>
-            <div className="space-y-3 overflow-y-auto custom-scrollbar flex-1 min-h-0 pr-1">
+            <div className="space-y-3">
               <div>
                 <Label className="text-xs">Judul Meeting *</Label>
                 <Input value={newMeeting.title} onChange={e => setNewMeeting(p => ({ ...p, title: e.target.value }))}
@@ -1272,7 +1296,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
                 )}
               </div>
             </div>
-            <DialogFooter className="shrink-0">
+            <DialogFooter>
               <Button variant="outline" onClick={() => setShowDialog(false)}>Batal</Button>
               <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSaveMeeting}>
                 {editMeetingId ? 'Perbarui' : 'Jadwalkan'}
@@ -1460,7 +1484,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
           </Button>
         </div>
 
-        <div className="max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
+        <ScrollArea className="max-h-[500px]">
           <div className="space-y-3">
             {patientCaregivers.map(cg => (
               <Card key={cg.id} className="p-4">
@@ -1526,16 +1550,16 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
               <p className="text-sm text-slate-400 text-center py-8">Belum ada caregiver terdaftar</p>
             )}
           </div>
-        </div>
+        </ScrollArea>
 
         {/* Caregiver Dialog */}
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
-          <DialogContent className="max-w-lg max-h-[85vh]">
-            <DialogHeader className="shrink-0">
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
               <DialogTitle>{editCaregiverId ? 'Edit Caregiver' : 'Tambah Caregiver'}</DialogTitle>
               <DialogDescription>Isi data caregiver pasien</DialogDescription>
             </DialogHeader>
-            <div className="space-y-3 overflow-y-auto custom-scrollbar flex-1 min-h-0 pr-1">
+            <div className="space-y-3">
               <div>
                 <Label className="text-xs">Nama *</Label>
                 <Input value={cgForm.name} onChange={e => setCgForm(p => ({ ...p, name: e.target.value }))} />
@@ -1601,7 +1625,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
                   placeholder="Contoh: Memberi obat, Menyiapkan makanan" />
               </div>
             </div>
-            <DialogFooter className="shrink-0">
+            <DialogFooter>
               <Button variant="outline" onClick={() => setShowDialog(false)}>Batal</Button>
               <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSaveCaregiver}>
                 {editCaregiverId ? 'Perbarui' : 'Simpan'}
@@ -1612,32 +1636,34 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
 
         {/* Zarit Dialog */}
         <Dialog open={showZaritDialog} onOpenChange={setShowZaritDialog}>
-          <DialogContent className="max-w-lg max-h-[85vh]">
-            <DialogHeader className="shrink-0">
+          <DialogContent className="max-w-lg max-h-[80vh]">
+            <DialogHeader>
               <DialogTitle>Zarit Caregiver Burden Scale</DialogTitle>
               <DialogDescription>12 pertanyaan, skor 0-4 per item (total 0-48)</DialogDescription>
             </DialogHeader>
-            <div className="overflow-y-auto custom-scrollbar flex-1 min-h-0 pr-1 space-y-4">
-              {zaritQuestions.map((q, i) => (
-                <div key={i} className="space-y-1">
-                  <p className="text-xs font-medium">{i + 1}. {q}</p>
-                  <div className="flex gap-1">
-                    {[0, 1, 2, 3, 4].map(v => (
-                      <Button key={v} size="sm" variant={zaritAnswers[i] === v ? 'default' : 'outline'}
-                        className={`text-xs h-7 flex-1 ${zaritAnswers[i] === v ? 'bg-teal-600 text-white' : ''}`}
-                        onClick={() => {
-                          const next = [...zaritAnswers];
-                          next[i] = v;
-                          setZaritAnswers(next);
-                        }}>
-                        {v}
-                      </Button>
-                    ))}
+            <ScrollArea className="max-h-[50vh] pr-2">
+              <div className="space-y-4">
+                {zaritQuestions.map((q, i) => (
+                  <div key={i} className="space-y-1">
+                    <p className="text-xs font-medium">{i + 1}. {q}</p>
+                    <div className="flex gap-1">
+                      {[0, 1, 2, 3, 4].map(v => (
+                        <Button key={v} size="sm" variant={zaritAnswers[i] === v ? 'default' : 'outline'}
+                          className={`text-xs h-7 flex-1 ${zaritAnswers[i] === v ? 'bg-teal-600 text-white' : ''}`}
+                          onClick={() => {
+                            const next = [...zaritAnswers];
+                            next[i] = v;
+                            setZaritAnswers(next);
+                          }}>
+                          {v}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center justify-between shrink-0 mt-2 pt-2 border-t">
+                ))}
+              </div>
+            </ScrollArea>
+            <div className="flex items-center justify-between mt-2">
               <span className="text-sm font-semibold">Total: {zaritAnswers.reduce((a, b) => a + b, 0)}/48</span>
               <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSaveZarit}>
                 Simpan Penilaian
@@ -1648,12 +1674,12 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
 
         {/* APGAR Dialog */}
         <Dialog open={showApgarDialog} onOpenChange={setShowApgarDialog}>
-          <DialogContent className="max-w-lg max-h-[85vh]">
-            <DialogHeader className="shrink-0">
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
               <DialogTitle>Family APGAR Scale</DialogTitle>
               <DialogDescription>5 pertanyaan, skor 0-2 per item (total 0-10)</DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 overflow-y-auto custom-scrollbar flex-1 min-h-0 pr-1">
+            <div className="space-y-4">
               {apgarQuestions.map((q, i) => (
                 <div key={i} className="space-y-1">
                   <p className="text-xs font-medium">{i + 1}. {q}</p>
@@ -1677,7 +1703,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
                 </div>
               ))}
             </div>
-            <div className="flex items-center justify-between shrink-0 mt-2 pt-2 border-t">
+            <div className="flex items-center justify-between mt-2">
               <span className="text-sm font-semibold">Total: {apgarAnswers.reduce((a, b) => a + b, 0)}/10</span>
               <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSaveApgar}>
                 Simpan Penilaian
@@ -1802,7 +1828,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
         )}
 
         {/* Notes List */}
-        <div className="max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
+        <ScrollArea className="max-h-[400px]">
           <div className="space-y-2">
             {filteredNotes.map(note => (
               <Card key={note.id} className={`p-3 ${note.isCompleted ? 'opacity-60' : ''}`}>
@@ -1833,7 +1859,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
               <p className="text-sm text-slate-400 text-center py-8">Belum ada catatan koordinasi</p>
             )}
           </div>
-        </div>
+        </ScrollArea>
       </div>
     );
   };
@@ -1903,7 +1929,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
           </Button>
         </div>
 
-        <div className="max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
+        <ScrollArea className="max-h-[500px]">
           <div className="space-y-3">
             {patientContacts.map(c => (
               <Card key={c.id} className="p-4">
@@ -1950,16 +1976,16 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
               <p className="text-sm text-slate-400 text-center py-8">Belum ada kontak darurat</p>
             )}
           </div>
-        </div>
+        </ScrollArea>
 
         {/* Contact Dialog */}
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
-          <DialogContent className="max-w-lg max-h-[85vh]">
-            <DialogHeader className="shrink-0">
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
               <DialogTitle>{editContactId ? 'Edit Kontak Darurat' : 'Tambah Kontak Darurat'}</DialogTitle>
               <DialogDescription>Isi data kontak darurat</DialogDescription>
             </DialogHeader>
-            <div className="space-y-3 overflow-y-auto custom-scrollbar flex-1 min-h-0 pr-1">
+            <div className="space-y-3">
               <div>
                 <Label className="text-xs">Nama *</Label>
                 <Input value={contactForm.name}
@@ -2005,7 +2031,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
                   onChange={e => setContactForm(p => ({ ...p, notes: e.target.value }))} />
               </div>
             </div>
-            <DialogFooter className="shrink-0">
+            <DialogFooter>
               <Button variant="outline" onClick={() => setShowDialog(false)}>Batal</Button>
               <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSaveContact}>
                 {editContactId ? 'Perbarui' : 'Simpan'}
@@ -2135,7 +2161,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
         </div>
 
         {/* Financial Records */}
-        <div className="max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
+        <ScrollArea className="max-h-[500px]">
           <div className="space-y-3">
             {patientFinancials.map(f => (
               <Card key={f.id} className="p-4">
@@ -2193,16 +2219,17 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
               <p className="text-sm text-slate-400 text-center py-8">Belum ada data finansial</p>
             )}
           </div>
-        </div>
+        </ScrollArea>
 
         {/* Financial Dialog */}
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
-          <DialogContent className="max-w-lg max-h-[85vh]">
-            <DialogHeader className="shrink-0">
+          <DialogContent className="max-w-lg max-h-[80vh]">
+            <DialogHeader>
               <DialogTitle>{editRecordId ? 'Edit Data Finansial' : 'Tambah Data Finansial'}</DialogTitle>
               <DialogDescription>Isi data dukungan finansial pasien</DialogDescription>
             </DialogHeader>
-            <div className="overflow-y-auto custom-scrollbar flex-1 min-h-0 pr-1 space-y-3">
+            <ScrollArea className="max-h-[55vh] pr-2">
+              <div className="space-y-3">
                 <div>
                   <Label className="text-xs">Status Asuransi</Label>
                   <Select value={finForm.insuranceStatus}
@@ -2297,7 +2324,8 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
                     onChange={e => setFinForm(p => ({ ...p, notes: e.target.value }))} />
                 </div>
               </div>
-            <DialogFooter className="shrink-0">
+            </ScrollArea>
+            <DialogFooter>
               <Button variant="outline" onClick={() => setShowDialog(false)}>Batal</Button>
               <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSaveFinancial}>
                 {editRecordId ? 'Perbarui' : 'Simpan'}
@@ -2367,7 +2395,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
           </Button>
         </div>
 
-        <div className="max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
+        <ScrollArea className="max-h-[500px]">
           <div className="space-y-3">
             {patientTransport.map(t => (
               <Card key={t.id} className="p-4">
@@ -2429,16 +2457,16 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
               <p className="text-sm text-slate-400 text-center py-8">Belum ada catatan transportasi</p>
             )}
           </div>
-        </div>
+        </ScrollArea>
 
         {/* Transport Dialog */}
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
-          <DialogContent className="max-w-lg max-h-[85vh]">
-            <DialogHeader className="shrink-0">
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
               <DialogTitle>Permintaan Transportasi</DialogTitle>
               <DialogDescription>Isi detail permintaan transportasi</DialogDescription>
             </DialogHeader>
-            <div className="space-y-3 overflow-y-auto custom-scrollbar flex-1 min-h-0 pr-1">
+            <div className="space-y-3">
               <div>
                 <Label className="text-xs">Jenis Transportasi</Label>
                 <Select value={transForm.type}
@@ -2476,7 +2504,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
                   onChange={e => setTransForm(p => ({ ...p, notes: e.target.value }))} />
               </div>
             </div>
-            <DialogFooter className="shrink-0">
+            <DialogFooter>
               <Button variant="outline" onClick={() => setShowDialog(false)}>Batal</Button>
               <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSaveTransport}>
                 Ajukan
@@ -2507,51 +2535,51 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
   return (
     <div className="space-y-4">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="relative">
-          <ScrollArea className="w-full" type="always">
+        <div className={`h-scroll-wrapper${canScrollLeft ? ' can-scroll-left' : ''}${canScrollRight ? ' can-scroll-right' : ''}`}>
+          <div ref={tabScrollRef} className="h-scroll-tabs">
             <TabsList className="flex w-max gap-1 bg-slate-100 p-1 rounded-lg">
               {tabItems.map(tab => (
                 <TabsTrigger key={tab.value} value={tab.value}
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md whitespace-nowrap">
-                  <tab.icon className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{tab.label}</span>
-              </TabsTrigger>
-            ))}
+                  <tab.icon className="h-3.5 w-3.5 shrink-0" />
+                  <span>{tab.label}</span>
+                </TabsTrigger>
+              ))}
             </TabsList>
-          </ScrollArea>
+          </div>
         </div>
 
-        <TabsContent value="dashboard" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+        <TabsContent value="dashboard" className="mt-4">
           {renderDashboard()}
         </TabsContent>
-        <TabsContent value="screening" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+        <TabsContent value="screening" className="mt-4">
           <ScreeningTab />
         </TabsContent>
-        <TabsContent value="family" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+        <TabsContent value="family" className="mt-4">
           <FamilyDashboardTab />
         </TabsContent>
-        <TabsContent value="meetings" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+        <TabsContent value="meetings" className="mt-4">
           <MeetingTab />
         </TabsContent>
-        <TabsContent value="edu-tools" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+        <TabsContent value="edu-tools" className="mt-4">
           <EduToolsTab />
         </TabsContent>
-        <TabsContent value="caregiver" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+        <TabsContent value="caregiver" className="mt-4">
           <CaregiverTab />
         </TabsContent>
-        <TabsContent value="coordination" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+        <TabsContent value="coordination" className="mt-4">
           <CoordinationTab />
         </TabsContent>
-        <TabsContent value="emergency" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+        <TabsContent value="emergency" className="mt-4">
           <EmergencyContactTab />
         </TabsContent>
-        <TabsContent value="financial" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+        <TabsContent value="financial" className="mt-4">
           <FinancialTab />
         </TabsContent>
-        <TabsContent value="transport" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+        <TabsContent value="transport" className="mt-4">
           <TransportTab />
         </TabsContent>
-        <TabsContent value="ai-analysis" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
+        <TabsContent value="ai-analysis" className="mt-4">
           <AISocialAnalysisTab palliativePatientId={palliativePatientId} />
         </TabsContent>
       </Tabs>

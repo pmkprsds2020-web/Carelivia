@@ -11,7 +11,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -188,7 +187,7 @@ export function HomeCarePanel() {
         </TabsList>
 
         {/* Tab 1: Layanan */}
-        <TabsContent value="layanan" className="space-y-6 mt-4 overflow-y-auto custom-scrollbar">
+        <TabsContent value="layanan" className="space-y-6 mt-4">
           {/* Hero Section */}
           <div className="carelivia-gradient rounded-xl p-6 md:p-8 text-white relative overflow-hidden">
             <div className="relative z-10">
@@ -259,7 +258,7 @@ export function HomeCarePanel() {
         </TabsContent>
 
         {/* Tab 2: Pesanan Saya */}
-        <TabsContent value="pesanan" className="space-y-4 mt-4 overflow-y-auto custom-scrollbar">
+        <TabsContent value="pesanan" className="space-y-4 mt-4">
           {homeCareBookings.length === 0 ? (
             <div className="text-center py-12">
               <CalendarIcon className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
@@ -280,11 +279,11 @@ export function HomeCarePanel() {
 
       {/* Booking Dialog */}
       <Dialog open={bookingDialogOpen} onOpenChange={setBookingDialogOpen}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
             <DialogTitle>Pesan Layanan Home Care</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
+          <div className="space-y-4">
             {/* Service Name (Read-only) */}
             <div className="space-y-2">
               <Label className="text-xs font-medium text-muted-foreground">Layanan</Label>
@@ -373,8 +372,7 @@ export function HomeCarePanel() {
               />
             </div>
 
-          </div>
-          <DialogFooter className="shrink-0">
+            {/* Submit Button */}
             <Button
               onClick={handleSubmitBooking}
               className="w-full"
@@ -382,7 +380,7 @@ export function HomeCarePanel() {
             >
               {isSubmitting ? 'Memproses...' : 'Konfirmasi Pemesanan'}
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
