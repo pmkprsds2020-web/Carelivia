@@ -32,7 +32,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Tooltip,
   TooltipContent,
@@ -526,12 +525,12 @@ export function SocialNeedsScreeningPanel() {
     const currentAnswer = answers[question.id];
 
     return (
-      <div key={question.id} className="space-y-3 pb-4">
-        <div className="flex items-start gap-2">
-          <span className="text-sm font-semibold text-[#2D8C7A] shrink-0">
+      <div key={question.id} className="space-y-1.5 sm:space-y-3 pb-3 sm:pb-4">
+        <div className="flex items-start gap-1.5 sm:gap-2">
+          <span className="text-xs sm:text-sm font-semibold text-[#2D8C7A] shrink-0">
             Q{question.questionNumber}.
           </span>
-          <Label className="text-sm font-medium leading-snug">
+          <Label className="text-xs sm:text-sm font-medium leading-snug">
             {question.questionText}
             {question.required && <span className="text-red-500 ml-1">*</span>}
           </Label>
@@ -539,7 +538,7 @@ export function SocialNeedsScreeningPanel() {
 
         {/* Single Choice (Radio) */}
         {question.type === 'single_choice' && question.options && (
-          <div className="space-y-2 pl-2">
+          <div className="space-y-1.5 sm:space-y-2 pl-1 sm:pl-2">
             {question.options.map((option) => {
               const isSelected = currentAnswer === option.value;
               const hasTooltip = question.hasTooltip && option.tooltip;
@@ -548,7 +547,7 @@ export function SocialNeedsScreeningPanel() {
                 <div
                   key={option.value}
                   className={cn(
-                    'flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all duration-200',
+                    'flex items-center gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-lg border cursor-pointer transition-all duration-200',
                     isSelected
                       ? 'border-[#2D8C7A] bg-[#2D8C7A]/5 shadow-sm'
                       : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
@@ -569,7 +568,7 @@ export function SocialNeedsScreeningPanel() {
                   </div>
                   <span
                     className={cn(
-                      'text-sm flex-1',
+                      'text-xs sm:text-sm flex-1',
                       isSelected ? 'font-medium text-[#2D8C7A]' : 'text-gray-700'
                     )}
                   >
@@ -580,10 +579,10 @@ export function SocialNeedsScreeningPanel() {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
-                            className="text-muted-foreground hover:text-[#2D8C7A] transition-colors p-1"
+                            className="text-muted-foreground hover:text-[#2D8C7A] transition-colors p-0.5 sm:p-1"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <Info className="w-3.5 h-3.5" />
+                            <Info className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                           </button>
                         </TooltipTrigger>
                         <TooltipContent
@@ -603,7 +602,7 @@ export function SocialNeedsScreeningPanel() {
 
         {/* Multiple Choice (Checkbox) */}
         {question.type === 'multiple_choice' && question.options && (
-          <div className="space-y-2 pl-2">
+          <div className="space-y-1.5 sm:space-y-2 pl-1 sm:pl-2">
             {question.options.map((option) => {
               const selectedValues = (currentAnswer as string[]) || [];
               const isSelected = selectedValues.includes(option.value);
@@ -612,7 +611,7 @@ export function SocialNeedsScreeningPanel() {
                 <div
                   key={option.value}
                   className={cn(
-                    'flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all duration-200',
+                    'flex items-center gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-lg border cursor-pointer transition-all duration-200',
                     isSelected
                       ? 'border-[#2D8C7A] bg-[#2D8C7A]/5 shadow-sm'
                       : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
@@ -635,7 +634,7 @@ export function SocialNeedsScreeningPanel() {
                   </div>
                   <span
                     className={cn(
-                      'text-sm flex-1',
+                      'text-xs sm:text-sm flex-1',
                       isSelected ? 'font-medium text-[#2D8C7A]' : 'text-gray-700'
                     )}
                   >
@@ -649,7 +648,7 @@ export function SocialNeedsScreeningPanel() {
 
         {/* Text Area */}
         {question.type === 'text_area' && (
-          <div className="pl-2">
+          <div className="pl-1 sm:pl-2">
             <Textarea
               placeholder="Tulis jawaban Anda di sini..."
               value={(currentAnswer as string) || ''}
@@ -666,56 +665,54 @@ export function SocialNeedsScreeningPanel() {
 
   const renderDesktopCategoryNav = () => (
     <div className="w-56 shrink-0">
-      <ScrollArea className="h-[calc(100vh-280px)]">
-        <div className="space-y-1 pr-2">
-          {CATEGORY_ORDER.map((cat, idx) => {
-            const meta = CATEGORY_META[cat];
-            const progress = categoryProgress[cat];
-            const isActive = idx === currentCategoryIndex;
-            const isComplete = progress && progress.answered === progress.total && progress.total > 0;
+      <div className="space-y-1 pr-2 max-h-[calc(100vh-18rem)] overflow-y-auto">
+        {CATEGORY_ORDER.map((cat, idx) => {
+          const meta = CATEGORY_META[cat];
+          const progress = categoryProgress[cat];
+          const isActive = idx === currentCategoryIndex;
+          const isComplete = progress && progress.answered === progress.total && progress.total > 0;
 
-            return (
-              <button
-                key={cat}
-                onClick={() => setCurrentCategoryIndex(idx)}
+          return (
+            <button
+              key={cat}
+              onClick={() => setCurrentCategoryIndex(idx)}
+              className={cn(
+                'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-all duration-200',
+                isActive
+                  ? 'bg-[#2D8C7A]/10 border border-[#2D8C7A]/30'
+                  : 'hover:bg-gray-50 border border-transparent'
+              )}
+            >
+              <div
                 className={cn(
-                  'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-all duration-200',
-                  isActive
-                    ? 'bg-[#2D8C7A]/10 border border-[#2D8C7A]/30'
-                    : 'hover:bg-gray-50 border border-transparent'
+                  'w-7 h-7 rounded-md flex items-center justify-center shrink-0',
+                  isActive ? 'bg-[#2D8C7A] text-white' : 'bg-gray-100 text-gray-500'
                 )}
               >
-                <div
+                <CategoryIcon name={meta.icon} className="w-3.5 h-3.5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p
                   className={cn(
-                    'w-7 h-7 rounded-md flex items-center justify-center shrink-0',
-                    isActive ? 'bg-[#2D8C7A] text-white' : 'bg-gray-100 text-gray-500'
+                    'text-xs font-medium truncate',
+                    isActive ? 'text-[#2D8C7A]' : 'text-gray-700'
                   )}
                 >
-                  <CategoryIcon name={meta.icon} className="w-3.5 h-3.5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p
-                    className={cn(
-                      'text-xs font-medium truncate',
-                      isActive ? 'text-[#2D8C7A]' : 'text-gray-700'
-                    )}
-                  >
-                    {meta.label}
+                  {meta.label}
+                </p>
+                {progress && (
+                  <p className="text-[10px] text-muted-foreground">
+                    {progress.answered}/{progress.total}
                   </p>
-                  {progress && (
-                    <p className="text-[10px] text-muted-foreground">
-                      {progress.answered}/{progress.total}
-                    </p>
-                  )}
-                </div>
-                {isComplete && (
-                  <CheckCircle className="w-3.5 h-3.5 text-green-500 shrink-0" />
                 )}
-              </button>
-            );
-          })}
-        </div>
-      </ScrollArea>
+              </div>
+              {isComplete && (
+                <CheckCircle className="w-3.5 h-3.5 text-green-500 shrink-0" />
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 
@@ -755,74 +752,72 @@ export function SocialNeedsScreeningPanel() {
     const meta = CATEGORY_META[currentCategory];
 
     return (
-      <div className="space-y-4">
+      <div className="flex flex-col h-full gap-2 sm:gap-3">
         {/* Progress Header */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-3 shrink-0">
           <div className="flex-1">
-            <p className="text-xs text-muted-foreground mb-1">
-              Pertanyaan dijawab: {answeredCount}/{totalQuestions} (Wajib: {answeredRequiredCount}/{totalRequiredCount})
+            <p className="text-[10px] sm:text-xs text-muted-foreground mb-0.5 sm:mb-1">
+              {answeredCount}/{totalQuestions} dijawab
             </p>
             <Progress
               value={(answeredCount / totalQuestions) * 100}
-              className="h-2"
+              className="h-1.5 sm:h-2"
             />
           </div>
           {liveResult && (
             <Badge
               variant="outline"
-              className="shrink-0 text-[10px]"
+              className="shrink-0 text-[9px] sm:text-[10px]"
               style={{
                 borderColor: getRiskLevelDisplay(liveResult.overallRiskLevel).borderColor,
                 color: getRiskLevelDisplay(liveResult.overallRiskLevel).color,
                 backgroundColor: getRiskLevelDisplay(liveResult.overallRiskLevel).bgColor,
               }}
             >
-              {liveResult.overallPercentage}% - {getRiskLevelDisplay(liveResult.overallRiskLevel).label}
+              {liveResult.overallPercentage}%
             </Badge>
           )}
         </div>
 
         {/* Main Content: Nav + Questions */}
-        <div className="flex gap-4">
+        <div className="flex gap-4 flex-1 min-h-0">
           {/* Desktop Category Navigation */}
-          <div className="hidden md:block">{renderDesktopCategoryNav()}</div>
+          <div className="hidden md:block shrink-0">{renderDesktopCategoryNav()}</div>
 
           {/* Questions Area */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 flex flex-col min-h-0">
             {/* Mobile Category Navigation */}
-            <div className="md:hidden mb-4">{renderMobileCategoryNav()}</div>
+            <div className="md:hidden mb-3 shrink-0">{renderMobileCategoryNav()}</div>
 
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-3">
+            <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <CardHeader className="py-2 sm:py-3 px-3 sm:px-6 shrink-0">
+                <div className="flex items-center gap-2 sm:gap-3">
                   <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl flex items-center justify-center"
                     style={{ backgroundColor: `${meta.color}15` }}
                   >
-                    <CategoryIcon name={meta.icon} className="w-5 h-5" style={{ color: meta.color }} />
+                    <CategoryIcon name={meta.icon} className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: meta.color }} />
                   </div>
                   <div>
-                    <CardTitle className="text-base" style={{ color: meta.color }}>
+                    <CardTitle className="text-sm sm:text-base" style={{ color: meta.color }}>
                       {meta.label}
                     </CardTitle>
-                    <CardDescription className="text-xs">{meta.description}</CardDescription>
+                    <CardDescription className="text-[10px] sm:text-xs hidden sm:block">{meta.description}</CardDescription>
                   </div>
                 </div>
               </CardHeader>
               <Separator />
-              <CardContent className="pt-4 space-y-1">
-                <ScrollArea className="max-h-[calc(100vh-440px)]">
-                  <div className="pr-2">
-                    {currentQuestions.map(renderQuestion)}
-                  </div>
-                </ScrollArea>
+              <CardContent className="py-3 sm:pt-4 px-3 sm:px-6 flex-1 min-h-0 overflow-y-auto">
+                <div className="pr-1 sm:pr-2 space-y-1">
+                  {currentQuestions.map(renderQuestion)}
+                </div>
               </CardContent>
             </Card>
           </div>
         </div>
 
         {/* Navigation Buttons */}
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 shrink-0 pt-1">
           <Button
             variant="outline"
             onClick={handlePrevious}
@@ -1413,9 +1408,9 @@ export function SocialNeedsScreeningPanel() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 flex flex-col h-[calc(100vh-8rem)] overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between shrink-0">
         <div>
           <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: '#2D8C7A' }}>
             <Heart className="w-5 h-5" />
@@ -1433,8 +1428,8 @@ export function SocialNeedsScreeningPanel() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="w-full grid grid-cols-3">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 mt-3">
+        <TabsList className="w-full grid grid-cols-3 shrink-0">
           <TabsTrigger value="screening" className="gap-1.5 text-xs sm:text-sm">
             <ClipboardList className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Skrining</span>
@@ -1449,15 +1444,15 @@ export function SocialNeedsScreeningPanel() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="screening" className="mt-4">
+        <TabsContent value="screening" className="mt-3 flex-1 min-h-0 overflow-hidden">
           {renderScreeningTab()}
         </TabsContent>
 
-        <TabsContent value="results" className="mt-4">
+        <TabsContent value="results" className="mt-3 flex-1 min-h-0 overflow-y-auto">
           {renderResultsTab()}
         </TabsContent>
 
-        <TabsContent value="monitoring" className="mt-4">
+        <TabsContent value="monitoring" className="mt-3 flex-1 min-h-0 overflow-y-auto">
           {renderMonitoringTab()}
         </TabsContent>
       </Tabs>
