@@ -569,7 +569,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
           </Card>
 
           {/* Quick Navigation Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 min-w-0">
             {[
               { key: 'family', label: 'Analisis Keluarga', icon: Heart, color: 'text-pink-600' },
               { key: 'caregiver', label: 'Analisis Caregiver', icon: UserCheck, color: 'text-amber-600' },
@@ -623,7 +623,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 min-w-0">
               <Card className="p-4">
                 <span className="text-xs text-slate-500">Skor Dukungan Keluarga</span>
                 <div className="mt-2 flex items-end gap-2">
@@ -646,7 +646,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
               </Card>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3 min-w-0">
               <Card className="p-3 text-center">
                 <Users className="h-5 w-5 text-slate-400 mx-auto" />
                 <p className="text-2xl font-bold mt-1">{fa.activeFamilyMembers}</p>
@@ -709,7 +709,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3 min-w-0">
               <Card className="p-3">
                 <span className="text-xs text-slate-500">Beban Fisik</span>
                 <div className="mt-1">{riskLevelBadge(ca.physicalBurden as 'rendah' | 'sedang' | 'tinggi')}</div>
@@ -766,7 +766,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
 
             <div>
               <h4 className="text-sm font-semibold mb-2">Kebutuhan Prioritas</h4>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 min-w-0">
                 {fa.priorityNeeds.map((need, i) => (
                   <div key={i} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border">
                     <div className="h-3 w-3 rounded-full" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
@@ -777,7 +777,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
             </div>
 
             {needPieData.length > 0 && (
-              <div className="h-48 w-full overflow-hidden">
+              <div className="h-48 w-full overflow-hidden scroll-x-container">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={needPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ name }) => name}>
@@ -823,7 +823,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3 min-w-0">
               <Card className="p-3">
                 <span className="text-xs text-slate-500">Risiko Akses</span>
                 <div className="mt-1">{riskLevelBadge(ta.accessRiskLevel)}</div>
@@ -838,7 +838,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
               </Card>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3 min-w-0">
               <div className={`p-3 rounded-lg border ${ta.teleconsultationRecommended ? 'bg-teal-50 border-teal-200' : 'bg-slate-50'}`}>
                 <div className="flex items-center gap-2">
                   {ta.teleconsultationRecommended ? <CheckCircle2 className="h-4 w-4 text-teal-600" /> : <XCircle className="h-4 w-4 text-slate-400" />}
@@ -1140,7 +1140,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
             ) : (
               <div className="space-y-4">
                 {/* Summary Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 min-w-0">
                   <Card className="p-3">
                     <span className="text-xs text-slate-500">Total Pasien Aktif</span>
                     <p className="text-2xl font-bold mt-1">{stats.totalActivePatients}</p>
@@ -1166,7 +1166,8 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
                       <CardTitle className="text-sm">Tren Masalah Sosial Pasien Paliatif</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="w-full overflow-hidden">
+                      <div className="w-full overflow-x-auto scroll-x-container">
+                      <div className="min-w-[300px]">
                       <ResponsiveContainer width="100%" height={200}>
                         <LineChart data={stats.socialTrendData}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -1179,6 +1180,7 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
                         </LineChart>
                       </ResponsiveContainer>
                       </div>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
@@ -1190,7 +1192,8 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
                       <CardTitle className="text-sm">Kebutuhan Bantuan Sosial Terbanyak</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="w-full overflow-hidden">
+                      <div className="w-full overflow-x-auto scroll-x-container">
+                      <div className="min-w-[300px]">
                       <ResponsiveContainer width="100%" height={200}>
                         <BarChart data={stats.topSocialNeeds}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -1201,12 +1204,13 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
                         </BarChart>
                       </ResponsiveContainer>
                       </div>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
 
                 {/* Predictions */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
                   <Card className="p-4">
                     <h4 className="text-sm font-semibold mb-2">Prediksi 30 Hari</h4>
                     {stats.predictedNeeds30Days.map((n, i) => (
@@ -1263,31 +1267,31 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
           </TabsList>
         </ScrollArea>
 
-        <TabsContent value="overview" className="mt-4 overflow-y-auto custom-scrollbar">
+        <TabsContent value="overview" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
           {renderOverview()}
         </TabsContent>
-        <TabsContent value="family" className="mt-4 overflow-y-auto custom-scrollbar">
+        <TabsContent value="family" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
           {renderFamilyAnalysis()}
         </TabsContent>
-        <TabsContent value="caregiver" className="mt-4 overflow-y-auto custom-scrollbar">
+        <TabsContent value="caregiver" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
           {renderCaregiverAnalysis()}
         </TabsContent>
-        <TabsContent value="financial" className="mt-4 overflow-y-auto custom-scrollbar">
+        <TabsContent value="financial" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
           {renderFinancialAnalysis()}
         </TabsContent>
-        <TabsContent value="transport" className="mt-4 overflow-y-auto custom-scrollbar">
+        <TabsContent value="transport" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
           {renderTransportAnalysis()}
         </TabsContent>
-        <TabsContent value="action" className="mt-4 overflow-y-auto custom-scrollbar">
+        <TabsContent value="action" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
           {renderActionPlan()}
         </TabsContent>
-        <TabsContent value="warning" className="mt-4 overflow-y-auto custom-scrollbar">
+        <TabsContent value="warning" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
           {renderEarlyWarning()}
         </TabsContent>
-        <TabsContent value="report" className="mt-4 overflow-y-auto custom-scrollbar">
+        <TabsContent value="report" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
           {renderReport()}
         </TabsContent>
-        <TabsContent value="population" className="mt-4 overflow-y-auto custom-scrollbar">
+        <TabsContent value="population" className="mt-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 16rem)' }}>
           {renderPopulationAnalytics()}
         </TabsContent>
       </Tabs>

@@ -548,3 +548,36 @@ Stage Summary:
 - Chat integration with complaint save dialog functional
 - AI complaint classification endpoint available with local fallback
 - All features verified via browser testing with no errors
+---
+Task ID: 10
+Agent: Main Agent
+Task: Perbaikan UI Modul Sosial - Scrollability and Overflow Fixes
+
+Work Log:
+- Identified 3 main Social Module files: social-support-panel.tsx (2561 lines), ai-social-analysis-tab.tsx (1301 lines), social-needs-screening-panel.tsx (2022 lines)
+- Analyzed all ScrollArea, Dialog, chart container, and grid overflow patterns across all 3 files
+- social-support-panel.tsx fixes:
+  - Added max-height scrolling to all 11 TabsContent elements with `style={{ maxHeight: 'calc(100vh - 16rem)' }}`
+  - Replaced 6 ScrollArea elements with `overflow-y-auto custom-scrollbar` divs for better mobile scrolling (meeting list, caregiver list, coordination notes, emergency contacts, financial records, transport records, alerts, screening history, caregiver tasks)
+  - Fixed 7 dialogs to use `max-h-[85vh]` with flex-col layout, `shrink-0` header/footer, and `overflow-y-auto custom-scrollbar` middle section (Meeting, Caregiver, Zarit, APGAR, Contact, Financial, Transport)
+  - Changed chart container from `overflow-hidden` to `overflow-x-auto scroll-x-container` with `min-w-[300px]` inner wrapper
+  - Added `min-w-0` to dashboard grid container
+  - Added `pr-1` padding for scrollbar clearance on all scrollable containers
+- ai-social-analysis-tab.tsx fixes:
+  - Added max-height scrolling to all 9 TabsContent elements
+  - Changed 3 chart containers from `overflow-hidden` to `overflow-x-auto scroll-x-container` with `min-w-[300px]` inner wrappers
+  - Added `min-w-0` to 7 grid containers to prevent grid blowout on mobile
+- social-needs-screening-panel.tsx fixes:
+  - Added `custom-scrollbar` class to main wrapper
+  - Added max-height style to all 3 TabsContent elements with `style={{ maxHeight: 'calc(100vh - 12rem)' }}`
+  - Added `min-w-0` to 3 key grid containers (Key Findings, Risk Gauges, Bottom Row)
+- Ran lint: all files pass cleanly
+- Browser verification confirmed all tabs accessible, dialogs open and scroll properly, no console errors
+
+Stage Summary:
+- All Social Module panels now have proper vertical scrollbar with auto-appear behavior
+- All dialogs have max-height constraint with internal scrolling and sticky action buttons
+- Chart containers handle horizontal overflow on mobile with scroll-x-container
+- Grid containers protected from blowout with min-w-0
+- Consistent custom-scrollbar styling applied across all scrollable areas
+- No content is clipped or hidden - all features fully accessible

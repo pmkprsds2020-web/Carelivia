@@ -1049,7 +1049,7 @@ export function SocialNeedsScreeningPanel({ embedded = false }: SocialNeedsScree
         </Card>
 
         {/* Key Findings Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
           {/* Status Dukungan Keluarga */}
           {familySupport && (
             <Card>
@@ -1676,7 +1676,7 @@ export function SocialNeedsScreeningPanel({ embedded = false }: SocialNeedsScree
             <Activity className="w-4 h-4 text-[#2D8C7A]" />
             Skor Monitoring Kebutuhan Sosial
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 min-w-0">
             {mockMonitoringData.map((item) => (
               <RiskGauge
                 key={item.title}
@@ -1838,7 +1838,7 @@ export function SocialNeedsScreeningPanel({ embedded = false }: SocialNeedsScree
         </Card>
 
         {/* Bottom Row: High-Risk Patients + Early Warnings */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
           {/* High-Risk Patients */}
           <Card>
             <CardHeader className="pb-2">
@@ -1941,8 +1941,8 @@ export function SocialNeedsScreeningPanel({ embedded = false }: SocialNeedsScree
   // ═══════════════════════════════════════════════════════════════════════════
 
   const wrapperClass = embedded
-    ? 'flex flex-col h-full min-h-0 overflow-y-auto'
-    : 'p-4 flex flex-col h-[calc(100vh-8rem)] min-h-0 overflow-y-auto';
+    ? 'flex flex-col h-full min-h-0 overflow-y-auto custom-scrollbar'
+    : 'p-4 flex flex-col h-[calc(100vh-8rem)] min-h-0 overflow-y-auto custom-scrollbar';
 
   return (
     <div className={wrapperClass}>
@@ -1983,15 +1983,15 @@ export function SocialNeedsScreeningPanel({ embedded = false }: SocialNeedsScree
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="screening" className="mt-3 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+        <TabsContent value="screening" className="mt-3 flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 12rem)' }}>
           {renderScreeningTab()}
         </TabsContent>
 
-        <TabsContent value="results" className="mt-3 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+        <TabsContent value="results" className="mt-3 flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 12rem)' }}>
           {renderResultsTab()}
         </TabsContent>
 
-        <TabsContent value="monitoring" className="mt-3 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+        <TabsContent value="monitoring" className="mt-3 flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 12rem)' }}>
           {renderMonitoringTab()}
         </TabsContent>
       </Tabs>
