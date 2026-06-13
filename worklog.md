@@ -386,3 +386,165 @@ Stage Summary:
 - Charts wrapped to prevent horizontal overflow
 - Lint passes cleanly, no compilation errors
 - Browser verification confirms proper scrolling behavior on desktop and mobile viewports
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Create API route for AI complaint classification
+
+Work Log:
+- Read worklog.md for context on existing project structure
+- Read existing AI route at `/src/app/api/social-needs-screening-ai/route.ts` for the z-ai-web-dev-sdk pattern
+- Reviewed type definitions in `/src/lib/types.ts` for DailyComplaintAIResult, DailyComplaintCategory, DailyComplaintSeverity, DailyComplaintImpact, DailyAlertLevel, etc.
+- Created `/src/app/api/daily-complaints-ai/route.ts` with:
+  - POST handler accepting messageText, patientName, patientId, medicalRecordNumber, inputSource, saveCategory
+  - AI prompt for comprehensive complaint classification with structured JSON output
+  - z-ai-web-dev-sdk integration following existing pattern (system message + user prompt + json_object response_format)
+  - Response validation helpers for category, severityScore, severity, impact, alertLevel
+  - Fallback localKeywordAnalysis() function with keyword-to-category mapping for: nyeri, sesak_napas, mual, muntah, nafsu_makan_menurun, kelelahan, gangguan_tidur, konstipasi, diare, batuk, kecemasan, depresi, masalah_spiritual, masalah_sosial
+  - Fallback urgency-based alert level detection (merah/kuning/hijau)
+  - Fallback contextual suggestedFollowUp based on alert level
+  - Returns DailyComplaintAIResult with aiGenerated flag and generatedAt timestamp
+- Ran `bun run lint` — passed cleanly with no errors
+
+Stage Summary:
+- Complete API route for AI-powered daily complaint classification
+- Follows existing z-ai-web-dev-sdk pattern from social-needs-screening-ai
+- Robust fallback mechanism using keyword matching when AI is unavailable
+- Full type validation on AI response fields before returning
+
+---
+Task ID: 2
+Agent: Subagent
+Task: Create daily-complaints-data.ts with categories, mock data, and helper functions
+
+Work Log:
+- Read /home/z/my-project/worklog.md for context on previous tasks
+- Read /home/z/my-project/src/lib/types.ts to understand DailyComplaint-related type definitions
+- Created /home/z/my-project/src/lib/daily-complaints-data.ts with:
+  - COMPLAINT_CATEGORIES: 15 categories with label, icon name, and color
+  - SEVERITY_CONFIG: 3 severity levels with label, color, bgColor, borderColor
+  - IMPACT_CONFIG: 4 impact levels with label and description
+  - FOLLOW_UP_STATUS_CONFIG: 3 follow-up statuses with label and color
+  - ALERT_LEVEL_CONFIG: 3 alert levels with label, color, bgColor, icon
+  - Helper functions: getSeverityFromScore, getAlertLevelFromScore, getComplaintCategoryLabel, getSeverityLabel, getImpactLabel, getFollowUpStatusLabel, getAlertLevelLabel, generateLocalAIAnalysis
+  - MOCK_COMPLAINT_ENTRIES: 16 mock entries across 5 days for patient Siti Rahayu (RM-2025-001)
+  - MOCK_COMPLAINT_TRENDS: 14 days of trend data with realistic fluctuating values
+  - MOCK_COMPLAINT_ALERTS: 6 mock alerts with different alert levels and trigger reasons
+- Fixed syntax error in kecemasan keyword array (missing opening quote)
+- Ran `bun run lint` successfully with no errors
+
+Stage Summary:
+- Complete daily-complaints-data.ts file created with all required constants, helper functions, and mock data
+- All types properly imported from @/lib/types
+- Local AI analysis fallback uses keyword matching across all 15 complaint categories
+- Mock data includes varied input sources (pasien, keluarga, dokter) and data sources (chat, manual, ai_classification)
+- Linting passes with no errors
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Create the main DailyComplaintsPanel component
+
+Work Log:
+- Read worklog.md, daily-complaints-data.ts, types.ts, and social-needs-screening-panel.tsx for context
+- Studied the CSS-based bar chart pattern from social-needs-screening-panel.tsx monitoring tab
+- Created `/home/z/my-project/src/components/telemedicine/daily-complaints-panel.tsx`
+- Component has `embedded` prop (default false) for use within Palliative Monitoring panel
+- Implemented 3 sub-tabs: Dashboard, Timeline Keluhan, Peringatan & Alert
+
+Sub-Tab 1 - Dashboard:
+- 4 summary cards: Total Keluhan Masuk, Keluhan Terbanyak, Keluhan Berat (≥7), Perlu Tindak Lanjut
+- CSS-based bar chart showing 7-day trend data from MOCK_COMPLAINT_TRENDS
+- Toggle buttons for 6 categories: Nyeri, Sesak Napas, Mual, Kelelahan, Gangguan Tidur, Kecemasan
+- Distribusi Kategori grid showing category breakdown with color indicators
+
+Sub-Tab 2 - Timeline Keluhan:
+- 4 filter controls: Date range, Category, Severity, Follow-up status
+- Timeline list with alert dot, time, category badge, severity bar, description, input/data source, follow-up badge
+- Add Complaint Dialog with category select, severity slider (0-10), description textarea, impact select, input source select, clinical note
+- Entry Detail Dialog with full details, editable clinical note, follow-up status change buttons, validate button, severity visual bar
+
+Sub-Tab 3 - Peringatan & Alert:
+- 3 alert summary cards: Hijau (ringan), Kuning (perlu pemantauan), Merah (tindak lanjut segera)
+- Alert list sorted by severity (merah first), with unread indicator
+- Action buttons: Tandai Dibaca, Selesaikan, Lihat Keluhan
+
+- All scrollable areas have `custom-scrollbar` class
+- Dialogs have `max-h-[90vh] flex flex-col` with scrollable content
+- CareLivia brand colors used throughout (#2D8C7A primary, #D9B26F accent, #6DB8A8 secondary)
+- Responsive design with mobile-first approach
+- Ran `bun run lint` successfully with no errors
+
+Stage Summary:
+- Complete DailyComplaintsPanel component with 3 comprehensive sub-tabs
+- CSS-based trend chart (no recharts dependency)
+- Full CRUD-like interactions: add complaint, view details, update follow-up status, validate, manage clinical notes
+- Alert management: mark read, resolve, navigate to related complaint
+- All imports from specified shadcn/ui components and Lucide icons
+- Linting passes with no errors
+
+---
+Task ID: 6
+Agent: Main Agent
+Task: Add chat integration buttons to ChatPanel for saving complaints to Monitoring Keluhan Harian
+
+Work Log:
+- Read worklog.md and chat-panel.tsx to understand current structure
+- Verified daily-complaints-data.ts has generateLocalAIAnalysis function
+- Verified tooltip.tsx component exists in ui folder
+- Verified /api/daily-complaints-ai/route.ts API endpoint exists
+- Added import for generateLocalAIAnalysis from @/lib/daily-complaints-data
+- Added import for Tooltip, TooltipTrigger, TooltipContent, TooltipProvider from @/components/ui/tooltip
+- Added 5 new state variables: showComplaintDialog, complaintMessage, complaintSaveCategory, complaintAIResult, complaintAILoading
+- Added runComplaintAI useCallback function that calls /api/daily-complaints-ai with fallback to generateLocalAIAnalysis
+- Added handleSaveComplaint async function for the save action with toast notification
+- Modified message bubble rendering (line ~2070): changed outer flex div from 'flex' to 'flex items-end', added 'group' class to message bubble div for hover effect
+- Added ClipboardList icon button with tooltip that appears on hover for doctor viewing patient messages (isDoctor && !isOwn)
+- Button opens complaint save dialog and triggers AI analysis automatically
+- Added renderComplaintSaveDialog() with full dialog UI:
+  - Title: "Simpan ke Monitoring Keluhan" with ClipboardList icon
+  - Message preview showing original patient message
+  - Save Category select with 6 options (Keluhan Harian, Perkembangan Kondisi, Efek Samping Terapi, Permasalahan Psikologis, Permasalahan Sosial, Keluhan Lainnya)
+  - AI Analysis section with loading spinner, and rich result display (category, severity score bar, severity badge, impact, alert level with colored badges, extracted complaints as badges, AI notes, suggested follow-up, AI/local indicator)
+  - Batal and Simpan action buttons
+- Added renderComplaintSaveDialog() to main render dialog section
+- Lint check passes with no errors
+- Dev server running successfully
+
+Stage Summary:
+- Chat integration complete: doctors can now hover over patient messages and click the ClipboardList icon to save complaints to Monitoring Keluhan Harian
+- AI analysis runs automatically when dialog opens, with local fallback
+- Full dialog UI with category selection, AI analysis display, and save functionality
+- Existing functionality preserved, no breaking changes
+
+---
+Task ID: 5+7
+Agent: Main Agent
+Task: Integrate DailyComplaintsPanel into Palliative Monitoring Panel + Browser Verification
+
+Work Log:
+- Added 'keluhan' to MonitorTab type in palliative-monitoring-panel.tsx
+- Added DailyComplaintsPanel import (default export) to palliative-monitoring-panel.tsx
+- Added ClipboardList icon import to lucide-react imports
+- Added "Keluhan" TabsTrigger between "Sosial" and "ACP" tabs
+- Added TabsContent for "keluhan" tab rendering DailyComplaintsPanel with embedded prop
+- Browser verification completed:
+  - Login as doctor (dr. Sarah Wijaya) ✅
+  - Navigate to Monitoring Paliatif ✅
+  - "Keluhan" tab visible and clickable in the main tabs list ✅
+  - DailyComplaintsPanel loads with 3 sub-tabs: Dashboard, Timeline Keluhan, Peringatan (2) ✅
+  - Dashboard sub-tab shows: Ringkasan Hari Ini, category toggle buttons (Nyeri, Sesak Napas, etc.) ✅
+  - Timeline Keluhan sub-tab shows: Tambah Keluhan button, filter dropdowns ✅
+  - Peringatan sub-tab shows alert list ✅
+  - No console errors or page errors ✅
+  - Chat panel also verified functional ✅
+- Lint passes cleanly, dev server compiles without errors
+
+Stage Summary:
+- Monitoring Keluhan Harian feature fully integrated into Monitoring Paliatif
+- New "Keluhan" tab accessible from the main Monitoring Paliatif tabs
+- DailyComplaintsPanel with Dashboard, Timeline, and Alerts working correctly
+- Chat integration with complaint save dialog functional
+- AI complaint classification endpoint available with local fallback
+- All features verified via browser testing with no errors

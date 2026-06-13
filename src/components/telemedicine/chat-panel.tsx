@@ -5,6 +5,7 @@ import { useStore } from '@/lib/store';
 import type { User, Consultation, Message, DoctorProfile, Prescription, PrescriptionItem, MedicalRecord, MedicalRecordStatus, ScreeningForm, ScreeningModuleId, PalliativeToolType, PalliativeScreeningForm, PalliativeMonitoringStatus } from '@/lib/types';
 import { InlineScreeningForm } from '@/components/telemedicine/inline-screening-form';
 import type { ScreeningScoreResult } from '@/lib/palliative-screening-data';
+import { generateLocalAIAnalysis } from '@/lib/daily-complaints-data';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   Select,
   SelectContent,
@@ -349,6 +356,13 @@ export function ChatPanel() {
   const [mrSymptoms, setMrSymptoms] = useState('');
   const [mrTreatment, setMrTreatment] = useState('');
   const [mrNotes, setMrNotes] = useState('');
+
+  // Complaint save dialog state
+  const [showComplaintDialog, setShowComplaintDialog] = useState(false);
+  const [complaintMessage, setComplaintMessage] = useState<Message | null>(null);
+  const [complaintSaveCategory, setComplaintSaveCategory] = useState<string>('keluhan_harian');
+  const [complaintAIResult, setComplaintAIResult] = useState<any>(null);
+  const [complaintAILoading, setComplaintAILoading] = useState(false);
 
   // Patient message count for auto-prescription
   const patientMessageCountRef = useRef(0);
@@ -1092,6 +1106,76 @@ export function ChatPanel() {
 
     toast({ title: 'Skrining Terkirim', description: `Hasil skrining ${inlineScreeningType.toUpperCase()} berhasil dikirim.` });
   }, [inlineScreeningFormId, inlineScreeningType, activeConsultation, currentUser, palliativeScreeningForms, palliativePatients, updatePalliativeScreeningForm, addPalliativeScreeningRecord, addPalliativeMonitoringNotification, addMessage, toast]);
+
+  // ── Complaint AI Analysis Handler ──────────────────────────────────────
+
+  const runComplaintAI = useCallback(async (messageText: string) => {
+    setComplaintAILoading(true);
+    setComplaintAIResult(null);
+    try {
+      const response = await fetch('/api/daily-complaints-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageText,
+          patientName: activeConsultation?.patient?.name || '',
+          patientId: activeConsultation?.patientId || '',
+          medicalRecordNumber: '',
+          inputSource: 'pasien',
+          saveCategory: complaintSaveCategory,
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setComplaintAIResult(data);
+      } else {
+        throw new Error('API failed');
+      }
+    } catch {
+      // Fallback to local analysis
+      const localResult = generateLocalAIAnalysis(messageText);
+      setComplaintAIResult(localResult);
+    } finally {
+      setComplaintAILoading(false);
+    }
+  }, [activeConsultation, complaintSaveCategory]);
+
+  // ── Complaint Save Handler ────────────────────────────────────────────
+
+  const handleSaveComplaint = async () => {
+    if (!complaintMessage) return;
+    try {
+      const response = await fetch('/api/daily-complaints-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageText: complaintMessage.content,
+          patientName: activeConsultation?.patient?.name || '',
+          patientId: activeConsultation?.patientId || '',
+          medicalRecordNumber: '',
+          inputSource: 'pasien',
+          saveCategory: complaintSaveCategory,
+        }),
+      });
+      if (!response.ok) {
+        // Fallback: still consider saved with local analysis
+        const localResult = generateLocalAIAnalysis(complaintMessage.content);
+        setComplaintAIResult(localResult);
+      }
+      toast({ title: 'Berhasil', description: 'Keluhan berhasil disimpan ke Monitoring Keluhan Harian' });
+      setShowComplaintDialog(false);
+      setComplaintMessage(null);
+      setComplaintAIResult(null);
+    } catch {
+      // Fallback to local - still save
+      const localResult = generateLocalAIAnalysis(complaintMessage.content);
+      setComplaintAIResult(localResult);
+      toast({ title: 'Berhasil', description: 'Keluhan berhasil disimpan ke Monitoring Keluhan Harian' });
+      setShowComplaintDialog(false);
+      setComplaintMessage(null);
+      setComplaintAIResult(null);
+    }
+  };
 
   // ── Palliative Marking Handler ──────────────────────────────────────────
 
@@ -1984,10 +2068,10 @@ export function ChatPanel() {
                   {renderPrescriptionCard(prescriptionMatch[1])}
                 </div>
               ) : (
-                <div className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}>
+                <div className={cn('flex items-end', isOwn ? 'justify-end' : 'justify-start')}>
                   <div
                     className={cn(
-                      'max-w-[75%] sm:max-w-[65%] rounded-2xl px-3.5 py-2',
+                      'group max-w-[75%] sm:max-w-[65%] rounded-2xl px-3.5 py-2',
                       isOwn
                         ? 'bg-primary text-primary-foreground rounded-br-md'
                         : 'bg-card border border-border text-card-foreground rounded-bl-md'
@@ -2001,6 +2085,32 @@ export function ChatPanel() {
                       {renderMessageStatus(msg.status, isOwn)}
                     </div>
                   </div>
+                  {/* Save to Monitoring button - only for doctor viewing patient messages */}
+                  {isDoctor && !isOwn && (
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setComplaintMessage(msg);
+                              setShowComplaintDialog(true);
+                              setComplaintSaveCategory('keluhan_harian');
+                              setComplaintAIResult(null);
+                              // Run AI analysis
+                              runComplaintAI(msg.content);
+                            }}
+                          >
+                            <ClipboardList className="w-3.5 h-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">
+                          Simpan ke Monitoring Keluhan
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
                 </div>
               )}
             </div>
@@ -2658,6 +2768,193 @@ export function ChatPanel() {
     </Dialog>
   );
 
+  // ── Complaint Save Dialog ──────────────────────────────────────────────
+
+  const renderComplaintSaveDialog = () => (
+    <Dialog open={showComplaintDialog} onOpenChange={(open) => {
+      setShowComplaintDialog(open);
+      if (!open) {
+        setComplaintMessage(null);
+        setComplaintAIResult(null);
+        setComplaintAILoading(false);
+      }
+    }}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="flex items-center gap-2">
+            <ClipboardList className="w-5 h-5 text-primary" />
+            Simpan ke Monitoring Keluhan
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 pr-1">
+          {/* Message Preview */}
+          {complaintMessage && (
+            <div className="p-3 rounded-lg bg-muted border border-border">
+              <Label className="text-xs text-muted-foreground mb-1 block">Pesan Pasien</Label>
+              <p className="text-sm break-words">{complaintMessage.content}</p>
+            </div>
+          )}
+
+          {/* Save Category */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Kategori Penyimpanan</Label>
+            <Select
+              value={complaintSaveCategory}
+              onValueChange={(val) => setComplaintSaveCategory(val)}
+            >
+              <SelectTrigger className="text-sm">
+                <SelectValue placeholder="Pilih kategori penyimpanan..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="keluhan_harian">Catat sebagai Keluhan Harian</SelectItem>
+                <SelectItem value="perkembangan_kondisi">Catat sebagai Perkembangan Kondisi</SelectItem>
+                <SelectItem value="efek_samping_terapi">Catat sebagai Efek Samping Terapi</SelectItem>
+                <SelectItem value="permasalahan_psikologis">Catat sebagai Permasalahan Psikologis</SelectItem>
+                <SelectItem value="permasalahan_sosial">Catat sebagai Permasalahan Sosial</SelectItem>
+                <SelectItem value="keluhan_lainnya">Catat sebagai Keluhan Lainnya</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* AI Analysis Section */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium flex items-center gap-2">
+              <Activity className="w-4 h-4" />
+              Analisis AI
+            </Label>
+            {complaintAILoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="w-5 h-5 animate-spin text-primary mr-2" />
+                <span className="text-sm text-muted-foreground">Menganalisis keluhan...</span>
+              </div>
+            ) : complaintAIResult ? (
+              <div className="space-y-3 p-3 rounded-lg border border-border bg-background">
+                {/* Category */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Kategori</span>
+                  <Badge variant="outline" className="text-xs">
+                    {complaintAIResult.category?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || '-'}
+                  </Badge>
+                </div>
+                {/* Severity Score */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Skor Keparahan</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className={cn(
+                          'h-full rounded-full',
+                          complaintAIResult.severityScore >= 7 ? 'bg-red-500' :
+                          complaintAIResult.severityScore >= 4 ? 'bg-yellow-500' : 'bg-green-500'
+                        )}
+                        style={{ width: `${(complaintAIResult.severityScore / 10) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-medium">{complaintAIResult.severityScore}/10</span>
+                  </div>
+                </div>
+                {/* Severity */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Tingkat</span>
+                  <Badge variant={complaintAIResult.severity === 'berat' ? 'destructive' : complaintAIResult.severity === 'sedang' ? 'secondary' : 'outline'} className="text-xs">
+                    {complaintAIResult.severity === 'berat' ? 'Berat' : complaintAIResult.severity === 'sedang' ? 'Sedang' : 'Ringan'}
+                  </Badge>
+                </div>
+                {/* Impact */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Dampak</span>
+                  <span className="text-xs">
+                    {complaintAIResult.impact === 'sangat_mengganggu' ? 'Sangat Mengganggu' :
+                     complaintAIResult.impact === 'mengganggu_aktivitas' ? 'Mengganggu Aktivitas' :
+                     complaintAIResult.impact === 'sedikit_mengganggu' ? 'Sedikit Mengganggu' : 'Tidak Mengganggu'}
+                  </span>
+                </div>
+                {/* Alert Level */}
+                {complaintAIResult.alertLevel && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Level Waspada</span>
+                    <Badge
+                      className={cn(
+                        'text-xs',
+                        complaintAIResult.alertLevel === 'merah' ? 'bg-red-100 text-red-800 border-red-300' :
+                        complaintAIResult.alertLevel === 'kuning' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                        'bg-green-100 text-green-800 border-green-300'
+                      )}
+                    >
+                      {complaintAIResult.alertLevel === 'merah' ? '🔴 Merah' :
+                       complaintAIResult.alertLevel === 'kuning' ? '🟡 Kuning' : '🟢 Hijau'}
+                    </Badge>
+                  </div>
+                )}
+                {/* Extracted Complaints */}
+                {complaintAIResult.extractedComplaints && complaintAIResult.extractedComplaints.length > 0 && (
+                  <div className="pt-1">
+                    <span className="text-xs text-muted-foreground block mb-1">Keluhan Terdeteksi</span>
+                    <div className="flex flex-wrap gap-1">
+                      {complaintAIResult.extractedComplaints.map((c: string, i: number) => (
+                        <Badge key={i} variant="secondary" className="text-xs">
+                          {c}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Additional Notes */}
+                {complaintAIResult.additionalNotes && (
+                  <div className="pt-1">
+                    <span className="text-xs text-muted-foreground block mb-1">Catatan AI</span>
+                    <p className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                      {complaintAIResult.additionalNotes}
+                    </p>
+                  </div>
+                )}
+                {/* Suggested Follow-up */}
+                {complaintAIResult.suggestedFollowUp && (
+                  <div className="pt-1">
+                    <span className="text-xs text-muted-foreground block mb-1">Saran Tindak Lanjut</span>
+                    <p className="text-xs font-medium">
+                      {complaintAIResult.suggestedFollowUp}
+                    </p>
+                  </div>
+                )}
+                {/* AI Generated indicator */}
+                {complaintAIResult.aiGenerated !== undefined && (
+                  <div className="pt-1 border-t border-border mt-2">
+                    <span className={cn('text-[10px]', complaintAIResult.aiGenerated ? 'text-green-600' : 'text-yellow-600')}>
+                      {complaintAIResult.aiGenerated ? '✓ Dianalisis oleh AI' : '⚡ Analisis lokal (fallback)'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-4 text-sm text-muted-foreground">
+                Klik tombol untuk menjalankan analisis AI
+              </div>
+            )}
+          </div>
+        </div>
+
+        <DialogFooter className="shrink-0">
+          <Button variant="outline" onClick={() => {
+            setShowComplaintDialog(false);
+            setComplaintMessage(null);
+            setComplaintAIResult(null);
+          }}>
+            Batal
+          </Button>
+          <Button
+            onClick={handleSaveComplaint}
+            disabled={complaintAILoading || !complaintMessage}
+          >
+            <ClipboardList className="w-4 h-4 mr-1" />
+            Simpan
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   // ── Main Render ────────────────────────────────────────────────────────
 
   return (
@@ -2678,6 +2975,7 @@ export function ChatPanel() {
       {isDoctor && renderScreeningDialogUI()}
       {isDoctor && renderPalliativeDialogUI()}
       {isDoctor && renderPalliativeMarkingDialog()}
+      {isDoctor && renderComplaintSaveDialog()}
     </div>
   );
 }

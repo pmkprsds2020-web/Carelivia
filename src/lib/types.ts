@@ -1685,3 +1685,119 @@ export interface SocialNeedsEarlyWarning {
   title: string;
   description: string;
 }
+
+// ── Daily Complaints Monitoring Types ────────────────────────────────────
+
+export type DailyComplaintCategory =
+  | 'nyeri'
+  | 'sesak_napas'
+  | 'mual'
+  | 'muntah'
+  | 'nafsu_makan_menurun'
+  | 'kelelahan'
+  | 'gangguan_tidur'
+  | 'konstipasi'
+  | 'diare'
+  | 'batuk'
+  | 'kecemasan'
+  | 'depresi'
+  | 'masalah_spiritual'
+  | 'masalah_sosial'
+  | 'keluhan_lainnya';
+
+export type DailyComplaintSeverity = 'ringan' | 'sedang' | 'berat';
+
+export type DailyComplaintImpact =
+  | 'tidak_mengganggu'
+  | 'sedikit_mengganggu'
+  | 'mengganggu_aktivitas'
+  | 'sangat_mengganggu';
+
+export type DailyComplaintInputSource = 'pasien' | 'keluarga' | 'dokter' | 'perawat';
+
+export type DailyComplaintDataSource = 'chat' | 'manual' | 'ai_classification';
+
+export type DailyComplaintFollowUpStatus =
+  | 'belum_ditindaklanjuti'
+  | 'sedang_diproses'
+  | 'selesai';
+
+export type DailyAlertLevel = 'hijau' | 'kuning' | 'merah';
+
+export interface DailyComplaintEntry {
+  id: string;
+  patientId: string;
+  patientName: string;
+  medicalRecordNumber: string;
+  date: string;
+  time: string;
+  category: DailyComplaintCategory;
+  severity: DailyComplaintSeverity;
+  severityScore: number; // 0-10
+  description: string;
+  impact: DailyComplaintImpact;
+  inputSource: DailyComplaintInputSource;
+  dataSource: DailyComplaintDataSource;
+  followUpStatus: DailyComplaintFollowUpStatus;
+  clinicalNote?: string;
+  validatedBy?: string;
+  chatMessageId?: string;
+  relatedModuleLinks?: string[];
+  alertLevel: DailyAlertLevel;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DailyComplaintSummary {
+  date: string;
+  totalComplaints: number;
+  mostFrequentCategory: DailyComplaintCategory;
+  severeComplaints: number;
+  needsFollowUp: number;
+  categoryBreakdown: Record<DailyComplaintCategory, number>;
+}
+
+export interface DailyComplaintTrend {
+  date: string;
+  nyeri: number;
+  sesak_napas: number;
+  mual: number;
+  kelelahan: number;
+  gangguan_tidur: number;
+  kecemasan: number;
+}
+
+export interface DailyComplaintAlert {
+  id: string;
+  complaintId: string;
+  patientId: string;
+  patientName: string;
+  alertLevel: DailyAlertLevel;
+  title: string;
+  description: string;
+  triggerReason: string;
+  createdAt: string;
+  isRead: boolean;
+  isResolved: boolean;
+}
+
+export interface DailyComplaintAIResult {
+  category: DailyComplaintCategory;
+  severityScore: number;
+  severity: DailyComplaintSeverity;
+  impact: DailyComplaintImpact;
+  extractedComplaints: string[];
+  additionalNotes: string;
+  alertLevel: DailyAlertLevel;
+  suggestedFollowUp: string;
+}
+
+export interface ChatComplaintSaveRequest {
+  messageId: string;
+  messageText: string;
+  patientId: string;
+  patientName: string;
+  medicalRecordNumber: string;
+  saveCategory: 'keluhan_harian' | 'perkembangan_kondisi' | 'efek_samping_terapi' | 'permasalahan_psikologis' | 'permasalahan_sosial' | 'keluhan_lainnya';
+  inputSource: DailyComplaintInputSource;
+}

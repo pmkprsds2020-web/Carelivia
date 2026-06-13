@@ -142,16 +142,18 @@ import {
   ArrowRight,
   Calendar,
   Heart,
+  ClipboardList,
 } from 'lucide-react';
 import { PalliativeChatPanel } from './palliative-chat-panel';
 import { MedicationMonitoringDashboard } from './medication-monitoring-dashboard';
 import { PalliativeResumeReferralPanel } from './palliative-resume-referral-panel';
 import SocialSupportPanel from './social-support-panel';
+import DailyComplaintsPanel from './daily-complaints-panel';
 import { useToast } from '@/hooks/use-toast';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'nutrition' | 'sosial' | 'acp' | 'ai' | 'chat' | 'dokumen';
+type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'nutrition' | 'sosial' | 'keluhan' | 'acp' | 'ai' | 'chat' | 'dokumen';
 
 // ── Helper Functions ─────────────────────────────────────────────────────
 
@@ -3751,6 +3753,10 @@ export function PalliativeMonitoringPanel() {
             <Users className="w-4 h-4 mr-1" />
             Sosial
           </TabsTrigger>
+          <TabsTrigger value="keluhan" className="text-xs sm:text-sm">
+            <ClipboardList className="w-4 h-4 mr-1" />
+            Keluhan
+          </TabsTrigger>
           <TabsTrigger value="acp" className="text-xs sm:text-sm">
             <Shield className="w-4 h-4 mr-1" />
             ACP
@@ -3780,6 +3786,9 @@ export function PalliativeMonitoringPanel() {
         <TabsContent value="nutrition" className="overflow-y-auto custom-scrollbar">{renderNutrition()}</TabsContent>
         <TabsContent value="sosial" className="overflow-y-auto custom-scrollbar">
           <SocialSupportPanel palliativePatientId={selectedPalliativePatientId} />
+        </TabsContent>
+        <TabsContent value="keluhan" className="overflow-y-auto custom-scrollbar">
+          <DailyComplaintsPanel embedded />
         </TabsContent>
         <TabsContent value="acp" className="overflow-y-auto custom-scrollbar">{renderACP()}</TabsContent>
         <TabsContent value="ai" className="overflow-y-auto custom-scrollbar">{renderAI()}</TabsContent>

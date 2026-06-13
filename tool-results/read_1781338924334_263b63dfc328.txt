@@ -1,0 +1,2002 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { useEffect, useRef, useState, useCallback } from 'react';
+     4→     4→import { useStore } from '@/lib/store';
+     5→     5→import type { User, Consultation, Message, DoctorProfile, Prescription, PrescriptionItem, MedicalRecord, MedicalRecordStatus, ScreeningForm, ScreeningModuleId, PalliativeToolType, PalliativeScreeningForm, PalliativeMonitoringStatus } from '@/lib/types';
+     6→     6→import { InlineScreeningForm } from '@/components/telemedicine/inline-screening-form';
+     7→     7→import type { ScreeningScoreResult } from '@/lib/palliative-screening-data';
+     8→     8→import { cn } from '@/lib/utils';
+     9→     9→import { useToast } from '@/hooks/use-toast';
+    10→    10→import { Button } from '@/components/ui/button';
+    11→    11→import { Input } from '@/components/ui/input';
+    12→    12→import { Textarea } from '@/components/ui/textarea';
+    13→    13→import { Badge } from '@/components/ui/badge';
+    14→    14→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+    15→    15→import { Separator } from '@/components/ui/separator';
+    16→    16→import { Label } from '@/components/ui/label';
+    17→    17→import {
+    18→    18→  Dialog,
+    19→    19→  DialogContent,
+    20→    20→  DialogHeader,
+    21→    21→  DialogTitle,
+    22→    22→  DialogFooter,
+    23→    23→} from '@/components/ui/dialog';
+    24→    24→import {
+    25→    25→  Select,
+    26→    26→  SelectContent,
+    27→    27→  SelectItem,
+    28→    28→  SelectTrigger,
+    29→    29→  SelectValue,
+    30→    30→} from '@/components/ui/select';
+    31→    31→import { Checkbox } from '@/components/ui/checkbox';
+    32→    32→import {
+    33→    33→  SCREENING_MODULES,
+    34→    34→  MODULE_LABELS,
+    35→    35→  MODULE_ICONS,
+    36→    36→  TRIAGE_COLORS,
+    37→    37→  TRIAGE_LABELS,
+    38→    38→  getModuleById,
+    39→    39→  calculateProgress,
+    40→    40→} from '@/lib/screening-templates';
+    41→    41→import {
+    42→    42→  Send,
+    43→    43→  ArrowLeft,
+    44→    44→  Search,
+    45→    45→  Star,
+    46→    46→  Check,
+    47→    47→  CheckCheck,
+    48→    48→  Loader2,
+    49→    49→  MessageCircle,
+    50→    50→  CreditCard,
+    51→    51→  ShoppingCart,
+    52→    52→  FileText,
+    53→    53→  ClipboardList,
+    54→    54→  Plus,
+    55→    55→  Trash2,
+    56→    56→  Stethoscope,
+    57→    57→  Eye,
+    58→    58→  Download,
+    59→    59→  ClipboardCheck,
+    60→    60→  AlertTriangle,
+    61→    61→  Circle,
+    62→    62→  Pill,
+    63→    63→  Flame,
+    64→    64→  Apple,
+    65→    65→  ShieldAlert,
+    66→    66→  Accessibility,
+    67→    67→  Home,
+    68→    68→  Paperclip,
+    69→    69→  Brain,
+    70→    70→  Activity,
+    71→    71→  Heart,
+    72→    72→  HeartPulse,
+    73→    73→  Users,
+    74→    74→  Shield,
+    75→    75→} from 'lucide-react';
+    76→    76→
+    77→    77→// ── Module Icon Map (Lucide icons replacing emojis) ──
+    78→    78→const MODULE_ICON_MAP: Record<ScreeningModuleId, React.ReactNode> = {
+    79→    79→  keluhan_utama: <Stethoscope className="w-4 h-4" />,
+    80→    80→  tanda_bahaya: <AlertTriangle className="w-4 h-4" />,
+    81→    81→  tanda_vital: <Activity className="w-4 h-4" />,
+    82→    82→  penyakit_kronis: <Pill className="w-4 h-4" />,
+    83→    83→  nyeri: <Flame className="w-4 h-4" />,
+    84→    84→  kesehatan_mental: <Brain className="w-4 h-4" />,
+    85→    85→  nutrisi: <Apple className="w-4 h-4" />,
+    86→    86→  risiko_jatuh: <ShieldAlert className="w-4 h-4" />,
+    87→    87→  status_fungsional: <Accessibility className="w-4 h-4" />,
+    88→    88→  home_care: <Home className="w-4 h-4" />,
+    89→    89→  paliatif: <Heart className="w-4 h-4" />,
+    90→    90→  bukti_klinis: <Paperclip className="w-4 h-4" />,
+    91→    91→};
+    92→    92→
+    93→    93→// ── Palliative Screening Tool Labels ──
+    94→    94→const PALLIATIVE_TOOL_LABELS: Record<PalliativeToolType, { name: string; icon: React.ReactNode; desc: string }> = {
+    95→    95→  esas: { name: 'ESAS-r', icon: <Activity className="w-4 h-4" />, desc: 'Edmonton Symptom Assessment — 9 gejala VAS 0-10' },
+    96→    96→  distress: { name: 'Distress Thermometer', icon: <Flame className="w-4 h-4" />, desc: 'NCCN Distress — Skor tekanan + daftar masalah' },
+    97→    97→  spict: { name: 'Skrining Kebutuhan Perawatan Paliatif (SPICT)', icon: <ClipboardList className="w-4 h-4" />, desc: '15 pertanyaan + penyakit kronis + surprise question' },
+    98→    98→  pps: { name: 'Skrining Kondisi Pasien (PPS)', icon: <HeartPulse className="w-4 h-4" />, desc: 'Palliative Performance Scale — 5 dimensi + pertanyaan tambahan' },
+    99→    99→  zarit: { name: 'Zarit Caregiver Burden', icon: <Users className="w-4 h-4" />, desc: 'Beban pengasuh — 22 pertanyaan' },
+   100→   100→  eortc: { name: 'EORTC QLQ-C15-PAL', icon: <Heart className="w-4 h-4" />, desc: 'Kualitas hidup paliatif — 15 item' },
+   101→   101→};
+   102→   102→
+   103→   103→// ── Types ──────────────────────────────────────────────────────────────────
+   104→   104→
+   105→   105→interface DoctorWithProfile extends User {
+   106→   106→  doctorProfile?: DoctorProfile;
+   107→   107→}
+   108→   108→
+   109→   109→type FilterTab = 'semua' | 'umum' | 'anak' | 'penyakit_dalam' | 'kebidanan' | 'gigi';
+   110→   110→
+   111→   111→const FILTER_TABS: { key: FilterTab; label: string }[] = [
+   112→   112→  { key: 'semua', label: 'Semua' },
+   113→   113→  { key: 'umum', label: 'Umum' },
+   114→   114→  { key: 'anak', label: 'Anak' },
+   115→   115→  { key: 'penyakit_dalam', label: 'Penyakit Dalam' },
+   116→   116→  { key: 'kebidanan', label: 'Kebidanan' },
+   117→   117→  { key: 'gigi', label: 'Gigi' },
+   118→   118→];
+   119→   119→
+   120→   120→const SPECIALIZATION_LABELS: Record<string, string> = {
+   121→   121→  umum: 'Dokter Umum',
+   122→   122→  anak: 'Dokter Anak',
+   123→   123→  penyakit_dalam: 'Penyakit Dalam',
+   124→   124→  kebidanan: 'Dokter Kebidanan',
+   125→   125→  gigi: 'Dokter Gigi',
+   126→   126→};
+   127→   127→
+   128→   128→// ── Demo Prescription Medicines ────────────────────────────────────────────
+   129→   129→
+   130→   130→interface DemoMedicine {
+   131→   131→  id: string;
+   132→   132→  name: string;
+   133→   133→  dosage: string;
+   134→   134→  frequency: string;
+   135→   135→  duration: string;
+   136→   136→  price: number;
+   137→   137→}
+   138→   138→
+   139→   139→const DEMO_MEDICINES: DemoMedicine[] = [
+   140→   140→  { id: 'pm-1', name: 'Paracetamol 500mg', dosage: '500mg', frequency: '3x sehari', duration: '5 hari', price: 15000 },
+   141→   141→  { id: 'pm-2', name: 'Amoxicillin 500mg', dosage: '500mg', frequency: '3x sehari', duration: '7 hari', price: 25000 },
+   142→   142→  { id: 'pm-3', name: 'Omeprazole 20mg', dosage: '20mg', frequency: '1x sehari', duration: '14 hari', price: 35000 },
+   143→   143→  { id: 'pm-4', name: 'Ibuprofen 400mg', dosage: '400mg', frequency: '2x sehari', duration: '5 hari', price: 18000 },
+   144→   144→  { id: 'pm-5', name: 'CTM 4mg', dosage: '4mg', frequency: '3x sehari', duration: '5 hari', price: 8000 },
+   145→   145→  { id: 'pm-6', name: 'Loratadine 10mg', dosage: '10mg', frequency: '1x sehari', duration: '7 hari', price: 28000 },
+   146→   146→  { id: 'pm-7', name: 'Metformin 500mg', dosage: '500mg', frequency: '2x sehari', duration: '30 hari', price: 22000 },
+   147→   147→  { id: 'pm-8', name: 'Vitamin C 1000mg', dosage: '1000mg', frequency: '1x sehari', duration: '30 hari', price: 45000 },
+   148→   148→  { id: 'pm-9', name: 'Antasida Sirup', dosage: '10ml', frequency: '3x sehari', duration: '7 hari', price: 22000 },
+   149→   149→  { id: 'pm-10', name: 'Vitamin D3 1000IU', dosage: '1000IU', frequency: '1x sehari', duration: '30 hari', price: 65000 },
+   150→   150→];
+   151→   151→
+   152→   152→// ── Auto-Prescription Templates ────────────────────────────────────────────
+   153→   153→
+   154→   154→const AUTO_PRESCRIPTION_TEMPLATES: Record<string, string[][]> = {
+   155→   155→  umum: [['pm-1', 'pm-2'], ['pm-1', 'pm-5'], ['pm-4', 'pm-6']],
+   156→   156→  anak: [['pm-1'], ['pm-1', 'pm-8']],
+   157→   157→  penyakit_dalam: [['pm-7', 'pm-3'], ['pm-2', 'pm-3']],
+   158→   158→  kebidanan: [['pm-8', 'pm-10'], ['pm-1', 'pm-8']],
+   159→   159→  gigi: [['pm-4', 'pm-2'], ['pm-1', 'pm-5']],
+   160→   160→};
+   161→   161→
+   162→   162→// ── Doctor Auto-Reply Messages ─────────────────────────────────────────────
+   163→   163→
+   164→   164→const DOCTOR_AUTO_REPLIES: Record<string, string[]> = {
+   165→   165→  umum: [
+   166→   166→    'Baik, saya akan membantu Anda. Bisakah Anda jelaskan keluhan Anda lebih detail?',
+   167→   167→    'Saya mengerti keluhan Anda. Mari kita lakukan pemeriksaan lebih lanjut.',
+   168→   168→    'Untuk sementara, Anda bisa minum obat pereda nyeri dan banyak istirahat.',
+   169→   169→    'Apakah ada riwayat penyakit sebelumnya yang perlu saya ketahui?',
+   170→   170→    'Saya akan meresepkan obat untuk meredakan gejala Anda. Pastikan untuk minum sesuai anjuran.',
+   171→   171→    'Jika gejala tidak membaik dalam 3 hari, silakan konsultasi kembali.',
+   172→   172→  ],
+   173→   173→  anak: [
+   174→   174→    'Baik, berapa usia anak Anda? Apakah ada demam?',
+   175→   175→    'Untuk anak-anak, dosis obat harus disesuaikan dengan berat badan.',
+   176→   176→    'Pastikan anak mendapat cukup cairan dan istirahat.',
+   177→   177→    'Apakah anak sudah diberikan imunisasi lengkap?',
+   178→   178→    'Saya akan meresepkan obat yang aman untuk anak. Ikuti dosis sesuai petunjuk.',
+   179→   179→    'Jika anak masih rewel atau demam tinggi, bawa ke IGD segera.',
+   180→   180→  ],
+   181→   181→  penyakit_dalam: [
+   182→   182→    'Saya perlu mengetahui tekanan darah dan gula darah Anda.',
+   183→   183→    'Apakah Anda sedang mengonsumsi obat lain saat ini?',
+   184→   184→    'Kita perlu memantau kondisi Anda secara berkala.',
+   185→   185→    'Saya akan menyesuaikan pengobatan Anda. Harap rutin kontrol.',
+   186→   186→    'Penting untuk menjaga pola makan dan olahraga teratur.',
+   187→   187→    'Saya akan meresepkan obat untuk mengontrol kondisi Anda.',
+   188→   188→  ],
+   189→   189→  kebidanan: [
+   190→   190→    'Selamat! Bagaimana kondisi kehamilan Anda saat ini?',
+   191→   191→    'Pastikan Anda rutin memeriksa kehamilan dan mengonsumsi vitamin prenatal.',
+   192→   192→    'Apakah ada keluhan tertentu selama kehamilan?',
+   193→   193→    'Saya akan meresepkan vitamin dan suplemen yang dibutuhkan.',
+   194→   194→    'Jangan lupa jadwal USG berikutnya ya, Bu.',
+   195→   195→    'Pastikan asupan nutrisi cukup untuk ibu dan bayi.',
+   196→   196→  ],
+   197→   197→  gigi: [
+   198→   198→    'Sejak kapan gigi Anda terasa sakit?',
+   199→   199→    'Apakah ada pembengkakan pada gusi?',
+   200→   200→    'Sementara, Anda bisa berkumur dengan air garam hangat.',
+   201→   201→    'Saya akan meresepkan obat penghilang rasa sakit dan antibiotik.',
+   202→   202→    'Pastikan untuk menyikat gigi 2x sehari dan gunakan benang gigi.',
+   203→   203→    'Kita perlu melakukan perawatan lebih lanjut. Silakan buat janji kontrol.',
+   204→   204→  ],
+   205→   205→};
+   206→   206→
+   207→   207→// ── Helpers ────────────────────────────────────────────────────────────────
+   208→   208→
+   209→   209→function formatTime(dateStr: string): string {
+   210→   210→  try {
+   211→   211→    const d = new Date(dateStr);
+   212→   212→    return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
+   213→   213→  } catch {
+   214→   214→    return '';
+   215→   215→  }
+   216→   216→}
+   217→   217→
+   218→   218→function formatDate(dateStr: string): string {
+   219→   219→  try {
+   220→   220→    const d = new Date(dateStr);
+   221→   221→    const today = new Date();
+   222→   222→    const yesterday = new Date(today);
+   223→   223→    yesterday.setDate(yesterday.getDate() - 1);
+   224→   224→    if (d.toDateString() === today.toDateString()) return 'Hari Ini';
+   225→   225→    if (d.toDateString() === yesterday.toDateString()) return 'Kemarin';
+   226→   226→    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+   227→   227→  } catch {
+   228→   228→    return '';
+   229→   229→  }
+   230→   230→}
+   231→   231→
+   232→   232→function isDifferentDay(a: string, b: string): boolean {
+   233→   233→  return new Date(a).toDateString() !== new Date(b).toDateString();
+   234→   234→}
+   235→   235→
+   236→   236→function formatFee(fee: number): string {
+   237→   237→  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(fee);
+   238→   238→}
+   239→   239→
+   240→   240→function generateId(): string {
+   241→   241→  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+   242→   242→}
+   243→   243→
+   244→   244→function generateRmNumber(): string {
+   245→   245→  const now = new Date();
+   246→   246→  const y = now.getFullYear();
+   247→   247→  const m = String(now.getMonth() + 1).padStart(2, '0');
+   248→   248→  const d = String(now.getDate()).padStart(2, '0');
+   249→   249→  const seq = String(Math.floor(Math.random() * 9999) + 1).padStart(4, '0');
+   250→   250→  return `RM-${y}${m}${d}-${seq}`;
+   251→   251→}
+   252→   252→
+   253→   253→// ── Main Component ─────────────────────────────────────────────────────────
+   254→   254→
+   255→   255→export function ChatPanel() {
+   256→   256→  const {
+   257→   257→    currentUser,
+   258→   258→    doctors,
+   259→   259→    consultations,
+   260→   260→    setConsultations,
+   261→   261→    activeConsultation,
+   262→   262→    setActiveConsultation,
+   263→   263→    messages,
+   264→   264→    setMessages,
+   265→   265→    addMessage,
+   266→   266→    onlineDoctors,
+   267→   267→    prescriptions,
+   268→   268→    addPrescription,
+   269→   269→    updatePrescriptionStatus,
+   270→   270→    medicalRecords,
+   271→   271→    addMedicalRecord,
+   272→   272→    updateMedicalRecord,
+   273→   273→    updateConsultation,
+   274→   274→    addToCart,
+   275→   275→    setActivePanel,
+   276→   276→    setPayments,
+   277→   277→    setPendingPrescriptionCheckout,
+   278→   278→    screeningForms,
+   279→   279→    addScreeningForm,
+   280→   280→    updateScreeningForm,
+   281→   281→    addAuditLog,
+   282→   282→    addClinicalAlert,
+   283→   283→    palliativeScreeningForms,
+   284→   284→    addPalliativeScreeningForm,
+   285→   285→    updatePalliativeScreeningForm,
+   286→   286→    setActivePalliativeFormId,
+   287→   287→    markPatientAsPalliative,
+   288→   288→    palliativePatients,
+   289→   289→    addPalliativeScreeningRecord,
+   290→   290→    addPalliativeMonitoringNotification,
+   291→   291→  } = useStore();
+   292→   292→
+   293→   293→  const { toast } = useToast();
+   294→   294→
+   295→   295→  // Local state
+   296→   296→  const [activeFilter, setActiveFilter] = useState<FilterTab>('semua');
+   297→   297→  const [searchQuery, setSearchQuery] = useState('');
+   298→   298→  const [messageInput, setMessageInput] = useState('');
+   299→   299→  const [isTyping, setIsTyping] = useState(false);
+   300→   300→  const [isSending, setIsSending] = useState(false);
+   301→   301→  const [showChatArea, setShowChatArea] = useState(false);
+   302→   302→  const [creatingConsultation, setCreatingConsultation] = useState<string | null>(null);
+   303→   303→
+   304→   304→  // Doctor dialog state
+   305→   305→  const [showPrescriptionDialog, setShowPrescriptionDialog] = useState(false);
+   306→   306→  const [showMedicalRecordDialog, setShowMedicalRecordDialog] = useState(false);
+   307→   307→
+   308→   308→  // Screening dialog state
+   309→   309→  const [showScreeningDialog, setShowScreeningDialog] = useState(false);
+   310→   310→  const [selectedModules, setSelectedModules] = useState<ScreeningModuleId[]>([
+   311→   311→    'keluhan_utama', 'tanda_bahaya', 'tanda_vital', 'penyakit_kronis',
+   312→   312→    'nyeri', 'kesehatan_mental', 'nutrisi', 'risiko_jatuh',
+   313→   313→    'status_fungsional', 'home_care', 'paliatif', 'bukti_klinis'
+   314→   314→  ]);
+   315→   315→  const [screeningInstructions, setScreeningInstructions] = useState('');
+   316→   316→  const [screeningDeadline, setScreeningDeadline] = useState('');
+   317→   317→
+   318→   318→  // Palliative screening dialog state
+   319→   319→  const [showPalliativeDialog, setShowPalliativeDialog] = useState(false);
+   320→   320→  const [selectedPalliativeTools, setSelectedPalliativeTools] = useState<PalliativeToolType[]>(['esas', 'distress', 'spict', 'pps', 'zarit', 'eortc']);
+   321→   321→  const [palliativeInstructions, setPalliativeInstructions] = useState('');
+   322→   322→
+   323→   323→  // Prescription form state
+   324→   324→  const [rxItems, setRxItems] = useState<Array<{
+   325→   325→    medicineId: string;
+   326→   326→    dosage: string;
+   327→   327→    frequency: string;
+   328→   328→    duration: string;
+   329→   329→    quantity: number;
+   330→   330→  }>>([]);
+   331→   331→
+   332→   332→  // Inline screening state
+   333→   333→  const [inlineScreeningFormId, setInlineScreeningFormId] = useState<string | null>(null);
+   334→   334→  const [inlineScreeningType, setInlineScreeningType] = useState<PalliativeToolType | null>(null);
+   335→   335→
+   336→   336→  // Palliative marking dialog state
+   337→   337→  const [showPalliativeMarkingDialog, setShowPalliativeMarkingDialog] = useState(false);
+   338→   338→  const [markingData, setMarkingData] = useState({
+   339→   339→    primaryDiagnosis: '',
+   340→   340→    secondaryDiagnosis: '',
+   341→   341→    initialPPS: 60,
+   342→   342→    diseaseCategory: '',
+   343→   343→    reasonForPalliative: '',
+   344→   344→    doctorNotes: '',
+   345→   345→  });
+   346→   346→
+   347→   347→  // Medical record form state
+   348→   348→  const [mrDiagnosis, setMrDiagnosis] = useState('');
+   349→   349→  const [mrSymptoms, setMrSymptoms] = useState('');
+   350→   350→  const [mrTreatment, setMrTreatment] = useState('');
+   351→   351→  const [mrNotes, setMrNotes] = useState('');
+   352→   352→
+   353→   353→  // Patient message count for auto-prescription
+   354→   354→  const patientMessageCountRef = useRef(0);
+   355→   355→  const autoPrescriptionSentRef = useRef(false);
+   356→   356→
+   357→   357→  // Refs
+   358→   358→  const messagesEndRef = useRef<HTMLDivElement>(null);
+   359→   359→  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+   360→   360→  const messageInputRef = useRef<HTMLInputElement>(null);
+   361→   361→
+   362→   362→  const isDoctor = currentUser?.role === 'doctor';
+   363→   363→  const isPatient = currentUser?.role === 'patient';
+   364→   364→
+   365→   365→  // ── Derived data ───────────────────────────────────────────────────────
+   366→   366→
+   367→   367→  const filteredDoctors = doctors.filter((doc) => {
+   368→   368→    const spec = doc.doctorProfile?.specialization;
+   369→   369→    if (activeFilter !== 'semua' && spec !== activeFilter) return false;
+   370→   370→    if (searchQuery) {
+   371→   371→      const q = searchQuery.toLowerCase();
+   372→   372→      return (
+   373→   373→        doc.name.toLowerCase().includes(q) ||
+   374→   374→        (spec && SPECIALIZATION_LABELS[spec]?.toLowerCase().includes(q))
+   375→   375→      );
+   376→   376→    }
+   377→   377→    return true;
+   378→   378→  });
+   379→   379→
+   380→   380→  const isDoctorOnline = (userId: string): boolean => {
+   381→   381→    return onlineDoctors.includes(userId);
+   382→   382→  };
+   383→   383→
+   384→   384→  const getConsultationForDoctor = (doctorId: string): Consultation | undefined => {
+   385→   385→    return consultations.find(
+   386→   386→      (c) =>
+   387→   387→        c.doctorId === doctorId &&
+   388→   388→        (c.status === 'active' || c.status === 'waiting') &&
+   389→   389→        c.patientId === currentUser?.id
+   390→   390→    );
+   391→   391→  };
+   392→   392→
+   393→   393→  // Doctor's consultations (for doctor view)
+   394→   394→  const doctorConsultations = consultations.filter(
+   395→   395→    (c) => c.doctorId === currentUser?.id && (c.status === 'active' || c.status === 'waiting' || c.status === 'completed')
+   396→   396→  );
+   397→   397→
+   398→   398→  // ── Auto-scroll ──────────────────────────────────────────────────────
+   399→   399→
+   400→   400→  useEffect(() => {
+   401→   401→    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+   402→   402→  }, [messages, isTyping]);
+   403→   403→
+   404→   404→  // ── Reset auto-prescription tracking when consultation changes ──────
+   405→   405→
+   406→   406→  useEffect(() => {
+   407→   407→    patientMessageCountRef.current = 0;
+   408→   408→    autoPrescriptionSentRef.current = false;
+   409→   409→  }, [activeConsultation?.id]);
+   410→   410→
+   411→   411→  // ── Start a chat with a doctor (Patient) ──────────────────────────────
+   412→   412→
+   413→   413→  const handleStartChat = (doctor: DoctorWithProfile) => {
+   414→   414→    if (!currentUser) return;
+   415→   415→
+   416→   416→    const existing = getConsultationForDoctor(doctor.id);
+   417→   417→    if (existing) {
+   418→   418→      openConsultation(existing);
+   419→   419→      return;
+   420→   420→    }
+   421→   421→
+   422→   422→    setCreatingConsultation(doctor.id);
+   423→   423→
+   424→   424→    const consultationId = generateId();
+   425→   425→    const welcomeMessage: Message = {
+   426→   426→      id: generateId(),
+   427→   427→      consultationId,
+   428→   428→      senderId: 'system',
+   429→   429→      content: "Selamat datang di CareLivia! Dokter akan segera merespons pesan Anda.",
+   430→   430→      type: 'text',
+   431→   431→      status: 'read',
+   432→   432→      createdAt: new Date().toISOString(),
+   433→   433→    };
+   434→   434→
+   435→   435→    const newConsultation: Consultation = {
+   436→   436→      id: consultationId,
+   437→   437→      patientId: currentUser.id,
+   438→   438→      doctorId: doctor.id,
+   439→   439→      type: 'chat',
+   440→   440→      status: 'active',
+   441→   441→      startTime: new Date().toISOString(),
+   442→   442→      createdAt: new Date().toISOString(),
+   443→   443→      updatedAt: new Date().toISOString(),
+   444→   444→      patient: currentUser,
+   445→   445→      doctor: doctor,
+   446→   446→      messages: [welcomeMessage],
+   447→   447→    };
+   448→   448→
+   449→   449→    setConsultations([newConsultation, ...consultations]);
+   450→   450→    setActiveConsultation(newConsultation);
+   451→   451→    setMessages([welcomeMessage]);
+   452→   452→
+   453→   453→    patientMessageCountRef.current = 0;
+   454→   454→    autoPrescriptionSentRef.current = false;
+   455→   455→
+   456→   456→    setShowChatArea(true);
+   457→   457→    setCreatingConsultation(null);
+   458→   458→  };
+   459→   459→
+   460→   460→  // ── Open an existing consultation ──────────────────────────────────────
+   461→   461→
+   462→   462→  const openConsultation = (consultation: Consultation) => {
+   463→   463→    setActiveConsultation(consultation);
+   464→   464→
+   465→   465→    // Load existing messages
+   466→   466→    const existingMessages = consultation.messages || [];
+   467→   467→    setMessages(existingMessages);
+   468→   468→
+   469→   469→    patientMessageCountRef.current = existingMessages.filter(
+   470→   470→      (m) => m.senderId === consultation.patientId
+   471→   471→    ).length;
+   472→   472→    autoPrescriptionSentRef.current = false;
+   473→   473→
+   474→   474→    setShowChatArea(true);
+   475→   475→  };
+   476→   476→
+   477→   477→  // ── Send a message ─────────────────────────────────────────────────────
+   478→   478→
+   479→   479→  const handleSendMessage = () => {
+   480→   480→    if (!messageInput.trim() || !activeConsultation || !currentUser) return;
+   481→   481→
+   482→   482→    const content = messageInput.trim();
+   483→   483→    setMessageInput('');
+   484→   484→    setIsSending(true);
+   485→   485→
+   486→   486→    const newMessage: Message = {
+   487→   487→      id: generateId(),
+   488→   488→      consultationId: activeConsultation.id,
+   489→   489→      senderId: currentUser.id,
+   490→   490→      content,
+   491→   491→      type: 'text',
+   492→   492→      status: 'sent',
+   493→   493→      createdAt: new Date().toISOString(),
+   494→   494→    };
+   495→   495→
+   496→   496→    addMessage(newMessage);
+   497→   497→
+   498→   498→    // Update consultation with new message
+   499→   499→    const updatedMessages = [...messages, newMessage];
+   500→   500→    const updatedConsultation = {
+   501→   501→      ...activeConsultation,
+   502→   502→      messages: updatedMessages,
+   503→   503→      updatedAt: new Date().toISOString(),
+   504→   504→    };
+   505→   505→    updateConsultation(activeConsultation.id, updatedConsultation);
+   506→   506→
+   507→   507→    // Clear typing timeout
+   508→   508→    if (typingTimeoutRef.current) {
+   509→   509→      clearTimeout(typingTimeoutRef.current);
+   510→   510→    }
+   511→   511→
+   512→   512→    setIsSending(false);
+   513→   513→    messageInputRef.current?.focus();
+   514→   514→
+   515→   515→    // If patient is sending, simulate doctor auto-reply
+   516→   516→    if (isPatient) {
+   517→   517→      patientMessageCountRef.current += 1;
+   518→   518→
+   519→   519→      // Show typing indicator
+   520→   520→      setTimeout(() => setIsTyping(true), 500);
+   521→   521→
+   522→   522→      const doctorUser = doctors.find((d) => d.id === activeConsultation.doctorId);
+   523→   523→      const specialization = doctorUser?.doctorProfile?.specialization || 'umum';
+   524→   524→      const replies = DOCTOR_AUTO_REPLIES[specialization] || DOCTOR_AUTO_REPLIES.umum;
+   525→   525→      const randomReply = replies[Math.floor(Math.random() * replies.length)];
+   526→   526→
+   527→   527→      setTimeout(() => {
+   528→   528→        setIsTyping(false);
+   529→   529→        const doctorReply: Message = {
+   530→   530→          id: generateId(),
+   531→   531→          consultationId: activeConsultation.id,
+   532→   532→          senderId: activeConsultation.doctorId,
+   533→   533→          content: randomReply,
+   534→   534→          type: 'text',
+   535→   535→          status: 'delivered',
+   536→   536→          createdAt: new Date().toISOString(),
+   537→   537→        };
+   538→   538→        addMessage(doctorReply);
+   539→   539→        updateConsultation(activeConsultation.id, {
+   540→   540→          messages: [...updatedMessages, doctorReply],
+   541→   541→          updatedAt: new Date().toISOString(),
+   542→   542→        });
+   543→   543→      }, 1500 + Math.random() * 2000);
+   544→   544→
+   545→   545→      // Auto-send e-prescription after 3+ patient messages
+   546→   546→      if (patientMessageCountRef.current >= 3 && !autoPrescriptionSentRef.current) {
+   547→   547→        autoPrescriptionSentRef.current = true;
+   548→   548→        setTimeout(() => {
+   549→   549→          handleAutoPrescription(activeConsultation, specialization);
+   550→   550→        }, 4000 + Math.random() * 2000);
+   551→   551→      }
+   552→   552→    }
+   553→   553→  };
+   554→   554→
+   555→   555→  // ── Auto-Prescription (Patient View Simulation) ────────────────────────
+   556→   556→
+   557→   557→  const handleAutoPrescription = (consultation: Consultation, specialization: string) => {
+   558→   558→    const templates = AUTO_PRESCRIPTION_TEMPLATES[specialization] || AUTO_PRESCRIPTION_TEMPLATES.umum;
+   559→   559→    const selectedTemplate = templates[Math.floor(Math.random() * templates.length)];
+   560→   560→
+   561→   561→    const items: PrescriptionItem[] = selectedTemplate.map((medId) => {
+   562→   562→      const med = DEMO_MEDICINES.find((m) => m.id === medId)!;
+   563→   563→      return {
+   564→   564→        id: generateId(),
+   565→   565→        prescriptionId: '',
+   566→   566→        medicineName: med.name,
+   567→   567→        dosage: med.dosage,
+   568→   568→        quantity: 1,
+   569→   569→        frequency: med.frequency,
+   570→   570→        duration: med.duration,
+   571→   571→        price: med.price,
+   572→   572→      };
+   573→   573→    });
+   574→   574→
+   575→   575→    const prescriptionId = generateId();
+   576→   576→    const prescription: Prescription = {
+   577→   577→      id: prescriptionId,
+   578→   578→      consultationId: consultation.id,
+   579→   579→      doctorId: consultation.doctorId,
+   580→   580→      patientId: consultation.patientId,
+   581→   581→      status: 'pending',
+   582→   582→      createdAt: new Date().toISOString(),
+   583→   583→      updatedAt: new Date().toISOString(),
+   584→   584→      items: items.map((item) => ({ ...item, prescriptionId })),
+   585→   585→    };
+   586→   586→
+   587→   587→    addPrescription(prescription);
+   588→   588→
+   589→   589→    // Send prescription message in chat
+   590→   590→    const rxMessage: Message = {
+   591→   591→      id: generateId(),
+   592→   592→      consultationId: consultation.id,
+   593→   593→      senderId: consultation.doctorId,
+   594→   594→      content: `__PRESCRIPTION__${prescriptionId}__`,
+   595→   595→      type: 'text',
+   596→   596→      status: 'delivered',
+   597→   597→      createdAt: new Date().toISOString(),
+   598→   598→    };
+   599→   599→    addMessage(rxMessage);
+   600→   600→    updateConsultation(consultation.id, {
+   601→   601→      messages: [...(consultation.messages || []), rxMessage],
+   602→   602→      prescription: prescription,
+   603→   603→      updatedAt: new Date().toISOString(),
+   604→   604→    });
+   605→   605→
+   606→   606→    // Auto-create medical record if not exists
+   607→   607→    const existingMR = medicalRecords.find((mr) => mr.consultationId === consultation.id);
+   608→   608→    if (!existingMR) {
+   609→   609→      const rmNumber = generateRmNumber();
+   610→   610→      const mr: MedicalRecord = {
+   611→   611→        id: generateId(),
+   612→   612→        patientId: consultation.patientId,
+   613→   613→        consultationId: consultation.id,
+   614→   614→        rmNumber,
+   615→   615→        diagnosis: '',
+   616→   616→        symptoms: '',
+   617→   617→        treatment: '',
+   618→   618→        notes: '',
+   619→   619→        status: 'draft' as MedicalRecordStatus,
+   620→   620→        recordDate: new Date().toISOString(),
+   621→   621→        createdAt: new Date().toISOString(),
+   622→   622→        updatedAt: new Date().toISOString(),
+   623→   623→      };
+   624→   624→      addMedicalRecord(mr);
+   625→   625→      updateConsultation(consultation.id, { medicalRecord: mr });
+   626→   626→    }
+   627→   627→
+   628→   628→    toast({
+   629→   629→      title: 'E-Resep Dikirim',
+   630→   630→      description: 'Dokter telah mengirim e-resep untuk Anda.',
+   631→   631→    });
+   632→   632→  };
+   633→   633→
+   634→   634→  // ── Prescription Dialog (Doctor View) ──────────────────────────────────
+   635→   635→
+   636→   636→  const handleOpenPrescriptionDialog = () => {
+   637→   637→    setRxItems([]);
+   638→   638→    setShowPrescriptionDialog(true);
+   639→   639→  };
+   640→   640→
+   641→   641→  const handleAddRxItem = () => {
+   642→   642→    setRxItems([
+   643→   643→      ...rxItems,
+   644→   644→      { medicineId: '', dosage: '', frequency: '', duration: '', quantity: 1 },
+   645→   645→    ]);
+   646→   646→  };
+   647→   647→
+   648→   648→  const handleRemoveRxItem = (index: number) => {
+   649→   649→    setRxItems(rxItems.filter((_, i) => i !== index));
+   650→   650→  };
+   651→   651→
+   652→   652→  const handleRxItemChange = (index: number, field: string, value: string | number) => {
+   653→   653→    const updated = [...rxItems];
+   654→   654→    updated[index] = { ...updated[index], [field]: value };
+   655→   655→    // Auto-fill from demo medicine when selected
+   656→   656→    if (field === 'medicineId') {
+   657→   657→      const med = DEMO_MEDICINES.find((m) => m.id === value);
+   658→   658→      if (med) {
+   659→   659→        updated[index] = {
+   660→   660→          ...updated[index],
+   661→   661→          medicineId: med.id,
+   662→   662→          dosage: med.dosage,
+   663→   663→          frequency: med.frequency,
+   664→   664→          duration: med.duration,
+   665→   665→        };
+   666→   666→      }
+   667→   667→    }
+   668→   668→    setRxItems(updated);
+   669→   669→  };
+   670→   670→
+   671→   671→  const handleSendPrescription = () => {
+   672→   672→    if (!activeConsultation || !currentUser || rxItems.length === 0) return;
+   673→   673→
+   674→   674→    const validItems = rxItems.filter((item) => item.medicineId);
+   675→   675→    if (validItems.length === 0) {
+   676→   676→      toast({ title: 'Error', description: 'Tambahkan minimal 1 obat yang valid.' });
+   677→   677→      return;
+   678→   678→    }
+   679→   679→
+   680→   680→    const prescriptionId = generateId();
+   681→   681→    const items: PrescriptionItem[] = validItems.map((item) => {
+   682→   682→      const med = DEMO_MEDICINES.find((m) => m.id === item.medicineId)!;
+   683→   683→      return {
+   684→   684→        id: generateId(),
+   685→   685→        prescriptionId,
+   686→   686→        medicineName: med.name,
+   687→   687→        dosage: item.dosage || med.dosage,
+   688→   688→        quantity: item.quantity,
+   689→   689→        frequency: item.frequency || med.frequency,
+   690→   690→        duration: item.duration || med.duration,
+   691→   691→        price: med.price,
+   692→   692→      };
+   693→   693→    });
+   694→   694→
+   695→   695→    const prescription: Prescription = {
+   696→   696→      id: prescriptionId,
+   697→   697→      consultationId: activeConsultation.id,
+   698→   698→      doctorId: currentUser.id,
+   699→   699→      patientId: activeConsultation.patientId,
+   700→   700→      status: 'pending',
+   701→   701→      notes: '',
+   702→   702→      createdAt: new Date().toISOString(),
+   703→   703→      updatedAt: new Date().toISOString(),
+   704→   704→      items,
+   705→   705→    };
+   706→   706→
+   707→   707→    addPrescription(prescription);
+   708→   708→
+   709→   709→    // Send prescription message
+   710→   710→    const rxMessage: Message = {
+   711→   711→      id: generateId(),
+   712→   712→      consultationId: activeConsultation.id,
+   713→   713→      senderId: currentUser.id,
+   714→   714→      content: `__PRESCRIPTION__${prescriptionId}__`,
+   715→   715→      type: 'text',
+   716→   716→      status: 'delivered',
+   717→   717→      createdAt: new Date().toISOString(),
+   718→   718→    };
+   719→   719→    addMessage(rxMessage);
+   720→   720→    updateConsultation(activeConsultation.id, {
+   721→   721→      messages: [...(activeConsultation.messages || []), rxMessage],
+   722→   722→      prescription: prescription,
+   723→   723→      updatedAt: new Date().toISOString(),
+   724→   724→    });
+   725→   725→
+   726→   726→    // Auto-create medical record if not exists
+   727→   727→    const existingMR = medicalRecords.find((mr) => mr.consultationId === activeConsultation.id);
+   728→   728→    if (!existingMR) {
+   729→   729→      const rmNumber = generateRmNumber();
+   730→   730→      const mr: MedicalRecord = {
+   731→   731→        id: generateId(),
+   732→   732→        patientId: activeConsultation.patientId,
+   733→   733→        consultationId: activeConsultation.id,
+   734→   734→        rmNumber,
+   735→   735→        diagnosis: '',
+   736→   736→        symptoms: '',
+   737→   737→        treatment: '',
+   738→   738→        notes: '',
+   739→   739→        status: 'draft' as MedicalRecordStatus,
+   740→   740→        recordDate: new Date().toISOString(),
+   741→   741→        createdAt: new Date().toISOString(),
+   742→   742→        updatedAt: new Date().toISOString(),
+   743→   743→      };
+   744→   744→      addMedicalRecord(mr);
+   745→   745→      updateConsultation(activeConsultation.id, { medicalRecord: mr });
+   746→   746→    }
+   747→   747→
+   748→   748→    // System message
+   749→   749→    const sysMessage: Message = {
+   750→   750→      id: generateId(),
+   751→   751→      consultationId: activeConsultation.id,
+   752→   752→      senderId: 'system',
+   753→   753→      content: 'E-Resep telah dikirim ke pasien.',
+   754→   754→      type: 'text',
+   755→   755→      status: 'read',
+   756→   756→      createdAt: new Date().toISOString(),
+   757→   757→    };
+   758→   758→    addMessage(sysMessage);
+   759→   759→
+   760→   760→    setShowPrescriptionDialog(false);
+   761→   761→    setRxItems([]);
+   762→   762→    toast({ title: 'Berhasil', description: 'E-Resep berhasil dikirim.' });
+   763→   763→  };
+   764→   764→
+   765→   765→  // ── Medical Record Dialog (Doctor View) ────────────────────────────────
+   766→   766→
+   767→   767→  const handleOpenMedicalRecordDialog = () => {
+   768→   768→    if (activeConsultation) {
+   769→   769→      const existingMR = medicalRecords.find((mr) => mr.consultationId === activeConsultation.id);
+   770→   770→      if (existingMR) {
+   771→   771→        setMrDiagnosis(existingMR.diagnosis || '');
+   772→   772→        setMrSymptoms(existingMR.symptoms || '');
+   773→   773→        setMrTreatment(existingMR.treatment || '');
+   774→   774→        setMrNotes(existingMR.notes || '');
+   775→   775→      } else {
+   776→   776→        setMrDiagnosis('');
+   777→   777→        setMrSymptoms('');
+   778→   778→        setMrTreatment('');
+   779→   779→        setMrNotes('');
+   780→   780→      }
+   781→   781→    }
+   782→   782→    setShowMedicalRecordDialog(true);
+   783→   783→  };
+   784→   784→
+   785→   785→  const handleSaveMedicalRecord = () => {
+   786→   786→    if (!activeConsultation || !currentUser) return;
+   787→   787→
+   788→   788→    const existingMR = medicalRecords.find((mr) => mr.consultationId === activeConsultation.id);
+   789→   789→    const allFieldsFilled = mrDiagnosis.trim() && mrSymptoms.trim() && mrTreatment.trim();
+   790→   790→    const status: MedicalRecordStatus = allFieldsFilled ? 'selesai' : 'draft';
+   791→   791→
+   792→   792→    if (existingMR) {
+   793→   793→      updateMedicalRecord(existingMR.id, {
+   794→   794→        diagnosis: mrDiagnosis,
+   795→   795→        symptoms: mrSymptoms,
+   796→   796→        treatment: mrTreatment,
+   797→   797→        notes: mrNotes,
+   798→   798→        status,
+   799→   799→        updatedAt: new Date().toISOString(),
+   800→   800→      });
+   801→   801→      updateConsultation(activeConsultation.id, {
+   802→   802→        medicalRecord: {
+   803→   803→          ...existingMR,
+   804→   804→          diagnosis: mrDiagnosis,
+   805→   805→          symptoms: mrSymptoms,
+   806→   806→          treatment: mrTreatment,
+   807→   807→          notes: mrNotes,
+   808→   808→          status,
+   809→   809→        },
+   810→   810→      });
+   811→   811→    } else {
+   812→   812→      const rmNumber = generateRmNumber();
+   813→   813→      const mr: MedicalRecord = {
+   814→   814→        id: generateId(),
+   815→   815→        patientId: activeConsultation.patientId,
+   816→   816→        consultationId: activeConsultation.id,
+   817→   817→        rmNumber,
+   818→   818→        diagnosis: mrDiagnosis,
+   819→   819→        symptoms: mrSymptoms,
+   820→   820→        treatment: mrTreatment,
+   821→   821→        notes: mrNotes,
+   822→   822→        status,
+   823→   823→        recordDate: new Date().toISOString(),
+   824→   824→        createdAt: new Date().toISOString(),
+   825→   825→        updatedAt: new Date().toISOString(),
+   826→   826→      };
+   827→   827→      addMedicalRecord(mr);
+   828→   828→      updateConsultation(activeConsultation.id, { medicalRecord: mr });
+   829→   829→    }
+   830→   830→
+   831→   831→    // System message
+   832→   832→    const sysMessage: Message = {
+   833→   833→      id: generateId(),
+   834→   834→      consultationId: activeConsultation.id,
+   835→   835→      senderId: 'system',
+   836→   836→      content: `Rekam Medis ${status === 'selesai' ? 'disimpan' : 'disimpan sebagai draft'}.`,
+   837→   837→      type: 'text',
+   838→   838→      status: 'read',
+   839→   839→      createdAt: new Date().toISOString(),
+   840→   840→    };
+   841→   841→    addMessage(sysMessage);
+   842→   842→
+   843→   843→    setShowMedicalRecordDialog(false);
+   844→   844→    toast({
+   845→   845→      title: 'Berhasil',
+   846→   846→      description: `Rekam Medis ${status === 'selesai' ? 'disimpan' : 'disimpan sebagai draft'}.`,
+   847→   847→    });
+   848→   848→  };
+   849→   849→
+   850→   850→  // ── Payment Flow ───────────────────────────────────────────────────────
+   851→   851→
+   852→   852→  const handlePayPrescription = (prescription: Prescription) => {
+   853→   853→    if (!currentUser) return;
+   854→   854→
+   855→   855→    // Set the pending prescription checkout in store and navigate to payments
+   856→   856→    setPendingPrescriptionCheckout(prescription);
+   857→   857→    setActivePanel('payments');
+   858→   858→  };
+   859→   859→
+   860→   860→  const handleCheckoutPrescription = (prescription: Prescription) => {
+   861→   861→    if (!currentUser) return;
+   862→   862→
+   863→   863→    (prescription.items || []).forEach((item) => {
+   864→   864→      const med = useStore.getState().medicines.find(
+   865→   865→        (m) => m.name.toLowerCase().includes(item.medicineName.toLowerCase().split(' ')[0])
+   866→   866→      );
+   867→   867→      if (med) {
+   868→   868→        addToCart({ medicine: med, quantity: item.quantity });
+   869→   869→      }
+   870→   870→    });
+   871→   871→
+   872→   872→    toast({ title: 'Ditambahkan ke Keranjang', description: 'Obat ditambahkan ke keranjang apotek.' });
+   873→   873→    setActivePanel('pharmacy');
+   874→   874→  };
+   875→   875→
+   876→   876→  // ── Screening Flow ───────────────────────────────────────────────────────
+   877→   877→
+   878→   878→  const handleOpenScreeningDialog = () => {
+   879→   879→    setSelectedModules(['keluhan_utama', 'tanda_bahaya', 'tanda_vital']);
+   880→   880→    setScreeningInstructions('');
+   881→   881→    setScreeningDeadline('');
+   882→   882→    setShowScreeningDialog(true);
+   883→   883→  };
+   884→   884→
+   885→   885→  const handleToggleModule = (moduleId: ScreeningModuleId) => {
+   886→   886→    setSelectedModules((prev) =>
+   887→   887→      prev.includes(moduleId)
+   888→   888→        ? prev.filter((id) => id !== moduleId)
+   889→   889→        : [...prev, moduleId]
+   890→   890→    );
+   891→   891→  };
+   892→   892→
+   893→   893→  const handleSendScreening = () => {
+   894→   894→    if (!activeConsultation || !currentUser || selectedModules.length === 0) return;
+   895→   895→
+   896→   896→    const formId = generateId();
+   897→   897→    const screeningForm: ScreeningForm = {
+   898→   898→      id: formId,
+   899→   899→      consultationId: activeConsultation.id,
+   900→   900→      doctorId: currentUser.id,
+   901→   901→      patientId: activeConsultation.patientId,
+   902→   902→      status: 'sent',
+   903→   903→      instructions: screeningInstructions || undefined,
+   904→   904→      deadline: screeningDeadline || undefined,
+   905→   905→      selectedModules: [...selectedModules],
+   906→   906→      moduleAnswers: {} as Record<ScreeningModuleId, Record<string, string | number | string[]>>,
+   907→   907→      moduleScores: {} as Record<ScreeningModuleId, { score: number; riskCategory: 'rendah' | 'sedang' | 'tinggi'; label: string; recommendations: string[] }>,
+   908→   908→      clinicalFiles: [],
+   909→   909→      createdAt: new Date().toISOString(),
+   910→   910→      updatedAt: new Date().toISOString(),
+   911→   911→    };
+   912→   912→
+   913→   913→    addScreeningForm(screeningForm);
+   914→   914→
+   915→   915→    // Send screening message in chat
+   916→   916→    const screeningMessage: Message = {
+   917→   917→      id: generateId(),
+   918→   918→      consultationId: activeConsultation.id,
+   919→   919→      senderId: currentUser.id,
+   920→   920→      content: `__SCREENING__${formId}__`,
+   921→   921→      type: 'text',
+   922→   922→      status: 'delivered',
+   923→   923→      createdAt: new Date().toISOString(),
+   924→   924→    };
+   925→   925→    addMessage(screeningMessage);
+   926→   926→    updateConsultation(activeConsultation.id, {
+   927→   927→      messages: [...(activeConsultation.messages || []), screeningMessage],
+   928→   928→      updatedAt: new Date().toISOString(),
+   929→   929→    });
+   930→   930→
+   931→   931→    addAuditLog({
+   932→   932→      id: generateId(),
+   933→   933→      screeningId: formId,
+   934→   934→      action: 'sent',
+   935→   935→      performedBy: currentUser.id,
+   936→   936→      timestamp: new Date().toISOString(),
+   937→   937→      details: `Modul: ${selectedModules.map(m => MODULE_LABELS[m]).join(', ')}`,
+   938→   938→    });
+   939→   939→
+   940→   940→    // System message
+   941→   941→    const sysMessage: Message = {
+   942→   942→      id: generateId(),
+   943→   943→      consultationId: activeConsultation.id,
+   944→   944→      senderId: 'system',
+   945→   945→      content: `Formulir Skrining Komprehensif Telemedicine telah dikirim. Modul: ${selectedModules.map(m => MODULE_LABELS[m]).join(', ')}`,
+   946→   946→      type: 'text',
+   947→   947→      status: 'read',
+   948→   948→      createdAt: new Date().toISOString(),
+   949→   949→    };
+   950→   950→    addMessage(sysMessage);
+   951→   951→
+   952→   952→    setShowScreeningDialog(false);
+   953→   953→    setSelectedModules(['keluhan_utama', 'tanda_bahaya', 'tanda_vital']);
+   954→   954→    toast({ title: 'Berhasil', description: 'Form skrining komprehensif berhasil dikirim ke pasien.' });
+   955→   955→  };
+   956→   956→
+   957→   957→  // ── Palliative Screening Flow ────────────────────────────────────────────
+   958→   958→
+   959→   959→  const handleOpenPalliativeDialog = () => {
+   960→   960→    setSelectedPalliativeTools(['esas', 'distress', 'spict', 'pps', 'zarit', 'eortc']);
+   961→   961→    setPalliativeInstructions('');
+   962→   962→    setShowPalliativeDialog(true);
+   963→   963→  };
+   964→   964→
+   965→   965→  const handleTogglePalliativeTool = (tool: PalliativeToolType) => {
+   966→   966→    setSelectedPalliativeTools((prev) =>
+   967→   967→      prev.includes(tool) ? prev.filter((t) => t !== tool) : [...prev, tool]
+   968→   968→    );
+   969→   969→  };
+   970→   970→
+   971→   971→  const handleSendPalliativeScreening = () => {
+   972→   972→    if (!activeConsultation || !currentUser || selectedPalliativeTools.length === 0) return;
+   973→   973→
+   974→   974→    const formId = generateId();
+   975→   975→    const palliativeForm: PalliativeScreeningForm = {
+   976→   976→      id: formId,
+   977→   977→      consultationId: activeConsultation.id,
+   978→   978→      doctorId: currentUser.id,
+   979→   979→      patientId: activeConsultation.patientId,
+   980→   980→      status: 'sent',
+   981→   981→      instructions: palliativeInstructions || undefined,
+   982→   982→      selectedTools: [...selectedPalliativeTools],
+   983→   983→      toolAnswers: {},
+   984→   984→      toolResults: {} as PalliativeScreeningForm['toolResults'],
+   985→   985→      createdAt: new Date().toISOString(),
+   986→   986→      updatedAt: new Date().toISOString(),
+   987→   987→    };
+   988→   988→
+   989→   989→    addPalliativeScreeningForm(palliativeForm);
+   990→   990→
+   991→   991→    // Send palliative screening message in chat
+   992→   992→    const palliativeMessage: Message = {
+   993→   993→      id: generateId(),
+   994→   994→      consultationId: activeConsultation.id,
+   995→   995→      senderId: currentUser.id,
+   996→   996→      content: `__PALLIATIVE__${formId}__`,
+   997→   997→      type: 'text',
+   998→   998→      status: 'delivered',
+   999→   999→      createdAt: new Date().toISOString(),
+  1000→  1000→    };
+  1001→  1001→    addMessage(palliativeMessage);
+  1002→  1002→    updateConsultation(activeConsultation.id, {
+  1003→  1003→      messages: [...(activeConsultation.messages || []), palliativeMessage],
+  1004→  1004→      updatedAt: new Date().toISOString(),
+  1005→  1005→    });
+  1006→  1006→
+  1007→  1007→    // System message
+  1008→  1008→    const sysMessage: Message = {
+  1009→  1009→      id: generateId(),
+  1010→  1010→      consultationId: activeConsultation.id,
+  1011→  1011→      senderId: 'system',
+  1012→  1012→      content: `Formulir Skrining Paliatif telah dikirim. Alat: ${selectedPalliativeTools.map(t => PALLIATIVE_TOOL_LABELS[t].name).join(', ')}`,
+  1013→  1013→      type: 'text',
+  1014→  1014→      status: 'read',
+  1015→  1015→      createdAt: new Date().toISOString(),
+  1016→  1016→    };
+  1017→  1017→    addMessage(sysMessage);
+  1018→  1018→
+  1019→  1019→    setShowPalliativeDialog(false);
+  1020→  1020→    setSelectedPalliativeTools(['esas', 'distress', 'spict', 'pps', 'zarit', 'eortc']);
+  1021→  1021→    toast({ title: 'Berhasil', description: 'Form skrining paliatif berhasil dikirim ke pasien.' });
+  1022→  1022→  };
+  1023→  1023→
+  1024→  1024→  // ── Inline Screening Submit Handler ─────────────────────────────────────
+  1025→  1025→
+  1026→  1026→  const handleInlineScreeningSubmit = useCallback((result: ScreeningScoreResult, answers: Record<string, number | string | string[]>) => {
+  1027→  1027→    if (!inlineScreeningFormId || !inlineScreeningType || !activeConsultation) return;
+  1028→  1028→
+  1029→  1029→    // Update the palliative screening form in store
+  1030→  1030→    const currentForm = palliativeScreeningForms.find(f => f.id === inlineScreeningFormId);
+  1031→  1031→    updatePalliativeScreeningForm(inlineScreeningFormId, {
+  1032→  1032→      toolAnswers: { ...currentForm?.toolAnswers, [inlineScreeningType]: answers },
+  1033→  1033→      toolResults: {
+  1034→  1034→        ...currentForm?.toolResults,
+  1035→  1035→        [inlineScreeningType]: {
+  1036→  1036→          score: result.score,
+  1037→  1037→          scoreLabel: result.scoreLabel,
+  1038→  1038→          interpretation: result.interpretation,
+  1039→  1039→          ewsLevel: result.ewsLevel,
+  1040→  1040→          details: result.details,
+  1041→  1041→        }
+  1042→  1042→      },
+  1043→  1043→      status: 'in_progress',
+  1044→  1044→      updatedAt: new Date().toISOString(),
+  1045→  1045→    });
+  1046→  1046→
+  1047→  1047→    // Also add to screening records if patient is a palliative patient
+  1048→  1048→    const palliativePatient = palliativePatients.find(p => p.patientId === activeConsultation.patientId);
+  1049→  1049→    if (palliativePatient) {
+  1050→  1050→      addPalliativeScreeningRecord({
+  1051→  1051→        id: `sr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+  1052→  1052→        palliativePatientId: palliativePatient.id,
+  1053→  1053→        screeningType: inlineScreeningType,
+  1054→  1054→        score: result.score,
+  1055→  1055→        scoreLabel: result.scoreLabel,
+  1056→  1056→        interpretation: result.interpretation,
+  1057→  1057→        ewsLevel: result.ewsLevel,
+  1058→  1058→        details: JSON.stringify(result.details),
+  1059→  1059→        performedAt: new Date().toISOString(),
+  1060→  1060→        createdAt: new Date().toISOString(),
+  1061→  1061→      });
+  1062→  1062→    }
+  1063→  1063→
+  1064→  1064→    // Add a response message in chat
+  1065→  1065→    const responseMsg: Message = {
+  1066→  1066→      id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+  1067→  1067→      consultationId: activeConsultation.id,
+  1068→  1068→      senderId: currentUser?.id || '',
+  1069→  1069→      content: `Hasil skrining ${inlineScreeningType.toUpperCase()}: ${result.scoreLabel} (${result.ewsLevel === 'merah' ? 'Kritis' : result.ewsLevel === 'kuning' ? 'Perhatian' : 'Normal'})`,
+  1070→  1070→      type: 'text',
+  1071→  1071→      status: 'delivered',
+  1072→  1072→      createdAt: new Date().toISOString(),
+  1073→  1073→    };
+  1074→  1074→    addMessage(responseMsg);
+  1075→  1075→
+  1076→  1076→    // Send notification to doctor
+  1077→  1077→    addPalliativeMonitoringNotification({
+  1078→  1078→      id: `pn-${Date.now()}`,
+  1079→  1079→      patientId: activeConsultation.patientId,
+  1080→  1080→      patientName: activeConsultation.patient?.name || '',
+  1081→  1081→      type: 'screening_completed',
+  1082→  1082→      title: 'Skrining Paliatif Selesai',
+  1083→  1083→      description: `Pasien telah mengisi skrining ${inlineScreeningType.toUpperCase()}: ${result.scoreLabel}`,
+  1084→  1084→      severity: result.ewsLevel === 'merah' ? 'critical' : result.ewsLevel === 'kuning' ? 'warning' : 'info',
+  1085→  1085→      isRead: false,
+  1086→  1086→      createdAt: new Date().toISOString(),
+  1087→  1087→    });
+  1088→  1088→
+  1089→  1089→    // Reset inline screening state
+  1090→  1090→    setInlineScreeningFormId(null);
+  1091→  1091→    setInlineScreeningType(null);
+  1092→  1092→
+  1093→  1093→    toast({ title: 'Skrining Terkirim', description: `Hasil skrining ${inlineScreeningType.toUpperCase()} berhasil dikirim.` });
+  1094→  1094→  }, [inlineScreeningFormId, inlineScreeningType, activeConsultation, currentUser, palliativeScreeningForms, palliativePatients, updatePalliativeScreeningForm, addPalliativeScreeningRecord, addPalliativeMonitoringNotification, addMessage, toast]);
+  1095→  1095→
+  1096→  1096→  // ── Palliative Marking Handler ──────────────────────────────────────────
+  1097→  1097→
+  1098→  1098→  const handleConfirmPalliativeMarking = () => {
+  1099→  1099→    if (!activeConsultation || !currentUser || !markingData.primaryDiagnosis) {
+  1100→  1100→      toast({ title: 'Error', description: 'Diagnosis utama wajib diisi.' });
+  1101→  1101→      return;
+  1102→  1102→    }
+  1103→  1103→
+  1104→  1104→    markPatientAsPalliative(
+  1105→  1105→      activeConsultation.id,
+  1106→  1106→      currentUser.id,
+  1107→  1107→      activeConsultation.patientId,
+  1108→  1108→      activeConsultation.patient?.name || 'Pasien',
+  1109→  1109→      markingData
+  1110→  1110→    );
+  1111→  1111→
+  1112→  1112→    // Send system message
+  1113→  1113→    const sysMessage: Message = {
+  1114→  1114→      id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+  1115→  1115→      consultationId: activeConsultation.id,
+  1116→  1116→      senderId: 'system',
+  1117→  1117→      content: 'Pasien telah ditandai sebagai Pasien Monitoring Paliatif. Data pasien otomatis tersinkronisasi dengan Modul Monitoring Paliatif.',
+  1118→  1118→      type: 'text',
+  1119→  1119→      status: 'read',
+  1120→  1120→      createdAt: new Date().toISOString(),
+  1121→  1121→    };
+  1122→  1122→    addMessage(sysMessage);
+  1123→  1123→
+  1124→  1124→    setShowPalliativeMarkingDialog(false);
+  1125→  1125→    setMarkingData({
+  1126→  1126→      primaryDiagnosis: '',
+  1127→  1127→      secondaryDiagnosis: '',
+  1128→  1128→      initialPPS: 60,
+  1129→  1129→      diseaseCategory: '',
+  1130→  1130→      reasonForPalliative: '',
+  1131→  1131→      doctorNotes: '',
+  1132→  1132→    });
+  1133→  1133→
+  1134→  1134→    toast({ title: 'Berhasil', description: 'Pasien berhasil ditandai sebagai Pasien Monitoring Paliatif.' });
+  1135→  1135→  };
+  1136→  1136→
+  1137→  1137→  // ── Handle typing ──────────────────────────────────────────────────────
+  1138→  1138→
+  1139→  1139→  const handleTyping = (value: string) => {
+  1140→  1140→    setMessageInput(value);
+  1141→  1141→    if (typingTimeoutRef.current) {
+  1142→  1142→      clearTimeout(typingTimeoutRef.current);
+  1143→  1143→    }
+  1144→  1144→    typingTimeoutRef.current = setTimeout(() => {
+  1145→  1145→      // stopped typing
+  1146→  1146→    }, 2000);
+  1147→  1147→  };
+  1148→  1148→
+  1149→  1149→  const handleKeyPress = (e: React.KeyboardEvent) => {
+  1150→  1150→    if (e.key === 'Enter' && !e.shiftKey) {
+  1151→  1151→      e.preventDefault();
+  1152→  1152→      handleSendMessage();
+  1153→  1153→    }
+  1154→  1154→  };
+  1155→  1155→
+  1156→  1156→  const handleBackToList = () => {
+  1157→  1157→    setShowChatArea(false);
+  1158→  1158→    setActiveConsultation(null);
+  1159→  1159→  };
+  1160→  1160→
+  1161→  1161→  // ── Get doctor for active consultation ────────────────────────────────
+  1162→  1162→
+  1163→  1163→  const activeDoctor = activeConsultation
+  1164→  1164→    ? doctors.find((d) => d.id === activeConsultation.doctorId)
+  1165→  1165→    : undefined;
+  1166→  1166→
+  1167→  1167→  // ── Render E-Prescription Card ─────────────────────────────────────────
+  1168→  1168→
+  1169→  1169→  const renderPrescriptionCard = (prescriptionId: string) => {
+  1170→  1170→    const prescription = prescriptions.find((p) => p.id === prescriptionId);
+  1171→  1171→    if (!prescription) return null;
+  1172→  1172→
+  1173→  1173→    const items = prescription.items || [];
+  1174→  1174→    const totalAmount = items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
+  1175→  1175→    const isPaid = prescription.status === 'paid';
+  1176→  1176→
+  1177→  1177→    return (
+  1178→  1178→      <div className="border-2 border-primary rounded-xl overflow-hidden bg-card max-w-sm my-2">
+  1179→  1179→        {/* Header */}
+  1180→  1180→        <div className="bg-primary/10 px-4 py-2.5 flex items-center justify-between">
+  1181→  1181→          <div className="flex items-center gap-2">
+  1182→  1182→            <ClipboardList className="w-4 h-4 text-primary" />
+  1183→  1183→            <span className="font-semibold text-sm text-primary">E-Resep Dokter</span>
+  1184→  1184→          </div>
+  1185→  1185→          <Badge variant={isPaid ? 'default' : 'secondary'} className={cn('text-[10px]', isPaid && 'bg-emerald-600')}>
+  1186→  1186→            {isPaid ? 'Sudah Dibayar' : 'Menunggu Pembayaran'}
+  1187→  1187→          </Badge>
+  1188→  1188→        </div>
+  1189→  1189→
+  1190→  1190→        {/* Medicine Table */}
+  1191→  1191→        <div className="px-4 py-3">
+  1192→  1192→          <div className="overflow-x-auto">
+  1193→  1193→            <table className="w-full text-xs">
+  1194→  1194→              <thead>
+  1195→  1195→                <tr className="border-b border-border">
+  1196→  1196→                  <th className="text-left py-1.5 text-muted-foreground font-medium">Obat</th>
+  1197→  1197→                  <th className="text-center py-1.5 text-muted-foreground font-medium">Dosis</th>
+  1198→  1198→                  <th className="text-center py-1.5 text-muted-foreground font-medium">Frek.</th>
+  1199→  1199→                  <th className="text-center py-1.5 text-muted-foreground font-medium">Durasi</th>
+  1200→  1200→                  <th className="text-center py-1.5 text-muted-foreground font-medium">Qty</th>
+  1201→  1201→                  <th className="text-right py-1.5 text-muted-foreground font-medium">Harga</th>
+  1202→  1202→                </tr>
+  1203→  1203→              </thead>
+  1204→  1204→              <tbody>
+  1205→  1205→                {items.map((item) => (
+  1206→  1206→                  <tr key={item.id} className="border-b border-border/50 last:border-0">
+  1207→  1207→                    <td className="py-1.5 font-medium text-foreground">{item.medicineName}</td>
+  1208→  1208→                    <td className="py-1.5 text-center text-muted-foreground">{item.dosage}</td>
+  1209→  1209→                    <td className="py-1.5 text-center text-muted-foreground">{item.frequency}</td>
+  1210→  1210→                    <td className="py-1.5 text-center text-muted-foreground">{item.duration}</td>
+  1211→  1211→                    <td className="py-1.5 text-center text-foreground">{item.quantity}</td>
+  1212→  1212→                    <td className="py-1.5 text-right text-foreground">{formatFee(item.price || 0)}</td>
+  1213→  1213→                  </tr>
+  1214→  1214→                ))}
+  1215→  1215→              </tbody>
+  1216→  1216→            </table>
+  1217→  1217→          </div>
+  1218→  1218→
+  1219→  1219→          {/* Total */}
+  1220→  1220→          <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
+  1221→  1221→            <span className="font-semibold text-sm text-foreground">Total</span>
+  1222→  1222→            <span className="font-bold text-sm text-primary">{formatFee(totalAmount)}</span>
+  1223→  1223→          </div>
+  1224→  1224→        </div>
+  1225→  1225→
+  1226→  1226→        {/* Patient Action Buttons */}
+  1227→  1227→        {isPatient && (
+  1228→  1228→          <div className="px-4 pb-3">
+  1229→  1229→            {isPaid ? (
+  1230→  1230→              <div className="space-y-2">
+  1231→  1231→                <div className="flex items-center justify-center gap-2 py-1 text-emerald-600">
+  1232→  1232→                  <CheckCheck className="w-4 h-4" />
+  1233→  1233→                  <span className="text-sm font-medium">Sudah Dibayar</span>
+  1234→  1234→                </div>
+  1235→  1235→                <div className="flex gap-2">
+  1236→  1236→                  <Button
+  1237→  1237→                    size="sm"
+  1238→  1238→                    variant="outline"
+  1239→  1239→                    className="flex-1 h-8 text-xs"
+  1240→  1240→                    onClick={() => {
+  1241→  1241→                      setActivePanel('medical-records');
+  1242→  1242→                    }}
+  1243→  1243→                  >
+  1244→  1244→                    <Eye className="w-3.5 h-3.5 mr-1" />
+  1245→  1245→                    Lihat Bukti
+  1246→  1246→                  </Button>
+  1247→  1247→                  <Button
+  1248→  1248→                    size="sm"
+  1249→  1249→                    variant="outline"
+  1250→  1250→                    className="flex-1 h-8 text-xs"
+  1251→  1251→                    onClick={() => {
+  1252→  1252→                      // Find payment for this prescription and download
+  1253→  1253→                      const pay = useStore.getState().payments.find(
+  1254→  1254→                        (p) => p.referenceId === prescription.id && p.status === 'success'
+  1255→  1255→                      );
+  1256→  1256→                      if (pay) {
+  1257→  1257→                        const items = (prescription.items || []).map((item) => ({
+  1258→  1258→                          name: item.medicineName,
+  1259→  1259→                          dosage: item.dosage,
+  1260→  1260→                          quantity: item.quantity,
+  1261→  1261→                          price: item.price || 0,
+  1262→  1262→                        }));
+  1263→  1263→                        const params = new URLSearchParams({
+  1264→  1264→                          invoiceNumber: pay.invoiceNumber || `INV-${pay.id}`,
+  1265→  1265→                          amount: String(pay.amount),
+  1266→  1266→                          method: pay.method,
+  1267→  1267→                          paidAt: pay.paidAt || pay.createdAt,
+  1268→  1268→                          patientName: useStore.getState().currentUser?.name || '',
+  1269→  1269→                          doctorName: '',
+  1270→  1270→                          prescriptionId: prescription.id,
+  1271→  1271→                          items: JSON.stringify(items),
+  1272→  1272→                        });
+  1273→  1273→                        window.open(`/api/payment-proof?${params.toString()}`, '_blank');
+  1274→  1274→                      }
+  1275→  1275→                    }}
+  1276→  1276→                  >
+  1277→  1277→                    <Download className="w-3.5 h-3.5 mr-1" />
+  1278→  1278→                    Unduh Bukti
+  1279→  1279→                  </Button>
+  1280→  1280→                </div>
+  1281→  1281→              </div>
+  1282→  1282→            ) : (
+  1283→  1283→              <div className="flex gap-2">
+  1284→  1284→                <Button
+  1285→  1285→                  size="sm"
+  1286→  1286→                  className="flex-1 h-8 text-xs"
+  1287→  1287→                  onClick={() => handlePayPrescription(prescription)}
+  1288→  1288→                >
+  1289→  1289→                  <CreditCard className="w-3.5 h-3.5 mr-1" />
+  1290→  1290→                  Bayar Sekarang
+  1291→  1291→                </Button>
+  1292→  1292→                <Button
+  1293→  1293→                  size="sm"
+  1294→  1294→                  variant="outline"
+  1295→  1295→                  className="flex-1 h-8 text-xs"
+  1296→  1296→                  onClick={() => handleCheckoutPrescription(prescription)}
+  1297→  1297→                >
+  1298→  1298→                  <ShoppingCart className="w-3.5 h-3.5 mr-1" />
+  1299→  1299→                  Tambah ke Keranjang Apotek
+  1300→  1300→                </Button>
+  1301→  1301→              </div>
+  1302→  1302→            )}
+  1303→  1303→          </div>
+  1304→  1304→        )}
+  1305→  1305→      </div>
+  1306→  1306→    );
+  1307→  1307→  };
+  1308→  1308→
+  1309→  1309→  // ── Render Screening Card ──────────────────────────────────────────────
+  1310→  1310→
+  1311→  1311→  const renderScreeningCard = (formId: string) => {
+  1312→  1312→    const form = screeningForms.find((f) => f.id === formId);
+  1313→  1313→    if (!form) return null;
+  1314→  1314→
+  1315→  1315→    const isCompleted = form.status === 'completed' || form.status === 'reviewed';
+  1316→  1316→    const isPending = form.status === 'sent' || form.status === 'opened' || form.status === 'in_progress' || form.status === 'draft';
+  1317→  1317→    const triage = form.triageResult;
+  1318→  1318→    const summary = form.clinicalSummary;
+  1319→  1319→
+  1320→  1320→    return (
+  1321→  1321→      <div className="border-2 border-teal-500 rounded-xl overflow-hidden bg-card max-w-sm my-2">
+  1322→  1322→        {/* Header */}
+  1323→  1323→        <div className="bg-teal-500/10 px-4 py-2.5 flex items-center justify-between">
+  1324→  1324→          <div className="flex items-center gap-2">
+  1325→  1325→            <ClipboardCheck className="w-4 h-4 text-teal-600" />
+  1326→  1326→            <span className="font-semibold text-sm text-teal-700">Skrining Komprehensif Telemedicine</span>
+  1327→  1327→          </div>
+  1328→  1328→          <Badge className={cn('text-[10px]', isCompleted ? 'bg-emerald-600' : 'bg-amber-500')}>
+  1329→  1329→            {isCompleted ? 'Selesai' : 'Menunggu Diisi'}
+  1330→  1330→          </Badge>
+  1331→  1331→        </div>
+  1332→  1332→
+  1333→  1333→        {/* Content */}
+  1334→  1334→        <div className="px-4 py-3">
+  1335→  1335→          <p className="font-medium text-sm text-foreground">Skrining Pra-Konsultasi</p>
+  1336→  1336→          <p className="text-xs text-muted-foreground">12 modul skrining komprehensif</p>
+  1337→  1337→
+  1338→  1338→          {form.instructions && (
+  1339→  1339→            <p className="text-xs text-primary mt-2 bg-primary/5 p-2 rounded flex items-start gap-1"><FileText className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {form.instructions}</p>
+  1340→  1340→          )}
+  1341→  1341→
+  1342→  1342→          {/* Triage result */}
+  1343→  1343→          {isCompleted && triage && (
+  1344→  1344→            <div className="mt-3 space-y-2">
+  1345→  1345→              <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg border', TRIAGE_COLORS[triage.level].bg, TRIAGE_COLORS[triage.level].border)}>
+  1346→  1346→                <Circle className={cn('w-5 h-5', triage.level === 'hijau' ? 'text-emerald-500 fill-emerald-500' : triage.level === 'kuning' ? 'text-amber-500 fill-amber-500' : triage.level === 'oranye' ? 'text-orange-500 fill-orange-500' : 'text-red-500 fill-red-500')} />
+  1347→  1347→                <div>
+  1348→  1348→                  <p className={cn('text-sm font-bold', TRIAGE_COLORS[triage.level].text)}>{triage.label}</p>
+  1349→  1349→                  <p className="text-xs text-foreground">{triage.description}</p>
+  1350→  1350→                </div>
+  1351→  1351→              </div>
+  1352→  1352→              {summary && (
+  1353→  1353→                <div className="text-xs text-muted-foreground">
+  1354→  1354→                  <p>Keluhan: {summary.chiefComplaint}</p>
+  1355→  1355→                  {summary.painScore !== null && <p>Nyeri: {summary.painScore}/10</p>}
+  1356→  1356→                </div>
+  1357→  1357→              )}
+  1358→  1358→            </div>
+  1359→  1359→          )}
+  1360→  1360→        </div>
+  1361→  1361→
+  1362→  1362→        {/* Patient Actions */}
+  1363→  1363→        {isPatient && isPending && (
+  1364→  1364→          <div className="px-4 pb-3">
+  1365→  1365→            <Button
+  1366→  1366→              size="sm"
+  1367→  1367→              className="w-full h-8 text-xs bg-teal-600 hover:bg-teal-700"
+  1368→  1368→              onClick={() => setActivePanel('screening')}
+  1369→  1369→            >
+  1370→  1370→              <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
+  1371→  1371→              Isi Skrining Komprehensif
+  1372→  1372→            </Button>
+  1373→  1373→          </div>
+  1374→  1374→        )}
+  1375→  1375→
+  1376→  1376→        {/* Doctor view - completed summary */}
+  1377→  1377→        {isDoctor && isCompleted && triage && (
+  1378→  1378→          <div className="px-4 pb-3">
+  1379→  1379→            <div className="bg-muted/50 rounded-lg p-3 text-xs space-y-1">
+  1380→  1380→              <p className="font-semibold text-foreground">✅ Skrining Komprehensif Telah Diselesaikan</p>
+  1381→  1381→              <p className={cn('font-medium', TRIAGE_COLORS[triage.level].text)}>Triase: {triage.label}</p>
+  1382→  1382→              {summary && <p className="text-muted-foreground">Keluhan: {summary.chiefComplaint}</p>}
+  1383→  1383→            </div>
+  1384→  1384→            <Button
+  1385→  1385→              size="sm"
+  1386→  1386→              variant="outline"
+  1387→  1387→              className="w-full h-8 text-xs mt-2"
+  1388→  1388→              onClick={() => setActivePanel('screening')}
+  1389→  1389→            >
+  1390→  1390→              <Eye className="w-3.5 h-3.5 mr-1" />
+  1391→  1391→              Lihat Detail
+  1392→  1392→            </Button>
+  1393→  1393→          </div>
+  1394→  1394→        )}
+  1395→  1395→      </div>
+  1396→  1396→    );
+  1397→  1397→  };
+  1398→  1398→
+  1399→  1399→  // ── Render Palliative Screening Card ──────────────────────────────────
+  1400→  1400→
+  1401→  1401→  const renderPalliativeCard = (formId: string) => {
+  1402→  1402→    const form = palliativeScreeningForms.find((f) => f.id === formId);
+  1403→  1403→    if (!form) return null;
+  1404→  1404→
+  1405→  1405→    const isCompleted = form.status === 'completed' || form.status === 'reviewed';
+  1406→  1406→    const isPending = form.status === 'sent' || form.status === 'opened' || form.status === 'in_progress' || form.status === 'draft';
+  1407→  1407→    const toolNames = form.selectedTools.map(t => PALLIATIVE_TOOL_LABELS[t].name);
+  1408→  1408→
+  1409→  1409→    // Determine worst EWS level for badge
+  1410→  1410→    const ewsLevels = Object.values(form.toolResults).map(r => r.ewsLevel);
+  1411→  1411→    const worstEws = ewsLevels.includes('merah') ? 'merah' : ewsLevels.includes('kuning') ? 'kuning' : 'hijau';
+  1412→  1412→    const ewsBadge = worstEws === 'merah' ? { label: 'Kritis', color: 'text-red-700', bg: 'bg-red-100 border-red-300' } :
+  1413→  1413→                     worstEws === 'kuning' ? { label: 'Perhatian', color: 'text-amber-700', bg: 'bg-amber-100 border-amber-300' } :
+  1414→  1414→                     { label: 'Normal', color: 'text-emerald-700', bg: 'bg-emerald-100 border-emerald-300' };
+  1415→  1415→
+  1416→  1416→    return (
+  1417→  1417→      <div className="border-2 border-rose-500 rounded-xl overflow-hidden bg-card max-w-sm my-2">
+  1418→  1418→        {/* Header */}
+  1419→  1419→        <div className="bg-rose-500/10 px-4 py-2.5 flex items-center justify-between">
+  1420→  1420→          <div className="flex items-center gap-2">
+  1421→  1421→            <HeartPulse className="w-4 h-4 text-rose-600" />
+  1422→  1422→            <span className="font-semibold text-sm text-rose-700">Skrining Paliatif</span>
+  1423→  1423→          </div>
+  1424→  1424→          <Badge className={cn('text-[10px]', isCompleted ? 'bg-emerald-600' : 'bg-amber-500')}>
+  1425→  1425→            {isCompleted ? 'Selesai' : 'Menunggu Diisi'}
+  1426→  1426→          </Badge>
+  1427→  1427→        </div>
+  1428→  1428→
+  1429→  1429→        {/* Content */}
+  1430→  1430→        <div className="px-4 py-3">
+  1431→  1431→          <p className="font-medium text-sm text-foreground">Skrining Paliatif Telemedicine</p>
+  1432→  1432→          <p className="text-xs text-muted-foreground">{form.selectedTools.length} alat skrining paliatif</p>
+  1433→  1433→
+  1434→  1434→          {form.instructions && (
+  1435→  1435→            <p className="text-xs text-rose-600 mt-2 bg-rose-50 p-2 rounded flex items-start gap-1"><FileText className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {form.instructions}</p>
+  1436→  1436→          )}
+  1437→  1437→
+  1438→  1438→          {/* Tool list */}
+  1439→  1439→          <div className="flex flex-wrap gap-1 mt-2">
+  1440→  1440→            {form.selectedTools.map(tool => (
+  1441→  1441→              <Badge key={tool} variant="outline" className="text-[10px]">
+  1442→  1442→                {PALLIATIVE_TOOL_LABELS[tool].name}
+  1443→  1443→              </Badge>
+  1444→  1444→            ))}
+  1445→  1445→          </div>
+  1446→  1446→
+  1447→  1447→          {/* Completed results summary */}
+  1448→  1448→          {isCompleted && Object.keys(form.toolResults).length > 0 && (
+  1449→  1449→            <div className="mt-3 space-y-2">
+  1450→  1450→              <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg border', ewsBadge.bg)}>
+  1451→  1451→                <div className={cn('w-4 h-4 rounded-full', worstEws === 'merah' ? 'bg-red-500' : worstEws === 'kuning' ? 'bg-amber-500' : 'bg-emerald-500')} />
+  1452→  1452→                <div>
+  1453→  1453→                  <p className={cn('text-sm font-bold', ewsBadge.color)}>{ewsBadge.label}</p>
+  1454→  1454→                </div>
+  1455→  1455→              </div>
+  1456→  1456→              <div className="space-y-1">
+  1457→  1457→                {Object.entries(form.toolResults).map(([toolKey, result]) => (
+  1458→  1458→                  <div key={toolKey} className="flex items-center justify-between text-xs">
+  1459→  1459→                    <span className="text-muted-foreground">{PALLIATIVE_TOOL_LABELS[toolKey as PalliativeToolType]?.name || toolKey}</span>
+  1460→  1460→                    <span className={cn('font-bold', result.ewsLevel === 'merah' ? 'text-red-600' : result.ewsLevel === 'kuning' ? 'text-amber-600' : 'text-emerald-600')}>
+  1461→  1461→                      {result.scoreLabel}
+  1462→  1462→                    </span>
+  1463→  1463→                  </div>
+  1464→  1464→                ))}
+  1465→  1465→              </div>
+  1466→  1466→            </div>
+  1467→  1467→          )}
+  1468→  1468→        </div>
+  1469→  1469→
+  1470→  1470→        {/* Patient Actions */}
+  1471→  1471→        {isPatient && isPending && (
+  1472→  1472→          <div className="px-4 pb-3">
+  1473→  1473→            {inlineScreeningFormId === formId && inlineScreeningType ? (
+  1474→  1474→              /* Inline screening form is active for this form */
+  1475→  1475→              <div className="border border-rose-200 rounded-lg p-3 bg-rose-50/50">
+  1476→  1476→                <InlineScreeningForm
+  1477→  1477→                  screeningType={inlineScreeningType}
+  1478→  1478→                  onSubmit={handleInlineScreeningSubmit}
+  1479→  1479→                  onSaveDraft={(answers) => {
+  1480→  1480→                    // Save draft back to form
+  1481→  1481→                    const currentForm = palliativeScreeningForms.find(f => f.id === formId);
+  1482→  1482→                    if (currentForm) {
+  1483→  1483→                      updatePalliativeScreeningForm(formId, {
+  1484→  1484→                        toolAnswers: { ...currentForm.toolAnswers, [inlineScreeningType]: answers },
+  1485→  1485→                        status: 'in_progress',
+  1486→  1486→                        updatedAt: new Date().toISOString(),
+  1487→  1487→                      });
+  1488→  1488→                    }
+  1489→  1489→                    toast({ title: 'Draft Disimpan', description: `Draft skrining ${inlineScreeningType.toUpperCase()} tersimpan.` });
+  1490→  1490→                  }}
+  1491→  1491→                  initialAnswers={form.toolAnswers[inlineScreeningType] as Record<string, number | string | string[]> | undefined}
+  1492→  1492→                />
+  1493→  1493→                <Button
+  1494→  1494→                  variant="ghost"
+  1495→  1495→                  size="sm"
+  1496→  1496→                  className="w-full mt-2 text-xs text-muted-foreground"
+  1497→  1497→                  onClick={() => {
+  1498→  1498→                    setInlineScreeningFormId(null);
+  1499→  1499→                    setInlineScreeningType(null);
+  1500→  1500→                  }}
+  1501→  1501→                >
+  1502→  1502→                  Batal
+  1503→  1503→                </Button>
+  1504→  1504→              </div>
+  1505→  1505→            ) : inlineScreeningFormId === formId && !inlineScreeningType ? (
+  1506→  1506→              /* Tool selection for this form */
+  1507→  1507→              <div className="space-y-2">
+  1508→  1508→                <p className="text-xs font-medium text-rose-700">Pilih alat skrining yang ingin diisi:</p>
+  1509→  1509→                <div className="grid grid-cols-1 gap-1.5">
+  1510→  1510→                  {form.selectedTools.map(tool => {
+  1511→  1511→                    const toolInfo = PALLIATIVE_TOOL_LABELS[tool];
+  1512→  1512→                    const alreadyFilled = !!form.toolResults[tool];
+  1513→  1513→                    return (
+  1514→  1514→                      <Button
+  1515→  1515→                        key={tool}
+  1516→  1516→                        size="sm"
+  1517→  1517→                        variant={alreadyFilled ? 'ghost' : 'outline'}
+  1518→  1518→                        className={cn(
+  1519→  1519→                          'h-auto py-2 px-3 text-xs justify-start gap-2',
+  1520→  1520→                          alreadyFilled && 'opacity-60'
+  1521→  1521→                        )}
+  1522→  1522→                        disabled={alreadyFilled}
+  1523→  1523→                        onClick={() => setInlineScreeningType(tool)}
+  1524→  1524→                      >
+  1525→  1525→                        {toolInfo.icon}
+  1526→  1526→                        <span className="font-medium">{toolInfo.name}</span>
+  1527→  1527→                        {alreadyFilled && <Badge className="ml-auto text-[9px] bg-emerald-600">Selesai</Badge>}
+  1528→  1528→                      </Button>
+  1529→  1529→                    );
+  1530→  1530→                  })}
+  1531→  1531→                </div>
+  1532→  1532→                <Button
+  1533→  1533→                  size="sm"
+  1534→  1534→                  className="w-full h-8 text-xs bg-rose-600 hover:bg-rose-700"
+  1535→  1535→                  onClick={() => {
+  1536→  1536→                    // Fill all remaining tools one by one — start with the first unfilled
+  1537→  1537→                    const nextTool = form.selectedTools.find(t => !form.toolResults[t]);
+  1538→  1538→                    if (nextTool) {
+  1539→  1539→                      setInlineScreeningType(nextTool);
+  1540→  1540→                    }
+  1541→  1541→                  }}
+  1542→  1542→                >
+  1543→  1543→                  <HeartPulse className="w-3.5 h-3.5 mr-1" />
+  1544→  1544→                  Isi Semua
+  1545→  1545→                </Button>
+  1546→  1546→                <Button
+  1547→  1547→                  variant="ghost"
+  1548→  1548→                  size="sm"
+  1549→  1549→                  className="w-full text-xs text-muted-foreground"
+  1550→  1550→                  onClick={() => setInlineScreeningFormId(null)}
+  1551→  1551→                >
+  1552→  1552→                  Batal
+  1553→  1553→                </Button>
+  1554→  1554→              </div>
+  1555→  1555→            ) : (
+  1556→  1556→              /* Default: Show button to start inline screening */
+  1557→  1557→              <Button
+  1558→  1558→                size="sm"
+  1559→  1559→                className="w-full h-8 text-xs bg-rose-600 hover:bg-rose-700"
+  1560→  1560→                onClick={() => setInlineScreeningFormId(formId)}
+  1561→  1561→              >
+  1562→  1562→                <HeartPulse className="w-3.5 h-3.5 mr-1" />
+  1563→  1563→                Isi Skrining Paliatif
+  1564→  1564→              </Button>
+  1565→  1565→            )}
+  1566→  1566→          </div>
+  1567→  1567→        )}
+  1568→  1568→
+  1569→  1569→        {/* Doctor view - completed summary */}
+  1570→  1570→        {isDoctor && isCompleted && (
+  1571→  1571→          <div className="px-4 pb-3">
+  1572→  1572→            <div className="bg-muted/50 rounded-lg p-3 text-xs space-y-1">
+  1573→  1573→              <p className="font-semibold text-foreground">Skrining Paliatif Telah Diselesaikan</p>
+  1574→  1574→              <p className={cn('font-medium', ewsBadge.color)}>EWS: {ewsBadge.label}</p>
+  1575→  1575→            </div>
+  1576→  1576→            <Button
+  1577→  1577→              size="sm"
+  1578→  1578→              variant="outline"
+  1579→  1579→              className="w-full h-8 text-xs mt-2"
+  1580→  1580→              onClick={() => {
+  1581→  1581→                setActivePalliativeFormId(formId);
+  1582→  1582→                setActivePanel('palliative-screening');
+  1583→  1583→              }}
+  1584→  1584→            >
+  1585→  1585→              <Eye className="w-3.5 h-3.5 mr-1" />
+  1586→  1586→              Lihat Detail
+  1587→  1587→            </Button>
+  1588→  1588→          </div>
+  1589→  1589→        )}
+  1590→  1590→      </div>
+  1591→  1591→    );
+  1592→  1592→  };
+  1593→  1593→
+  1594→  1594→  // ── Render message status icon ─────────────────────────────────────────
+  1595→  1595→
+  1596→  1596→  const renderMessageStatus = (status: string, isOwn: boolean) => {
+  1597→  1597→    if (!isOwn) return null;
+  1598→  1598→    if (status === 'read') return <CheckCheck className="w-3.5 h-3.5 text-primary" />;
+  1599→  1599→    if (status === 'delivered') return <CheckCheck className="w-3.5 h-3.5 text-muted-foreground" />;
+  1600→  1600→    return <Check className="w-3.5 h-3.5 text-muted-foreground" />;
+  1601→  1601→  };
+  1602→  1602→
+  1603→  1603→  // ── Render: Doctor List Card (Patient View) ────────────────────────────
+  1604→  1604→
+  1605→  1605→  const renderDoctorCard = (doctor: DoctorWithProfile) => {
+  1606→  1606→    const profile = doctor.doctorProfile;
+  1607→  1607→    if (!profile) return null;
+  1608→  1608→
+  1609→  1609→    const existingConsultation = getConsultationForDoctor(doctor.id);
+  1610→  1610→    const online = isDoctorOnline(doctor.id);
+  1611→  1611→    const isCreating = creatingConsultation === doctor.id;
+  1612→  1612→    const lastMessage = existingConsultation?.messages?.[existingConsultation.messages.length - 1];
+  1613→  1613→
+  1614→  1614→    return (
+  1615→  1615→      <div
+  1616→  1616→        key={doctor.id}
+  1617→  1617→        className={cn(
+  1618→  1618→          'p-3 rounded-xl border border-border bg-card hover:bg-accent/50 transition-all duration-200 cursor-pointer group',
+  1619→  1619→          activeConsultation?.doctorId === doctor.id && 'ring-2 ring-primary/30 bg-primary/5'
+  1620→  1620→        )}
+  1621→  1621→        onClick={() => {
+  1622→  1622→          if (existingConsultation) {
+  1623→  1623→            openConsultation(existingConsultation);
+  1624→  1624→          }
+  1625→  1625→        }}
+  1626→  1626→      >
+  1627→  1627→        <div className="flex gap-3">
+  1628→  1628→          <div className="relative shrink-0">
+  1629→  1629→            <Avatar className="w-12 h-12">
+  1630→  1630→              <AvatarImage src={doctor.avatar || undefined} alt={doctor.name} />
+  1631→  1631→              <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+  1632→  1632→                {doctor.name.charAt(0).toUpperCase()}
+  1633→  1633→              </AvatarFallback>
+  1634→  1634→            </Avatar>
+  1635→  1635→            <div
+  1636→  1636→              className={cn(
+  1637→  1637→                'absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-card',
+  1638→  1638→                online ? 'bg-emerald-500' : 'bg-gray-400'
+  1639→  1639→              )}
+  1640→  1640→            />
+  1641→  1641→          </div>
+  1642→  1642→
+  1643→  1643→          <div className="flex-1 min-w-0">
+  1644→  1644→            <div className="flex items-start justify-between gap-2">
+  1645→  1645→              <div className="min-w-0">
+  1646→  1646→                <h3 className="font-semibold text-sm text-foreground truncate">{doctor.name}</h3>
+  1647→  1647→                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 mt-0.5">
+  1648→  1648→                  {SPECIALIZATION_LABELS[profile.specialization] || profile.specialization}
+  1649→  1649→                </Badge>
+  1650→  1650→              </div>
+  1651→  1651→              {lastMessage && (
+  1652→  1652→                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+  1653→  1653→                  {formatTime(lastMessage.createdAt)}
+  1654→  1654→                </span>
+  1655→  1655→              )}
+  1656→  1656→            </div>
+  1657→  1657→
+  1658→  1658→            <div className="flex items-center gap-2 mt-1.5">
+  1659→  1659→              <div className="flex items-center gap-0.5">
+  1660→  1660→                <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+  1661→  1661→                <span className="text-[11px] font-medium text-foreground">{profile.rating.toFixed(1)}</span>
+  1662→  1662→              </div>
+  1663→  1663→              <span className="text-[10px] text-muted-foreground">
+  1664→  1664→                {formatFee(profile.consultationFee)}
+  1665→  1665→              </span>
+  1666→  1666→            </div>
+  1667→  1667→
+  1668→  1668→            {existingConsultation ? (
+  1669→  1669→              <p className="text-xs text-muted-foreground mt-1 truncate">
+  1670→  1670→                {lastMessage?.content?.startsWith('__PRESCRIPTION__') ? <span className="flex items-center gap-1"><Paperclip className="w-3.5 h-3.5" /> E-Resep Dokter</span> : lastMessage?.content?.startsWith('__PALLIATIVE__') ? <span className="flex items-center gap-1"><HeartPulse className="w-3.5 h-3.5" /> Skrining Paliatif</span> : lastMessage?.content?.startsWith('__SCREENING__') ? <span className="flex items-center gap-1"><ClipboardCheck className="w-3.5 h-3.5" /> Form Skrining</span> : lastMessage?.content || 'Belum ada pesan'}
+  1671→  1671→              </p>
+  1672→  1672→            ) : (
+  1673→  1673→              <Button
+  1674→  1674→                size="sm"
+  1675→  1675→                className="mt-2 h-7 text-xs font-medium"
+  1676→  1676→                disabled={isCreating}
+  1677→  1677→                onClick={(e) => {
+  1678→  1678→                  e.stopPropagation();
+  1679→  1679→                  handleStartChat(doctor);
+  1680→  1680→                }}
+  1681→  1681→              >
+  1682→  1682→                {isCreating ? (
+  1683→  1683→                  <>
+  1684→  1684→                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+  1685→  1685→                    Memulai...
+  1686→  1686→                  </>
+  1687→  1687→                ) : (
+  1688→  1688→                  'Mulai Chat'
+  1689→  1689→                )}
+  1690→  1690→              </Button>
+  1691→  1691→            )}
+  1692→  1692→          </div>
+  1693→  1693→        </div>
+  1694→  1694→      </div>
+  1695→  1695→    );
+  1696→  1696→  };
+  1697→  1697→
+  1698→  1698→  // ── Render: Patient Consultation Card (Doctor View) ────────────────────
+  1699→  1699→
+  1700→  1700→  const renderPatientCard = (consultation: Consultation) => {
+  1701→  1701→    const patient = consultation.patient;
+  1702→  1702→    const lastMessage = consultation.messages?.[consultation.messages.length - 1];
+  1703→  1703→    const isActive = activeConsultation?.id === consultation.id;
+  1704→  1704→
+  1705→  1705→    return (
+  1706→  1706→      <div
+  1707→  1707→        key={consultation.id}
+  1708→  1708→        className={cn(
+  1709→  1709→          'p-3 rounded-xl border border-border bg-card hover:bg-accent/50 transition-all duration-200 cursor-pointer',
+  1710→  1710→          isActive && 'ring-2 ring-primary/30 bg-primary/5'
+  1711→  1711→        )}
+  1712→  1712→        onClick={() => openConsultation(consultation)}
+  1713→  1713→      >
+  1714→  1714→        <div className="flex gap-3">
+  1715→  1715→          <Avatar className="w-10 h-10 shrink-0">
+  1716→  1716→            <AvatarImage src={patient?.avatar || undefined} alt={patient?.name || ''} />
+  1717→  1717→            <AvatarFallback className="bg-emerald-500/10 text-emerald-600 font-semibold text-sm">
+  1718→  1718→              {patient?.name?.charAt(0).toUpperCase() || 'P'}
+  1719→  1719→            </AvatarFallback>
+  1720→  1720→          </Avatar>
+  1721→  1721→          <div className="flex-1 min-w-0">
+  1722→  1722→            <div className="flex items-center justify-between gap-2">
+  1723→  1723→              <h3 className="font-semibold text-sm text-foreground truncate">{patient?.name || 'Pasien'}</h3>
+  1724→  1724→              <div className="flex items-center gap-1.5">
+  1725→  1725→                <Badge
+  1726→  1726→                  variant={consultation.status === 'active' ? 'default' : 'secondary'}
+  1727→  1727→                  className="text-[10px] px-1.5 py-0"
+  1728→  1728→                >
+  1729→  1729→                  {consultation.status === 'active' ? 'Aktif' : consultation.status === 'completed' ? 'Selesai' : 'Menunggu'}
+  1730→  1730→                </Badge>
+  1731→  1731→              </div>
+  1732→  1732→            </div>
+  1733→  1733→            {lastMessage && (
+  1734→  1734→              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+  1735→  1735→                {lastMessage.content?.startsWith('__PRESCRIPTION__') ? <span className="flex items-center gap-1"><Paperclip className="w-3.5 h-3.5" /> E-Resep</span> : lastMessage.content?.startsWith('__PALLIATIVE__') ? <span className="flex items-center gap-1"><HeartPulse className="w-3.5 h-3.5" /> Skrining Paliatif</span> : lastMessage.content?.startsWith('__SCREENING__') ? <span className="flex items-center gap-1"><ClipboardCheck className="w-3.5 h-3.5" /> Skrining</span> : lastMessage.content}
+  1736→  1736→              </p>
+  1737→  1737→            )}
+  1738→  1738→            <span className="text-[10px] text-muted-foreground">
+  1739→  1739→              {formatTime(consultation.updatedAt)}
+  1740→  1740→            </span>
+  1741→  1741→          </div>
+  1742→  1742→        </div>
+  1743→  1743→      </div>
+  1744→  1744→    );
+  1745→  1745→  };
+  1746→  1746→
+  1747→  1747→  // ── Render: Chat Header ────────────────────────────────────────────────
+  1748→  1748→
+  1749→  1749→  const renderChatHeader = () => {
+  1750→  1750→    if (!activeConsultation) return null;
+  1751→  1751→
+  1752→  1752→    const otherUser = isDoctor
+  1753→  1753→      ? activeConsultation.patient
+  1754→  1754→      : activeDoctor;
+  1755→  1755→
+  1756→  1756→    const specialization = !isDoctor && activeDoctor?.doctorProfile
+  1757→  1757→      ? SPECIALIZATION_LABELS[activeDoctor.doctorProfile.specialization]
+  1758→  1758→      : undefined;
+  1759→  1759→
+  1760→  1760→    const online = !isDoctor && activeDoctor ? isDoctorOnline(activeDoctor.id) : false;
+  1761→  1761→
+  1762→  1762→    return (
+  1763→  1763→      <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-card/80 backdrop-blur-sm">
+  1764→  1764→        <Button variant="ghost" size="icon" className="shrink-0 lg:hidden" onClick={handleBackToList}>
+  1765→  1765→          <ArrowLeft className="w-5 h-5" />
+  1766→  1766→        </Button>
+  1767→  1767→
+  1768→  1768→        <div className="relative shrink-0">
+  1769→  1769→          <Avatar className="w-10 h-10">
+  1770→  1770→            <AvatarImage src={otherUser?.avatar || undefined} alt={otherUser?.name || ''} />
+  1771→  1771→            <AvatarFallback className={cn(
+  1772→  1772→              'font-semibold text-sm',
+  1773→  1773→              isDoctor ? 'bg-emerald-500/10 text-emerald-600' : 'bg-primary/10 text-primary'
+  1774→  1774→            )}>
+  1775→  1775→              {otherUser?.name?.charAt(0).toUpperCase() || '?'}
+  1776→  1776→            </AvatarFallback>
+  1777→  1777→          </Avatar>
+  1778→  1778→          {!isDoctor && (
+  1779→  1779→            <div className={cn(
+  1780→  1780→              'absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-card',
+  1781→  1781→              online ? 'bg-emerald-500' : 'bg-gray-400'
+  1782→  1782→            )} />
+  1783→  1783→          )}
+  1784→  1784→        </div>
+  1785→  1785→
+  1786→  1786→        <div className="flex-1 min-w-0">
+  1787→  1787→          <div className="flex items-center gap-1.5">
+  1788→  1788→            <h3 className="font-semibold text-sm text-foreground truncate">{otherUser?.name || 'User'}</h3>
+  1789→  1789→            {activeConsultation && palliativePatients.some(p => p.patientId === activeConsultation.patientId) && (
+  1790→  1790→              <Badge className="text-[9px] bg-rose-100 text-rose-700 border border-rose-300 gap-1 shrink-0">
+  1791→  1791→                <HeartPulse className="w-2.5 h-2.5" />
+  1792→  1792→                Monitoring Paliatif
+  1793→  1793→              </Badge>
+  1794→  1794→            )}
+  1795→  1795→          </div>
+  1796→  1796→          <div className="flex items-center gap-1.5">
+  1797→  1797→            {!isDoctor && (
+  1798→  1798→              <>
+  1799→  1799→                <span className={cn('text-[11px] font-medium', online ? 'text-emerald-600' : 'text-muted-foreground')}>
+  1800→  1800→                  {online ? 'Online' : 'Offline'}
+  1801→  1801→                </span>
+  1802→  1802→                {specialization && (
+  1803→  1803→                  <>
+  1804→  1804→                    <span className="text-[10px] text-muted-foreground">·</span>
+  1805→  1805→                    <span className="text-[11px] text-muted-foreground">{specialization}</span>
+  1806→  1806→                  </>
+  1807→  1807→                )}
+  1808→  1808→              </>
+  1809→  1809→            )}
+  1810→  1810→            {isDoctor && (
+  1811→  1811→              <>
+  1812→  1812→                <span className="text-[11px] text-muted-foreground">Pasien</span>
+  1813→  1813→                {activeConsultation && palliativePatients.some(p => p.patientId === activeConsultation.patientId) && (
+  1814→  1814→                  <>
+  1815→  1815→                    <span className="text-[10px] text-muted-foreground">·</span>
+  1816→  1816→                    <Select
+  1817→  1817→                      value={palliativePatients.find(p => p.patientId === activeConsultation.patientId)?.monitoringStatus || 'monitoring_aktif'}
+  1818→  1818→                      onValueChange={(val) => {
+  1819→  1819→                        const patient = palliativePatients.find(p => p.patientId === activeConsultation.patientId);
+  1820→  1820→                        if (patient) {
+  1821→  1821→                          useStore.getState().updatePalliativePatient(patient.id, {
+  1822→  1822→                            monitoringStatus: val as PalliativeMonitoringStatus,
+  1823→  1823→                            updatedAt: new Date().toISOString(),
+  1824→  1824→                          });
+  1825→  1825→                          toast({ title: 'Status Diperbarui', description: `Status monitoring diubah ke ${val.replace(/_/g, ' ')}.` });
+  1826→  1826→                        }
+  1827→  1827→                      }}
+  1828→  1828→                    >
+  1829→  1829→                      <SelectTrigger className="h-5 text-[10px] w-auto border-0 p-0 gap-0.5 bg-transparent hover:bg-muted/50 rounded px-1">
+  1830→  1830→                        <SelectValue />
+  1831→  1831→                      </SelectTrigger>
+  1832→  1832→                      <SelectContent>
+  1833→  1833→                        <SelectItem value="monitoring_aktif">Monitoring Aktif</SelectItem>
+  1834→  1834→                        <SelectItem value="stabil">Stabil</SelectItem>
+  1835→  1835→                        <SelectItem value="membutuhkan_home_visit">Membutuhkan Home Visit</SelectItem>
+  1836→  1836→                        <SelectItem value="membutuhkan_telekonsultasi">Membutuhkan Telekonsultasi</SelectItem>
+  1837→  1837→                        <SelectItem value="membutuhkan_rujukan">Membutuhkan Rujukan</SelectItem>
+  1838→  1838→                      </SelectContent>
+  1839→  1839→                    </Select>
+  1840→  1840→                  </>
+  1841→  1841→                )}
+  1842→  1842→              </>
+  1843→  1843→            )}
+  1844→  1844→          </div>
+  1845→  1845→        </div>
+  1846→  1846→
+  1847→  1847→        {/* Doctor action buttons */}
+  1848→  1848→        {isDoctor && activeConsultation && (
+  1849→  1849→          <div className="flex items-center gap-1 flex-wrap">
+  1850→  1850→            <Button
+  1851→  1851→              size="sm"
+  1852→  1852→              className="h-8 text-xs gap-1 bg-teal-600 hover:bg-teal-700"
+  1853→  1853→              onClick={handleOpenScreeningDialog}
+  1854→  1854→            >
+  1855→  1855→              <ClipboardCheck className="w-3.5 h-3.5" />
+  1856→  1856→              <span className="hidden sm:inline">Kirim Form Skrining</span>
+  1857→  1857→              <span className="sm:hidden">Skrining</span>
+  1858→  1858→            </Button>
+  1859→  1859→            <Button
+  1860→  1860→              size="sm"
+  1861→  1861→              className="h-8 text-xs gap-1 bg-rose-600 hover:bg-rose-700"
+  1862→  1862→              onClick={handleOpenPalliativeDialog}
+  1863→  1863→            >
+  1864→  1864→              <HeartPulse className="w-3.5 h-3.5" />
+  1865→  1865→              <span className="hidden sm:inline">Skrining Paliatif</span>
+  1866→  1866→              <span className="sm:hidden">Paliatif</span>
+  1867→  1867→            </Button>
+  1868→  1868→            {!palliativePatients.some(p => p.patientId === activeConsultation.patientId) && (
+  1869→  1869→              <Button
+  1870→  1870→                size="sm"
+  1871→  1871→                variant="outline"
+  1872→  1872→                className="h-8 text-xs gap-1 border-rose-300 text-rose-600 hover:bg-rose-50"
+  1873→  1873→                onClick={() => {
+  1874→  1874→                  setMarkingData({
+  1875→  1875→                    primaryDiagnosis: '',
+  1876→  1876→                    secondaryDiagnosis: '',
+  1877→  1877→                    initialPPS: 60,
+  1878→  1878→                    diseaseCategory: '',
+  1879→  1879→                    reasonForPalliative: '',
+  1880→  1880→                    doctorNotes: '',
+  1881→  1881→                  });
+  1882→  1882→                  setShowPalliativeMarkingDialog(true);
+  1883→  1883→                }}
+  1884→  1884→              >
+  1885→  1885→                <Shield className="w-3.5 h-3.5" />
+  1886→  1886→                <span className="hidden sm:inline">Jadikan Pasien Monitoring Paliatif</span>
+  1887→  1887→                <span className="sm:hidden">Monitoring</span>
+  1888→  1888→              </Button>
+  1889→  1889→            )}
+  1890→  1890→            <Button
+  1891→  1891→              variant="outline"
+  1892→  1892→              size="sm"
+  1893→  1893→              className="h-8 text-xs gap-1"
+  1894→  1894→              onClick={handleOpenMedicalRecordDialog}
+  1895→  1895→            >
+  1896→  1896→              <FileText className="w-3.5 h-3.5" />
+  1897→  1897→              <span className="hidden sm:inline">Rekam Medis</span>
+  1898→  1898→              <span className="sm:hidden">RM</span>
+  1899→  1899→            </Button>
+  1900→  1900→            <Button
+  1901→  1901→              size="sm"
+  1902→  1902→              className="h-8 text-xs gap-1"
+  1903→  1903→              onClick={handleOpenPrescriptionDialog}
+  1904→  1904→            >
+  1905→  1905→              <Stethoscope className="w-3.5 h-3.5" />
+  1906→  1906→              <span className="hidden sm:inline">E-Resep</span>
+  1907→  1907→              <span className="sm:hidden">Resep</span>
+  1908→  1908→            </Button>
+  1909→  1909→          </div>
+  1910→  1910→        )}
+  1911→  1911→      </div>
+  1912→  1912→    );
+  1913→  1913→  };
+  1914→  1914→
+  1915→  1915→  // ── Render: Messages Area ──────────────────────────────────────────────
+  1916→  1916→
+  1917→  1917→  const renderMessages = () => {
+  1918→  1918→    if (!activeConsultation) {
+  1919→  1919→      return (
+  1920→  1920→        <div className="flex-1 flex items-center justify-center p-8">
+  1921→  1921→          <div className="text-center space-y-3">
+  1922→  1922→            <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center">
+  1923→  1923→              <MessageCircle className="w-8 h-8 text-primary" />
+  1924→  1924→            </div>
+  1925→  1925→            <h3 className="font-semibold text-foreground">
+  1926→  1926→              {isDoctor ? 'Pilih Pasien' : 'Pilih Dokter'}
+  1927→  1927→            </h3>
+  1928→  1928→            <p className="text-sm text-muted-foreground max-w-xs">
+  1929→  1929→              {isDoctor
+  1930→  1930→                ? 'Pilih konsultasi pasien untuk memulai chat'
+  1931→  1931→                : 'Pilih dokter dari daftar untuk memulai konsultasi chat'}
+  1932→  1932→            </p>
+  1933→  1933→          </div>
+  1934→  1934→        </div>
+  1935→  1935→      );
+  1936→  1936→    }
+  1937→  1937→
+  1938→  1938→    return (
+  1939→  1939→      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4 space-y-1">
+  1940→  1940→        {messages.map((msg, index) => {
+  1941→  1941→          const isOwn = msg.senderId === currentUser?.id;
+  1942→  1942→          const isSystem = msg.senderId === 'system';
+  1943→  1943→          const prevMsg = messages[index - 1];
+  1944→  1944→          const showDateSeparator = index === 0 || (prevMsg && isDifferentDay(msg.createdAt, prevMsg.createdAt));
+  1945→  1945→
+  1946→  1946→          // Check if this is a prescription message
+  1947→  1947→          const prescriptionMatch = msg.content?.match(/^__PRESCRIPTION__(.+)__$/);
+  1948→  1948→          const isPrescriptionMsg = !!prescriptionMatch;
+  1949→  1949→
+  1950→  1950→          // Check if this is a screening message
+  1951→  1951→          const screeningMatch = msg.content?.match(/^__SCREENING__(.+)__$/);
+  1952→  1952→          const isScreeningMsg = !!screeningMatch;
+  1953→  1953→
+  1954→  1954→          // Check if this is a palliative screening message
+  1955→  1955→          const palliativeMatch = msg.content?.match(/^__PALLIATIVE__(.+)__$/);
+  1956→  1956→          const isPalliativeMsg = !!palliativeMatch;
+  1957→  1957→
+  1958→  1958→          return (
+  1959→  1959→            <div key={msg.id}>
+  1960→  1960→              {showDateSeparator && (
+  1961→  1961→                <div className="flex items-center justify-center py-3">
+  1962→  1962→                  <span className="text-[11px] text-muted-foreground bg-muted px-3 py-1 rounded-full">
+  1963→  1963→                    {formatDate(msg.createdAt)}
+  1964→  1964→                  </span>
+  1965→  1965→                </div>
+  1966→  1966→              )}
+  1967→  1967→
+  1968→  1968→              {isSystem ? (
+  1969→  1969→                <div className="flex items-center justify-center py-2">
+  1970→  1970→                  <span className="text-[11px] text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-lg text-center max-w-[85%]">
+  1971→  1971→                    {msg.content}
+  1972→  1972→                  </span>
+  1973→  1973→                </div>
+  1974→  1974→              ) : isPalliativeMsg && palliativeMatch ? (
+  1975→  1975→                <div className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}>
+  1976→  1976→                  {renderPalliativeCard(palliativeMatch[1])}
+  1977→  1977→                </div>
+  1978→  1978→              ) : isScreeningMsg && screeningMatch ? (
+  1979→  1979→                <div className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}>
+  1980→  1980→                  {renderScreeningCard(screeningMatch[1])}
+  1981→  1981→                </div>
+  1982→  1982→              ) : isPrescriptionMsg && prescriptionMatch ? (
+  1983→  1983→                <div className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}>
+  1984→  1984→                  {renderPrescriptionCard(prescriptionMatch[1])}
+  1985→  1985→                </div>
+  1986→  1986→              ) : (
+  1987→  1987→                <div className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}>
+  1988→  1988→                  <div
+  1989→  1989→                    className={cn(
+  1990→  1990→                      'max-w-[75%] sm:max-w-[65%] rounded-2xl px-3.5 py-2',
+  1991→  1991→                      isOwn
+  1992→  1992→                        ? 'bg-primary text-primary-foreground rounded-br-md'
+  1993→  1993→                        : 'bg-card border border-border text-card-foreground rounded-bl-md'
+  1994→  1994→                    )}
+  1995→  1995→                  >
+  1996→  1996→                    <p className="text-sm leading-relaxed break-words">{msg.content}</p>
+  1997→  1997→                    <div className={cn('flex items-center gap-1 mt-1', isOwn ? 'justify-end' : 'justify-start')}>
+  1998→  1998→                      <span className={cn('text-[10px]', isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+  1999→  1999→                        {formatTime(msg.createdAt)}
+  2000→  2000→                      </span>
+
+[showing lines 1-2000 of 2002; use offset=2001 with limit to continue reading]
