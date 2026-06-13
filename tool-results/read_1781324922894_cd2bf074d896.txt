@@ -1,0 +1,2002 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { useState, useMemo, useCallback } from 'react';
+     4→     4→import { useStore } from '@/lib/store';
+     5→     5→import { cn } from '@/lib/utils';
+     6→     6→import type {
+     7→     7→  PalliativePatientInfo,
+     8→     8→  VitalSignRecordInfo,
+     9→     9→  PalliativeMedicationInfo,
+    10→    10→  AdvanceCarePlanInfo,
+    11→    11→  PalliativeScreeningRecordInfo,
+    12→    12→  PalliativeCareStatus,
+    13→    13→  PalliativePatientStatus,
+    14→    14→  PalliativeRiskLevel,
+    15→    15→  PalliativeToolType,
+    16→    16→  PalliativeEwsLevel,
+    17→    17→  MedicationAdherenceInfo,
+    18→    18→  PalliativeMonitoringStatus,
+    19→    19→  PalliativeMonitoringFormType,
+    20→    20→  PalliativeMonitoringNotification,
+    21→    21→  PalliativeChatMessage,
+    22→    22→  PalliativeAuditEntry,
+    23→    23→  PalliativeProgramCompletionReason,
+    24→    24→  NutritionRecordInfo,
+    25→    25→  NutritionActivityLevel,
+    26→    26→  NutritionMetabolicStress,
+    27→    27→  NutritionSpecialCondition,
+    28→    28→  NutritionWeightStatus,
+    29→    29→  NutritionCalculationResult,
+    30→    30→  NutritionAIRecommendation,
+    31→    31→} from '@/lib/types';
+    32→    32→import { Button } from '@/components/ui/button';
+    33→    33→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+    34→    34→import { Input } from '@/components/ui/input';
+    35→    35→import { Label } from '@/components/ui/label';
+    36→    36→import { Textarea } from '@/components/ui/textarea';
+    37→    37→import {
+    38→    38→  Select,
+    39→    39→  SelectContent,
+    40→    40→  SelectItem,
+    41→    41→  SelectTrigger,
+    42→    42→  SelectValue,
+    43→    43→} from '@/components/ui/select';
+    44→    44→import {
+    45→    45→  Tabs,
+    46→    46→  TabsContent,
+    47→    47→  TabsList,
+    48→    48→  TabsTrigger,
+    49→    49→} from '@/components/ui/tabs';
+    50→    50→import {
+    51→    51→  Dialog,
+    52→    52→  DialogContent,
+    53→    53→  DialogHeader,
+    54→    54→  DialogTitle,
+    55→    55→  DialogDescription,
+    56→    56→  DialogFooter,
+    57→    57→} from '@/components/ui/dialog';
+    58→    58→import {
+    59→    59→  DropdownMenu,
+    60→    60→  DropdownMenuContent,
+    61→    61→  DropdownMenuItem,
+    62→    62→  DropdownMenuTrigger,
+    63→    63→  DropdownMenuSeparator,
+    64→    64→  DropdownMenuLabel,
+    65→    65→} from '@/components/ui/dropdown-menu';
+    66→    66→import { Badge } from '@/components/ui/badge';
+    67→    67→import { Separator } from '@/components/ui/separator';
+    68→    68→import { ScrollArea } from '@/components/ui/scroll-area';
+    69→    69→import {
+    70→    70→  Table,
+    71→    71→  TableBody,
+    72→    72→  TableCell,
+    73→    73→  TableHead,
+    74→    74→  TableHeader,
+    75→    75→  TableRow,
+    76→    76→} from '@/components/ui/table';
+    77→    77→import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+    78→    78→import { Checkbox } from '@/components/ui/checkbox';
+    79→    79→import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+    80→    80→import { Progress } from '@/components/ui/progress';
+    81→    81→import { Skeleton } from '@/components/ui/skeleton';
+    82→    82→import {
+    83→    83→  LineChart,
+    84→    84→  Line,
+    85→    85→  XAxis,
+    86→    86→  YAxis,
+    87→    87→  CartesianGrid,
+    88→    88→  Tooltip,
+    89→    89→  Legend,
+    90→    90→  ResponsiveContainer,
+    91→    91→  BarChart,
+    92→    92→  Bar,
+    93→    93→} from 'recharts';
+    94→    94→import {
+    95→    95→  HeartPulse,
+    96→    96→  Activity,
+    97→    97→  Pill,
+    98→    98→  FileText,
+    99→    99→  Users,
+   100→   100→  Plus,
+   101→   101→  AlertTriangle,
+   102→   102→  CheckCircle2,
+   103→   103→  XCircle,
+   104→   104→  Clock,
+   105→   105→  Search,
+   106→   106→  Filter,
+   107→   107→  TrendingDown,
+   108→   108→  TrendingUp,
+   109→   109→  ChevronRight,
+   110→   110→  Edit,
+   111→   111→  Trash2,
+   112→   112→  Eye,
+   113→   113→  Thermometer,
+   114→   114→  Droplets,
+   115→   115→  Wind,
+   116→   116→  Monitor,
+   117→   117→  Brain,
+   118→   118→  Shield,
+   119→   119→  ClipboardCheck,
+   120→   120→  Stethoscope,
+   121→   121→  Home,
+   122→   122→  Building2,
+   123→   123→  AlertCircle,
+   124→   124→  Info,
+   125→   125→  Sparkles,
+   126→   126→  RefreshCw,
+   127→   127→  MessageCircle,
+   128→   128→  Bell,
+   129→   129→  History,
+   130→   130→  CircleOff,
+   131→   131→  CalendarCheck,
+   132→   132→  FileCheck,
+   133→   133→  Archive,
+   134→   134→  Utensils,
+   135→   135→  Calculator,
+   136→   136→  Download,
+   137→   137→  Printer,
+   138→   138→  Send,
+   139→   139→  Apple,
+   140→   140→  Scale,
+   141→   141→  Flame,
+   142→   142→} from 'lucide-react';
+   143→   143→import { PalliativeChatPanel } from './palliative-chat-panel';
+   144→   144→import { MedicationMonitoringDashboard } from './medication-monitoring-dashboard';
+   145→   145→import { PalliativeResumeReferralPanel } from './palliative-resume-referral-panel';
+   146→   146→import SocialSupportPanel from './social-support-panel';
+   147→   147→import { useToast } from '@/hooks/use-toast';
+   148→   148→
+   149→   149→// ── Types ────────────────────────────────────────────────────────────────
+   150→   150→
+   151→   151→type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'nutrition' | 'sosial' | 'acp' | 'ai' | 'chat' | 'dokumen';
+   152→   152→
+   153→   153→// ── Helper Functions ─────────────────────────────────────────────────────
+   154→   154→
+   155→   155→function formatDate(dateStr: string): string {
+   156→   156→  try {
+   157→   157→    return new Date(dateStr).toLocaleDateString('id-ID', {
+   158→   158→      day: 'numeric',
+   159→   159→      month: 'short',
+   160→   160→      year: 'numeric',
+   161→   161→    });
+   162→   162→  } catch {
+   163→   163→    return dateStr;
+   164→   164→  }
+   165→   165→}
+   166→   166→
+   167→   167→function formatDateTime(dateStr: string): string {
+   168→   168→  try {
+   169→   169→    return new Date(dateStr).toLocaleDateString('id-ID', {
+   170→   170→      day: 'numeric',
+   171→   171→      month: 'short',
+   172→   172→      year: 'numeric',
+   173→   173→      hour: '2-digit',
+   174→   174→      minute: '2-digit',
+   175→   175→    });
+   176→   176→  } catch {
+   177→   177→    return dateStr;
+   178→   178→  }
+   179→   179→}
+   180→   180→
+   181→   181→function genId(prefix: string): string {
+   182→   182→  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+   183→   183→}
+   184→   184→
+   185→   185→function getRiskBadge(level: PalliativeRiskLevel) {
+   186→   186→  switch (level) {
+   187→   187→    case 'merah':
+   188→   188→      return { label: 'Risiko Tinggi', className: 'bg-red-100 text-red-800 border-red-300' };
+   189→   189→    case 'kuning':
+   190→   190→      return { label: 'Risiko Sedang', className: 'bg-amber-100 text-amber-800 border-amber-300' };
+   191→   191→    case 'hijau':
+   192→   192→      return { label: 'Risiko Rendah', className: 'bg-green-100 text-green-800 border-green-300' };
+   193→   193→  }
+   194→   194→}
+   195→   195→
+   196→   196→function getCareStatusBadge(status: PalliativeCareStatus) {
+   197→   197→  switch (status) {
+   198→   198→    case 'rawat_jalan':
+   199→   199→      return { label: 'Rawat Jalan', className: 'bg-blue-100 text-blue-800' };
+   200→   200→    case 'home_care':
+   201→   201→      return { label: 'Home Care', className: 'bg-teal-100 text-teal-800' };
+   202→   202→    case 'hospice':
+   203→   203→      return { label: 'Hospice', className: 'bg-purple-100 text-purple-800' };
+   204→   204→    case 'rawat_inap':
+   205→   205→      return { label: 'Rawat Inap', className: 'bg-orange-100 text-orange-800' };
+   206→   206→  }
+   207→   207→}
+   208→   208→
+   209→   209→function getPatientStatusLabel(status: PalliativePatientStatus): string {
+   210→   210→  switch (status) {
+   211→   211→    case 'aktif': return 'Aktif';
+   212→   212→    case 'meninggal': return 'Meninggal';
+   213→   213→    case 'lost_follow_up': return 'Lost to Follow-up';
+   214→   214→    case 'pindah_faskes': return 'Pindah Faskes';
+   215→   215→  }
+   216→   216→}
+   217→   217→
+   218→   218→function getEwsBadge(level?: PalliativeEwsLevel) {
+   219→   219→  if (!level) return { label: '-', className: 'bg-gray-100 text-gray-600' };
+   220→   220→  switch (level) {
+   221→   221→    case 'merah':
+   222→   222→      return { label: 'Kritis', className: 'bg-red-100 text-red-800 border-red-300' };
+   223→   223→    case 'kuning':
+   224→   224→      return { label: 'Perhatian', className: 'bg-amber-100 text-amber-800 border-amber-300' };
+   225→   225→    case 'hijau':
+   226→   226→      return { label: 'Normal', className: 'bg-green-100 text-green-800 border-green-300' };
+   227→   227→  }
+   228→   228→}
+   229→   229→
+   230→   230→function getToolTypeName(type: PalliativeToolType): string {
+   231→   231→  switch (type) {
+   232→   232→    case 'esas': return 'ESAS-r';
+   233→   233→    case 'distress': return 'Distress Thermometer';
+   234→   234→    case 'spict': return 'SPICT';
+   235→   235→    case 'pps': return 'PPS';
+   236→   236→    case 'zarit': return 'Zarit Burden';
+   237→   237→    case 'eortc': return 'EORTC QLQ-C15-PAL';
+   238→   238→  }
+   239→   239→}
+   240→   240→
+   241→   241→function getRecordedByLabel(by?: string): string {
+   242→   242→  switch (by) {
+   243→   243→    case 'doctor': return 'Dokter';
+   244→   244→    case 'nurse': return 'Perawat';
+   245→   245→    case 'patient': return 'Pasien';
+   246→   246→    case 'family': return 'Keluarga';
+   247→   247→    default: return '-';
+   248→   248→  }
+   249→   249→}
+   250→   250→
+   251→   251→function getRouteLabel(route?: string): string {
+   252→   252→  switch (route) {
+   253→   253→    case 'oral': return 'Oral';
+   254→   254→    case 'iv': return 'IV';
+   255→   255→    case 'sc': return 'Subkutan';
+   256→   256→    case 'im': return 'IM';
+   257→   257→    case 'rektal': return 'Rektal';
+   258→   258→    case 'topikal': return 'Topikal';
+   259→   259→    case 'inhalasi': return 'Inhalasi';
+   260→   260→    default: return route || '-';
+   261→   261→  }
+   262→   262→}
+   263→   263→
+   264→   264→function calcBmi(weight?: number, height?: number): number | undefined {
+   265→   265→  if (!weight || !height || height <= 0) return undefined;
+   266→   266→  const heightM = height / 100;
+   267→   267→  return Math.round((weight / (heightM * heightM)) * 10) / 10;
+   268→   268→}
+   269→   269→
+   270→   270→// ── Main Component ───────────────────────────────────────────────────────
+   271→   271→
+   272→   272→export function PalliativeMonitoringPanel() {
+   273→   273→  // ── State ──
+   274→   274→  const [activeTab, setActiveTab] = useState<MonitorTab>('dashboard');
+   275→   275→  const [showAddPatient, setShowAddPatient] = useState(false);
+   276→   276→  const [showAddVital, setShowAddVital] = useState(false);
+   277→   277→  const [showAddMedication, setShowAddMedication] = useState(false);
+   278→   278→  const [showAddACP, setShowAddACP] = useState(false);
+   279→   279→  const [showAddAdherence, setShowAddAdherence] = useState<string | null>(null);
+   280→   280→  const [searchQuery, setSearchQuery] = useState('');
+   281→   281→  const [filterRisk, setFilterRisk] = useState<string>('all');
+   282→   282→  const [aiLoading, setAiLoading] = useState(false);
+   283→   283→  const [editingPatient, setEditingPatient] = useState<PalliativePatientInfo | null>(null);
+   284→   284→  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+   285→   285→  const [showProgramCompleteConfirm, setShowProgramCompleteConfirm] = useState<string | null>(null);
+   286→   286→  const [programCompletionDate, setProgramCompletionDate] = useState<string>(new Date().toISOString().split('T')[0]);
+   287→   287→  const [programCompletionReason, setProgramCompletionReason] = useState<PalliativeProgramCompletionReason>('sembuh_stabil');
+   288→   288→  const [programCompletionOtherReason, setProgramCompletionOtherReason] = useState('');
+   289→   289→  const [programCompletionNotes, setProgramCompletionNotes] = useState('');
+   290→   290→  const [patientListFilter, setPatientListFilter] = useState<'aktif' | 'program_selesai'>('aktif');
+   291→   291→  const [showPatientDetail, setShowPatientDetail] = useState<string | null>(null);
+   292→   292→  // Nutrition state
+   293→   293→  const [nutAge, setNutAge] = useState<string>('');
+   294→   294→  const [nutGender, setNutGender] = useState<'L' | 'P'>('L');
+   295→   295→  const [nutWeight, setNutWeight] = useState<string>('');
+   296→   296→  const [nutHeight, setNutHeight] = useState<string>('');
+   297→   297→  const [nutActivity, setNutActivity] = useState<NutritionActivityLevel>('bed_rest');
+   298→   298→  const [nutStress, setNutStress] = useState<NutritionMetabolicStress>('tidak_ada');
+   299→   299→  const [nutSpecial, setNutSpecial] = useState<NutritionSpecialCondition>('tidak_ada');
+   300→   300→  const [nutActualIntake, setNutActualIntake] = useState<string>('');
+   301→   301→  const [nutNotes, setNutNotes] = useState<string>('');
+   302→   302→  const [nutResult, setNutResult] = useState<NutritionCalculationResult | null>(null);
+   303→   303→  const [aiNutLoading, setAiNutLoading] = useState(false);
+   304→   304→  const [showAiNutResult, setShowAiNutResult] = useState(false);
+   305→   305→  const [selectedNutSymptoms, setSelectedNutSymptoms] = useState<string[]>([]);
+   306→   306→  const [vitalPeriod, setVitalPeriod] = useState<'harian' | 'mingguan' | 'bulanan'>('harian');
+   307→   307→  const [acpStep, setAcpStep] = useState(0);
+   308→   308→  const [showACPDetail, setShowACPDetail] = useState<string | null>(null);
+   309→   309→
+   310→   310→  // Form states for new patient
+   311→   311→  const [newPatient, setNewPatient] = useState<Partial<PalliativePatientInfo>>({});
+   312→   312→  // Form states for new vital sign
+   313→   313→  const [newVital, setNewVital] = useState<Partial<VitalSignRecordInfo>>({});
+   314→   314→  // Form states for new medication
+   315→   315→  const [newMedication, setNewMedication] = useState<Partial<PalliativeMedicationInfo>>({});
+   316→   316→  // Form states for ACP
+   317→   317→  const [newACP, setNewACP] = useState<Partial<AdvanceCarePlanInfo>>({});
+   318→   318→  // Form states for adherence
+   319→   319→  const [newAdherence, setNewAdherence] = useState<Partial<MedicationAdherenceInfo>>({});
+   320→   320→
+   321→   321→  // Komunikasi tab states
+   322→   322→  const [komunikasiSearch, setKomunikasiSearch] = useState('');
+   323→   323→  const [komunikasiFilter, setKomunikasiFilter] = useState<string>('all');
+   324→   324→  const [showSendFormDialog, setShowSendFormDialog] = useState(false);
+   325→   325→  const [sendFormPatientId, setSendFormPatientId] = useState<string | null>(null);
+   326→   326→  const [selectedFormTypes, setSelectedFormTypes] = useState<PalliativeMonitoringFormType[]>([]);
+   327→   327→
+   328→   328→  // ── Store ──
+   329→   329→  const {
+   330→   330→    palliativePatients,
+   331→   331→    addPalliativePatient,
+   332→   332→    updatePalliativePatient,
+   333→   333→    removePalliativePatient,
+   334→   334→    selectedPalliativePatientId,
+   335→   335→    setSelectedPalliativePatientId,
+   336→   336→    vitalSignRecords,
+   337→   337→    addVitalSignRecord,
+   338→   338→    palliativeMedications,
+   339→   339→    addPalliativeMedication,
+   340→   340→    updatePalliativeMedication,
+   341→   341→    advanceCarePlans,
+   342→   342→    addAdvanceCarePlan,
+   343→   343→    updateAdvanceCarePlan,
+   344→   344→    palliativeScreeningRecords,
+   345→   345→    palliativeAiSummary,
+   346→   346→    setPalliativeAiSummary,
+   347→   347→    nutritionRecords,
+   348→   348→    addNutritionRecord,
+   349→   349→    nutritionAiRecommendation,
+   350→   350→    setNutritionAiRecommendation,
+   351→   351→    currentUser,
+   352→   352→    doctors,
+   353→   353→    palliativeChatMessages,
+   354→   354→    palliativeClinicalAlerts,
+   355→   355→    palliativeAuditLog,
+   356→   356→    markPalliativeAlertRead,
+   357→   357→    addPalliativeChatMessage,
+   358→   358→    addPalliativeAuditEntry,
+   359→   359→    updatePalliativeMonitoringStatus,
+   360→   360→    palliativeMonitoringNotifications,
+   361→   361→    addPalliativeMonitoringNotification,
+   362→   362→    markPalliativeNotificationRead,
+   363→   363→    setActivePanel,
+   364→   364→    setScreeningNavigationFrom,
+   365→   365→    setScreeningPreselectedPatientId,
+   366→   366→    completePalliativeProgram,
+   367→   367→    palliativeProgramCompletions,
+   368→   368→    palliativeResumes,
+   369→   369→    palliativeReferralLetters,
+   370→   370→  } = useStore();
+   371→   371→
+   372→   372→  const { toast } = useToast();
+   373→   373→
+   374→   374→  // ── Selected patient data ──
+   375→   375→  const selectedPatient = useMemo(
+   376→   376→    () => palliativePatients.find((p) => p.id === selectedPalliativePatientId) || null,
+   377→   377→    [palliativePatients, selectedPalliativePatientId]
+   378→   378→  );
+   379→   379→
+   380→   380→  const patientVitals = useMemo(
+   381→   381→    () =>
+   382→   382→      vitalSignRecords
+   383→   383→        .filter((v) => v.palliativePatientId === selectedPalliativePatientId)
+   384→   384→        .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()),
+   385→   385→    [vitalSignRecords, selectedPalliativePatientId]
+   386→   386→  );
+   387→   387→
+   388→   388→  const patientMedications = useMemo(
+   389→   389→    () => palliativeMedications.filter((m) => m.palliativePatientId === selectedPalliativePatientId),
+   390→   390→    [palliativeMedications, selectedPalliativePatientId]
+   391→   391→  );
+   392→   392→
+   393→   393→  const patientActiveMedications = useMemo(
+   394→   394→    () => patientMedications.filter((m) => m.isActive),
+   395→   395→    [patientMedications]
+   396→   396→  );
+   397→   397→
+   398→   398→  const patientACPs = useMemo(
+   399→   399→    () => advanceCarePlans.filter((a) => a.palliativePatientId === selectedPalliativePatientId),
+   400→   400→    [advanceCarePlans, selectedPalliativePatientId]
+   401→   401→  );
+   402→   402→
+   403→   403→  const patientScreenings = useMemo(
+   404→   404→    () =>
+   405→   405→      palliativeScreeningRecords
+   406→   406→        .filter((s) => s.palliativePatientId === selectedPalliativePatientId)
+   407→   407→        .sort((a, b) => new Date(b.performedAt).getTime() - new Date(a.performedAt).getTime()),
+   408→   408→    [palliativeScreeningRecords, selectedPalliativePatientId]
+   409→   409→  );
+   410→   410→
+   411→   411→  // ── Dashboard stats ──
+   412→   412→  const dashboardStats = useMemo(() => {
+   413→   413→    const total = palliativePatients.length;
+   414→   414→    const active = palliativePatients.filter((p) => p.patientStatus !== 'program_selesai').length;
+   415→   415→    const completed = palliativePatients.filter((p) => p.patientStatus === 'program_selesai').length;
+   416→   416→    const merah = palliativePatients.filter((p) => p.patientStatus !== 'program_selesai' && p.riskLevel === 'merah').length;
+   417→   417→    const kuning = palliativePatients.filter((p) => p.patientStatus !== 'program_selesai' && p.riskLevel === 'kuning').length;
+   418→   418→    const hijau = palliativePatients.filter((p) => p.patientStatus !== 'program_selesai' && p.riskLevel === 'hijau').length;
+   419→   419→    return { total, active, completed, merah, kuning, hijau };
+   420→   420→  }, [palliativePatients]);
+   421→   421→
+   422→   422→  // ── Filtered patients ──
+   423→   423→  const filteredPatients = useMemo(() => {
+   424→   424→    let result = palliativePatients;
+   425→   425→    // Filter by program status
+   426→   426→    if (patientListFilter === 'aktif') {
+   427→   427→      result = result.filter((p) => p.patientStatus !== 'program_selesai');
+   428→   428→    } else {
+   429→   429→      result = result.filter((p) => p.patientStatus === 'program_selesai');
+   430→   430→    }
+   431→   431→    if (filterRisk !== 'all') {
+   432→   432→      result = result.filter((p) => p.riskLevel === filterRisk);
+   433→   433→    }
+   434→   434→    if (searchQuery.trim()) {
+   435→   435→      const q = searchQuery.toLowerCase();
+   436→   436→      result = result.filter(
+   437→   437→        (p) =>
+   438→   438→          (p.patientName && p.patientName.toLowerCase().includes(q)) ||
+   439→   439→          (p.rmNumber && p.rmNumber.toLowerCase().includes(q)) ||
+   440→   440→          (p.primaryDiagnosis && p.primaryDiagnosis.toLowerCase().includes(q))
+   441→   441→      );
+   442→   442→    }
+   443→   443→    return result;
+   444→   444→  }, [palliativePatients, filterRisk, searchQuery, patientListFilter]);
+   445→   445→
+   446→   446→  // ── Alert detection for vitals ──
+   447→   447→  const vitalAlerts = useMemo(() => {
+   448→   448→    if (!selectedPatient) return [];
+   449→   449→    const alerts: { label: string; value: string; severity: 'critical' | 'warning' }[] = [];
+   450→   450→    const latest = patientVitals[0];
+   451→   451→    if (!latest) return [];
+   452→   452→
+   453→   453→    if (latest.oxygenSat !== undefined && latest.oxygenSat < 90) {
+   454→   454→      alerts.push({ label: 'SpO2 Rendah', value: `${latest.oxygenSat}%`, severity: 'critical' });
+   455→   455→    }
+   456→   456→    if (latest.respiratoryRate !== undefined && latest.respiratoryRate > 24) {
+   457→   457→      alerts.push({ label: 'Frekuensi Napas Tinggi', value: `${latest.respiratoryRate}/menit`, severity: 'critical' });
+   458→   458→    }
+   459→   459→    if (latest.temperature !== undefined && latest.temperature > 38) {
+   460→   460→      alerts.push({ label: 'Demam', value: `${latest.temperature}°C`, severity: 'critical' });
+   461→   461→    }
+   462→   462→    if (latest.systolicBP !== undefined && latest.systolicBP < 90) {
+   463→   463→      alerts.push({ label: 'Hipotensi', value: `${latest.systolicBP}/${latest.diastolicBP} mmHg`, severity: 'critical' });
+   464→   464→    }
+   465→   465→    if (latest.heartRate !== undefined && latest.heartRate > 110) {
+   466→   466→      alerts.push({ label: 'Takikardia', value: `${latest.heartRate} bpm`, severity: 'warning' });
+   467→   467→    }
+   468→   468→    if (latest.heartRate !== undefined && latest.heartRate < 50) {
+   469→   469→      alerts.push({ label: 'Bradikardia', value: `${latest.heartRate} bpm`, severity: 'warning' });
+   470→   470→    }
+   471→   471→    return alerts;
+   472→   472→  }, [selectedPatient, patientVitals]);
+   473→   473→
+   474→   474→  // ── Chart data ──
+   475→   475→  const chartData = useMemo(() => {
+   476→   476→    const sorted = [...patientVitals].sort(
+   477→   477→      (a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()
+   478→   478→    );
+   479→   479→    return sorted.map((v) => ({
+   480→   480→      date: new Date(v.recordedAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }),
+   481→   481→      systolic: v.systolicBP,
+   482→   482→      diastolic: v.diastolicBP,
+   483→   483→      heartRate: v.heartRate,
+   484→   484→      respiratoryRate: v.respiratoryRate,
+   485→   485→      temperature: v.temperature,
+   486→   486→      oxygenSat: v.oxygenSat,
+   487→   487→      weight: v.weight,
+   488→   488→    }));
+   489→   489→  }, [patientVitals]);
+   490→   490→
+   491→   491→  // ── Medication adherence stats ──
+   492→   492→  const medStats = useMemo(() => {
+   493→   493→    const totalActive = patientActiveMedications.length;
+   494→   494→    let totalAdherenceEntries = 0;
+   495→   495→    let onTimeCount = 0;
+   496→   496→    let sideEffectCount = 0;
+   497→   497→    let endingSoonCount = 0;
+   498→   498→    const now = Date.now();
+   499→   499→    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+   500→   500→
+   501→   501→    for (const med of patientActiveMedications) {
+   502→   502→      if (med.adherences) {
+   503→   503→        for (const a of med.adherences) {
+   504→   504→          totalAdherenceEntries++;
+   505→   505→          if (a.takenOnTime) onTimeCount++;
+   506→   506→          if (a.sideEffects) sideEffectCount++;
+   507→   507→        }
+   508→   508→      }
+   509→   509→      if (med.endDate) {
+   510→   510→        const endDate = new Date(med.endDate).getTime();
+   511→   511→        if (endDate - now < sevenDays && endDate > now) {
+   512→   512→          endingSoonCount++;
+   513→   513→        }
+   514→   514→      }
+   515→   515→    }
+   516→   516→
+   517→   517→    const adherenceRate =
+   518→   518→      totalAdherenceEntries > 0 ? Math.round((onTimeCount / totalAdherenceEntries) * 100) : 0;
+   519→   519→
+   520→   520→    return { totalActive, adherenceRate, sideEffectCount, endingSoonCount };
+   521→   521→  }, [patientActiveMedications]);
+   522→   522→
+   523→   523→  // ── ACP status ──
+   524→   524→  const getAcpStatus = useCallback(
+   525→   525→    (acp: AdvanceCarePlanInfo): { label: string; className: string } => {
+   526→   526→      if (acp.patientSigned && acp.familySigned && acp.doctorSigned) {
+   527→   527→        return { label: 'Lengkap', className: 'bg-green-100 text-green-800 border-green-300' };
+   528→   528→      }
+   529→   529→      if (!acp.patientSigned && !acp.familySigned && !acp.doctorSigned) {
+   530→   530→        return { label: 'Belum ditandatangani', className: 'bg-amber-100 text-amber-800 border-amber-300' };
+   531→   531→      }
+   532→   532→      if (!acp.decisionMakerName) {
+   533→   533→        return { label: 'Belum lengkap', className: 'bg-orange-100 text-orange-800 border-orange-300' };
+   534→   534→      }
+   535→   535→      return { label: 'Belum ditandatangani', className: 'bg-amber-100 text-amber-800 border-amber-300' };
+   536→   536→    },
+   537→   537→    []
+   538→   538→  );
+   539→   539→
+   540→   540→  // ── Komunikasi: monitoring status badge helper ──
+   541→   541→  const getMonitoringStatusBadge = useCallback((status?: PalliativeMonitoringStatus) => {
+   542→   542→    switch (status) {
+   543→   543→      case 'monitoring_aktif':
+   544→   544→        return { label: 'Monitoring Aktif', className: 'bg-green-100 text-green-800 border-green-300' };
+   545→   545→      case 'stabil':
+   546→   546→        return { label: 'Stabil', className: 'bg-teal-100 text-teal-800 border-teal-300' };
+   547→   547→      case 'membutuhkan_home_visit':
+   548→   548→        return { label: 'Home Visit', className: 'bg-amber-100 text-amber-800 border-amber-300' };
+   549→   549→      case 'membutuhkan_telekonsultasi':
+   550→   550→        return { label: 'Telekonsultasi', className: 'bg-blue-100 text-blue-800 border-blue-300' };
+   551→   551→      case 'membutuhkan_rujukan':
+   552→   552→        return { label: 'Perlu Rujukan', className: 'bg-orange-100 text-orange-800 border-orange-300' };
+   553→   553→      case 'terminal':
+   554→   554→        return { label: 'Terminal', className: 'bg-red-100 text-red-800 border-red-300' };
+   555→   555→      case 'meninggal_dunia':
+   556→   556→        return { label: 'Meninggal Dunia', className: 'bg-gray-200 text-gray-800 border-gray-400' };
+   557→   557→      case 'program_selesai':
+   558→   558→        return { label: 'Program Selesai', className: 'bg-slate-100 text-slate-700 border-slate-300' };
+   559→   559→      default:
+   560→   560→        return { label: 'Belum ditentukan', className: 'bg-gray-100 text-gray-600 border-gray-300' };
+   561→   561→    }
+   562→   562→  }, []);
+   563→   563→
+   564→   564→  const getMonitoringStatusLabel = useCallback((status: PalliativeMonitoringStatus): string => {
+   565→   565→    switch (status) {
+   566→   566→      case 'monitoring_aktif': return 'Monitoring Aktif';
+   567→   567→      case 'stabil': return 'Stabil';
+   568→   568→      case 'membutuhkan_home_visit': return 'Membutuhkan Home Visit';
+   569→   569→      case 'membutuhkan_telekonsultasi': return 'Membutuhkan Telekonsultasi';
+   570→   570→      case 'membutuhkan_rujukan': return 'Membutuhkan Rujukan';
+   571→   571→      case 'terminal': return 'Terminal';
+   572→   572→      case 'meninggal_dunia': return 'Meninggal Dunia';
+   573→   573→      case 'program_selesai': return 'Program Selesai';
+   574→   574→    }
+   575→   575→  }, []);
+   576→   576→
+   577→   577→  const getFormTypeLabel = useCallback((type: PalliativeMonitoringFormType): string => {
+   578→   578→    switch (type) {
+   579→   579→      case 'ttv': return 'Tanda-tanda Vital (TTV)';
+   580→   580→      case 'pps': return 'PPS';
+   581→   581→      case 'spict': return 'SPICT';
+   582→   582→      case 'esas': return 'ESAS-r';
+   583→   583→      case 'eortc': return 'EORTC QLQ-C15-PAL';
+   584→   584→      case 'penilaian_nyeri': return 'Penilaian Nyeri';
+   585→   585→      case 'penilaian_sesak': return 'Penilaian Sesak';
+   586→   586→      case 'penilaian_nutrisi': return 'Penilaian Nutrisi';
+   587→   587→      case 'acp': return 'Advance Care Planning (ACP)';
+   588→   588→    }
+   589→   589→  }, []);
+   590→   590→
+   591→   591→  const getFormChatType = useCallback((type: PalliativeMonitoringFormType): string => {
+   592→   592→    switch (type) {
+   593→   593→      case 'ttv': return 'form_ttv';
+   594→   594→      case 'pps':
+   595→   595→      case 'spict':
+   596→   596→      case 'esas':
+   597→   597→      case 'eortc':
+   598→   598→      case 'penilaian_nyeri':
+   599→   599→      case 'penilaian_sesak':
+   600→   600→      case 'penilaian_nutrisi':
+   601→   601→        return 'form_screening';
+   602→   602→      case 'acp':
+   603→   603→        return 'instruction';
+   604→   604→      default:
+   605→   605→        return 'form_screening';
+   606→   606→    }
+   607→   607→  }, []);
+   608→   608→
+   609→   609→  // ── Komunikasi: computed data ──
+   610→   610→  const getLastPPS = useCallback((patientId: string): number | undefined => {
+   611→   611→    const ppsScreenings = palliativeScreeningRecords
+   612→   612→      .filter((s) => s.palliativePatientId === patientId && s.screeningType === 'pps')
+   613→   613→      .sort((a, b) => new Date(b.performedAt).getTime() - new Date(a.performedAt).getTime());
+   614→   614→    return ppsScreenings[0]?.score ?? undefined;
+   615→   615→  }, [palliativeScreeningRecords]);
+   616→   616→
+   617→   617→  const getUnreadCount = useCallback((patientId: string): number => {
+   618→   618→    const roomId = `room-${patientId}`;
+   619→   619→    return palliativeChatMessages.filter(
+   620→   620→      (m) => m.roomId === roomId && m.senderRole !== 'doctor' && !m.readAt
+   621→   621→    ).length;
+   622→   622→  }, [palliativeChatMessages]);
+   623→   623→
+   624→   624→  const getLastChatDate = useCallback((patientId: string): string | undefined => {
+   625→   625→    const roomId = `room-${patientId}`;
+   626→   626→    const msgs = palliativeChatMessages
+   627→   627→      .filter((m) => m.roomId === roomId)
+   628→   628→      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+   629→   629→    return msgs[0]?.createdAt;
+   630→   630→  }, [palliativeChatMessages]);
+   631→   631→
+   632→   632→  const filteredKomunikasiPatients = useMemo(() => {
+   633→   633→    let result = palliativePatients.filter((p) => p.patientStatus !== 'program_selesai');
+   634→   634→    if (komunikasiFilter !== 'all') {
+   635→   635→      result = result.filter((p) => (p.monitoringStatus || 'monitoring_aktif') === komunikasiFilter);
+   636→   636→    }
+   637→   637→    if (komunikasiSearch.trim()) {
+   638→   638→      const q = komunikasiSearch.toLowerCase();
+   639→   639→      result = result.filter(
+   640→   640→        (p) =>
+   641→   641→          (p.patientName && p.patientName.toLowerCase().includes(q)) ||
+   642→   642→          (p.rmNumber && p.rmNumber.toLowerCase().includes(q)) ||
+   643→   643→          (p.primaryDiagnosis && p.primaryDiagnosis.toLowerCase().includes(q)) ||
+   644→   644→          (p.monitoringStatus && getMonitoringStatusLabel(p.monitoringStatus).toLowerCase().includes(q))
+   645→   645→      );
+   646→   646→    }
+   647→   647→    return result;
+   648→   648→  }, [palliativePatients, komunikasiFilter, komunikasiSearch, getMonitoringStatusLabel]);
+   649→   649→
+   650→   650→  const komunikasiStats = useMemo(() => {
+   651→   651→    const active = palliativePatients.filter((p) => p.patientStatus !== 'program_selesai');
+   652→   652→    const monitoringAktif = active.filter((p) => (!p.monitoringStatus || p.monitoringStatus === 'monitoring_aktif')).length;
+   653→   653→    const stabil = active.filter((p) => p.monitoringStatus === 'stabil').length;
+   654→   654→    const homeVisit = active.filter((p) => p.monitoringStatus === 'membutuhkan_home_visit').length;
+   655→   655→    const telekonsultasi = active.filter((p) => p.monitoringStatus === 'membutuhkan_telekonsultasi').length;
+   656→   656→    const terminal = active.filter((p) => p.monitoringStatus === 'terminal').length;
+   657→   657→    const totalUnread = active.reduce((sum, p) => sum + getUnreadCount(p.id), 0);
+   658→   658→    return { total: active.length, monitoringAktif, stabil, homeVisit, telekonsultasi, terminal, totalUnread };
+   659→   659→  }, [palliativePatients, getUnreadCount]);
+   660→   660→
+   661→   661→  // ── Komunikasi: handlers ──
+   662→   662→  const handleSendForms = useCallback(() => {
+   663→   663→    if (!sendFormPatientId || selectedFormTypes.length === 0) return;
+   664→   664→    const patient = palliativePatients.find((p) => p.id === sendFormPatientId);
+   665→   665→    if (!patient) return;
+   666→   666→
+   667→   667→    const roomId = `room-${sendFormPatientId}`;
+   668→   668→    const doctorName = currentUser?.name || 'Dokter';
+   669→   669→    const doctorId = currentUser?.id || 'doctor';
+   670→   670→
+   671→   671→    selectedFormTypes.forEach((formType) => {
+   672→   672→      const chatMsg: PalliativeChatMessage = {
+   673→   673→        id: genId('msg'),
+   674→   674→        roomId,
+   675→   675→        senderId: doctorId,
+   676→   676→        senderName: doctorName,
+   677→   677→        senderRole: 'doctor',
+   678→   678→        type: getFormChatType(formType) as PalliativeChatMessage['type'],
+   679→   679→        content: `Form ${getFormTypeLabel(formType)} telah dikirim kepada pasien. Silakan isi form berikut.`,
+   680→   680→        status: 'sent',
+   681→   681→        formType: formType === 'ttv' ? 'ttv' : formType === 'acp' ? 'keluhan' : 'screening',
+   682→   682→        formData: {
+   683→   683→          id: genId('form'),
+   684→   684→          formType: formType === 'ttv' ? 'ttv' : formType === 'acp' ? 'keluhan' : 'screening',
+   685→   685→          screeningType: ['pps', 'spict', 'esas', 'eortc', 'penilaian_nyeri', 'penilaian_sesak', 'penilaian_nutrisi'].includes(formType)
+   686→   686→            ? (formType === 'pps' ? 'pps' : formType === 'spict' ? 'spict' : formType === 'esas' ? 'esas' : formType === 'eortc' ? 'eortc' : 'esas')
+   687→   687→            : undefined,
+   688→   688→          status: 'sent',
+   689→   689→          progress: 0,
+   690→   690→        },
+   691→   691→        createdAt: new Date().toISOString(),
+   692→   692→      };
+   693→   693→      addPalliativeChatMessage(chatMsg);
+   694→   694→
+   695→   695→      const auditEntry: PalliativeAuditEntry = {
+   696→   696→        id: genId('audit'),
+   697→   697→        patientId: sendFormPatientId,
+   698→   698→        action: 'form_sent',
+   699→   699→        performedBy: doctorName,
+   700→   700→        performedByRole: 'doctor',
+   701→   701→        details: `Form ${getFormTypeLabel(formType)} dikirim ke ${patient.patientName || 'Pasien'}`,
+   702→   702→        createdAt: new Date().toISOString(),
+   703→   703→      };
+   704→   704→      addPalliativeAuditEntry(auditEntry);
+   705→   705→    });
+   706→   706→
+   707→   707→    const notification: PalliativeMonitoringNotification = {
+   708→   708→      id: genId('notif'),
+   709→   709→      patientId: sendFormPatientId,
+   710→   710→      patientName: patient.patientName,
+   711→   711→      type: 'status_change',
+   712→   712→      title: 'Form Monitoring Dikirim',
+   713→   713→      description: `${selectedFormTypes.length} form monitoring telah dikirim ke ${patient.patientName || 'Pasien'}`,
+   714→   714→      severity: 'info',
+   715→   715→      isRead: false,
+   716→   716→      createdAt: new Date().toISOString(),
+   717→   717→    };
+   718→   718→    addPalliativeMonitoringNotification(notification);
+   719→   719→
+   720→   720→    toast({
+   721→   721→      title: 'Form Terkirim',
+   722→   722→      description: `${selectedFormTypes.length} form monitoring berhasil dikirim ke ${patient.patientName || 'Pasien'}.`,
+   723→   723→    });
+   724→   724→
+   725→   725→    setShowSendFormDialog(false);
+   726→   726→    setSendFormPatientId(null);
+   727→   727→    setSelectedFormTypes([]);
+   728→   728→  }, [sendFormPatientId, selectedFormTypes, palliativePatients, currentUser, addPalliativeChatMessage, addPalliativeAuditEntry, addPalliativeMonitoringNotification, getFormChatType, getFormTypeLabel, toast]);
+   729→   729→
+   730→   730→  const toggleFormType = useCallback((type: PalliativeMonitoringFormType) => {
+   731→   731→    setSelectedFormTypes((prev) =>
+   732→   732→      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+   733→   733→    );
+   734→   734→  }, []);
+   735→   735→
+   736→   736→  const handleOpenSendForm = useCallback((patientId: string) => {
+   737→   737→    setSendFormPatientId(patientId);
+   738→   738→    setSelectedFormTypes([]);
+   739→   739→    setShowSendFormDialog(true);
+   740→   740→  }, []);
+   741→   741→
+   742→   742→  const handleMonitoringStatusChange = useCallback((patientId: string, status: PalliativeMonitoringStatus) => {
+   743→   743→    updatePalliativeMonitoringStatus(patientId, status);
+   744→   744→    const patient = palliativePatients.find((p) => p.id === patientId);
+   745→   745→    const auditEntry: PalliativeAuditEntry = {
+   746→   746→      id: genId('audit'),
+   747→   747→      patientId,
+   748→   748→      action: 'clinical_action',
+   749→   749→      performedBy: currentUser?.name || 'Dokter',
+   750→   750→      performedByRole: 'doctor',
+   751→   751→      details: `Status monitoring diubah ke "${getMonitoringStatusLabel(status)}" untuk ${patient?.patientName || 'Pasien'}`,
+   752→   752→      createdAt: new Date().toISOString(),
+   753→   753→    };
+   754→   754→    addPalliativeAuditEntry(auditEntry);
+   755→   755→    const notification: PalliativeMonitoringNotification = {
+   756→   756→      id: genId('notif'),
+   757→   757→      patientId,
+   758→   758→      patientName: patient?.patientName,
+   759→   759→      type: 'status_change',
+   760→   760→      title: 'Status Monitoring Berubah',
+   761→   761→      description: `Status monitoring ${patient?.patientName || 'Pasien'} diubah ke "${getMonitoringStatusLabel(status)}"`,
+   762→   762→      severity: status === 'terminal' || status === 'meninggal_dunia' ? 'critical' : status === 'membutuhkan_home_visit' || status === 'membutuhkan_rujukan' ? 'warning' : 'info',
+   763→   763→      isRead: false,
+   764→   764→      createdAt: new Date().toISOString(),
+   765→   765→    };
+   766→   766→    addPalliativeMonitoringNotification(notification);
+   767→   767→    toast({
+   768→   768→      title: 'Status Diperbarui',
+   769→   769→      description: `Status monitoring ${patient?.patientName || 'Pasien'} diubah ke "${getMonitoringStatusLabel(status)}".`,
+   770→   770→    });
+   771→   771→  }, [updatePalliativeMonitoringStatus, palliativePatients, currentUser, addPalliativeAuditEntry, addPalliativeMonitoringNotification, getMonitoringStatusLabel, toast]);
+   772→   772→
+   773→   773→  // ── Handlers ──
+   774→   774→
+   775→   775→  const handleNavigateToScreening = useCallback(
+   776→   776→    (patientId: string) => {
+   777→   777→      setScreeningNavigationFrom('monitoring');
+   778→   778→      setScreeningPreselectedPatientId(patientId);
+   779→   779→      setActivePanel('palliative-screening');
+   780→   780→    },
+   781→   781→    [setScreeningNavigationFrom, setScreeningPreselectedPatientId, setActivePanel]
+   782→   782→  );
+   783→   783→
+   784→   784→  const handleSelectPatient = useCallback(
+   785→   785→    (id: string) => {
+   786→   786→      setSelectedPalliativePatientId(id);
+   787→   787→    },
+   788→   788→    [setSelectedPalliativePatientId]
+   789→   789→  );
+   790→   790→
+   791→   791→  const handleAddPatient = useCallback(() => {
+   792→   792→    if (!newPatient.patientName) return;
+   793→   793→    const bmiVal = calcBmi(newPatient.weight, newPatient.height);
+   794→   794→    const patient: PalliativePatientInfo = {
+   795→   795→      id: genId('pp'),
+   796→   796→      patientId: genId('pat'),
+   797→   797→      patientName: newPatient.patientName,
+   798→   798→      rmNumber: newPatient.rmNumber,
+   799→   799→      bpjsNumber: newPatient.bpjsNumber,
+   800→   800→      nik: newPatient.nik,
+   801→   801→      dateOfBirth: newPatient.dateOfBirth,
+   802→   802→      gender: newPatient.gender,
+   803→   803→      primaryDiagnosis: newPatient.primaryDiagnosis,
+   804→   804→      secondaryDiagnosis: newPatient.secondaryDiagnosis,
+   805→   805→      diseaseStage: newPatient.diseaseStage,
+   806→   806→      attendingDoctorId: newPatient.attendingDoctorId,
+   807→   807→      attendingDoctorName: newPatient.attendingDoctorName,
+   808→   808→      familyContactName: newPatient.familyContactName,
+   809→   809→      familyContactRelation: newPatient.familyContactRelation,
+   810→   810→      familyContactPhone: newPatient.familyContactPhone,
+   811→   811→      address: newPatient.address,
+   812→   812→      careStatus: newPatient.careStatus || 'rawat_jalan',
+   813→   813→      patientStatus: newPatient.patientStatus || 'aktif',
+   814→   814→      riskLevel: newPatient.riskLevel || 'hijau',
+   815→   815→      notes: newPatient.notes,
+   816→   816→      createdAt: new Date().toISOString(),
+   817→   817→      updatedAt: new Date().toISOString(),
+   818→   818→    };
+   819→   819→    addPalliativePatient(patient);
+   820→   820→    setNewPatient({});
+   821→   821→    setShowAddPatient(false);
+   822→   822→  }, [newPatient, addPalliativePatient]);
+   823→   823→
+   824→   824→  const handleUpdatePatient = useCallback(() => {
+   825→   825→    if (!editingPatient) return;
+   826→   826→    updatePalliativePatient(editingPatient.id, editingPatient);
+   827→   827→    setEditingPatient(null);
+   828→   828→  }, [editingPatient, updatePalliativePatient]);
+   829→   829→
+   830→   830→  const handleDeletePatient = useCallback(
+   831→   831→    (id: string) => {
+   832→   832→      removePalliativePatient(id);
+   833→   833→      if (selectedPalliativePatientId === id) {
+   834→   834→        setSelectedPalliativePatientId(null);
+   835→   835→      }
+   836→   836→      setShowDeleteConfirm(null);
+   837→   837→    },
+   838→   838→    [removePalliativePatient, selectedPalliativePatientId, setSelectedPalliativePatientId]
+   839→   839→  );
+   840→   840→
+   841→   841→  const handleProgramComplete = useCallback(
+   842→   842→    (id: string) => {
+   843→   843→      const patient = palliativePatients.find((p) => p.id === id);
+   844→   844→      if (!patient) return;
+   845→   845→
+   846→   846→      const completionDate = programCompletionDate;
+   847→   847→      const startDate = patient.createdAt;
+   848→   848→      const endDate = completionDate;
+   849→   849→      const durationMs = new Date(endDate).getTime() - new Date(startDate).getTime();
+   850→   850→      const durationDays = Math.max(1, Math.round(durationMs / (1000 * 60 * 60 * 24)));
+   851→   851→
+   852→   852→      const doctorName = currentUser?.name || 'Dokter';
+   853→   853→
+   854→   854→      // Complete the program in store
+   855→   855→      completePalliativeProgram(id, {
+   856→   856→        palliativePatientId: id,
+   857→   857→        patientName: patient.patientName,
+   858→   858→        rmNumber: patient.rmNumber,
+   859→   859→        completionDate,
+   860→   860→        reason: programCompletionReason,
+   861→   861→        otherReason: programCompletionReason === 'lainnya' ? programCompletionOtherReason : undefined,
+   862→   862→        closingNotes: programCompletionNotes || undefined,
+   863→   863→        programStartDate: startDate,
+   864→   864→        programEndDate: endDate,
+   865→   865→        monitoringDurationDays: durationDays,
+   866→   866→        performedBy: doctorName,
+   867→   867→        performedByRole: 'doctor',
+   868→   868→      });
+   869→   869→
+   870→   870→      // Add audit entry
+   871→   871→      const reasonLabel = programCompletionReason === 'sembuh_stabil' ? 'Sembuh/Stabil'
+   872→   872→        : programCompletionReason === 'meninggal_dunia' ? 'Meninggal Dunia'
+   873→   873→        : programCompletionReason === 'dirujuk' ? 'Dirujuk'
+   874→   874→        : programCompletionReason === 'pindah_faskes' ? 'Pindah Fasilitas Kesehatan'
+   875→   875→        : programCompletionReason === 'permintaan_pasien_keluarga' ? 'Permintaan Pasien/Keluarga'
+   876→   876→        : programCompletionOtherReason || 'Lainnya';
+   877→   877→
+   878→   878→      addPalliativeAuditEntry({
+   879→   879→        id: genId('audit'),
+   880→   880→        patientId: id,
+   881→   881→        action: 'program_completed',
+   882→   882→        performedBy: doctorName,
+   883→   883→        performedByRole: 'doctor',
+   884→   884→        details: `Program Monitoring Paliatif diselesaikan. Alasan: ${reasonLabel}. Durasi: ${durationDays} hari.${programCompletionNotes ? ` Catatan: ${programCompletionNotes}` : ''}`,
+   885→   885→        createdAt: new Date().toISOString(),
+   886→   886→      });
+   887→   887→
+   888→   888→      // Add notification
+   889→   889→      addPalliativeMonitoringNotification({
+   890→   890→        id: genId('notif'),
+   891→   891→        patientId: id,
+   892→   892→        patientName: patient.patientName,
+   893→   893→        type: 'status_change',
+   894→   894→        title: 'Program Monitoring Selesai',
+   895→   895→        description: `Program Monitoring Paliatif untuk ${patient.patientName || 'Pasien'} telah diselesaikan. Alasan: ${reasonLabel}`,
+   896→   896→        severity: 'info',
+   897→   897→        isRead: false,
+   898→   898→        createdAt: new Date().toISOString(),
+   899→   899→      });
+   900→   900→
+   901→   901→      toast({
+   902→   902→        title: 'Program Selesai',
+   903→   903→        description: `Program Monitoring Paliatif untuk ${patient.patientName || 'Pasien'} telah berhasil diselesaikan. Seluruh data riwayat tetap tersimpan.`,
+   904→   904→      });
+   905→   905→
+   906→   906→      // Reset form state
+   907→   907→      setShowProgramCompleteConfirm(null);
+   908→   908→      setProgramCompletionDate(new Date().toISOString().split('T')[0]);
+   909→   909→      setProgramCompletionReason('sembuh_stabil');
+   910→   910→      setProgramCompletionOtherReason('');
+   911→   911→      setProgramCompletionNotes('');
+   912→   912→
+   913→   913→      // Deselect if selected
+   914→   914→      if (selectedPalliativePatientId === id) {
+   915→   915→        setSelectedPalliativePatientId(null);
+   916→   916→        setShowPatientDetail(null);
+   917→   917→      }
+   918→   918→    },
+   919→   919→    [palliativePatients, programCompletionDate, programCompletionReason, programCompletionOtherReason, programCompletionNotes, currentUser, completePalliativeProgram, addPalliativeAuditEntry, addPalliativeMonitoringNotification, selectedPalliativePatientId, setSelectedPalliativePatientId, toast]
+   920→   920→  );
+   921→   921→
+   922→   922→  const handleAddVital = useCallback(() => {
+   923→   923→    if (!selectedPalliativePatientId) return;
+   924→   924→    const bmiVal = calcBmi(newVital.weight, newVital.height);
+   925→   925→    const record: VitalSignRecordInfo = {
+   926→   926→      id: genId('vs'),
+   927→   927→      palliativePatientId: selectedPalliativePatientId,
+   928→   928→      recordedBy: newVital.recordedBy,
+   929→   929→      systolicBP: newVital.systolicBP,
+   930→   930→      diastolicBP: newVital.diastolicBP,
+   931→   931→      heartRate: newVital.heartRate,
+   932→   932→      respiratoryRate: newVital.respiratoryRate,
+   933→   933→      temperature: newVital.temperature,
+   934→   934→      oxygenSat: newVital.oxygenSat,
+   935→   935→      weight: newVital.weight,
+   936→   936→      height: newVital.height,
+   937→   937→      bmi: bmiVal,
+   938→   938→      notes: newVital.notes,
+   939→   939→      recordedAt: newVital.recordedAt || new Date().toISOString(),
+   940→   940→      createdAt: new Date().toISOString(),
+   941→   941→    };
+   942→   942→    addVitalSignRecord(record);
+   943→   943→    setNewVital({});
+   944→   944→    setShowAddVital(false);
+   945→   945→  }, [selectedPalliativePatientId, newVital, addVitalSignRecord]);
+   946→   946→
+   947→   947→  const handleAddMedication = useCallback(() => {
+   948→   948→    if (!selectedPalliativePatientId || !newMedication.medicineName) return;
+   949→   949→    const med: PalliativeMedicationInfo = {
+   950→   950→      id: genId('pm'),
+   951→   951→      palliativePatientId: selectedPalliativePatientId,
+   952→   952→      medicineName: newMedication.medicineName,
+   953→   953→      dosage: newMedication.dosage || '',
+   954→   954→      frequency: newMedication.frequency || '',
+   955→   955→      route: newMedication.route,
+   956→   956→      startDate: newMedication.startDate,
+   957→   957→      endDate: newMedication.endDate,
+   958→   958→      indication: newMedication.indication,
+   959→   959→      isActive: true,
+   960→   960→      notes: newMedication.notes,
+   961→   961→      createdAt: new Date().toISOString(),
+   962→   962→      updatedAt: new Date().toISOString(),
+   963→   963→    };
+   964→   964→    addPalliativeMedication(med);
+   965→   965→    setNewMedication({});
+   966→   966→    setShowAddMedication(false);
+   967→   967→  }, [selectedPalliativePatientId, newMedication, addPalliativeMedication]);
+   968→   968→
+   969→   969→  const handleAddACP = useCallback(() => {
+   970→   970→    if (!selectedPalliativePatientId) return;
+   971→   971→    const plan: AdvanceCarePlanInfo = {
+   972→   972→      id: genId('acp'),
+   973→   973→      palliativePatientId: selectedPalliativePatientId,
+   974→   974→      decisionMakerName: newACP.decisionMakerName,
+   975→   975→      decisionMakerRelation: newACP.decisionMakerRelation,
+   976→   976→      decisionMakerPhone: newACP.decisionMakerPhone,
+   977→   977→      preferredCareLocation: newACP.preferredCareLocation,
+   978→   978→      careGoal: newACP.careGoal,
+   979→   979→      resuscitationPref: newACP.resuscitationPref,
+   980→   980→      ventilatorPref: newACP.ventilatorPref,
+   981→   981→      icuPref: newACP.icuPref,
+   982→   982→      artificialNutrition: newACP.artificialNutrition,
+   983→   983→      dialysisPref: newACP.dialysisPref,
+   984→   984→      organDonation: newACP.organDonation,
+   985→   985→      patientHopes: newACP.patientHopes,
+   986→   986→      patientWorries: newACP.patientWorries,
+   987→   987→      lifeValues: newACP.lifeValues,
+   988→   988→      endOfLifePrefs: newACP.endOfLifePrefs,
+   989→   989→      patientSigned: newACP.patientSigned || false,
+   990→   990→      familySigned: newACP.familySigned || false,
+   991→   991→      doctorSigned: newACP.doctorSigned || false,
+   992→   992→      signedAt:
+   993→   993→        newACP.patientSigned && newACP.familySigned && newACP.doctorSigned
+   994→   994→          ? new Date().toISOString()
+   995→   995→          : undefined,
+   996→   996→      isActive: true,
+   997→   997→      createdAt: new Date().toISOString(),
+   998→   998→      updatedAt: new Date().toISOString(),
+   999→   999→    };
+  1000→  1000→    addAdvanceCarePlan(plan);
+  1001→  1001→    setNewACP({});
+  1002→  1002→    setAcpStep(0);
+  1003→  1003→    setShowAddACP(false);
+  1004→  1004→  }, [selectedPalliativePatientId, newACP, addAdvanceCarePlan]);
+  1005→  1005→
+  1006→  1006→  const handleAddAdherence = useCallback(
+  1007→  1007→    (medId: string) => {
+  1008→  1008→      if (!selectedPalliativePatientId) return;
+  1009→  1009→      const adherence: MedicationAdherenceInfo = {
+  1010→  1010→        id: genId('adh'),
+  1011→  1011→        medicationId: medId,
+  1012→  1012→        palliativePatientId: selectedPalliativePatientId,
+  1013→  1013→        date: newAdherence.date || new Date().toISOString().split('T')[0],
+  1014→  1014→        takenOnTime: newAdherence.takenOnTime ?? true,
+  1015→  1015→        missedDose: newAdherence.missedDose ?? false,
+  1016→  1016→        sideEffects: newAdherence.sideEffects,
+  1017→  1017→        complaints: newAdherence.complaints,
+  1018→  1018→        createdAt: new Date().toISOString(),
+  1019→  1019→      };
+  1020→  1020→      const med = palliativeMedications.find((m) => m.id === medId);
+  1021→  1021→      if (med) {
+  1022→  1022→        const existing = med.adherences || [];
+  1023→  1023→        updatePalliativeMedication(medId, { adherences: [...existing, adherence] });
+  1024→  1024→      }
+  1025→  1025→      setNewAdherence({});
+  1026→  1026→      setShowAddAdherence(null);
+  1027→  1027→    },
+  1028→  1028→    [selectedPalliativePatientId, newAdherence, palliativeMedications, updatePalliativeMedication]
+  1029→  1029→  );
+  1030→  1030→
+  1031→  1031→  const generateLocalSummary = useCallback(() => {
+  1032→  1032→    if (!selectedPatient) return '';
+  1033→  1033→    const p = selectedPatient;
+  1034→  1034→    const latestVital = patientVitals[0];
+  1035→  1035→    const latestScreening = patientScreenings[0];
+  1036→  1036→
+  1037→  1037→    let summary = `RINGKASAN KONDISI PASIEN\n`;
+  1038→  1038→    summary += `Pasien ${p.patientName || '-'} (RM: ${p.rmNumber || '-'})\n`;
+  1039→  1039→    summary += `Diagnosa Utama: ${p.primaryDiagnosis || '-'}\n`;
+  1040→  1040→    summary += `Status Perawatan: ${getCareStatusBadge(p.careStatus).label}\n`;
+  1041→  1041→    summary += `Tingkat Risiko: ${getRiskBadge(p.riskLevel).label}\n\n`;
+  1042→  1042→
+  1043→  1043→    summary += `ANALISIS TTV TERAKHIR\n`;
+  1044→  1044→    if (latestVital) {
+  1045→  1045→      const dash = '-';
+  1046→  1046→      summary += `TD: ${latestVital.systolicBP || dash}/${latestVital.diastolicBP || dash} mmHg\n`;
+  1047→  1047→      summary += `Nadi: ${latestVital.heartRate || dash} bpm\n`;
+  1048→  1048→      summary += `RR: ${latestVital.respiratoryRate || dash}/menit\n`;
+  1049→  1049→      summary += `Suhu: ${latestVital.temperature || dash}°C\n`;
+  1050→  1050→      summary += `SpO2: ${latestVital.oxygenSat || dash}%\n`;
+  1051→  1051→      if (latestVital.oxygenSat && latestVital.oxygenSat < 90) {
+  1052→  1052→        summary += `PERINGATAN: Saturasi O2 rendah!\n`;
+  1053→  1053→      }
+  1054→  1054→      if (latestVital.systolicBP && latestVital.systolicBP < 90) {
+  1055→  1055→        summary += `PERINGATAN: Hipotensi terdeteksi!\n`;
+  1056→  1056→      }
+  1057→  1057→    } else {
+  1058→  1058→      summary += `Belum ada data TTV\n`;
+  1059→  1059→    }
+  1060→  1060→
+  1061→  1061→    summary += `\nPERBANDINGAN SKRINING\n`;
+  1062→  1062→    if (latestScreening) {
+  1063→  1063→      summary += `Skrining terakhir: ${getToolTypeName(latestScreening.screeningType)} - Skor: ${latestScreening.score ?? '-'} (${latestScreening.scoreLabel || '-'})\n`;
+  1064→  1064→      summary += `Interpretasi: ${latestScreening.interpretation || '-'}\n`;
+  1065→  1065→    } else {
+  1066→  1066→      summary += `Belum ada data skrining\n`;
+  1067→  1067→    }
+  1068→  1068→
+  1069→  1069→    summary += `\nIDENTIFIKASI PERBURUKAN\n`;
+  1070→  1070→    const worseningSigns: string[] = [];
+  1071→  1071→    if (patientVitals.length >= 2) {
+  1072→  1072→      const curr = patientVitals[0];
+  1073→  1073→      const prev = patientVitals[1];
+  1074→  1074→      if (curr.weight && prev.weight && prev.weight - curr.weight > 1) {
+  1075→  1075→        worseningSigns.push(`Penurunan berat badan: ${prev.weight} → ${curr.weight} kg`);
+  1076→  1076→      }
+  1077→  1077→      if (curr.oxygenSat && prev.oxygenSat && curr.oxygenSat < prev.oxygenSat - 2) {
+  1078→  1078→        worseningSigns.push(`Penurunan SpO2: ${prev.oxygenSat}% → ${curr.oxygenSat}%`);
+  1079→  1079→      }
+  1080→  1080→    }
+  1081→  1081→    if (p.riskLevel === 'merah') worseningSigns.push('Risiko tinggi (merah)');
+  1082→  1082→    if (worseningSigns.length > 0) {
+  1083→  1083→      summary += worseningSigns.map((s) => `- ${s}`).join('\n') + '\n';
+  1084→  1084→    } else {
+  1085→  1085→      summary += `Tidak ada tanda perburukan signifikan saat ini.\n`;
+  1086→  1086→    }
+  1087→  1087→
+  1088→  1088→    summary += `\nFAKTOR RISIKO UTAMA\n`;
+  1089→  1089→    const riskFactors: string[] = [];
+  1090→  1090→    if (p.primaryDiagnosis) riskFactors.push(`Diagnosa: ${p.primaryDiagnosis}`);
+  1091→  1091→    if (p.diseaseStage) riskFactors.push(`Stadium: ${p.diseaseStage}`);
+  1092→  1092→    if (latestVital?.oxygenSat && latestVital.oxygenSat < 92) riskFactors.push('Hipoksemia');
+  1093→  1093→    if (latestVital?.weight && latestVital.height) {
+  1094→  1094→      const bmi = calcBmi(latestVital.weight, latestVital.height);
+  1095→  1095→      if (bmi && bmi < 18.5) riskFactors.push(`BMI rendah (${bmi})`);
+  1096→  1096→    }
+  1097→  1097→    if (riskFactors.length > 0) {
+  1098→  1098→      summary += riskFactors.map((s) => `- ${s}`).join('\n') + '\n';
+  1099→  1099→    } else {
+  1100→  1100→      summary += `Tidak ada faktor risiko utama teridentifikasi.\n`;
+  1101→  1101→    }
+  1102→  1102→
+  1103→  1103→    summary += `\nREKOMENDASI TINDAK LANJUT\n`;
+  1104→  1104→    summary += `- Evaluasi tanda vital secara berkala\n`;
+  1105→  1105→    if (p.riskLevel === 'merah') summary += `- Konsultasi segera dengan dokter paliatif\n`;
+  1106→  1106→    if (latestVital?.oxygenSat && latestVital.oxygenSat < 90) summary += `- Pemberian oksigen tambahan\n`;
+  1107→  1107→    summary += `- Manajemen gejala sesuai skrining terbaru\n`;
+  1108→  1108→    if (patientACPs.length === 0) summary += `- Pertimbangkan penyusunan Advance Care Planning\n`;
+  1109→  1109→
+  1110→  1110→    summary += `\nSOAP NOTE OTOMATIS\n`;
+  1111→  1111→    const nd = '-'; summary += `S: Pasien ${p.patientName || nd} dengan diagnosa ${p.primaryDiagnosis || nd}. `;
+  1112→  1112→    if (latestVital?.notes) summary += latestVital.notes + '. ';
+  1113→  1113→    const tdVal = latestVital?.systolicBP || nd; const dbpVal = latestVital?.diastolicBP || nd; const hrVal = latestVital?.heartRate || nd; const rrVal = latestVital?.respiratoryRate || nd; const tempVal = latestVital?.temperature || nd; const spo2Val = latestVital?.oxygenSat || nd; summary += '\nO: TD ' + tdVal + '/' + dbpVal + ', Nadi ' + hrVal + ', RR ' + rrVal + ', Suhu ' + tempVal + '°C, SpO2 ' + spo2Val + '%.';
+  1114→  1114→    summary += `\nA: Kondisi ${p.riskLevel === 'merah' ? 'kritis, memerlukan perhatian segera' : p.riskLevel === 'kuning' ? 'perlu pemantauan ketat' : 'stabil, lanjutkan monitoring'}.`;
+  1115→  1115→    summary += `\nP: Lanjutkan monitoring tanda vital, manajemen gejala, dan evaluasi berkala.`;
+  1116→  1116→
+  1117→  1117→    summary += `\n\nPERINGATAN DINI\n`;
+  1118→  1118→    if (vitalAlerts.length > 0) {
+  1119→  1119→      summary += vitalAlerts
+  1120→  1120→        .map((a) => `${a.severity === 'critical' ? '[KRITIS]' : '[PERHATIAN]'} ${a.label}: ${a.value}`)
+  1121→  1121→        .join('\n');
+  1122→  1122→    } else {
+  1123→  1123→      summary += `Tidak ada peringatan dini saat ini.\n`;
+  1124→  1124→    }
+  1125→  1125→
+  1126→  1126→    return summary;
+  1127→  1127→  }, [selectedPatient, patientVitals, patientScreenings, patientACPs, vitalAlerts]);
+  1128→  1128→
+  1129→  1129→  const handleAiAnalysis = useCallback(async () => {
+  1130→  1130→    if (!selectedPatient) return;
+  1131→  1131→    setAiLoading(true);
+  1132→  1132→    try {
+  1133→  1133→      const response = await fetch('/api/palliative-ai-analysis', {
+  1134→  1134→        method: 'POST',
+  1135→  1135→        headers: { 'Content-Type': 'application/json' },
+  1136→  1136→        body: JSON.stringify({
+  1137→  1137→          patientId: selectedPatient.id,
+  1138→  1138→          patientName: selectedPatient.patientName,
+  1139→  1139→          primaryDiagnosis: selectedPatient.primaryDiagnosis,
+  1140→  1140→          vitalSigns: patientVitals.slice(0, 10),
+  1141→  1141→          medications: patientActiveMedications,
+  1142→  1142→          screenings: patientScreenings,
+  1143→  1143→          acp: patientACPs,
+  1144→  1144→        }),
+  1145→  1145→      });
+  1146→  1146→      if (response.ok) {
+  1147→  1147→        const data = await response.json();
+  1148→  1148→        setPalliativeAiSummary(data.summary || data.analysis || 'Tidak ada hasil analisis.');
+  1149→  1149→      } else {
+  1150→  1150→        const fallback = generateLocalSummary();
+  1151→  1151→        setPalliativeAiSummary(fallback);
+  1152→  1152→      }
+  1153→  1153→    } catch {
+  1154→  1154→      const fallback = generateLocalSummary();
+  1155→  1155→      setPalliativeAiSummary(fallback);
+  1156→  1156→    }
+  1157→  1157→    setAiLoading(false);
+  1158→  1158→  }, [selectedPatient, patientVitals, patientActiveMedications, patientScreenings, patientACPs, setPalliativeAiSummary, generateLocalSummary]);
+  1159→  1159→
+  1160→  1160→  // ── Render: Patient Selector ──
+  1161→  1161→  const renderPatientSelector = () => (
+  1162→  1162→    <div className="mb-4">
+  1163→  1163→      <Label className="text-sm font-medium mb-2 block">Pilih Pasien Paliatif</Label>
+  1164→  1164→      <Select
+  1165→  1165→        value={selectedPalliativePatientId || ''}
+  1166→  1166→        onValueChange={(v) => setSelectedPalliativePatientId(v)}
+  1167→  1167→      >
+  1168→  1168→        <SelectTrigger className="w-full">
+  1169→  1169→          <SelectValue placeholder="Pilih pasien..." />
+  1170→  1170→        </SelectTrigger>
+  1171→  1171→        <SelectContent>
+  1172→  1172→          {palliativePatients.map((p) => (
+  1173→  1173→            <SelectItem key={p.id} value={p.id}>
+  1174→  1174→              <span className="flex items-center gap-2">
+  1175→  1175→                <span
+  1176→  1176→                  className={cn(
+  1177→  1177→                    'w-2 h-2 rounded-full',
+  1178→  1178→                    p.riskLevel === 'merah'
+  1179→  1179→                      ? 'bg-red-500'
+  1180→  1180→                      : p.riskLevel === 'kuning'
+  1181→  1181→                        ? 'bg-amber-500'
+  1182→  1182→                        : 'bg-green-500'
+  1183→  1183→                  )}
+  1184→  1184→                />
+  1185→  1185→                {p.patientName || '-'} ({p.rmNumber || '-'})
+  1186→  1186→              </span>
+  1187→  1187→            </SelectItem>
+  1188→  1188→          ))}
+  1189→  1189→        </SelectContent>
+  1190→  1190→      </Select>
+  1191→  1191→    </div>
+  1192→  1192→  );
+  1193→  1193→
+  1194→  1194→  // ── Render: Dashboard ──
+  1195→  1195→  const renderDashboard = () => (
+  1196→  1196→    <div className="space-y-4">
+  1197→  1197→      {/* Summary Cards */}
+  1198→  1198→      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
+  1199→  1199→        <Card className="p-4">
+  1200→  1200→          <div className="flex items-center gap-2 mb-1">
+  1201→  1201→            <Users className="w-4 h-4 text-muted-foreground" />
+  1202→  1202→            <span className="text-xs text-muted-foreground">Total Pasien</span>
+  1203→  1203→          </div>
+  1204→  1204→          <p className="text-2xl font-bold">{dashboardStats.total}</p>
+  1205→  1205→        </Card>
+  1206→  1206→        <Card className="p-4">
+  1207→  1207→          <div className="flex items-center gap-2 mb-1">
+  1208→  1208→            <Activity className="w-4 h-4 text-green-600" />
+  1209→  1209→            <span className="text-xs text-muted-foreground">Aktif</span>
+  1210→  1210→          </div>
+  1211→  1211→          <p className="text-2xl font-bold text-green-600">{dashboardStats.active}</p>
+  1212→  1212→        </Card>
+  1213→  1213→        <Card className="p-4">
+  1214→  1214→          <div className="flex items-center gap-2 mb-1">
+  1215→  1215→            <Archive className="w-4 h-4 text-slate-600" />
+  1216→  1216→            <span className="text-xs text-muted-foreground">Program Selesai</span>
+  1217→  1217→          </div>
+  1218→  1218→          <p className="text-2xl font-bold text-slate-600">{dashboardStats.completed}</p>
+  1219→  1219→        </Card>
+  1220→  1220→        <Card className="p-4">
+  1221→  1221→          <div className="flex items-center gap-2 mb-1">
+  1222→  1222→            <AlertTriangle className="w-4 h-4 text-red-600" />
+  1223→  1223→            <span className="text-xs text-muted-foreground">Risiko Merah</span>
+  1224→  1224→          </div>
+  1225→  1225→          <p className="text-2xl font-bold text-red-600">{dashboardStats.merah}</p>
+  1226→  1226→        </Card>
+  1227→  1227→        <Card className="p-4">
+  1228→  1228→          <div className="flex items-center gap-2 mb-1">
+  1229→  1229→            <AlertCircle className="w-4 h-4 text-amber-600" />
+  1230→  1230→            <span className="text-xs text-muted-foreground">Risiko Kuning</span>
+  1231→  1231→          </div>
+  1232→  1232→          <p className="text-2xl font-bold text-amber-600">{dashboardStats.kuning}</p>
+  1233→  1233→        </Card>
+  1234→  1234→        <Card className="p-4">
+  1235→  1235→          <div className="flex items-center gap-2 mb-1">
+  1236→  1236→            <Bell className="w-4 h-4 text-red-600" />
+  1237→  1237→            <span className="text-xs text-muted-foreground">Alert Aktif</span>
+  1238→  1238→          </div>
+  1239→  1239→          <p className="text-2xl font-bold text-red-600">{palliativeClinicalAlerts.filter(a => !a.isRead).length}</p>
+  1240→  1240→        </Card>
+  1241→  1241→        <Card className="p-4">
+  1242→  1242→          <div className="flex items-center gap-2 mb-1">
+  1243→  1243→            <MessageCircle className="w-4 h-4 text-primary" />
+  1244→  1244→            <span className="text-xs text-muted-foreground">Chat Aktif</span>
+  1245→  1245→          </div>
+  1246→  1246→          <p className="text-2xl font-bold text-primary">{new Set(palliativeChatMessages.map(m => m.roomId)).size}</p>
+  1247→  1247→        </Card>
+  1248→  1248→      </div>
+  1249→  1249→
+  1250→  1250→      {/* Search and Filter */}
+  1251→  1251→      <div className="flex flex-col gap-2">
+  1252→  1252→        <div className="flex flex-col sm:flex-row gap-2">
+  1253→  1253→          <div className="relative flex-1">
+  1254→  1254→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+  1255→  1255→            <Input
+  1256→  1256→              placeholder="Cari pasien, RM, diagnosa..."
+  1257→  1257→              value={searchQuery}
+  1258→  1258→              onChange={(e) => setSearchQuery(e.target.value)}
+  1259→  1259→              className="pl-9"
+  1260→  1260→            />
+  1261→  1261→          </div>
+  1262→  1262→          <Select value={filterRisk} onValueChange={setFilterRisk}>
+  1263→  1263→            <SelectTrigger className="w-full sm:w-44">
+  1264→  1264→              <Filter className="w-4 h-4 mr-2" />
+  1265→  1265→              <SelectValue />
+  1266→  1266→            </SelectTrigger>
+  1267→  1267→            <SelectContent>
+  1268→  1268→              <SelectItem value="all">Semua Risiko</SelectItem>
+  1269→  1269→              <SelectItem value="merah">Risiko Merah</SelectItem>
+  1270→  1270→              <SelectItem value="kuning">Risiko Kuning</SelectItem>
+  1271→  1271→              <SelectItem value="hijau">Risiko Hijau</SelectItem>
+  1272→  1272→            </SelectContent>
+  1273→  1273→          </Select>
+  1274→  1274→        </div>
+  1275→  1275→        {/* Patient Status Filter Tabs */}
+  1276→  1276→        <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+  1277→  1277→          <button
+  1278→  1278→            className={cn(
+  1279→  1279→              'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+  1280→  1280→              patientListFilter === 'aktif'
+  1281→  1281→                ? 'bg-background text-foreground shadow-sm'
+  1282→  1282→                : 'text-muted-foreground hover:text-foreground'
+  1283→  1283→            )}
+  1284→  1284→            onClick={() => setPatientListFilter('aktif')}
+  1285→  1285→          >
+  1286→  1286→            <Activity className="w-3.5 h-3.5 inline mr-1.5" />
+  1287→  1287→            Pasien Aktif ({dashboardStats.active})
+  1288→  1288→          </button>
+  1289→  1289→          <button
+  1290→  1290→            className={cn(
+  1291→  1291→              'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+  1292→  1292→              patientListFilter === 'program_selesai'
+  1293→  1293→                ? 'bg-background text-foreground shadow-sm'
+  1294→  1294→                : 'text-muted-foreground hover:text-foreground'
+  1295→  1295→            )}
+  1296→  1296→            onClick={() => setPatientListFilter('program_selesai')}
+  1297→  1297→          >
+  1298→  1298→            <Archive className="w-3.5 h-3.5 inline mr-1.5" />
+  1299→  1299→            Program Selesai ({dashboardStats.completed})
+  1300→  1300→          </button>
+  1301→  1301→        </div>
+  1302→  1302→      </div>
+  1303→  1303→
+  1304→  1304→      {/* Patient Cards */}
+  1305→  1305→      <div className="space-y-3 max-h-[calc(100vh-380px)] overflow-y-auto custom-scrollbar">
+  1306→  1306→        {filteredPatients.length === 0 ? (
+  1307→  1307→          <Card className="p-6 text-center text-muted-foreground">
+  1308→  1308→            Tidak ada pasien ditemukan.
+  1309→  1309→          </Card>
+  1310→  1310→        ) : (
+  1311→  1311→          filteredPatients.map((patient) => {
+  1312→  1312→            const riskBadge = getRiskBadge(patient.riskLevel);
+  1313→  1313→            const careBadge = getCareStatusBadge(patient.careStatus);
+  1314→  1314→            const isCompleted = patient.patientStatus === 'program_selesai';
+  1315→  1315→            const completionData = palliativeProgramCompletions.find(c => c.palliativePatientId === patient.id);
+  1316→  1316→            const pVitals = vitalSignRecords.filter(
+  1317→  1317→              (v) => v.palliativePatientId === patient.id
+  1318→  1318→            );
+  1319→  1319→            const latestVital = pVitals.sort(
+  1320→  1320→              (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
+  1321→  1321→            )[0];
+  1322→  1322→            const pScreenings = palliativeScreeningRecords.filter(
+  1323→  1323→              (s) => s.palliativePatientId === patient.id
+  1324→  1324→            );
+  1325→  1325→            const latestScreening = pScreenings.sort(
+  1326→  1326→              (a, b) => new Date(b.performedAt).getTime() - new Date(a.performedAt).getTime()
+  1327→  1327→            )[0];
+  1328→  1328→            const pAcp = advanceCarePlans.find(
+  1329→  1329→              (a) => a.palliativePatientId === patient.id && a.isActive
+  1330→  1330→            );
+  1331→  1331→            const acpStatus = pAcp ? getAcpStatus(pAcp) : null;
+  1332→  1332→
+  1333→  1333→            // Risk indicators
+  1334→  1334→            const riskIndicators: string[] = [];
+  1335→  1335→            if (latestVital?.oxygenSat && latestVital.oxygenSat < 90)
+  1336→  1336→              riskIndicators.push('SpO2 rendah');
+  1337→  1337→            if (latestVital?.respiratoryRate && latestVital.respiratoryRate > 24)
+  1338→  1338→              riskIndicators.push('Sesak berat');
+  1339→  1339→            if (latestVital?.systolicBP && latestVital.systolicBP < 90)
+  1340→  1340→              riskIndicators.push('Hipotensi');
+  1341→  1341→            if (latestScreening?.ewsLevel === 'merah')
+  1342→  1342→              riskIndicators.push('Skrining kritis');
+  1343→  1343→            if (pVitals.length >= 2) {
+  1344→  1344→              const sorted = [...pVitals].sort(
+  1345→  1345→                (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
+  1346→  1346→              );
+  1347→  1347→              if (sorted[0].weight && sorted[1].weight && sorted[1].weight - sorted[0].weight > 1)
+  1348→  1348→                riskIndicators.push('Penurunan BB');
+  1349→  1349→            }
+  1350→  1350→
+  1351→  1351→            return (
+  1352→  1352→              <Card
+  1353→  1353→                key={patient.id}
+  1354→  1354→                className={cn(
+  1355→  1355→                  'p-4 cursor-pointer hover:shadow-md transition-shadow border-l-4',
+  1356→  1356→                  isCompleted
+  1357→  1357→                    ? 'border-l-slate-400 opacity-80'
+  1358→  1358→                    : patient.riskLevel === 'merah'
+  1359→  1359→                      ? 'border-l-red-500'
+  1360→  1360→                      : patient.riskLevel === 'kuning'
+  1361→  1361→                        ? 'border-l-amber-500'
+  1362→  1362→                        : 'border-l-green-500'
+  1363→  1363→                )}
+  1364→  1364→                onClick={() => {
+  1365→  1365→                  handleSelectPatient(patient.id);
+  1366→  1366→                  setActiveTab('patients');
+  1367→  1367→                }}
+  1368→  1368→              >
+  1369→  1369→                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+  1370→  1370→                  <div className="flex-1 min-w-0">
+  1371→  1371→                    <div className="flex items-center gap-2 flex-wrap">
+  1372→  1372→                      <h3 className={cn('font-semibold truncate', isCompleted ? 'text-muted-foreground line-through decoration-slate-400' : 'text-foreground')}>
+  1373→  1373→                        {patient.patientName || '-'}
+  1374→  1374→                      </h3>
+  1375→  1375→                      {isCompleted ? (
+  1376→  1376→                        <Badge className="bg-slate-100 text-slate-700 border-slate-300 border">
+  1377→  1377→                          <CircleOff className="w-3 h-3 mr-1" />
+  1378→  1378→                          Program Selesai
+  1379→  1379→                        </Badge>
+  1380→  1380→                      ) : (
+  1381→  1381→                        <>
+  1382→  1382→                          <Badge variant="outline" className={riskBadge.className}>
+  1383→  1383→                            {riskBadge.label}
+  1384→  1384→                          </Badge>
+  1385→  1385→                          <Badge className={careBadge.className}>{careBadge.label}</Badge>
+  1386→  1386→                        </>
+  1387→  1387→                      )}
+  1388→  1388→                    </div>
+  1389→  1389→                    <p className="text-sm text-muted-foreground mt-1">
+  1390→  1390→                      RM: {patient.rmNumber || '-'} | {patient.primaryDiagnosis || '-'}
+  1391→  1391→                      {patient.diseaseStage ? ` (${patient.diseaseStage})` : ''}
+  1392→  1392→                    </p>
+  1393→  1393→                    {isCompleted && completionData ? (
+  1394→  1394→                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
+  1395→  1395→                        <span className="flex items-center gap-1">
+  1396→  1396→                          <CalendarCheck className="w-3 h-3" />
+  1397→  1397→                          Tgl Selesai: {formatDate(completionData.completionDate)}
+  1398→  1398→                        </span>
+  1399→  1399→                        <span className="flex items-center gap-1">
+  1400→  1400→                          <Clock className="w-3 h-3" />
+  1401→  1401→                          Durasi: {completionData.monitoringDurationDays} hari
+  1402→  1402→                        </span>
+  1403→  1403→                        <span className="flex items-center gap-1">
+  1404→  1404→                          <FileCheck className="w-3 h-3" />
+  1405→  1405→                          Alasan: {completionData.reason === 'sembuh_stabil' ? 'Sembuh/Stabil'
+  1406→  1406→                            : completionData.reason === 'meninggal_dunia' ? 'Meninggal Dunia'
+  1407→  1407→                            : completionData.reason === 'dirujuk' ? 'Dirujuk'
+  1408→  1408→                            : completionData.reason === 'pindah_faskes' ? 'Pindah Faskes'
+  1409→  1409→                            : completionData.reason === 'permintaan_pasien_keluarga' ? 'Permintaan Pasien/Keluarga'
+  1410→  1410→                            : completionData.otherReason || 'Lainnya'}
+  1411→  1411→                        </span>
+  1412→  1412→                      </div>
+  1413→  1413→                    ) : (
+  1414→  1414→                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
+  1415→  1415→                        <span className="flex items-center gap-1">
+  1416→  1416→                          <Thermometer className="w-3 h-3" />
+  1417→  1417→                          TTV terakhir:{' '}
+  1418→  1418→                          {latestVital ? formatDateTime(latestVital.recordedAt) : 'Belum ada'}
+  1419→  1419→                        </span>
+  1420→  1420→                        <span className="flex items-center gap-1">
+  1421→  1421→                          <ClipboardCheck className="w-3 h-3" />
+  1422→  1422→                          Skrining:{' '}
+  1423→  1423→                          {latestScreening
+  1424→  1424→                            ? `${getToolTypeName(latestScreening.screeningType)} (${formatDate(latestScreening.performedAt)})`
+  1425→  1425→                            : 'Belum ada'}
+  1426→  1426→                        </span>
+  1427→  1427→                        <span className="flex items-center gap-1">
+  1428→  1428→                          <FileText className="w-3 h-3" />
+  1429→  1429→                          ACP:{' '}
+  1430→  1430→                          {acpStatus ? (
+  1431→  1431→                            <Badge variant="outline" className={cn('text-[10px] px-1', acpStatus.className)}>
+  1432→  1432→                              {acpStatus.label}
+  1433→  1433→                            </Badge>
+  1434→  1434→                          ) : (
+  1435→  1435→                            'Belum ada'
+  1436→  1436→                          )}
+  1437→  1437→                        </span>
+  1438→  1438→                        {(() => {
+  1439→  1439→                          const pNut = nutritionRecords
+  1440→  1440→                            .filter(n => n.palliativePatientId === patient.id)
+  1441→  1441→                            .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime())[0];
+  1442→  1442→                          if (!pNut) return null;
+  1443→  1443→                          const nutPct = pNut.actualIntakeKcal && pNut.calculation.totalCalorieNeeds
+  1444→  1444→                            ? Math.round((pNut.actualIntakeKcal / pNut.calculation.totalCalorieNeeds) * 100) : 0;
+  1445→  1445→                          const nutColor = nutPct >= 80 ? 'bg-green-100 text-green-800 border-green-300' : nutPct >= 50 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-red-100 text-red-800 border-red-300';
+  1446→  1446→                          return (
+  1447→  1447→                            <span className="flex items-center gap-1">
+  1448→  1448→                              <Utensils className="w-3 h-3" />
+  1449→  1449→                              Nutrisi:{' '}
+  1450→  1450→                              <Badge variant="outline" className={cn('text-[10px] px-1', nutColor)}>
+  1451→  1451→                                {nutPct}%
+  1452→  1452→                              </Badge>
+  1453→  1453→                            </span>
+  1454→  1454→                          );
+  1455→  1455→                        })()}
+  1456→  1456→                      </div>
+  1457→  1457→                    )}
+  1458→  1458→                    {!isCompleted && riskIndicators.length > 0 && (
+  1459→  1459→                      <div className="flex items-center gap-1 mt-2 flex-wrap">
+  1460→  1460→                        <AlertTriangle className="w-3 h-3 text-red-500 shrink-0" />
+  1461→  1461→                        {riskIndicators.map((ind, i) => (
+  1462→  1462→                          <Badge
+  1463→  1463→                            key={i}
+  1464→  1464→                            variant="outline"
+  1465→  1465→                            className="text-[10px] bg-red-50 text-red-700 border-red-200"
+  1466→  1466→                          >
+  1467→  1467→                            {ind}
+  1468→  1468→                          </Badge>
+  1469→  1469→                        ))}
+  1470→  1470→                      </div>
+  1471→  1471→                    )}
+  1472→  1472→                  </div>
+  1473→  1473→                  <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />
+  1474→  1474→                </div>
+  1475→  1475→                {/* Quick Action Buttons */}
+  1476→  1476→                <div className="flex items-center gap-1.5 mt-3 flex-wrap" onClick={(e) => e.stopPropagation()}>
+  1477→  1477→                  {isCompleted ? (
+  1478→  1478→                    <>
+  1479→  1479→                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('patients'); }}>
+  1480→  1480→                        <Eye className="w-3 h-3 mr-1" /> Profil
+  1481→  1481→                      </Button>
+  1482→  1482→                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('ttv'); }}>
+  1483→  1483→                        <Thermometer className="w-3 h-3 mr-1" /> Riwayat TTV
+  1484→  1484→                      </Button>
+  1485→  1485→                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('screening'); }}>
+  1486→  1486→                        <ClipboardCheck className="w-3 h-3 mr-1" /> Riwayat Skrining
+  1487→  1487→                      </Button>
+  1488→  1488→                    </>
+  1489→  1489→                  ) : (
+  1490→  1490→                    <>
+  1491→  1491→                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('patients'); }}>
+  1492→  1492→                        <Eye className="w-3 h-3 mr-1" /> Profil
+  1493→  1493→                      </Button>
+  1494→  1494→                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('ttv'); }}>
+  1495→  1495→                        <Thermometer className="w-3 h-3 mr-1" /> TTV
+  1496→  1496→                      </Button>
+  1497→  1497→                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('medication'); }}>
+  1498→  1498→                        <Pill className="w-3 h-3 mr-1" /> Obat
+  1499→  1499→                      </Button>
+  1500→  1500→                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('nutrition'); }}>
+  1501→  1501→                        <Utensils className="w-3 h-3 mr-1" /> Nutrisi
+  1502→  1502→                      </Button>
+  1503→  1503→                      <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('acp'); }}>
+  1504→  1504→                        <Shield className="w-3 h-3 mr-1" /> ACP
+  1505→  1505→                      </Button>
+  1506→  1506→                      <Button variant="default" size="sm" className="h-7 text-[11px]" onClick={() => { handleSelectPatient(patient.id); setActiveTab('chat'); }}>
+  1507→  1507→                        <MessageCircle className="w-3 h-3 mr-1" /> Chat
+  1508→  1508→                      </Button>
+  1509→  1509→                      <Button
+  1510→  1510→                        variant="outline"
+  1511→  1511→                        size="sm"
+  1512→  1512→                        className="h-7 text-[11px] border-slate-300 text-slate-600 hover:bg-slate-50 hover:text-slate-700"
+  1513→  1513→                        onClick={() => {
+  1514→  1514→                          setShowProgramCompleteConfirm(patient.id);
+  1515→  1515→                          setProgramCompletionDate(new Date().toISOString().split('T')[0]);
+  1516→  1516→                          setProgramCompletionReason('sembuh_stabil');
+  1517→  1517→                          setProgramCompletionOtherReason('');
+  1518→  1518→                          setProgramCompletionNotes('');
+  1519→  1519→                        }}
+  1520→  1520→                      >
+  1521→  1521→                        <CircleOff className="w-3 h-3 mr-1" />
+  1522→  1522→                        Program Selesai
+  1523→  1523→                      </Button>
+  1524→  1524→                    </>
+  1525→  1525→                  )}
+  1526→  1526→                </div>
+  1527→  1527→              </Card>
+  1528→  1528→            );
+  1529→  1529→          })
+  1530→  1530→        )}
+  1531→  1531→      </div>
+  1532→  1532→    </div>
+  1533→  1533→  );
+  1534→  1534→
+  1535→  1535→  // ── Render: Patients Tab ──
+  1536→  1536→  const renderPatients = () => {
+  1537→  1537→    const detailPatient = showPatientDetail
+  1538→  1538→      ? palliativePatients.find((p) => p.id === showPatientDetail) || selectedPatient
+  1539→  1539→      : selectedPatient;
+  1540→  1540→
+  1541→  1541→    return (
+  1542→  1542→      <div className="space-y-4">
+  1543→  1543→        <div className="flex items-center justify-between">
+  1544→  1544→          <h2 className="text-lg font-semibold">Manajemen Pasien Paliatif</h2>
+  1545→  1545→          <Button
+  1546→  1546→            onClick={() => {
+  1547→  1547→              setNewPatient({});
+  1548→  1548→              setShowAddPatient(true);
+  1549→  1549→            }}
+  1550→  1550→          >
+  1551→  1551→            <Plus className="w-4 h-4 mr-2" />
+  1552→  1552→            Tambah Pasien
+  1553→  1553→          </Button>
+  1554→  1554→        </div>
+  1555→  1555→
+  1556→  1556→        {detailPatient ? (
+  1557→  1557→          <div className="space-y-4">
+  1558→  1558→            <Button
+  1559→  1559→              variant="ghost"
+  1560→  1560→              size="sm"
+  1561→  1561→              onClick={() => {
+  1562→  1562→                setShowPatientDetail(null);
+  1563→  1563→                setSelectedPalliativePatientId(null);
+  1564→  1564→              }}
+  1565→  1565→            >
+  1566→  1566→              Kembali ke Daftar
+  1567→  1567→            </Button>
+  1568→  1568→
+  1569→  1569→            {/* Patient Detail Card */}
+  1570→  1570→            <Card className="p-6">
+  1571→  1571→              <div className="flex flex-col sm:flex-row justify-between gap-4">
+  1572→  1572→                <div className="space-y-3">
+  1573→  1573→                  <div className="flex items-center gap-2 flex-wrap">
+  1574→  1574→                    <h3 className="text-xl font-bold">{detailPatient.patientName || '-'}</h3>
+  1575→  1575→                    <Badge variant="outline" className={getRiskBadge(detailPatient.riskLevel).className}>
+  1576→  1576→                      {getRiskBadge(detailPatient.riskLevel).label}
+  1577→  1577→                    </Badge>
+  1578→  1578→                    <Badge className={getCareStatusBadge(detailPatient.careStatus).className}>
+  1579→  1579→                      {getCareStatusBadge(detailPatient.careStatus).label}
+  1580→  1580→                    </Badge>
+  1581→  1581→                    <Badge variant="secondary">{getPatientStatusLabel(detailPatient.patientStatus)}</Badge>
+  1582→  1582→                  </div>
+  1583→  1583→                  <Separator />
+  1584→  1584→                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+  1585→  1585→                    <div>
+  1586→  1586→                      <span className="text-muted-foreground">No. Rekam Medis:</span>{' '}
+  1587→  1587→                      {detailPatient.rmNumber || '-'}
+  1588→  1588→                    </div>
+  1589→  1589→                    <div>
+  1590→  1590→                      <span className="text-muted-foreground">No. BPJS:</span>{' '}
+  1591→  1591→                      {detailPatient.bpjsNumber || '-'}
+  1592→  1592→                    </div>
+  1593→  1593→                    <div>
+  1594→  1594→                      <span className="text-muted-foreground">NIK:</span>{' '}
+  1595→  1595→                      {detailPatient.nik || '-'}
+  1596→  1596→                    </div>
+  1597→  1597→                    <div>
+  1598→  1598→                      <span className="text-muted-foreground">Tgl Lahir:</span>{' '}
+  1599→  1599→                      {detailPatient.dateOfBirth ? formatDate(detailPatient.dateOfBirth) : '-'}
+  1600→  1600→                    </div>
+  1601→  1601→                    <div>
+  1602→  1602→                      <span className="text-muted-foreground">Jenis Kelamin:</span>{' '}
+  1603→  1603→                      {detailPatient.gender || '-'}
+  1604→  1604→                    </div>
+  1605→  1605→                    <div>
+  1606→  1606→                      <span className="text-muted-foreground">Diagnosa Utama:</span>{' '}
+  1607→  1607→                      {detailPatient.primaryDiagnosis || '-'}
+  1608→  1608→                    </div>
+  1609→  1609→                    <div>
+  1610→  1610→                      <span className="text-muted-foreground">Diagnosa Penyerta:</span>{' '}
+  1611→  1611→                      {detailPatient.secondaryDiagnosis || '-'}
+  1612→  1612→                    </div>
+  1613→  1613→                    <div>
+  1614→  1614→                      <span className="text-muted-foreground">Stadium:</span>{' '}
+  1615→  1615→                      {detailPatient.diseaseStage || '-'}
+  1616→  1616→                    </div>
+  1617→  1617→                    <div>
+  1618→  1618→                      <span className="text-muted-foreground">Dokter PJ:</span>{' '}
+  1619→  1619→                      {detailPatient.attendingDoctorName || '-'}
+  1620→  1620→                    </div>
+  1621→  1621→                    <div>
+  1622→  1622→                      <span className="text-muted-foreground">Keluarga:</span>{' '}
+  1623→  1623→                      {detailPatient.familyContactName || '-'} (
+  1624→  1624→                      {detailPatient.familyContactRelation || '-'}) -{' '}
+  1625→  1625→                      {detailPatient.familyContactPhone || '-'}
+  1626→  1626→                    </div>
+  1627→  1627→                    <div className="sm:col-span-2">
+  1628→  1628→                      <span className="text-muted-foreground">Alamat:</span>{' '}
+  1629→  1629→                      {detailPatient.address || '-'}
+  1630→  1630→                    </div>
+  1631→  1631→                    {detailPatient.notes && (
+  1632→  1632→                      <div className="sm:col-span-2">
+  1633→  1633→                        <span className="text-muted-foreground">Catatan:</span>{' '}
+  1634→  1634→                        {detailPatient.notes}
+  1635→  1635→                      </div>
+  1636→  1636→                    )}
+  1637→  1637→                  </div>
+  1638→  1638→                </div>
+  1639→  1639→                <div className="flex sm:flex-col gap-2 shrink-0">
+  1640→  1640→                  <Button
+  1641→  1641→                    variant="outline"
+  1642→  1642→                    size="sm"
+  1643→  1643→                    onClick={() => setEditingPatient(detailPatient)}
+  1644→  1644→                  >
+  1645→  1645→                    <Edit className="w-4 h-4 mr-1" />
+  1646→  1646→                    Edit
+  1647→  1647→                  </Button>
+  1648→  1648→                  <Button
+  1649→  1649→                    variant="destructive"
+  1650→  1650→                    size="sm"
+  1651→  1651→                    onClick={() => setShowDeleteConfirm(detailPatient.id)}
+  1652→  1652→                  >
+  1653→  1653→                    <Trash2 className="w-4 h-4 mr-1" />
+  1654→  1654→                    Hapus
+  1655→  1655→                  </Button>
+  1656→  1656→                  <Button
+  1657→  1657→                    variant="outline"
+  1658→  1658→                    size="sm"
+  1659→  1659→                    className="border-slate-300 text-slate-600 hover:bg-slate-50 hover:text-slate-700"
+  1660→  1660→                    onClick={() => {
+  1661→  1661→                      setShowProgramCompleteConfirm(detailPatient.id);
+  1662→  1662→                      setProgramCompletionDate(new Date().toISOString().split('T')[0]);
+  1663→  1663→                      setProgramCompletionReason('sembuh_stabil');
+  1664→  1664→                      setProgramCompletionOtherReason('');
+  1665→  1665→                      setProgramCompletionNotes('');
+  1666→  1666→                    }}
+  1667→  1667→                  >
+  1668→  1668→                    <CircleOff className="w-4 h-4 mr-1" />
+  1669→  1669→                    Program Selesai
+  1670→  1670→                  </Button>
+  1671→  1671→                </div>
+  1672→  1672→              </div>
+  1673→  1673→            </Card>
+  1674→  1674→
+  1675→  1675→            {/* Quick Stats */}
+  1676→  1676→            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1677→  1677→              <Card className="p-4 text-center">
+  1678→  1678→                <p className="text-xs text-muted-foreground">Jumlah TTV</p>
+  1679→  1679→                <p className="text-xl font-bold">
+  1680→  1680→                  {vitalSignRecords.filter((v) => v.palliativePatientId === detailPatient.id).length}
+  1681→  1681→                </p>
+  1682→  1682→              </Card>
+  1683→  1683→              <Card className="p-4 text-center">
+  1684→  1684→                <p className="text-xs text-muted-foreground">Obat Aktif</p>
+  1685→  1685→                <p className="text-xl font-bold">
+  1686→  1686→                  {
+  1687→  1687→                    palliativeMedications.filter(
+  1688→  1688→                      (m) => m.palliativePatientId === detailPatient.id && m.isActive
+  1689→  1689→                    ).length
+  1690→  1690→                  }
+  1691→  1691→                </p>
+  1692→  1692→              </Card>
+  1693→  1693→              <Card className="p-4 text-center">
+  1694→  1694→                <p className="text-xs text-muted-foreground">Skrining</p>
+  1695→  1695→                <p className="text-xl font-bold">
+  1696→  1696→                  {
+  1697→  1697→                    palliativeScreeningRecords.filter(
+  1698→  1698→                      (s) => s.palliativePatientId === detailPatient.id
+  1699→  1699→                    ).length
+  1700→  1700→                  }
+  1701→  1701→                </p>
+  1702→  1702→              </Card>
+  1703→  1703→              <Card className="p-4 text-center">
+  1704→  1704→                <p className="text-xs text-muted-foreground">ACP</p>
+  1705→  1705→                <p className="text-xl font-bold">
+  1706→  1706→                  {
+  1707→  1707→                    advanceCarePlans.filter((a) => a.palliativePatientId === detailPatient.id).length
+  1708→  1708→                  }
+  1709→  1709→                </p>
+  1710→  1710→              </Card>
+  1711→  1711→              <Card className="p-4">
+  1712→  1712→                <div className="flex items-center gap-1.5 mb-1">
+  1713→  1713→                  <FileText className="w-3.5 h-3.5 text-primary" />
+  1714→  1714→                  <p className="text-xs text-muted-foreground">Resume Medis</p>
+  1715→  1715→                </div>
+  1716→  1716→                <p className="text-xl font-bold text-primary">
+  1717→  1717→                  {palliativeResumes.filter((r) => r.palliativePatientId === detailPatient.id).length}
+  1718→  1718→                </p>
+  1719→  1719→                {(() => {
+  1720→  1720→                  const pr = palliativeResumes
+  1721→  1721→                    .filter((r) => r.palliativePatientId === detailPatient.id)
+  1722→  1722→                    .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+  1723→  1723→                  return pr.length > 0 ? (
+  1724→  1724→                    <p className="text-[10px] text-muted-foreground mt-1">
+  1725→  1725→                      Terakhir: {new Date(pr[0].generatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+  1726→  1726→                      {pr[0].isSigned ? ' (Signed)' : ''}
+  1727→  1727→                    </p>
+  1728→  1728→                  ) : null;
+  1729→  1729→                })()}
+  1730→  1730→              </Card>
+  1731→  1731→              <Card className="p-4">
+  1732→  1732→                <div className="flex items-center gap-1.5 mb-1">
+  1733→  1733→                  <Building2 className="w-3.5 h-3.5 text-teal-600" />
+  1734→  1734→                  <p className="text-xs text-muted-foreground">Surat Rujukan</p>
+  1735→  1735→                </div>
+  1736→  1736→                <p className="text-xl font-bold text-teal-600">
+  1737→  1737→                  {palliativeReferralLetters.filter((l) => l.palliativePatientId === detailPatient.id).length}
+  1738→  1738→                </p>
+  1739→  1739→                {(() => {
+  1740→  1740→                  const lr = palliativeReferralLetters
+  1741→  1741→                    .filter((l) => l.palliativePatientId === detailPatient.id)
+  1742→  1742→                    .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+  1743→  1743→                  if (lr.length === 0) return null;
+  1744→  1744→                  const statusMap: Record<string, { label: string; cls: string }> = {
+  1745→  1745→                    belum_dirujuk: { label: 'Belum Dirujuk', cls: 'text-slate-500' },
+  1746→  1746→                    menunggu: { label: 'Menunggu', cls: 'text-amber-600' },
+  1747→  1747→                    sudah_dirujuk: { label: 'Sudah Dirujuk', cls: 'text-blue-600' },
+  1748→  1748→                    selesai: { label: 'Selesai', cls: 'text-green-600' },
+  1749→  1749→                  };
+  1750→  1750→                  const st = statusMap[lr[0].referralStatus] || statusMap.belum_dirujuk;
+  1751→  1751→                  return (
+  1752→  1752→                    <p className={`text-[10px] mt-1 ${st.cls}`}>
+  1753→  1753→                      {st.label} - {new Date(lr[0].generatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+  1754→  1754→                    </p>
+  1755→  1755→                  );
+  1756→  1756→                })()}
+  1757→  1757→              </Card>
+  1758→  1758→            </div>
+  1759→  1759→          </div>
+  1760→  1760→        ) : (
+  1761→  1761→          <>
+  1762→  1762→            {/* Patient Table */}
+  1763→  1763→            <div className="flex flex-col gap-2 mb-3">
+  1764→  1764→              <div className="flex flex-col sm:flex-row gap-2">
+  1765→  1765→                <div className="relative flex-1">
+  1766→  1766→                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+  1767→  1767→                  <Input
+  1768→  1768→                    placeholder="Cari pasien..."
+  1769→  1769→                    value={searchQuery}
+  1770→  1770→                    onChange={(e) => setSearchQuery(e.target.value)}
+  1771→  1771→                    className="pl-9"
+  1772→  1772→                  />
+  1773→  1773→                </div>
+  1774→  1774→                <Select value={filterRisk} onValueChange={setFilterRisk}>
+  1775→  1775→                  <SelectTrigger className="w-full sm:w-40">
+  1776→  1776→                    <SelectValue placeholder="Filter Risiko" />
+  1777→  1777→                  </SelectTrigger>
+  1778→  1778→                  <SelectContent>
+  1779→  1779→                    <SelectItem value="all">Semua</SelectItem>
+  1780→  1780→                    <SelectItem value="merah">Merah</SelectItem>
+  1781→  1781→                    <SelectItem value="kuning">Kuning</SelectItem>
+  1782→  1782→                    <SelectItem value="hijau">Hijau</SelectItem>
+  1783→  1783→                  </SelectContent>
+  1784→  1784→                </Select>
+  1785→  1785→              </div>
+  1786→  1786→              <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+  1787→  1787→                <button
+  1788→  1788→                  className={cn(
+  1789→  1789→                    'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+  1790→  1790→                    patientListFilter === 'aktif'
+  1791→  1791→                      ? 'bg-background text-foreground shadow-sm'
+  1792→  1792→                      : 'text-muted-foreground hover:text-foreground'
+  1793→  1793→                  )}
+  1794→  1794→                  onClick={() => setPatientListFilter('aktif')}
+  1795→  1795→                >
+  1796→  1796→                  <Activity className="w-3.5 h-3.5 inline mr-1.5" />
+  1797→  1797→                  Aktif ({dashboardStats.active})
+  1798→  1798→                </button>
+  1799→  1799→                <button
+  1800→  1800→                  className={cn(
+  1801→  1801→                    'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+  1802→  1802→                    patientListFilter === 'program_selesai'
+  1803→  1803→                      ? 'bg-background text-foreground shadow-sm'
+  1804→  1804→                      : 'text-muted-foreground hover:text-foreground'
+  1805→  1805→                  )}
+  1806→  1806→                  onClick={() => setPatientListFilter('program_selesai')}
+  1807→  1807→                >
+  1808→  1808→                  <Archive className="w-3.5 h-3.5 inline mr-1.5" />
+  1809→  1809→                  Program Selesai ({dashboardStats.completed})
+  1810→  1810→                </button>
+  1811→  1811→              </div>
+  1812→  1812→            </div>
+  1813→  1813→
+  1814→  1814→            <div className="border rounded-lg overflow-hidden">
+  1815→  1815→              <Table>
+  1816→  1816→                <TableHeader>
+  1817→  1817→                  <TableRow>
+  1818→  1818→                    <TableHead>Nama</TableHead>
+  1819→  1819→                    <TableHead className="hidden sm:table-cell">RM</TableHead>
+  1820→  1820→                    <TableHead className="hidden md:table-cell">Diagnosa</TableHead>
+  1821→  1821→                    <TableHead>Status</TableHead>
+  1822→  1822→                    <TableHead>Risiko</TableHead>
+  1823→  1823→                    <TableHead className="text-right">Aksi</TableHead>
+  1824→  1824→                  </TableRow>
+  1825→  1825→                </TableHeader>
+  1826→  1826→                <TableBody>
+  1827→  1827→                  {filteredPatients.length === 0 ? (
+  1828→  1828→                    <TableRow>
+  1829→  1829→                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+  1830→  1830→                        Tidak ada pasien ditemukan
+  1831→  1831→                      </TableCell>
+  1832→  1832→                    </TableRow>
+  1833→  1833→                  ) : (
+  1834→  1834→                    filteredPatients.map((p) => {
+  1835→  1835→                      const riskBadge = getRiskBadge(p.riskLevel);
+  1836→  1836→                      const careBadge = getCareStatusBadge(p.careStatus);
+  1837→  1837→                      const isCompleted = p.patientStatus === 'program_selesai';
+  1838→  1838→                      return (
+  1839→  1839→                        <TableRow key={p.id} className={isCompleted ? 'opacity-70' : ''}>
+  1840→  1840→                          <TableCell className={cn('font-medium', isCompleted && 'line-through decoration-slate-400')}>
+  1841→  1841→                            {p.patientName || '-'}
+  1842→  1842→                          </TableCell>
+  1843→  1843→                          <TableCell className="hidden sm:table-cell">{p.rmNumber || '-'}</TableCell>
+  1844→  1844→                          <TableCell className="hidden md:table-cell max-w-[200px] truncate">
+  1845→  1845→                            {p.primaryDiagnosis || '-'}
+  1846→  1846→                          </TableCell>
+  1847→  1847→                          <TableCell>
+  1848→  1848→                            {isCompleted ? (
+  1849→  1849→                              <Badge className="bg-slate-100 text-slate-700 border-slate-300 border">Program Selesai</Badge>
+  1850→  1850→                            ) : (
+  1851→  1851→                              <Badge className={careBadge.className}>{careBadge.label}</Badge>
+  1852→  1852→                            )}
+  1853→  1853→                          </TableCell>
+  1854→  1854→                          <TableCell>
+  1855→  1855→                            <Badge variant="outline" className={riskBadge.className}>
+  1856→  1856→                              {riskBadge.label}
+  1857→  1857→                            </Badge>
+  1858→  1858→                          </TableCell>
+  1859→  1859→                          <TableCell className="text-right">
+  1860→  1860→                            <div className="flex items-center justify-end gap-1">
+  1861→  1861→                              <Button
+  1862→  1862→                                variant="ghost"
+  1863→  1863→                                size="sm"
+  1864→  1864→                                onClick={() => {
+  1865→  1865→                                  handleSelectPatient(p.id);
+  1866→  1866→                                  setShowPatientDetail(p.id);
+  1867→  1867→                                }}
+  1868→  1868→                              >
+  1869→  1869→                                <Eye className="w-4 h-4" />
+  1870→  1870→                              </Button>
+  1871→  1871→                              {!isCompleted && (
+  1872→  1872→                                <Button
+  1873→  1873→                                  variant="ghost"
+  1874→  1874→                                  size="sm"
+  1875→  1875→                                  onClick={() => setEditingPatient(p)}
+  1876→  1876→                                >
+  1877→  1877→                                  <Edit className="w-4 h-4" />
+  1878→  1878→                                </Button>
+  1879→  1879→                              )}
+  1880→  1880→                              <Button
+  1881→  1881→                                variant="ghost"
+  1882→  1882→                                size="sm"
+  1883→  1883→                                onClick={() => setShowDeleteConfirm(p.id)}
+  1884→  1884→                              >
+  1885→  1885→                                <Trash2 className="w-4 h-4 text-destructive" />
+  1886→  1886→                              </Button>
+  1887→  1887→                              {!isCompleted && (
+  1888→  1888→                                <Button
+  1889→  1889→                                  variant="ghost"
+  1890→  1890→                                  size="sm"
+  1891→  1891→                                  className="text-slate-600 hover:text-slate-700 hover:bg-slate-50"
+  1892→  1892→                                  onClick={() => {
+  1893→  1893→                                    setShowProgramCompleteConfirm(p.id);
+  1894→  1894→                                    setProgramCompletionDate(new Date().toISOString().split('T')[0]);
+  1895→  1895→                                    setProgramCompletionReason('sembuh_stabil');
+  1896→  1896→                                    setProgramCompletionOtherReason('');
+  1897→  1897→                                    setProgramCompletionNotes('');
+  1898→  1898→                                  }}
+  1899→  1899→                                  title="Program Selesai"
+  1900→  1900→                                >
+  1901→  1901→                                  <CircleOff className="w-4 h-4" />
+  1902→  1902→                                </Button>
+  1903→  1903→                              )}
+  1904→  1904→                            </div>
+  1905→  1905→                          </TableCell>
+  1906→  1906→                        </TableRow>
+  1907→  1907→                      );
+  1908→  1908→                    })
+  1909→  1909→                  )}
+  1910→  1910→                </TableBody>
+  1911→  1911→              </Table>
+  1912→  1912→            </div>
+  1913→  1913→          </>
+  1914→  1914→        )}
+  1915→  1915→      </div>
+  1916→  1916→    );
+  1917→  1917→  };
+  1918→  1918→
+  1919→  1919→  // ── Render: TTV Serial ──
+  1920→  1920→  const renderTTV = () => (
+  1921→  1921→    <div className="space-y-4">
+  1922→  1922→      <div className="flex items-center justify-between">
+  1923→  1923→        <h2 className="text-lg font-semibold">Monitoring Tanda Vital Serial</h2>
+  1924→  1924→        <Button onClick={() => setShowAddVital(true)} disabled={!selectedPatient}>
+  1925→  1925→          <Plus className="w-4 h-4 mr-2" />
+  1926→  1926→          Tambah TTV
+  1927→  1927→        </Button>
+  1928→  1928→      </div>
+  1929→  1929→
+  1930→  1930→      {!selectedPatient ? (
+  1931→  1931→        <Card className="p-8 text-center text-muted-foreground">
+  1932→  1932→          <Thermometer className="w-12 h-12 mx-auto mb-3 opacity-50" />
+  1933→  1933→          <p>Pilih pasien terlebih dahulu untuk melihat data tanda vital.</p>
+  1934→  1934→        </Card>
+  1935→  1935→      ) : (
+  1936→  1936→        <>
+  1937→  1937→          {/* Alerts */}
+  1938→  1938→          {vitalAlerts.length > 0 && (
+  1939→  1939→            <div className="space-y-2">
+  1940→  1940→              {vitalAlerts.map((alert, i) => (
+  1941→  1941→                <Alert
+  1942→  1942→                  key={i}
+  1943→  1943→                  variant={alert.severity === 'critical' ? 'destructive' : 'default'}
+  1944→  1944→                >
+  1945→  1945→                  <AlertTriangle className="w-4 h-4" />
+  1946→  1946→                  <AlertTitle>{alert.label}</AlertTitle>
+  1947→  1947→                  <AlertDescription>
+  1948→  1948→                    Nilai: {alert.value} —{' '}
+  1949→  1949→                    {alert.severity === 'critical'
+  1950→  1950→                      ? 'Memerlukan perhatian segera!'
+  1951→  1951→                      : 'Perlu dipantau.'}
+  1952→  1952→                  </AlertDescription>
+  1953→  1953→                </Alert>
+  1954→  1954→              ))}
+  1955→  1955→            </div>
+  1956→  1956→          )}
+  1957→  1957→
+  1958→  1958→          {/* Vital Signs Table */}
+  1959→  1959→          <Card>
+  1960→  1960→            <CardHeader className="pb-2">
+  1961→  1961→              <CardTitle className="text-base">Riwayat Tanda Vital</CardTitle>
+  1962→  1962→              <CardDescription>
+  1963→  1963→                Pasien: {selectedPatient.patientName} ({selectedPatient.rmNumber || '-'})
+  1964→  1964→              </CardDescription>
+  1965→  1965→            </CardHeader>
+  1966→  1966→            <CardContent>
+  1967→  1967→              <ScrollArea className="max-h-72">
+  1968→  1968→                <Table>
+  1969→  1969→                  <TableHeader>
+  1970→  1970→                    <TableRow>
+  1971→  1971→                      <TableHead>Waktu</TableHead>
+  1972→  1972→                      <TableHead>TD</TableHead>
+  1973→  1973→                      <TableHead>Nadi</TableHead>
+  1974→  1974→                      <TableHead>RR</TableHead>
+  1975→  1975→                      <TableHead>Suhu</TableHead>
+  1976→  1976→                      <TableHead>SpO2</TableHead>
+  1977→  1977→                      <TableHead>BB</TableHead>
+  1978→  1978→                      <TableHead>BMI</TableHead>
+  1979→  1979→                      <TableHead>Oleh</TableHead>
+  1980→  1980→                    </TableRow>
+  1981→  1981→                  </TableHeader>
+  1982→  1982→                  <TableBody>
+  1983→  1983→                    {patientVitals.length === 0 ? (
+  1984→  1984→                      <TableRow>
+  1985→  1985→                        <TableCell colSpan={9} className="text-center text-muted-foreground py-6">
+  1986→  1986→                          Belum ada data TTV
+  1987→  1987→                        </TableCell>
+  1988→  1988→                      </TableRow>
+  1989→  1989→                    ) : (
+  1990→  1990→                      patientVitals.map((v) => (
+  1991→  1991→                        <TableRow key={v.id}>
+  1992→  1992→                          <TableCell className="text-xs">
+  1993→  1993→                            {formatDateTime(v.recordedAt)}
+  1994→  1994→                          </TableCell>
+  1995→  1995→                          <TableCell>
+  1996→  1996→                            <span
+  1997→  1997→                              className={cn(
+  1998→  1998→                                v.systolicBP && v.systolicBP < 90
+  1999→  1999→                                  ? 'text-red-600 font-bold'
+  2000→  2000→                                  : ''
+
+[showing lines 1-2000 of 2002; use offset=2001 with limit to continue reading]

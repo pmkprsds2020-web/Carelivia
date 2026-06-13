@@ -171,7 +171,7 @@ export default function TelemedicineApp() {
               {activePanel === 'palliative-monitoring' && 'Monitoring Paliatif'}
               {activePanel === 'rvsm' && 'Remote Vital Sign Monitoring'}
               {activePanel === 'patient-paliatif' && 'Pelayanan Paliatif'}
-              {activePanel === 'social-needs-screening' && 'Skrining Kebutuhan Sosial'}
+              {activePanel === 'social-needs-screening' && 'Skrining Sosial'}
               {activePanel === 'doctor-panel' && 'Panel Dokter'}
               {activePanel === 'pharmacist-panel' && 'Panel Apotek'}
               {activePanel === 'homecare-staff-panel' && 'Panel Petugas'}

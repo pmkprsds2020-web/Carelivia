@@ -1,0 +1,1688 @@
+     1→export type UserRole = 'patient' | 'doctor' | 'pharmacist' | 'homecare_staff' | 'admin';
+     2→
+     3→export type ConsultationType = 'chat' | 'video' | 'audio';
+     4→export type ConsultationStatus = 'waiting' | 'active' | 'completed' | 'cancelled';
+     5→
+     6→export type MessageStatus = 'sent' | 'delivered' | 'read';
+     7→export type MessageType = 'text' | 'image' | 'file' | 'voice' | 'lab_result';
+     8→
+     9→export type PaymentMethod = 'qris' | 'bank_transfer' | 'va' | 'gopay' | 'ovo' | 'dana' | 'shopeepay';
+    10→export type PaymentStatus = 'pending' | 'success' | 'failed' | 'refunded';
+    11→
+    12→export type OrderStatus = 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+    13→
+    14→export type HomeCareBookingStatus = 'pending' | 'confirmed' | 'in_progress' | 'on_the_way' | 'completed' | 'cancelled';
+    15→
+    16→export type MedicineCategory = 'resep' | 'bebas' | 'vitamin' | 'alat_kesehatan';
+    17→
+    18→export type NotificationType = 'consultation' | 'chat' | 'homecare' | 'pharmacy' | 'payment' | 'reminder' | 'screening' | 'clinical_alert';
+    19→
+    20→export interface User {
+    21→  id: string;
+    22→  email: string;
+    23→  phone?: string;
+    24→  name: string;
+    25→  role: UserRole;
+    26→  avatar?: string;
+    27→  nik?: string;
+    28→  bpjsNumber?: string;
+    29→  address?: string;
+    30→  dateOfBirth?: string;
+    31→  gender?: string;
+    32→  isVerified: boolean;
+    33→  isActive: boolean;
+    34→  createdAt: string;
+    35→  updatedAt: string;
+    36→  doctorProfile?: DoctorProfile;
+    37→  patientProfile?: PatientProfile;
+    38→}
+    39→
+    40→export interface DoctorProfile {
+    41→  id: string;
+    42→  userId: string;
+    43→  specialization: string;
+    44→  licenseNumber?: string;
+    45→  hospital?: string;
+    46→  experience?: number;
+    47→  rating: number;
+    48→  reviewCount: number;
+    49→  consultationFee: number;
+    50→  isOnline: boolean;
+    51→  isAvailable: boolean;
+    52→  bio?: string;
+    53→  education?: string;
+    54→}
+    55→
+    56→export interface PatientProfile {
+    57→  id: string;
+    58→  userId: string;
+    59→  bloodType?: string;
+    60→  allergies?: string;
+    61→  medicalHistory?: string;
+    62→  emergencyContact?: string;
+    63→  emergencyPhone?: string;
+    64→  height?: number;
+    65→  weight?: number;
+    66→}
+    67→
+    68→export interface Consultation {
+    69→  id: string;
+    70→  patientId: string;
+    71→  doctorId: string;
+    72→  type: ConsultationType;
+    73→  status: ConsultationStatus;
+    74→  startTime?: string;
+    75→  endTime?: string;
+    76→  notes?: string;
+    77→  rating?: number;
+    78→  review?: string;
+    79→  createdAt: string;
+    80→  updatedAt: string;
+    81→  patient?: User;
+    82→  doctor?: User & { doctorProfile?: DoctorProfile };
+    83→  messages?: Message[];
+    84→  prescription?: Prescription;
+    85→  medicalRecord?: MedicalRecord;
+    86→}
+    87→
+    88→export interface Message {
+    89→  id: string;
+    90→  consultationId: string;
+    91→  senderId: string;
+    92→  content: string;
+    93→  type: MessageType;
+    94→  fileUrl?: string;
+    95→  status: MessageStatus;
+    96→  createdAt: string;
+    97→  sender?: User;
+    98→}
+    99→
+   100→export interface Prescription {
+   101→  id: string;
+   102→  consultationId: string;
+   103→  doctorId: string;
+   104→  patientId: string;
+   105→  status: string;
+   106→  notes?: string;
+   107→  createdAt: string;
+   108→  updatedAt: string;
+   109→  items?: PrescriptionItem[];
+   110→}
+   111→
+   112→export interface PrescriptionItem {
+   113→  id: string;
+   114→  prescriptionId: string;
+   115→  medicineName: string;
+   116→  dosage: string;
+   117→  quantity: number;
+   118→  frequency: string;
+   119→  duration: string;
+   120→  instructions?: string;
+   121→  price?: number;
+   122→}
+   123→
+   124→export interface Medicine {
+   125→  id: string;
+   126→  name: string;
+   127→  genericName?: string;
+   128→  category: MedicineCategory;
+   129→  description?: string;
+   130→  price: number;
+   131→  stock: number;
+   132→  unit?: string;
+   133→  manufacturer?: string;
+   134→  image?: string;
+   135→  isActive: boolean;
+   136→}
+   137→
+   138→export interface Order {
+   139→  id: string;
+   140→  userId: string;
+   141→  status: OrderStatus;
+   142→  totalAmount: number;
+   143→  shippingFee: number;
+   144→  shippingAddress?: string;
+   145→  trackingNumber?: string;
+   146→  notes?: string;
+   147→  createdAt: string;
+   148→  updatedAt: string;
+   149→  items?: OrderItem[];
+   150→}
+   151→
+   152→export interface OrderItem {
+   153→  id: string;
+   154→  orderId: string;
+   155→  medicineId: string;
+   156→  quantity: number;
+   157→  price: number;
+   158→  medicine?: Medicine;
+   159→}
+   160→
+   161→export interface HomeCareService {
+   162→  id: string;
+   163→  name: string;
+   164→  description?: string;
+   165→  category: string;
+   166→  price: number;
+   167→  duration?: number;
+   168→  image?: string;
+   169→  isActive: boolean;
+   170→}
+   171→
+   172→export interface HomeCareBooking {
+   173→  id: string;
+   174→  patientId: string;
+   175→  staffId?: string;
+   176→  serviceId: string;
+   177→  status: HomeCareBookingStatus;
+   178→  scheduledAt: string;
+   179→  completedAt?: string;
+   180→  address: string;
+   181→  latitude?: number;
+   182→  longitude?: number;
+   183→  notes?: string;
+   184→  staffLat?: number;
+   185→  staffLng?: number;
+   186→  eta?: string;
+   187→  createdAt: string;
+   188→  updatedAt: string;
+   189→  service?: HomeCareService;
+   190→  patient?: User;
+   191→  staff?: User & { homeCareStaff?: HomeCareStaffProfile };
+   192→}
+   193→
+   194→export interface HomeCareStaffProfile {
+   195→  id: string;
+   196→  userId: string;
+   197→  certification?: string;
+   198→  isAvailable: boolean;
+   199→  currentStatus: string;
+   200→}
+   201→
+   202→export interface Payment {
+   203→  id: string;
+   204→  userId: string;
+   205→  amount: number;
+   206→  method: PaymentMethod;
+   207→  status: PaymentStatus;
+   208→  type: string;
+   209→  referenceId?: string;
+   210→  invoiceNumber?: string;
+   211→  paymentProof?: string;
+   212→  paidAt?: string;
+   213→  createdAt: string;
+   214→  updatedAt: string;
+   215→}
+   216→
+   217→export type MedicalRecordStatus = 'draft' | 'selesai' | 'ditinjau';
+   218→
+   219→export interface MedicalRecord {
+   220→  id: string;
+   221→  patientId: string;
+   222→  consultationId?: string;
+   223→  rmNumber?: string;
+   224→  diagnosis?: string;
+   225→  symptoms?: string;
+   226→  treatment?: string;
+   227→  labResults?: string;
+   228→  radiologyResults?: string;
+   229→  notes?: string;
+   230→  status?: MedicalRecordStatus;
+   231→  recordDate: string;
+   232→  createdAt: string;
+   233→  updatedAt: string;
+   234→}
+   235→
+   236→export interface Notification {
+   237→  id: string;
+   238→  userId: string;
+   239→  title: string;
+   240→  message: string;
+   241→  type: NotificationType;
+   242→  isRead: boolean;
+   243→  referenceId?: string;
+   244→  createdAt: string;
+   245→}
+   246→
+   247→export interface Article {
+   248→  id: string;
+   249→  title: string;
+   250→  content: string;
+   251→  category?: string;
+   252→  image?: string;
+   253→  author?: string;
+   254→  isPublished: boolean;
+   255→  createdAt: string;
+   256→  updatedAt: string;
+   257→}
+   258→
+   259→export interface DashboardStats {
+   260→  totalPatients: number;
+   261→  totalDoctors: number;
+   262→  totalConsultations: number;
+   263→  totalOrders: number;
+   264→  totalHomeCareBookings: number;
+   265→  totalRevenue: number;
+   266→  recentConsultations: Consultation[];
+   267→  recentPayments: Payment[];
+   268→  monthlyStats: { month: string; count: number }[];
+   269→  doctorSpecializationDistribution: { specialization: string; count: number }[];
+   270→  topDoctors: { doctorId: string; name: string; count: number }[];
+   271→}
+   272→
+   273→// ── Screening Types (Skrining Komprehensif Telemedicine) ──────────────────
+   274→
+   275→export type ScreeningModuleId =
+   276→  | 'keluhan_utama' | 'tanda_bahaya' | 'tanda_vital' | 'penyakit_kronis'
+   277→  | 'nyeri' | 'kesehatan_mental' | 'nutrisi' | 'risiko_jatuh'
+   278→  | 'status_fungsional' | 'home_care' | 'paliatif' | 'bukti_klinis';
+   279→
+   280→export type ScreeningStatus = 'sent' | 'opened' | 'in_progress' | 'draft' | 'completed' | 'reviewed';
+   281→
+   282→export type RiskCategory = 'rendah' | 'sedang' | 'tinggi';
+   283→
+   284→export type TriageLevel = 'hijau' | 'kuning' | 'oranye' | 'merah';
+   285→
+   286→export interface ScreeningQuestion {
+   287→  id: string;
+   288→  text: string;
+   289→  type: 'radio' | 'checkbox' | 'number' | 'text' | 'scale' | 'file_upload';
+   290→  options?: { label: string; value: string | number; score: number }[];
+   291→  required: boolean;
+   292→  section?: string;
+   293→  min?: number;
+   294→  max?: number;
+   295→  placeholder?: string;
+   296→  unit?: string; // e.g. 'kg', 'cm', 'mmHg', 'bpm', '%', '°C'
+   297→  conditionalLogic?: { showIfQuestionId: string; showIfValue: string | number };
+   298→}
+   299→
+   300→export interface ScreeningModule {
+   301→  id: ScreeningModuleId;
+   302→  name: string;
+   303→  icon: string;
+   304→  description: string;
+   305→  estimatedMinutes: number;
+   306→  isRequired: boolean; // whether this module is required in the screening
+   307→  targetAudience: 'all' | 'lansia' | 'kronis' | 'paliatif'; // who should fill this
+   308→  questions: ScreeningQuestion[];
+   309→  scoringAlgorithm?: {
+   310→    type: 'sum' | 'weighted' | 'custom';
+   311→    ranges: { min: number; max: number; category: RiskCategory; label: string; recommendations: string[] }[];
+   312→  };
+   313→  customOutput?: (answers: Record<string, string | number | string[]>) => { label: string; value: string; details?: string };
+   314→}
+   315→
+   316→export interface ClinicalFile {
+   317→  id: string;
+   318→  type: 'foto_luka' | 'foto_obat' | 'foto_lab' | 'foto_radiologi' | 'video_pernapasan' | 'video_mobilisasi' | 'dokumen_medis';
+   319→  name: string;
+   320→  url: string; // base64 or blob URL
+   321→  uploadedAt: string;
+   322→}
+   323→
+   324→export interface TriageResult {
+   325→  level: TriageLevel;
+   326→  label: string;
+   327→  description: string;
+   328→  recommendation: string;
+   329→  calculatedAt: string;
+   330→}
+   331→
+   332→export interface ClinicalSummary {
+   333→  chiefComplaint: string;
+   334→  riskFactors: string[];
+   335→  chronicDiseases: string[];
+   336→  painScore: number | null;
+   337→  mentalStatus: string;
+   338→  functionalStatus: string;
+   339→  homeCareNeed: string;
+   340→  palliativeStatus: string;
+   341→  redFlags: string[];
+   342→  vitalSigns: {
+   343→    weight?: number; height?: number; temperature?: number;
+   344→    bloodPressure?: string; heartRate?: number; oxygenSat?: number; bloodSugar?: number;
+   345→  };
+   346→}
+   347→
+   348→export interface ScreeningForm {
+   349→  id: string;
+   350→  consultationId: string;
+   351→  doctorId: string;
+   352→  patientId: string;
+   353→  status: ScreeningStatus;
+   354→  instructions?: string;
+   355→  deadline?: string;
+   356→  selectedModules?: ScreeningModuleId[];
+   357→  moduleAnswers: Record<ScreeningModuleId, Record<string, string | number | string[]>>;
+   358→  moduleScores: Record<ScreeningModuleId, { score: number; riskCategory: RiskCategory; label: string; recommendations: string[] }>;
+   359→  clinicalFiles: ClinicalFile[];
+   360→  triageResult?: TriageResult;
+   361→  clinicalSummary?: ClinicalSummary;
+   362→  doctorNotes?: string;
+   363→  followUp?: string;
+   364→  aiAnalysis?: string;
+   365→  completedAt?: string;
+   366→  reviewedAt?: string;
+   367→  createdAt: string;
+   368→  updatedAt: string;
+   369→}
+   370→
+   371→export interface ScreeningAuditLog {
+   372→  id: string;
+   373→  screeningId: string;
+   374→  action: 'sent' | 'opened' | 'in_progress' | 'draft_saved' | 'completed' | 'reviewed' | 'commented';
+   375→  performedBy: string;
+   376→  timestamp: string;
+   377→  details?: string;
+   378→}
+   379→
+   380→export interface CartItem {
+   381→  medicine: Medicine;
+   382→  quantity: number;
+   383→}
+   384→
+   385→// ── Palliative Screening Types ────────────────────────────────────────────
+   386→
+   387→export type PalliativeToolType = 'esas' | 'distress' | 'spict' | 'pps' | 'zarit' | 'eortc';
+   388→
+   389→export type PalliativeEwsLevel = 'merah' | 'kuning' | 'hijau';
+   390→
+   391→export interface PalliativeScreeningForm {
+   392→  id: string;
+   393→  consultationId: string;
+   394→  doctorId: string;
+   395→  patientId: string;
+   396→  status: ScreeningStatus;
+   397→  instructions?: string;
+   398→  selectedTools: PalliativeToolType[];
+   399→  toolAnswers: Record<string, number | string | string[]>;
+   400→  toolResults: Record<PalliativeToolType, {
+   401→    score: number;
+   402→    scoreLabel: string;
+   403→    interpretation: string;
+   404→    ewsLevel: PalliativeEwsLevel;
+   405→    details: Record<string, unknown>;
+   406→  }>;
+   407→  doctorNotes?: string;
+   408→  completedAt?: string;
+   409→  reviewedAt?: string;
+   410→  createdAt: string;
+   411→  updatedAt: string;
+   412→}
+   413→
+   414→export type ActivePanel = 
+   415→  | 'home' 
+   416→  | 'chat' 
+   417→  | 'video' 
+   418→  | 'pharmacy' 
+   419→  | 'homecare' 
+   420→  | 'medical-records' 
+   421→  | 'doctor-panel' 
+   422→  | 'pharmacist-panel'
+   423→  | 'homecare-staff-panel'
+   424→  | 'admin' 
+   425→  | 'admin-pricing'
+   426→  | 'admin-users'
+   427→  | 'notifications'
+   428→  | 'payments'
+   429→  | 'reports'
+   430→  | 'profile'
+   431→  | 'screening'
+   432→  | 'palliative-screening'
+   433→  | 'palliative-monitoring'
+   434→  | 'rvsm'
+   435→  | 'patient-paliatif'
+   436→  | 'social-needs-screening';
+   437→
+   438→// ── Palliative Monitoring Types ──────────────────────────────────────────
+   439→
+   440→export type PalliativeCareStatus = 'rawat_jalan' | 'home_care' | 'hospice' | 'rawat_inap';
+   441→export type PalliativePatientStatus = 'aktif' | 'meninggal' | 'lost_follow_up' | 'pindah_faskes' | 'program_selesai';
+   442→
+   443→export type PalliativeProgramCompletionReason =
+   444→  | 'sembuh_stabil'
+   445→  | 'meninggal_dunia'
+   446→  | 'dirujuk'
+   447→  | 'pindah_faskes'
+   448→  | 'permintaan_pasien_keluarga'
+   449→  | 'lainnya';
+   450→
+   451→export interface PalliativeProgramCompletion {
+   452→  id: string;
+   453→  palliativePatientId: string;
+   454→  patientName?: string;
+   455→  rmNumber?: string;
+   456→  completionDate: string;
+   457→  reason: PalliativeProgramCompletionReason;
+   458→  otherReason?: string;
+   459→  closingNotes?: string;
+   460→  programStartDate: string;
+   461→  programEndDate: string;
+   462→  monitoringDurationDays: number;
+   463→  performedBy: string;
+   464→  performedByRole: 'doctor' | 'admin';
+   465→  createdAt: string;
+   466→}
+   467→export type PalliativeRiskLevel = 'hijau' | 'kuning' | 'merah';
+   468→
+   469→export interface PalliativePatientInfo {
+   470→  id: string;
+   471→  patientId: string;
+   472→  patientName?: string;
+   473→  rmNumber?: string;
+   474→  bpjsNumber?: string;
+   475→  nik?: string;
+   476→  dateOfBirth?: string;
+   477→  gender?: string;
+   478→  primaryDiagnosis?: string;
+   479→  secondaryDiagnosis?: string;
+   480→  diseaseStage?: string;
+   481→  attendingDoctorId?: string;
+   482→  attendingDoctorName?: string;
+   483→  familyContactName?: string;
+   484→  familyContactRelation?: string;
+   485→  familyContactPhone?: string;
+   486→  address?: string;
+   487→  careStatus: PalliativeCareStatus;
+   488→  patientStatus: PalliativePatientStatus;
+   489→  monitoringStatus?: PalliativeMonitoringStatus;
+   490→  riskLevel: PalliativeRiskLevel;
+   491→  notes?: string;
+   492→  markingData?: PalliativeMarkingData;
+   493→  consultationId?: string;
+   494→  vitalSigns?: VitalSignRecordInfo[];
+   495→  medications?: PalliativeMedicationInfo[];
+   496→  acpDocuments?: AdvanceCarePlanInfo[];
+   497→  screeningRecords?: PalliativeScreeningRecordInfo[];
+   498→  createdAt: string;
+   499→  updatedAt: string;
+   500→}
+   501→
+   502→export interface VitalSignRecordInfo {
+   503→  id: string;
+   504→  palliativePatientId: string;
+   505→  recordedBy?: string;
+   506→  systolicBP?: number;
+   507→  diastolicBP?: number;
+   508→  heartRate?: number;
+   509→  respiratoryRate?: number;
+   510→  temperature?: number;
+   511→  oxygenSat?: number;
+   512→  weight?: number;
+   513→  height?: number;
+   514→  bmi?: number;
+   515→  notes?: string;
+   516→  recordedAt: string;
+   517→  createdAt: string;
+   518→}
+   519→
+   520→export interface PalliativeMedicationInfo {
+   521→  id: string;
+   522→  palliativePatientId: string;
+   523→  medicineName: string;
+   524→  dosage: string;
+   525→  frequency: string;
+   526→  route?: string;
+   527→  startDate?: string;
+   528→  endDate?: string;
+   529→  indication?: string;
+   530→  isActive: boolean;
+   531→  notes?: string;
+   532→  adherences?: MedicationAdherenceInfo[];
+   533→  createdAt: string;
+   534→  updatedAt: string;
+   535→}
+   536→
+   537→export interface MedicationAdherenceInfo {
+   538→  id: string;
+   539→  medicationId: string;
+   540→  palliativePatientId: string;
+   541→  date: string;
+   542→  takenOnTime: boolean;
+   543→  missedDose: boolean;
+   544→  sideEffects?: string;
+   545→  complaints?: string;
+   546→  createdAt: string;
+   547→}
+   548→
+   549→export interface AdvanceCarePlanInfo {
+   550→  id: string;
+   551→  palliativePatientId: string;
+   552→  decisionMakerName?: string;
+   553→  decisionMakerRelation?: string;
+   554→  decisionMakerPhone?: string;
+   555→  preferredCareLocation?: string;
+   556→  careGoal?: string;
+   557→  resuscitationPref?: string;
+   558→  ventilatorPref?: string;
+   559→  icuPref?: string;
+   560→  artificialNutrition?: string;
+   561→  dialysisPref?: string;
+   562→  organDonation?: string;
+   563→  patientHopes?: string;
+   564→  patientWorries?: string;
+   565→  lifeValues?: string;
+   566→  endOfLifePrefs?: string;
+   567→  patientSigned: boolean;
+   568→  familySigned: boolean;
+   569→  doctorSigned: boolean;
+   570→  signedAt?: string;
+   571→  isActive: boolean;
+   572→  revisions?: ACPRevisionInfo[];
+   573→  createdAt: string;
+   574→  updatedAt: string;
+   575→}
+   576→
+   577→export interface ACPRevisionInfo {
+   578→  id: string;
+   579→  acpId: string;
+   580→  revisedBy?: string;
+   581→  changes?: string;
+   582→  reason?: string;
+   583→  createdAt: string;
+   584→}
+   585→
+   586→export interface PalliativeScreeningRecordInfo {
+   587→  id: string;
+   588→  palliativePatientId: string;
+   589→  screeningType: PalliativeToolType;
+   590→  score?: number;
+   591→  scoreLabel?: string;
+   592→  interpretation?: string;
+   593→  ewsLevel?: PalliativeEwsLevel;
+   594→  details?: string;
+   595→  performedAt: string;
+   596→  createdAt: string;
+   597→}
+   598→
+   599→// ── Palliative Chat Types ──────────────────────────────────────────────────
+   600→
+   601→export type PalliativeFormType = 'ttv' | 'keluhan' | 'screening' | 'monitoring_obat';
+   602→export type PalliativeChatMsgType = 'text' | 'education' | 'instruction' | 'form_ttv' | 'form_keluhan' | 'form_screening' | 'form_monitoring_obat' | 'form_response' | 'reminder' | 'image' | 'ai_summary' | 'clinical_alert';
+   603→
+   604→export interface PalliativeChatMessage {
+   605→  id: string;
+   606→  roomId: string;
+   607→  senderId: string;
+   608→  senderName: string;
+   609→  senderRole: 'doctor' | 'patient' | 'family' | 'system';
+   610→  type: PalliativeChatMsgType;
+   611→  content: string;
+   612→  status: MessageStatus;
+   613→  formType?: PalliativeFormType;
+   614→  formData?: PalliativeFormData;
+   615→  formResponse?: PalliativeFormResponse;
+   616→  screeningType?: PalliativeToolType;
+   617→  aiSummary?: string;
+   618→  clinicalAlert?: PalliativeClinicalAlert;
+   619→  imageUrl?: string;
+   620→  createdAt: string;
+   621→  readAt?: string;
+   622→}
+   623→
+   624→export interface PalliativeFormData {
+   625→  id: string;
+   626→  formType: PalliativeFormType;
+   627→  screeningType?: PalliativeToolType;
+   628→  status: 'sent' | 'opened' | 'in_progress' | 'draft' | 'submitted';
+   629→  progress: number; // 0-100
+   630→  submittedAt?: string;
+   631→  submittedBy?: string;
+   632→}
+   633→
+   634→export interface TTVFormAnswers {
+   635→  systolicBP?: number;
+   636→  diastolicBP?: number;
+   637→  heartRate?: number;
+   638→  respiratoryRate?: number;
+   639→  temperature?: number;
+   640→  oxygenSat?: number;
+   641→  weight?: number;
+   642→  bloodSugar?: number;
+   643→  symptoms: {
+   644→    nyeri: boolean;
+   645→    sesak: boolean;
+   646→    batuk: boolean;
+   647→    mual: boolean;
+   648→    muntah: boolean;
+   649→    sulit_menelan: boolean;
+   650→    sulit_tidur: boolean;
+   651→    lemas: boolean;
+   652→    nafsu_makan_menurun: boolean;
+   653→    konstipasi: boolean;
+   654→    diare: boolean;
+   655→    lainnya: string;
+   656→  };
+   657→  painScore?: number;
+   658→  notes?: string;
+   659→}
+   660→
+   661→export interface KeluhanFormAnswers {
+   662→  kondisiHariIni: 'baik' | 'cukup' | 'kurang' | 'buruk';
+   663→  keluhanBaru: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+   664→  nyeriBertambah: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+   665→  sesakBertambah: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+   666→  makanMinum: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+   667→  tidur: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+   668→  masalahObat: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+   669→  catatanTambahan?: string;
+   670→}
+   671→
+   672→export interface PalliativeFormResponse {
+   673→  formId: string;
+   674→  formType: PalliativeFormType;
+   675→  screeningType?: PalliativeToolType;
+   676→  ttvAnswers?: TTVFormAnswers;
+   677→  keluhanAnswers?: KeluhanFormAnswers;
+   678→  screeningAnswers?: Record<string, number | string | string[]>;
+   679→  screeningResult?: {
+   680→    score: number;
+   681→    scoreLabel: string;
+   682→    interpretation: string;
+   683→    ewsLevel: PalliativeEwsLevel;
+   684→  };
+   685→  medicationMonitoringAnswers?: MedicationMonitoringFormAnswers;
+   686→  submittedAt: string;
+   687→}
+   688→
+   689→export interface PalliativeClinicalAlert {
+   690→  id: string;
+   691→  patientId: string;
+   692→  alertType: 'ttv_abnormal' | 'gejala_berat' | 'distres_tinggi' | 'pps_penurunan' | 'perburukan' | 'obat_tidak_diminum' | 'efek_samping_berat' | 'nyeri_meningkat' | 'sesak_napas' | 'kepatuhan_menurun' | 'form_tidak_diisi';
+   693→  severity: 'hijau' | 'kuning' | 'merah';
+   694→  title: string;
+   695→  description: string;
+   696→  values?: Record<string, string | number>;
+   697→  isRead: boolean;
+   698→  createdAt: string;
+   699→}
+   700→
+   701→export interface PalliativeAuditEntry {
+   702→  id: string;
+   703→  patientId: string;
+   704→  action: 'chat_sent' | 'form_sent' | 'form_opened' | 'form_filled' | 'form_submitted' | 'result_read' | 'ai_generated' | 'alert_triggered' | 'clinical_action' | 'medication_not_taken' | 'side_effect_reported' | 'alert_followed_up' | 'ai_analysis_generated' | 'program_completed' | 'resume_generated' | 'resume_viewed' | 'resume_downloaded' | 'resume_printed' | 'resume_signed' | 'resume_sent' | 'referral_generated' | 'referral_viewed' | 'referral_downloaded' | 'referral_sent' | 'referral_signed';
+   705→  performedBy: string;
+   706→  performedByRole: 'doctor' | 'patient' | 'family' | 'system';
+   707→  details?: string;
+   708→  ipAddress?: string;
+   709→  device?: string;
+   710→  createdAt: string;
+   711→}
+   712→
+   713→// ── TelePalliative Care Integration Types ──────────────────────────────────
+   714→
+   715→// ── Nutrition & Calorie Calculator Types ──────────────────────────────────
+   716→
+   717→export type NutritionActivityLevel = 'bed_rest' | 'ringan' | 'sedang' | 'berat';
+   718→export type NutritionWeightStatus = 'underweight' | 'normal' | 'overweight' | 'obesitas';
+   719→export type NutritionMetabolicStress = 'ringan' | 'sedang' | 'berat' | 'tidak_ada';
+   720→export type NutritionSpecialCondition = 'tidak_ada' | 'hamil' | 'laktasi';
+   721→
+   722→export interface NutritionCalculationResult {
+   723→  bmi: number;
+   724→  bmiCategory: NutritionWeightStatus;
+   725→  idealBodyWeight: number;
+   726→  basalCalories: number;
+   727→  ageCorrectionKcal: number;
+   728→  ageCorrectionPercent: number;
+   729→  activityCorrectionKcal: number;
+   730→  activityCorrectionPercent: number;
+   731→  weightCorrectionKcal: number;
+   732→  weightCorrectionPercent: number;
+   733→  stressCorrectionKcal: number;
+   734→  stressCorrectionPercent: number;
+   735→  specialConditionKcal: number;
+   736→  totalCalorieNeeds: number;
+   737→  carbohydrateKcal: number;
+   738→  proteinKcal: number;
+   739→  fatKcal: number;
+   740→  mineralKcal: number;
+   741→  carbohydrateGrams: number;
+   742→  proteinGrams: number;
+   743→  fatGrams: number;
+   744→}
+   745→
+   746→export interface NutritionRecordInfo {
+   747→  id: string;
+   748→  palliativePatientId: string;
+   749→  age: number;
+   750→  gender: 'L' | 'P';
+   751→  weight: number;
+   752→  height: number;
+   753→  activityLevel: NutritionActivityLevel;
+   754→  metabolicStress: NutritionMetabolicStress;
+   755→  specialCondition: NutritionSpecialCondition;
+   756→  calculation: NutritionCalculationResult;
+   757→  actualIntakeKcal?: number;
+   758→  notes?: string;
+   759→  recordedBy?: string;
+   760→  recordedAt: string;
+   761→  createdAt: string;
+   762→}
+   763→
+   764→export interface NutritionAIRecommendation {
+   765→  targetCalories: number;
+   766→  targetProteinGrams: number;
+   767→  mealPattern: string;
+   768→  mealFrequency: string;
+   769→  supplementRecommendation: string;
+   770→  malnutritionRisk: 'rendah' | 'sedang' | 'tinggi';
+   771→  recommendations: string[];
+   772→  generatedAt: string;
+   773→}
+   774→
+   775→// ── TelePalliative Care Integration Types (continued) ──────────────────────
+   776→
+   777→export type PalliativeMonitoringStatus =
+   778→  | 'monitoring_aktif'
+   779→  | 'stabil'
+   780→  | 'membutuhkan_home_visit'
+   781→  | 'membutuhkan_telekonsultasi'
+   782→  | 'membutuhkan_rujukan'
+   783→  | 'terminal'
+   784→  | 'meninggal_dunia'
+   785→  | 'program_selesai';
+   786→
+   787→export type PalliativeMonitoringFormType =
+   788→  | 'ttv'
+   789→  | 'pps'
+   790→  | 'spict'
+   791→  | 'esas'
+   792→  | 'eortc'
+   793→  | 'penilaian_nyeri'
+   794→  | 'penilaian_sesak'
+   795→  | 'penilaian_nutrisi'
+   796→  | 'acp';
+   797→
+   798→export interface PalliativeMarkingData {
+   799→  primaryDiagnosis: string;
+   800→  secondaryDiagnosis?: string;
+   801→  initialPPS?: number;
+   802→  diseaseCategory?: string;
+   803→  reasonForPalliative?: string;
+   804→  doctorNotes?: string;
+   805→}
+   806→
+   807→export interface PalliativeCommunicationPatient {
+   808→  patientId: string;
+   809→  palliativePatientId: string;
+   810→  patientName: string;
+   811→  rmNumber?: string;
+   812→  primaryDiagnosis?: string;
+   813→  lastPPS?: number;
+   814→  monitoringStatus: PalliativeMonitoringStatus;
+   815→  lastChatAt?: string;
+   816→  unreadCount: number;
+   817→  riskLevel: PalliativeRiskLevel;
+   818→}
+   819→
+   820→export interface PalliativeMonitoringNotification {
+   821→  id: string;
+   822→  patientId: string;
+   823→  patientName?: string;
+   824→  type: 'new_message' | 'screening_completed' | 'pps_decline' | 'pain_increase' | 'dyspnea_worsen' | 'ttv_abnormal' | 'monitoring_overdue' | 'status_change';
+   825→  title: string;
+   826→  description: string;
+   827→  severity: 'info' | 'warning' | 'critical';
+   828→  isRead: boolean;
+   829→  referenceId?: string;
+   830→  createdAt: string;
+   831→}
+   832→
+   833→export interface PalliativeClinicalSummary {
+   834→  primaryDiagnosis?: string;
+   835→  latestPPS?: number;
+   836→  latestScreeningResult?: {
+   837→    toolType: PalliativeToolType;
+   838→    scoreLabel: string;
+   839→    ewsLevel: PalliativeEwsLevel;
+   840→    performedAt: string;
+   841→  };
+   842→  activeMedications: number;
+   843→  latestACP?: {
+   844→    status: string;
+   845→    createdAt: string;
+   846→  };
+   847→  latestTTV?: {
+   848→    systolicBP?: number;
+   849→    diastolicBP?: number;
+   850→    heartRate?: number;
+   851→    respiratoryRate?: number;
+   852→    temperature?: number;
+   853→    oxygenSat?: number;
+   854→    recordedAt: string;
+   855→  };
+   856→}
+   857→
+   858→// ── Remote Vital Sign Monitoring (RVSM) Types ─────────────────────────────
+   859→
+   860→export type WearableDeviceType = 
+   861→  | 'apple_watch' | 'samsung_galaxy_watch' | 'garmin_watch' 
+   862→  | 'huawei_watch' | 'xiaomi_smart_band' | 'fitbit' 
+   863→  | 'wear_os' | 'bluetooth_health';
+   864→
+   865→export type WearableIntegrationMethod = 
+   866→  | 'apple_healthkit' | 'google_health_connect' | 'samsung_health' 
+   867→  | 'fitbit_api' | 'bluetooth_health_device' | 'rest_api';
+   868→
+   869→export type WearableDeviceStatus = 
+   870→  | 'connected' | 'sync_pending' | 'offline' | 'low_battery' | 'inactive';
+   871→
+   872→export type RVSMAlertSeverity = 'normal' | 'attention' | 'critical';
+   873→
+   874→export type RVSMTimeRange = '24h' | '7d' | '30d' | '90d';
+   875→
+   876→export interface WearableDevice {
+   877→  id: string;
+   878→  patientId: string;
+   879→  deviceType: WearableDeviceType;
+   880→  deviceName: string;
+   881→  integrationMethod: WearableIntegrationMethod;
+   882→  status: WearableDeviceStatus;
+   883→  batteryLevel?: number;
+   884→  lastSyncAt?: string;
+   885→  firmwareVersion?: string;
+   886→  serialNumber?: string;
+   887→  isConnected: boolean;
+   888→  registeredAt: string;
+   889→  deactivatedAt?: string;
+   890→}
+   891→
+   892→export interface WearableVitalData {
+   893→  id: string;
+   894→  deviceId: string;
+   895→  patientId: string;
+   896→  timestamp: string;
+   897→  // Cardiovascular
+   898→  heartRate?: number;
+   899→  heartRateVariability?: number;
+   900→  heartRhythm?: 'normal_sinus' | 'sinus_tachycardia' | 'sinus_bradycardia' | 'atrial_fibrillation' | 'other';
+   901→  arrhythmiaDetected?: boolean;
+   902→  // Respiratory
+   903→  respiratoryRate?: number;
+   904→  respiratoryPattern?: 'normal' | 'tachypneic' | 'bradypneic' | 'irregular';
+   905→  apneaEpisode?: boolean;
+   906→  // Oxygenation
+   907→  oxygenSat?: number;
+   908→  // Activity
+   909→  steps?: number;
+   910→  distance?: number; // meters
+   911→  walkDuration?: number; // minutes
+   912→  dailyActivityLevel?: 'sedentary' | 'light' | 'moderate' | 'active';
+   913→  // Mobility
+   914→  sittingDuration?: number; // minutes
+   915→  standingDuration?: number; // minutes
+   916→  lyingDuration?: number; // minutes
+   917→  postureChangeCount?: number;
+   918→  // Sleep
+   919→  sleepDuration?: number; // minutes
+   920→  sleepQuality?: 'poor' | 'fair' | 'good' | 'excellent';
+   921→  sleepDisturbances?: number;
+   922→  sleepPattern?: 'normal' | 'insomnia' | 'hypersomnia' | 'fragmented';
+   923→  // Temperature
+   924→  skinTemperature?: number;
+   925→  estimatedCoreTemp?: number;
+   926→  // Pain/Symptoms (if supported)
+   927→  painScore?: number;
+   928→  stressLevel?: number; // 0-100
+   929→  fatigueLevel?: number; // 0-100
+   930→  // Blood pressure
+   931→  systolicBP?: number;
+   932→  diastolicBP?: number;
+   933→}
+   934→
+   935→export interface RVSMAlert {
+   936→  id: string;
+   937→  patientId: string;
+   938→  patientName?: string;
+   939→  deviceId?: string;
+   940→  category: 'cardiovascular' | 'oxygenation' | 'respiratory' | 'activity' | 'sleep' | 'mobility' | 'temperature' | 'pain';
+   941→  severity: RVSMAlertSeverity;
+   942→  title: string;
+   943→  description: string;
+   944→  values?: Record<string, string | number>;
+   945→  threshold?: { parameter: string; operator: string; value: number };
+   946→  actualValue?: number;
+   947→  isRead: boolean;
+   948→  isAcknowledged: boolean;
+   949→  acknowledgedBy?: string;
+   950→  acknowledgedAt?: string;
+   951→  createdAt: string;
+   952→}
+   953→
+   954→export interface RVSMPalliativeScoreEstimate {
+   955→  patientId: string;
+   956→  estimatedAt: string;
+   957→  ppsEstimate?: {
+   958→    currentEstimate: number;
+   959→    previousEstimate?: number;
+   960→    change?: number;
+   961→    confidence: number; // 0-1
+   962→    factors: string[];
+   963→  };
+   964→  esasEstimate?: {
+   965→    fatigueLevel: number;
+   966→    sleepDisturbance: number;
+   967→    activityDecline: number;
+   968→    estimatedTotalScore: number;
+   969→  };
+   970→  spictEstimate?: {
+   971→    deteriorationRisk: 'low' | 'moderate' | 'high';
+   972→    indicators: string[];
+   973→  };
+   974→}
+   975→
+   976→export interface RVSMDailyReport {
+   977→  id: string;
+   978→  patientId: string;
+   979→  patientName?: string;
+   980→  reportDate: string;
+   981→  activityChangePercent?: number;
+   982→  avgSpO2?: number;
+   983→  avgHeartRate?: number;
+   984→  avgRespiratoryRate?: number;
+   985→  sleepDurationHours?: number;
+   986→  lyingDurationHours?: number;
+   987→  stepsCount?: number;
+   988→  painScoreAvg?: number;
+   989→  stressLevelAvg?: number;
+   990→  fatigueLevelAvg?: number;
+   991→  aiSummary?: string;
+   992→  riskPrediction?: {
+   993→    hospitalizationRisk: 'low' | 'moderate' | 'high';
+   994→    symptomWorseningRisk: 'low' | 'moderate' | 'high';
+   995→    ppsDeclineRisk: 'low' | 'moderate' | 'high';
+   996→    homeVisitNeedRisk: 'low' | 'moderate' | 'high';
+   997→  };
+   998→  createdAt: string;
+   999→}
+  1000→
+  1001→export interface RVSMFamilyAccess {
+  1002→  id: string;
+  1003→  patientId: string;
+  1004→  familyMemberId: string;
+  1005→  familyMemberName: string;
+  1006→  relationship: string;
+  1007→  canViewActivity: boolean;
+  1008→  canViewDeviceStatus: boolean;
+  1009→  canViewHealthGraphs: boolean;
+  1010→  canReceiveAlerts: boolean;
+  1011→  canViewSchedule: boolean;
+  1012→  grantedAt: string;
+  1013→}
+  1014→
+  1015→export interface RVSMAuditEntry {
+  1016→  id: string;
+  1017→  patientId: string;
+  1018→  action: 'device_connected' | 'device_disconnected' | 'data_received' | 'data_analyzed' | 'alert_generated' | 'alert_acknowledged' | 'alert_viewed' | 'followup_action' | 'report_generated' | 'family_access_granted' | 'family_access_revoked';
+  1019→  performedBy: string;
+  1020→  performedByRole: 'doctor' | 'patient' | 'family' | 'system';
+  1021→  details?: string;
+  1022→  ipAddress?: string;
+  1023→  deviceId?: string;
+  1024→  createdAt: string;
+  1025→}
+  1026→
+  1027→// ── Medication Monitoring Form Types ──────────────────────────────────────
+  1028→
+  1029→export type MedicationConsumptionStatus = 'sudah_diminum' | 'belum_diminum' | 'tidak_diminum';
+  1030→
+  1031→export type NotTakenReason =
+  1032→  | 'lupa' | 'belum_waktunya' | 'sedang_tidur' | 'obat_tidak_tersedia' | 'alasan_lain';
+  1033→
+  1034→export type NotConsumedReason =
+  1035→  | 'efek_samping' | 'merasa_sudah_membaik' | 'tidak_ada_obat'
+  1036→  | 'tidak_mampu_membeli' | 'tidak_ingin_minum' | 'sulit_menelan'
+  1037→  | 'mual_muntah' | 'instruksi_keluarga' | 'alasan_lainnya';
+  1038→
+  1039→export type SideEffectType =
+  1040→  | 'mual' | 'muntah' | 'pusing' | 'mengantuk_berlebihan'
+  1041→  | 'sulit_tidur' | 'konstipasi' | 'diare' | 'nyeri_bertambah'
+  1042→  | 'sesak_napas' | 'nafsu_makan_menurun' | 'reaksi_alergi' | 'lainnya';
+  1043→
+  1044→export type MedicationFormSchedule = 'sekali' | 'harian' | 'mingguan' | 'sesuai_jadwal_obat';
+  1045→
+  1046→export interface MedicationMonitoringFormItem {
+  1047→  medicationId: string;
+  1048→  medicineName: string;
+  1049→  dosage: string;
+  1050→  frequency: string;
+  1051→  route?: string;
+  1052→  indication?: string;
+  1053→  consumptionStatus: MedicationConsumptionStatus | null;
+  1054→  // If "sudah_diminum"
+  1055→  consumptionDate?: string;
+  1056→  consumptionTime?: string;
+  1057→  hasComplaints?: boolean;
+  1058→  sideEffects?: SideEffectType[];
+  1059→  otherComplaint?: string;
+  1060→  complaintSeverity?: number; // 0-10
+  1061→  complaintNotes?: string;
+  1062→  // If "belum_diminum"
+  1063→  notTakenReason?: NotTakenReason;
+  1064→  notTakenOtherReason?: string;
+  1065→  // If "tidak_diminum"
+  1066→  notConsumedReason?: NotConsumedReason;
+  1067→  notConsumedOtherReason?: string;
+  1068→  notConsumedExplanation?: string; // required
+  1069→}
+  1070→
+  1071→export interface MedicationMonitoringFormAnswers {
+  1072→  medications: MedicationMonitoringFormItem[];
+  1073→  overallNotes?: string;
+  1074→}
+  1075→
+  1076→export interface MedicationMonitoringFormInfo {
+  1077→  id: string;
+  1078→  palliativePatientId: string;
+  1079→  doctorId: string;
+  1080→  patientId: string;
+  1081→  selectedMedicationIds: string[];
+  1082→  schedule: MedicationFormSchedule;
+  1083→  deadline?: string;
+  1084→  status: 'sent' | 'opened' | 'in_progress' | 'submitted' | 'expired';
+  1085→  responses: MedicationMonitoringFormAnswers[];
+  1086→  createdAt: string;
+  1087→  updatedAt: string;
+  1088→}
+  1089→
+  1090→export interface MedicationMonitoringAlert {
+  1091→  id: string;
+  1092→  patientId: string;
+  1093→  patientName?: string;
+  1094→  alertType: 'obat_tidak_diminum' | 'efek_samping_berat' | 'nyeri_meningkat' | 'sesak_napas' | 'form_tidak_diisi' | 'kepatuhan_menurun';
+  1095→  severity: 'info' | 'warning' | 'critical';
+  1096→  title: string;
+  1097→  description: string;
+  1098→  medicationName?: string;
+  1099→  isRead: boolean;
+  1100→  createdAt: string;
+  1101→}
+  1102→
+  1103→export interface MedicationMonitoringAuditEntry {
+  1104→  id: string;
+  1105→  patientId: string;
+  1106→  action: 'form_sent' | 'form_opened' | 'form_filled' | 'form_submitted' | 'side_effect_reported' | 'medication_not_taken' | 'alert_generated' | 'alert_followed_up' | 'ai_analysis_generated';
+  1107→  performedBy: string;
+  1108→  performedByRole: 'doctor' | 'patient' | 'family' | 'system';
+  1109→  details?: string;
+  1110→  createdAt: string;
+  1111→}
+  1112→
+  1113→export interface MedicationComplianceSummary {
+  1114→  patientId: string;
+  1115→  period: 'daily' | 'weekly' | 'monthly';
+  1116→  totalDoses: number;
+  1117→  takenDoses: number;
+  1118→  missedDoses: number;
+  1119→  notConsumedDoses: number;
+  1120→  complianceRate: number; // percentage 0-100
+  1121→  sideEffectCount: number;
+  1122→  topSideEffects: { type: SideEffectType; count: number }[];
+  1123→  topNotConsumedReasons: { reason: NotConsumedReason; count: number }[];
+  1124→}
+  1125→
+  1126→// ── Palliative Resume Medis & Surat Rujukan Types ────────────────────────
+  1127→
+  1128→export type ReferralTargetDepartment =
+  1129→  | 'penyakit_dalam'
+  1130→  | 'onkologi'
+  1131→  | 'neurologi'
+  1132→  | 'jantung'
+  1133→  | 'pulmonologi'
+  1134→  | 'geriatri'
+  1135→  | 'kedokteran_paliatif'
+  1136→  | 'rehabilitasi_medik'
+  1137→  | 'rumah_sakit_rujukan_lanjutan';
+  1138→
+  1139→export type ReferralStatus = 'belum_dirujuk' | 'menunggu' | 'sudah_dirujuk' | 'selesai';
+  1140→
+  1141→export interface PalliativeResumeMedis {
+  1142→  id: string;
+  1143→  palliativePatientId: string;
+  1144→  patientName?: string;
+  1145→  rmNumber?: string;
+  1146→  documentNumber: string;
+  1147→  generatedAt: string;
+  1148→  generatedBy: string;
+  1149→  generatedByRole: 'doctor' | 'admin';
+  1150→  doctorSip?: string;
+  1151→  doctorName?: string;
+  1152→  // AI-generated content sections
+  1153→  ringkasanKondisi: string;
+  1154→  ringkasanPemeriksaan: string;
+  1155→  ringkasanTerapi: string;
+  1156→  ringkasanACP: string;
+  1157→  kesimpulanKlinis: string;
+  1158→  rekomendasiAI: string[];
+  1159→  // Full content as markdown
+  1160→  fullContent: string;
+  1161→  // Version tracking
+  1162→  version: number;
+  1163→  previousVersionId?: string;
+  1164→  // Status
+  1165→  isSigned: boolean;
+  1166→  signedAt?: string;
+  1167→  qrCode?: string;
+  1168→  // Delivery tracking
+  1169→  sentToChatAt?: string;
+  1170→  sentToEmailAt?: string;
+  1171→  sentToWhatsAppAt?: string;
+  1172→  downloadCount: number;
+  1173→  printCount: number;
+  1174→  lastDownloadAt?: string;
+  1175→  lastPrintAt?: string;
+  1176→  createdAt: string;
+  1177→  updatedAt: string;
+  1178→}
+  1179→
+  1180→export interface PalliativeReferralLetter {
+  1181→  id: string;
+  1182→  palliativePatientId: string;
+  1183→  patientName?: string;
+  1184→  rmNumber?: string;
+  1185→  documentNumber: string;
+  1186→  generatedAt: string;
+  1187→  generatedBy: string;
+  1188→  generatedByRole: 'doctor' | 'admin';
+  1189→  doctorSip?: string;
+  1190→  doctorName?: string;
+  1191→  // Referral content
+  1192→  nik?: string;
+  1193→  bpjsNumber?: string;
+  1194→  primaryDiagnosis: string;
+  1195→  secondaryDiagnosis?: string;
+  1196→  referralReason: string;
+  1197→  clinicalSummary: string;
+  1198→  targetDepartment: ReferralTargetDepartment;
+  1199→  consultationRequest: string;
+  1200→  // AI-generated content
+  1201→  fullContent: string;
+  1202→  // Status
+  1203→  referralStatus: ReferralStatus;
+  1204→  referredAt?: string;
+  1205→  referredTo?: string;
+  1206→  completedAt?: string;
+  1207→  // Version tracking
+  1208→  version: number;
+  1209→  previousVersionId?: string;
+  1210→  // Signing
+  1211→  isSigned: boolean;
+  1212→  signedAt?: string;
+  1213→  qrCode?: string;
+  1214→  // Delivery tracking
+  1215→  sentToChatAt?: string;
+  1216→  sentToEmailAt?: string;
+  1217→  sentToWhatsAppAt?: string;
+  1218→  downloadCount: number;
+  1219→  printCount: number;
+  1220→  lastDownloadAt?: string;
+  1221→  lastPrintAt?: string;
+  1222→  createdAt: string;
+  1223→  updatedAt: string;
+  1224→}
+  1225→
+  1226→export interface PalliativeDocumentAuditEntry {
+  1227→  id: string;
+  1228→  documentType: 'resume_medis' | 'surat_rujukan';
+  1229→  documentId: string;
+  1230→  patientId: string;
+  1231→  action: 'generated' | 'viewed' | 'revised' | 'signed' | 'downloaded' | 'printed' | 'sent_to_chat' | 'sent_to_email' | 'sent_to_whatsapp';
+  1232→  performedBy: string;
+  1233→  performedByRole: 'doctor' | 'admin';
+  1234→  details?: string;
+  1235→  createdAt: string;
+  1236→}
+  1237→
+  1238→// ── Social Support Management Types ───────────────────────────────────────
+  1239→
+  1240→export type SocialScreeningPriority = 'rendah' | 'sedang' | 'tinggi';
+  1241→export type SocialScreeningStatus = 'lengkap' | 'sebagian' | 'belum_dilakukan';
+  1242→export type HousingCondition = 'layak' | 'kurang_layak' | 'tidak_layak';
+  1243→export type CaregiverAvailability = 'tersedia' | 'terbatas' | 'tidak_tersedia';
+  1244→export type FamilySupportLevel = 'kuat' | 'cukup' | 'lemah' | 'tidak_ada';
+  1245→export type TransportDifficulty = 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  1246→export type EconomicConstraint = 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  1247→export type HealthcareAccess = 'mudah' | 'cukup' | 'sulit' | 'sangat_sulit';
+  1248→export type MedicalEquipmentNeed = 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  1249→export type SocialAssistanceNeed = 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  1250→export type SocialIsolationRisk = 'rendah' | 'sedang' | 'tinggi';
+  1251→
+  1252→export interface SocialAssessmentRecord {
+  1253→  id: string;
+  1254→  palliativePatientId: string;
+  1255→  // Screening items
+  1256→  housingCondition: HousingCondition;
+  1257→  housingNotes?: string;
+  1258→  caregiverAvailability: CaregiverAvailability;
+  1259→  caregiverNotes?: string;
+  1260→  familySupportLevel: FamilySupportLevel;
+  1261→  familySupportNotes?: string;
+  1262→  transportDifficulty: TransportDifficulty;
+  1263→  transportNotes?: string;
+  1264→  economicConstraint: EconomicConstraint;
+  1265→  economicNotes?: string;
+  1266→  healthcareAccess: HealthcareAccess;
+  1267→  healthcareAccessNotes?: string;
+  1268→  medicalEquipmentNeed: MedicalEquipmentNeed;
+  1269→  medicalEquipmentNotes?: string;
+  1270→  socialAssistanceNeed: SocialAssistanceNeed;
+  1271→  socialAssistanceNotes?: string;
+  1272→  socialIsolationRisk: SocialIsolationRisk;
+  1273→  socialIsolationNotes?: string;
+  1274→  // Results
+  1275→  overallStatus: SocialScreeningStatus;
+  1276→  priorityLevel: SocialScreeningPriority;
+  1277→  recommendations: string[];
+  1278→  assessedBy: string;
+  1279→  assessedByRole: 'doctor' | 'nurse' | 'social_worker' | 'palliative_team';
+  1280→  assessedAt: string;
+  1281→  createdAt: string;
+  1282→  updatedAt: string;
+  1283→}
+  1284→
+  1285→export type CaregiverRole = 'utama' | 'pendamping';
+  1286→export type CaregiverRelation = 'suami' | 'istri' | 'anak' | 'orang_tua' | 'saudara' | 'teman' | 'pembantu' | 'perawat' | 'lainnya';
+  1287→
+  1288→export interface CaregiverInfo {
+  1289→  id: string;
+  1290→  palliativePatientId: string;
+  1291→  name: string;
+  1292→  role: CaregiverRole;
+  1293→  relation: CaregiverRelation;
+  1294→  relationOther?: string;
+  1295→  phone: string;
+  1296→  email?: string;
+  1297→  address?: string;
+  1298→  schedule?: string;
+  1299→  tasks?: string[];
+  1300→  isActive: boolean;
+  1301→  zaritScore?: number;
+  1302→  zaritLevel?: 'beban_ringan' | 'beban_sedang' | 'beban_berat';
+  1303→  familyApgarScore?: number;
+  1304→  familyApgarLevel?: 'dysfunctional' | 'severe_dysfunction' | 'moderate_dysfunction' | 'good' | 'high_functional';
+  1305→  notes?: string;
+  1306→  createdAt: string;
+  1307→  updatedAt: string;
+  1308→}
+  1309→
+  1310→export type MeetingStatus = 'dijadwalkan' | 'berlangsung' | 'selesai' | 'dibatalkan';
+  1311→
+  1312→export interface FamilyMeetingRecord {
+  1313→  id: string;
+  1314→  palliativePatientId: string;
+  1315→  title: string;
+  1316→  scheduledAt: string;
+  1317→  duration?: number; // minutes
+  1318→  status: MeetingStatus;
+  1319→  participants: FamilyMeetingParticipant[];
+  1320→  agenda?: string;
+  1321→  discussionNotes?: string;
+  1322→  resume?: string;
+  1323→  followUpActions?: string[];
+  1324→  meetingUrl?: string;
+  1325→  createdBy: string;
+  1326→  createdAt: string;
+  1327→  updatedAt: string;
+  1328→}
+  1329→
+  1330→export interface FamilyMeetingParticipant {
+  1331→  name: string;
+  1332→  role: string;
+  1333→  email?: string;
+  1334→  phone?: string;
+  1335→  attended: boolean;
+  1336→}
+  1337→
+  1338→export type EduMaterialCategory = 'perawatan_rumah' | 'panduan_caregiver' | 'video_edukasi' | 'dukungan_psikososial' | 'gawat_darurat' | 'end_of_life' | 'faq';
+  1339→
+  1340→export interface EduMaterialAccessLog {
+  1341→  materialId: string;
+  1342→  accessedBy: string;
+  1343→  accessedAt: string;
+  1344→}
+  1345→
+  1346→export interface EduMaterial {
+  1347→  id: string;
+  1348→  title: string;
+  1349→  category: EduMaterialCategory;
+  1350→  description?: string;
+  1351→  type: 'artikel' | 'video' | 'pdf' | 'infografis' | 'faq';
+  1352→  url?: string;
+  1353→  content?: string;
+  1354→  accessCount: number;
+  1355→  accessLogs: EduMaterialAccessLog[];
+  1356→  isActive: boolean;
+  1357→  createdAt: string;
+  1358→  updatedAt: string;
+  1359→}
+  1360→
+  1361→export interface FamilyCoordinationNote {
+  1362→  id: string;
+  1363→  palliativePatientId: string;
+  1364→  authorName: string;
+  1365→  authorRelation: string;
+  1366→  content: string;
+  1367→  type: 'perkembangan' | 'tugas' | 'pengingat_obat' | 'pengingat_kontrol' | 'tanggung_jawab' | 'lainnya';
+  1368→  isCompleted: boolean;
+  1369→  dueDate?: string;
+  1370→  createdAt: string;
+  1371→  updatedAt: string;
+  1372→}
+  1373→
+  1374→export interface EmergencyContact {
+  1375→  id: string;
+  1376→  palliativePatientId: string;
+  1377→  name: string;
+  1378→  role: 'dokter' | 'perawat' | 'caregiver_utama' | 'keluarga' | 'ambulans' | 'rumah_sakit' | 'gawat_darurat' | 'lainnya';
+  1379→  phone: string;
+  1380→  alternatePhone?: string;
+  1381→  isPrimary: boolean;
+  1382→  notes?: string;
+  1383→  createdAt: string;
+  1384→  updatedAt: string;
+  1385→}
+  1386→
+  1387→export type InsuranceStatus = 'bpjs' | 'asuransi_swasta' | 'tidak_memiliki' | 'campuran';
+  1388→export type SocialAidStatus = 'menerima' | 'pernah_menerima' | 'belum_menerima' | 'tidak_berhak';
+  1389→
+  1390→export interface FinancialSupportRecord {
+  1391→  id: string;
+  1392→  palliativePatientId: string;
+  1393→  insuranceStatus: InsuranceStatus;
+  1394→  insuranceDetails?: string;
+  1395→  bpjsNumber?: string;
+  1396→  socialAidStatus: SocialAidStatus;
+  1397→  socialAidDetails?: string;
+  1398→  treatmentCostNeed: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  1399→  medicalEquipmentCostNeed: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  1400→  transportCostNeed: 'tidak_ada' | 'ringan' | 'sedang' | 'berat';
+  1401→  recommendedPrograms: string[];
+  1402→  notes?: string;
+  1403→  assessedBy: string;
+  1404→  assessedAt: string;
+  1405→  createdAt: string;
+  1406→  updatedAt: string;
+  1407→}
+  1408→
+  1409→export type TransportNeedType = 'ambulans' | 'ambulans_darurat' | 'kendaraan_pribadi' | 'transportasi_medis' | 'lainnya';
+  1410→export type TransportStatus = 'belum_dipesan' | 'dipesan' | 'dalam_perjalanan' | 'selesai' | 'dibatalkan';
+  1411→
+  1412→export interface TransportRecord {
+  1413→  id: string;
+  1414→  palliativePatientId: string;
+  1415→  type: TransportNeedType;
+  1416→  status: TransportStatus;
+  1417→  scheduledAt?: string;
+  1418→  completedAt?: string;
+  1419→  origin: string;
+  1420→  destination: string;
+  1421→  notes?: string;
+  1422→  requestedBy: string;
+  1423→  createdAt: string;
+  1424→  updatedAt: string;
+  1425→}
+  1426→
+  1427→export interface SocialMonitoringAlert {
+  1428→  id: string;
+  1429→  patientId: string;
+  1430→  patientName?: string;
+  1431→  type: 'isolasi_sosial' | 'beban_caregiver' | 'kendala_ekonomi' | 'akses_kesehatan' | 'transportasi' | 'dukungan_keluarga';
+  1432→  severity: 'info' | 'warning' | 'critical';
+  1433→  title: string;
+  1434→  description: string;
+  1435→  isRead: boolean;
+  1436→  createdAt: string;
+  1437→}
+  1438→
+  1439→// ── AI Social Needs Analysis Types ─────────────────────────────────────────
+  1440→
+  1441→export type SocialRiskLevel = 'rendah' | 'sedang' | 'tinggi';
+  1442→
+  1443→export interface AISocialRisk {
+  1444→  riskType: 'isolasi_sosial' | 'caregiver_burnout' | 'ketidakpatuhan_terapi' | 'putus_pengobatan' | 'masalah_finansial' | 'akses_layanan' | 'konflik_keluarga' | 'kebutuhan_spiritual' | 'rawat_inap_berulang' | 'penurunan_kualitas_hidup';
+  1445→  level: SocialRiskLevel;
+  1446→  reason: string;
+  1447→}
+  1448→
+  1449→export interface AIFamilySupportAnalysis {
+  1450→  familySupportScore: number; // 0-100
+  1451→  caregiverBurnoutRiskScore: number; // 0-100
+  1452→  activeFamilyMembers: number;
+  1453→  familyInvolvementLevel: 'tinggi' | 'sedang' | 'rendah';
+  1454→  needFamilyMeeting: boolean;
+  1455→  needFamilyEducation: boolean;
+  1456→  recommendations: string[];
+  1457→}
+  1458→
+  1459→export interface AICaregiverAnalysis {
+  1460→  status: 'normal' | 'ringan' | 'sedang' | 'berat';
+  1461→  zaritScore?: number;
+  1462→  physicalBurden: 'rendah' | 'sedang' | 'tinggi';
+  1463→  emotionalBurden: 'rendah' | 'sedang' | 'tinggi';
+  1464→  companionDuration: string;
+  1465→  stressLevel: 'rendah' | 'sedang' | 'tinggi';
+  1466→  recommendations: string[];
+  1467→}
+  1468→
+  1469→export interface AIFinancialAnalysis {
+  1470→  priorityNeeds: ('bantuan_finansial' | 'alat_kesehatan' | 'nutrisi' | 'transportasi' | 'home_care' | 'pendampingan_sosial')[];
+  1471→  bpjsStatus?: string;
+  1472→  insuranceStatus?: string;
+  1473→  economicConstraintLevel: SocialRiskLevel;
+  1474→  socialAssistanceRecommendations: string[];
+  1475→}
+  1476→
+  1477→export interface AITransportAnalysis {
+  1478→  accessRiskLevel: SocialRiskLevel;
+  1479→  controlDelayRisk: SocialRiskLevel;
+  1480→  accessLossRisk: SocialRiskLevel;
+  1481→  teleconsultationRecommended: boolean;
+  1482→  homeVisitRecommended: boolean;
+  1483→  ambulanceRecommended: boolean;
+  1484→  recommendations: string[];
+  1485→}
+  1486→
+  1487→export interface AIActionPlanItem {
+  1488→  action: string;
+  1489→  priority: 'tinggi' | 'sedang' | 'rendah';
+  1490→  deadline: string;
+  1491→  category: 'family_meeting' | 'caregiver_support' | 'home_visit' | 'family_education' | 'monitoring' | 'financial_support' | 'transport_support' | 'psychosocial' | 'other';
+  1492→}
+  1493→
+  1494→export interface AIEarlyWarning {
+  1495→  id: string;
+  1496→  patientId: string;
+  1497→  type: 'penurunan_dukungan_keluarga' | 'caregiver_burden_meningkat' | 'risiko_putus_pengobatan' | 'distress_tinggi' | 'isolasi_sosial' | 'masalah_finansial_berat' | 'tidak_ada_caregiver_aktif' | 'monitoring_terlambat';
+  1498→  severity: 'info' | 'warning' | 'critical';
+  1499→  title: string;
+  1500→  description: string;
+  1501→  isRead: boolean;
+  1502→  detectedAt: string;
+  1503→  createdAt: string;
+  1504→}
+  1505→
+  1506→export interface AISocialAnalysisResult {
+  1507→  // Section 1: Ringkasan Kondisi Sosial
+  1508→  socialConditionSummary: string;
+  1509→  // Section 2: Identifikasi Risiko Sosial
+  1510→  socialRisks: AISocialRisk[];
+  1511→  // Section 3: Family Support Analysis
+  1512→  familySupportAnalysis: AIFamilySupportAnalysis;
+  1513→  // Section 4: Caregiver Analysis
+  1514→  caregiverAnalysis: AICaregiverAnalysis;
+  1515→  // Section 5: Financial Analysis
+  1516→  financialAnalysis: AIFinancialAnalysis;
+  1517→  // Section 6: Transport Analysis
+  1518→  transportAnalysis: AITransportAnalysis;
+  1519→  // Section 7: Action Plan
+  1520→  actionPlan: AIActionPlanItem[];
+  1521→  // Section 8: Early Warnings
+  1522→  earlyWarnings: AIEarlyWarning[];
+  1523→  // Metadata
+  1524→  generatedAt: string;
+  1525→  dataSourcesUsed: string[];
+  1526→}
+  1527→
+  1528→export interface AISocialAnalysisRecord {
+  1529→  id: string;
+  1530→  palliativePatientId: string;
+  1531→  result: AISocialAnalysisResult;
+  1532→  generatedBy: string;
+  1533→  acceptedActions: string[];
+  1534→  rejectedActions: string[];
+  1535→  modifiedActions: AIActionPlanItem[];
+  1536→  notes?: string;
+  1537→  createdAt: string;
+  1538→}
+  1539→
+  1540→export interface AISocialPopulationStats {
+  1541→  totalActivePatients: number;
+  1542→  highSocialRiskCount: number;
+  1543→  caregiverBurnoutCount: number;
+  1544→  topSocialNeeds: { need: string; count: number }[];
+  1545→  familySupportDistribution: { level: string; count: number }[];
+  1546→  socialTrendData: { month: string; highRisk: number; mediumRisk: number; lowRisk: number }[];
+  1547→  predictedNeeds30Days: { category: string; estimatedCount: number }[];
+  1548→  predictedNeeds90Days: { category: string; estimatedCount: number }[];
+  1549→  generatedAt: string;
+  1550→}
+  1551→
+  1552→// ── Patient Paliatif Module Types ──────────────────────────────────────────
+  1553→
+  1554→export type PatientTransportRequestType = 'kontrol_faskes' | 'kunjungan_rumah' | 'transportasi_darurat' | 'pengambilan_obat' | 'lainnya';
+  1555→export type PatientTransportRequestStatus = 'menunggu_konfirmasi' | 'disetujui' | 'dijadwalkan' | 'selesai' | 'ditolak';
+  1556→
+  1557→export interface PatientTransportRequest {
+  1558→  id: string;
+  1559→  palliativePatientId: string;
+  1560→  requestType: PatientTransportRequestType;
+  1561→  requestDate: string;
+  1562→  requestTime: string;
+  1563→  pickupLocation: string;
+  1564→  destination: string;
+  1565→  notes?: string;
+  1566→  status: PatientTransportRequestStatus;
+  1567→  requestedBy: string;
+  1568→  confirmedBy?: string;
+  1569→  confirmedAt?: string;
+  1570→  rejectionReason?: string;
+  1571→  createdAt: string;
+  1572→  updatedAt: string;
+  1573→}
+  1574→
+  1575→export type PatientConditionStatus = 'membaik' | 'stabil' | 'menurun' | 'keluhan_baru';
+  1576→
+  1577→export interface PatientCareUpdate {
+  1578→  id: string;
+  1579→  palliativePatientId: string;
+  1580→  conditionStatus: PatientConditionStatus;
+  1581→  newComplaints: boolean;
+  1582→  activityChange: boolean;
+  1583→  appetiteChange: boolean;
+  1584→  sleepQualityChange: boolean;
+  1585→  additionalNotes?: string;
+  1586→  submittedBy: string;
+  1587→  viewedByDoctor: boolean;
+  1588→  createdAt: string;
+  1589→}
+  1590→
+  1591→export interface PatientPaliatifChatMessage {
+  1592→  id: string;
+  1593→  roomId: string;
+  1594→  senderId: string;
+  1595→  senderName: string;
+  1596→  senderRole: 'patient' | 'doctor' | 'perawat' | 'tim_paliatif' | 'system';
+  1597→  content: string;
+  1598→  type: 'text' | 'form_ttv' | 'form_keluhan' | 'form_esas' | 'form_pps' | 'form_distress' | 'form_screening' | 'image' | 'document' | 'system';
+  1599→  status: 'sent' | 'delivered' | 'read';
+  1600→  imageUrl?: string;
+  1601→  documentUrl?: string;
+  1602→  createdAt: string;
+  1603→  readAt?: string;
+  1604→}
+  1605→
+  1606→// ── Social Needs Screening Types ──────────────────────────────────────────
+  1607→
+  1608→export type SocialNeedsCategory =
+  1609→  | 'dukungan_keluarga'
+  1610→  | 'caregiver'
+  1611→  | 'tempat_tinggal'
+  1612→  | 'akses_layanan'
+  1613→  | 'ekonomi'
+  1614→  | 'transportasi'
+  1615→  | 'interaksi_sosial'
+  1616→  | 'kebutuhan_informasi'
+  1617→  | 'pertanyaan_terbuka';
+  1618→
+  1619→export type SocialNeedsQuestionType = 'single_choice' | 'multiple_choice' | 'text_area';
+  1620→
+  1621→export type SocialNeedsRiskLevel = 'rendah' | 'sedang' | 'tinggi' | 'sangat_tinggi';
+  1622→
+  1623→export interface SocialNeedsQuestionOption {
+  1624→  label: string;
+  1625→  value: string;
+  1626→  score: number; // 0-3 risk weight
+  1627→  tooltip?: string;
+  1628→}
+  1629→
+  1630→export interface SocialNeedsQuestion {
+  1631→  id: string;
+  1632→  category: SocialNeedsCategory;
+  1633→  categoryLabel: string;
+  1634→  questionNumber: number;
+  1635→  questionText: string;
+  1636→  type: SocialNeedsQuestionType;
+  1637→  options?: SocialNeedsQuestionOption[];
+  1638→  required: boolean;
+  1639→  hasTooltip?: boolean;
+  1640→}
+  1641→
+  1642→export interface SocialNeedsCategoryScore {
+  1643→  category: SocialNeedsCategory;
+  1644→  categoryLabel: string;
+  1645→  totalScore: number;
+  1646→  maxScore: number;
+  1647→  percentage: number;
+  1648→  riskLevel: SocialNeedsRiskLevel;
+  1649→}
+  1650→
+  1651→export interface SocialNeedsScreeningResult {
+  1652→  totalScore: number;
+  1653→  maxScore: number;
+  1654→  overallPercentage: number;
+  1655→  overallRiskLevel: SocialNeedsRiskLevel;
+  1656→  categoryScores: SocialNeedsCategoryScore[];
+  1657→  completedAt: string;
+  1658→}
+  1659→
+  1660→export interface SocialNeedsAIResult {
+  1661→  familySupportScore: SocialNeedsRiskLevel;
+  1662→  socialRiskScore: SocialNeedsRiskLevel;
+  1663→  caregiverBurnoutScore: SocialNeedsRiskLevel;
+  1664→  accessToCareScore: SocialNeedsRiskLevel;
+  1665→  financialRiskScore: SocialNeedsRiskLevel;
+  1666→  socialIsolationScore: SocialNeedsRiskLevel;
+  1667→  recommendations: SocialNeedsAIRecommendation[];
+  1668→  analysisSummary: string;
+  1669→  earlyWarnings: SocialNeedsEarlyWarning[];
+  1670→  generatedAt: string;
+  1671→}
+  1672→
+  1673→export interface SocialNeedsAIRecommendation {
+  1674→  priority: number;
+  1675→  action: string;
+  1676→  reason: string;
+  1677→  category: 'edukasi_keluarga' | 'family_meeting' | 'home_visit' | 'konseling_psikososial'
+  1678→    | 'dukungan_caregiver' | 'bantuan_finansial' | 'bantuan_transportasi'
+  1679→    | 'rujukan_pekerja_sosial' | 'pendampingan_spiritual' | 'monitoring_intensif';
+  1680→}
+  1681→
+  1682→export interface SocialNeedsEarlyWarning {
+  1683→  type: string;
+  1684→  severity: 'info' | 'warning' | 'critical';
+  1685→  title: string;
+  1686→  description: string;
+  1687→}
+  1688→

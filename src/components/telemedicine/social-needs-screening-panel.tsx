@@ -32,6 +32,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Tooltip,
   TooltipContent,
@@ -44,7 +45,8 @@ import {
   BookOpen, FileText, ChevronLeft, ChevronRight, Info,
   AlertTriangle, AlertCircle, CheckCircle, Sparkles, Save,
   Send, RotateCcw, TrendingUp, Shield, Activity, CircleDot,
-  ClipboardList, BarChart3, Bell, Eye,
+  ClipboardList, BarChart3, Bell, Eye, Calendar, Clock,
+  ArrowRight, History, Download,
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -330,10 +332,82 @@ function MonitoringGaugeBar({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// MOCK MONITORING HISTORY DATA
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface ScreeningHistoryEntry {
+  id: string;
+  date: string;
+  overallPercentage: number;
+  overallRiskLevel: SocialNeedsRiskLevel;
+  totalScore: number;
+  maxScore: number;
+  categoryScores: { category: string; percentage: number; riskLevel: SocialNeedsRiskLevel }[];
+}
+
+const MOCK_SCREENING_HISTORY: ScreeningHistoryEntry[] = [
+  {
+    id: 'hist-1',
+    date: '2025-05-15T09:30:00Z',
+    overallPercentage: 62,
+    overallRiskLevel: 'tinggi',
+    totalScore: 38,
+    maxScore: 61,
+    categoryScores: [
+      { category: 'dukungan_keluarga', percentage: 70, riskLevel: 'tinggi' },
+      { category: 'caregiver', percentage: 55, riskLevel: 'sedang' },
+      { category: 'tempat_tinggal', percentage: 40, riskLevel: 'sedang' },
+      { category: 'akses_layanan', percentage: 75, riskLevel: 'tinggi' },
+      { category: 'ekonomi', percentage: 65, riskLevel: 'tinggi' },
+      { category: 'transportasi', percentage: 50, riskLevel: 'sedang' },
+      { category: 'interaksi_sosial', percentage: 45, riskLevel: 'sedang' },
+    ],
+  },
+  {
+    id: 'hist-2',
+    date: '2025-07-20T14:00:00Z',
+    overallPercentage: 48,
+    overallRiskLevel: 'sedang',
+    totalScore: 29,
+    maxScore: 61,
+    categoryScores: [
+      { category: 'dukungan_keluarga', percentage: 55, riskLevel: 'sedang' },
+      { category: 'caregiver', percentage: 45, riskLevel: 'sedang' },
+      { category: 'tempat_tinggal', percentage: 35, riskLevel: 'sedang' },
+      { category: 'akses_layanan', percentage: 60, riskLevel: 'sedang' },
+      { category: 'ekonomi', percentage: 50, riskLevel: 'sedang' },
+      { category: 'transportasi', percentage: 40, riskLevel: 'sedang' },
+      { category: 'interaksi_sosial', percentage: 38, riskLevel: 'rendah' },
+    ],
+  },
+  {
+    id: 'hist-3',
+    date: '2025-09-10T10:15:00Z',
+    overallPercentage: 35,
+    overallRiskLevel: 'sedang',
+    totalScore: 21,
+    maxScore: 61,
+    categoryScores: [
+      { category: 'dukungan_keluarga', percentage: 40, riskLevel: 'sedang' },
+      { category: 'caregiver', percentage: 35, riskLevel: 'sedang' },
+      { category: 'tempat_tinggal', percentage: 25, riskLevel: 'rendah' },
+      { category: 'akses_layanan', percentage: 45, riskLevel: 'sedang' },
+      { category: 'ekonomi', percentage: 38, riskLevel: 'sedang' },
+      { category: 'transportasi', percentage: 30, riskLevel: 'rendah' },
+      { category: 'interaksi_sosial', percentage: 28, riskLevel: 'rendah' },
+    ],
+  },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function SocialNeedsScreeningPanel() {
+interface SocialNeedsScreeningPanelProps {
+  embedded?: boolean;
+}
+
+export function SocialNeedsScreeningPanel({ embedded = false }: SocialNeedsScreeningPanelProps) {
   const { currentUser } = useStore();
   const { toast } = useToast();
 
@@ -345,6 +419,8 @@ export function SocialNeedsScreeningPanel() {
   const [aiResult, setAiResult] = useState<SocialNeedsAIResult | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   // ── Derived data ─────────────────────────────────────────────────────────
   const questionsByCategory = useMemo(() => getQuestionsByCategory(), []);
@@ -439,6 +515,7 @@ export function SocialNeedsScreeningPanel() {
     const result = calculateScreeningResult(answers);
     setScreeningResult(result);
     setIsCompleted(true);
+    setShowSummary(true);
     setActiveTab('results');
     toast({
       title: 'Skrining Selesai',
@@ -451,6 +528,7 @@ export function SocialNeedsScreeningPanel() {
     setScreeningResult(null);
     setAiResult(null);
     setIsCompleted(false);
+    setShowSummary(false);
     setCurrentCategoryIndex(0);
     setActiveTab('screening');
     toast({ title: 'Form Direset', description: 'Semua jawaban telah dihapus.' });
@@ -665,54 +743,56 @@ export function SocialNeedsScreeningPanel() {
 
   const renderDesktopCategoryNav = () => (
     <div className="w-56 shrink-0">
-      <div className="space-y-1 pr-2 max-h-[calc(100vh-18rem)] overflow-y-auto">
-        {CATEGORY_ORDER.map((cat, idx) => {
-          const meta = CATEGORY_META[cat];
-          const progress = categoryProgress[cat];
-          const isActive = idx === currentCategoryIndex;
-          const isComplete = progress && progress.answered === progress.total && progress.total > 0;
+      <ScrollArea className="max-h-[400px]">
+        <div className="space-y-1 pr-2">
+          {CATEGORY_ORDER.map((cat, idx) => {
+            const meta = CATEGORY_META[cat];
+            const progress = categoryProgress[cat];
+            const isActive = idx === currentCategoryIndex;
+            const isComplete = progress && progress.answered === progress.total && progress.total > 0;
 
-          return (
-            <button
-              key={cat}
-              onClick={() => setCurrentCategoryIndex(idx)}
-              className={cn(
-                'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-all duration-200',
-                isActive
-                  ? 'bg-[#2D8C7A]/10 border border-[#2D8C7A]/30'
-                  : 'hover:bg-gray-50 border border-transparent'
-              )}
-            >
-              <div
+            return (
+              <button
+                key={cat}
+                onClick={() => setCurrentCategoryIndex(idx)}
                 className={cn(
-                  'w-7 h-7 rounded-md flex items-center justify-center shrink-0',
-                  isActive ? 'bg-[#2D8C7A] text-white' : 'bg-gray-100 text-gray-500'
+                  'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-all duration-200',
+                  isActive
+                    ? 'bg-[#2D8C7A]/10 border border-[#2D8C7A]/30'
+                    : 'hover:bg-gray-50 border border-transparent'
                 )}
               >
-                <CategoryIcon name={meta.icon} className="w-3.5 h-3.5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p
+                <div
                   className={cn(
-                    'text-xs font-medium truncate',
-                    isActive ? 'text-[#2D8C7A]' : 'text-gray-700'
+                    'w-7 h-7 rounded-md flex items-center justify-center shrink-0',
+                    isActive ? 'bg-[#2D8C7A] text-white' : 'bg-gray-100 text-gray-500'
                   )}
                 >
-                  {meta.label}
-                </p>
-                {progress && (
-                  <p className="text-[10px] text-muted-foreground">
-                    {progress.answered}/{progress.total}
+                  <CategoryIcon name={meta.icon} className="w-3.5 h-3.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={cn(
+                      'text-xs font-medium truncate',
+                      isActive ? 'text-[#2D8C7A]' : 'text-gray-700'
+                    )}
+                  >
+                    {meta.label}
                   </p>
+                  {progress && (
+                    <p className="text-[10px] text-muted-foreground">
+                      {progress.answered}/{progress.total}
+                    </p>
+                  )}
+                </div>
+                {isComplete && (
+                  <CheckCircle className="w-3.5 h-3.5 text-green-500 shrink-0" />
                 )}
-              </div>
-              {isComplete && (
-                <CheckCircle className="w-3.5 h-3.5 text-green-500 shrink-0" />
-              )}
-            </button>
-          );
-        })}
-      </div>
+              </button>
+            );
+          })}
+        </div>
+      </ScrollArea>
     </div>
   );
 
@@ -780,12 +860,12 @@ export function SocialNeedsScreeningPanel() {
         </div>
 
         {/* Main Content: Nav + Questions */}
-        <div className="flex gap-4 flex-1 min-h-0">
+        <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
           {/* Desktop Category Navigation */}
           <div className="hidden md:block shrink-0">{renderDesktopCategoryNav()}</div>
 
           {/* Questions Area */}
-          <div className="flex-1 min-w-0 flex flex-col min-h-0">
+          <div className="flex-1 min-w-0 flex flex-col min-h-0 overflow-hidden">
             {/* Mobile Category Navigation */}
             <div className="md:hidden mb-3 shrink-0">{renderMobileCategoryNav()}</div>
 
@@ -870,9 +950,355 @@ export function SocialNeedsScreeningPanel() {
     );
   };
 
+  // ── Screening Summary (shown after completion) ───────────────────────────
+
+  const renderScreeningSummary = () => {
+    const result = screeningResult || liveResult;
+    if (!result) return null;
+
+    const overallDisplay = getRiskLevelDisplay(result.overallRiskLevel);
+
+    // Extract key findings from category scores
+    const familySupport = result.categoryScores.find(c => c.category === 'dukungan_keluarga');
+    const economic = result.categoryScores.find(c => c.category === 'ekonomi');
+    const caregiver = result.categoryScores.find(c => c.category === 'caregiver');
+    const socialAssist = result.categoryScores.find(c => c.category === 'akses_layanan');
+    const healthAccess = result.categoryScores.find(c => c.category === 'akses_layanan');
+
+    const riskColorMap: Record<SocialNeedsRiskLevel, string> = {
+      rendah: 'text-green-600',
+      sedang: 'text-amber-600',
+      tinggi: 'text-orange-600',
+      sangat_tinggi: 'text-red-600',
+    };
+
+    const riskBgMap: Record<SocialNeedsRiskLevel, string> = {
+      rendah: 'bg-green-50 border-green-200',
+      sedang: 'bg-amber-50 border-amber-200',
+      tinggi: 'bg-orange-50 border-orange-200',
+      sangat_tinggi: 'bg-red-50 border-red-200',
+    };
+
+    // Generate recommendations based on risk level
+    const generateRecommendations = () => {
+      const recs: string[] = [];
+      if (result.overallRiskLevel === 'tinggi' || result.overallRiskLevel === 'sangat_tinggi') {
+        recs.push('Rujuk ke pekerja sosial medis untuk intervensi komprehensif');
+      }
+      if (familySupport && (familySupport.riskLevel === 'tinggi' || familySupport.riskLevel === 'sangat_tinggi')) {
+        recs.push('Lakukan family meeting untuk meningkatkan dukungan keluarga');
+      }
+      if (economic && (economic.riskLevel === 'tinggi' || economic.riskLevel === 'sangat_tinggi')) {
+        recs.push('Evaluasi kebutuhan bantuan finansial dan akses BPJS/JSK');
+      }
+      if (caregiver && (caregiver.riskLevel === 'tinggi' || caregiver.riskLevel === 'sangat_tinggi')) {
+        recs.push('Assess caregiver burnout dan sediakan dukungan respite care');
+      }
+      if (socialAssist && (socialAssist.riskLevel === 'tinggi' || socialAssist.riskLevel === 'sangat_tinggi')) {
+        recs.push('Fasilitasi akses ke bantuan sosial dan layanan transportasi');
+      }
+      if (healthAccess && (healthAccess.riskLevel === 'tinggi' || healthAccess.riskLevel === 'sangat_tinggi')) {
+        recs.push('Evaluasi hambatan akses pelayanan kesehatan dan cari solusi alternatif');
+      }
+      if (recs.length === 0) {
+        recs.push('Lanjutkan monitoring rutin kebutuhan sosial pasien');
+        recs.push('Edukasi keluarga tentang sumber daya dukungan yang tersedia');
+      }
+      return recs;
+    };
+
+    return (
+      <div className="space-y-4">
+        {/* Summary Header */}
+        <Card className={cn('border-2', riskBgMap[result.overallRiskLevel])}>
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+              <RiskGauge
+                percentage={result.overallPercentage}
+                size={120}
+                strokeWidth={10}
+                riskLevel={result.overallRiskLevel}
+                label="Risiko Keseluruhan"
+              />
+              <div className="flex-1 text-center sm:text-left space-y-2">
+                <div className="flex items-center justify-center sm:justify-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                  <h3 className="text-lg font-semibold">Skrining Selesai</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Skor total: <span className={cn('font-bold', riskColorMap[result.overallRiskLevel])}>{result.totalScore}/{result.maxScore}</span> poin
+                </p>
+                <Badge
+                  className="text-sm px-3 py-1"
+                  style={{
+                    backgroundColor: overallDisplay.bgColor,
+                    color: overallDisplay.color,
+                    borderColor: overallDisplay.borderColor,
+                    border: `1px solid ${overallDisplay.borderColor}`,
+                  }}
+                >
+                  Risiko {overallDisplay.label}
+                </Badge>
+                <p className="text-xs text-muted-foreground">
+                  <Clock className="w-3 h-3 inline mr-1" />
+                  {new Date(result.completedAt).toLocaleString('id-ID')}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Key Findings Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Status Dukungan Keluarga */}
+          {familySupport && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Heart className="w-4 h-4 text-pink-500" />
+                  <span className="text-sm font-medium">Dukungan Keluarga</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className={cn('text-lg font-bold', riskColorMap[familySupport.riskLevel])}>
+                    {familySupport.totalScore}/{familySupport.maxScore}
+                  </span>
+                  <Badge
+                    className="text-[10px]"
+                    style={{
+                      backgroundColor: getRiskLevelDisplay(familySupport.riskLevel).bgColor,
+                      color: getRiskLevelDisplay(familySupport.riskLevel).color,
+                      borderColor: getRiskLevelDisplay(familySupport.riskLevel).borderColor,
+                      border: `1px solid ${getRiskLevelDisplay(familySupport.riskLevel).borderColor}`,
+                    }}
+                  >
+                    {getRiskLevelDisplay(familySupport.riskLevel).label}
+                  </Badge>
+                </div>
+                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${familySupport.percentage}%`,
+                      backgroundColor: getRiskLevelDisplay(familySupport.riskLevel).color,
+                    }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Kondisi Ekonomi */}
+          {economic && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Wallet className="w-4 h-4 text-amber-500" />
+                  <span className="text-sm font-medium">Kondisi Ekonomi</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className={cn('text-lg font-bold', riskColorMap[economic.riskLevel])}>
+                    {economic.totalScore}/{economic.maxScore}
+                  </span>
+                  <Badge
+                    className="text-[10px]"
+                    style={{
+                      backgroundColor: getRiskLevelDisplay(economic.riskLevel).bgColor,
+                      color: getRiskLevelDisplay(economic.riskLevel).color,
+                      borderColor: getRiskLevelDisplay(economic.riskLevel).borderColor,
+                      border: `1px solid ${getRiskLevelDisplay(economic.riskLevel).borderColor}`,
+                    }}
+                  >
+                    {getRiskLevelDisplay(economic.riskLevel).label}
+                  </Badge>
+                </div>
+                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${economic.percentage}%`,
+                      backgroundColor: getRiskLevelDisplay(economic.riskLevel).color,
+                    }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Kebutuhan Caregiver */}
+          {caregiver && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Users className="w-4 h-4 text-purple-500" />
+                  <span className="text-sm font-medium">Kebutuhan Caregiver</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className={cn('text-lg font-bold', riskColorMap[caregiver.riskLevel])}>
+                    {caregiver.totalScore}/{caregiver.maxScore}
+                  </span>
+                  <Badge
+                    className="text-[10px]"
+                    style={{
+                      backgroundColor: getRiskLevelDisplay(caregiver.riskLevel).bgColor,
+                      color: getRiskLevelDisplay(caregiver.riskLevel).color,
+                      borderColor: getRiskLevelDisplay(caregiver.riskLevel).borderColor,
+                      border: `1px solid ${getRiskLevelDisplay(caregiver.riskLevel).borderColor}`,
+                    }}
+                  >
+                    {getRiskLevelDisplay(caregiver.riskLevel).label}
+                  </Badge>
+                </div>
+                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${caregiver.percentage}%`,
+                      backgroundColor: getRiskLevelDisplay(caregiver.riskLevel).color,
+                    }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Kebutuhan Bantuan Sosial */}
+          {socialAssist && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Shield className="w-4 h-4 text-teal-500" />
+                  <span className="text-sm font-medium">Hambatan Akses Layanan</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className={cn('text-lg font-bold', riskColorMap[socialAssist.riskLevel])}>
+                    {socialAssist.totalScore}/{socialAssist.maxScore}
+                  </span>
+                  <Badge
+                    className="text-[10px]"
+                    style={{
+                      backgroundColor: getRiskLevelDisplay(socialAssist.riskLevel).bgColor,
+                      color: getRiskLevelDisplay(socialAssist.riskLevel).color,
+                      borderColor: getRiskLevelDisplay(socialAssist.riskLevel).borderColor,
+                      border: `1px solid ${getRiskLevelDisplay(socialAssist.riskLevel).borderColor}`,
+                    }}
+                  >
+                    {getRiskLevelDisplay(socialAssist.riskLevel).label}
+                  </Badge>
+                </div>
+                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${socialAssist.percentage}%`,
+                      backgroundColor: getRiskLevelDisplay(socialAssist.riskLevel).color,
+                    }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Risiko Masalah Sosial */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-orange-500" />
+              Risiko Masalah Sosial
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={cn('p-4 rounded-lg border', riskBgMap[result.overallRiskLevel])}>
+              <div className="flex items-center gap-3">
+                <div className={cn('text-3xl font-bold', riskColorMap[result.overallRiskLevel])}>
+                  {result.overallPercentage}%
+                </div>
+                <div>
+                  <p className={cn('text-sm font-semibold', riskColorMap[result.overallRiskLevel])}>
+                    Risiko {overallDisplay.label}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {result.overallRiskLevel === 'rendah' && 'Pasien memiliki risiko masalah sosial yang rendah. Monitoring rutin tetap diperlukan.'}
+                    {result.overallRiskLevel === 'sedang' && 'Pasien memiliki risiko masalah sosial sedang. Diperlukan intervensi preventif dan monitoring berkala.'}
+                    {result.overallRiskLevel === 'tinggi' && 'Pasien memiliki risiko masalah sosial tinggi. Diperlukan intervensi segera dan monitoring intensif.'}
+                    {result.overallRiskLevel === 'sangat_tinggi' && 'Pasien memiliki risiko masalah sosial sangat tinggi. Diperlukan intervensi krisis dan rujukan ke pekerja sosial.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Rekomendasi Tindak Lanjut */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-[#2D8C7A]" />
+              Rekomendasi Tindak Lanjut
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {generateRecommendations().map((rec, idx) => (
+                <div key={idx} className="flex items-start gap-3 p-3 rounded-lg border bg-gray-50/50">
+                  <div className="w-6 h-6 rounded-full bg-[#2D8C7A]/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-xs font-bold text-[#2D8C7A]">{idx + 1}</span>
+                  </div>
+                  <p className="text-sm text-gray-700">{rec}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <Button
+            onClick={handleRunAI}
+            disabled={aiLoading}
+            className="gap-2 bg-[#D9B26F] hover:bg-[#D9B26F]/90 text-white w-full sm:w-auto"
+          >
+            {aiLoading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Menganalisis AI...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                Analisis AI Lanjutan
+              </>
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => { setShowSummary(false); setActiveTab('results'); }}
+            className="gap-2 w-full sm:w-auto"
+          >
+            <Eye className="w-4 h-4" />
+            Lihat Hasil Detail
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleResetForm}
+            className="gap-2 w-full sm:w-auto"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Ulangi Skrining
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
   // ── Tab 2: Results & AI Analysis ─────────────────────────────────────────
 
   const renderResultsTab = () => {
+    // If just completed, show summary first
+    if (showSummary) {
+      return renderScreeningSummary();
+    }
+
     const result = screeningResult || liveResult;
 
     if (!result) {
@@ -1205,13 +1631,28 @@ export function SocialNeedsScreeningPanel() {
       },
     ];
 
-    // Mock trend data
-    const trendData = [
-      { label: 'Minggu 1', value: 15 },
-      { label: 'Minggu 2', value: 22 },
-      { label: 'Minggu 3', value: 18 },
-      { label: 'Minggu 4', value: result?.overallPercentage ?? 25 },
+    // Mock trend data - include history + current result
+    const allHistory = [
+      ...MOCK_SCREENING_HISTORY,
+      ...(result ? [{
+        id: 'hist-current',
+        date: result.completedAt,
+        overallPercentage: result.overallPercentage,
+        overallRiskLevel: result.overallRiskLevel,
+        totalScore: result.totalScore,
+        maxScore: result.maxScore,
+        categoryScores: result.categoryScores.map(cs => ({
+          category: cs.category,
+          percentage: cs.percentage,
+          riskLevel: cs.riskLevel,
+        })),
+      }] : []),
     ];
+
+    const trendData = allHistory.map((h, idx) => ({
+      label: new Date(h.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+      value: h.overallPercentage,
+    }));
     const maxTrendValue = Math.max(...trendData.map((d) => d.value), 1);
 
     // Mock high-risk patients
@@ -1274,7 +1715,7 @@ export function SocialNeedsScreeningPanel() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-[#2D8C7A]" />
-              Tren Risiko Sosial (4 Minggu Terakhir)
+              Tren Risiko Sosial
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -1301,6 +1742,98 @@ export function SocialNeedsScreeningPanel() {
                 );
               })}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Monitoring History Section */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <History className="w-4 h-4 text-[#2D8C7A]" />
+                Riwayat Monitoring
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-[#2D8C7A]"
+                onClick={() => setShowHistory(!showHistory)}
+              >
+                {showHistory ? 'Sembunyikan' : 'Lihat Semua'}
+                <ChevronRight className={cn('w-3 h-3 ml-1 transition-transform', showHistory && 'rotate-90')} />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {/* Latest screening summary */}
+            {allHistory.length > 0 && (
+              <div className="space-y-3">
+                {allHistory.slice().reverse().slice(0, showHistory ? undefined : 3).map((entry, idx) => {
+                  const display = getRiskLevelDisplay(entry.overallRiskLevel);
+                  const isLatest = idx === 0;
+                  return (
+                    <div
+                      key={entry.id}
+                      className={cn(
+                        'p-3 rounded-lg border transition-all',
+                        isLatest ? 'border-[#2D8C7A]/30 bg-[#2D8C7A]/5' : 'border-gray-200'
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span className="text-xs font-medium">
+                            {new Date(entry.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                          </span>
+                          {isLatest && (
+                            <Badge className="text-[9px] bg-[#2D8C7A] text-white">Terbaru</Badge>
+                          )}
+                        </div>
+                        <Badge
+                          className="text-[10px]"
+                          style={{
+                            backgroundColor: display.bgColor,
+                            color: display.color,
+                            borderColor: display.borderColor,
+                            border: `1px solid ${display.borderColor}`,
+                          }}
+                        >
+                          {display.label} ({entry.overallPercentage}%)
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {entry.categoryScores.slice(0, 4).map((cs) => {
+                          const meta = CATEGORY_META[cs.category as SocialNeedsCategory];
+                          const csDisplay = getRiskLevelDisplay(cs.riskLevel);
+                          return (
+                            <div key={cs.category} className="text-xs">
+                              <span className="text-muted-foreground">{meta?.label || cs.category}</span>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full"
+                                    style={{ width: `${cs.percentage}%`, backgroundColor: csDisplay.color }}
+                                  />
+                                </div>
+                                <span className="text-[10px] font-medium" style={{ color: csDisplay.color }}>
+                                  {cs.percentage}%
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {allHistory.length === 0 && (
+              <div className="text-center py-6">
+                <History className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">Belum ada riwayat monitoring</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1407,29 +1940,35 @@ export function SocialNeedsScreeningPanel() {
   // MAIN RENDER
   // ═══════════════════════════════════════════════════════════════════════════
 
+  const wrapperClass = embedded
+    ? 'flex flex-col h-full overflow-hidden'
+    : 'p-4 flex flex-col h-[calc(100vh-8rem)] overflow-hidden';
+
   return (
-    <div className="p-4 flex flex-col h-[calc(100vh-8rem)] overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between shrink-0">
-        <div>
-          <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: '#2D8C7A' }}>
-            <Heart className="w-5 h-5" />
-            Skrining Kebutuhan Sosial
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Penilaian kebutuhan sosial pasien paliatif berbasis skrining komprehensif
-          </p>
+    <div className={wrapperClass}>
+      {/* Header - only show in standalone mode */}
+      {!embedded && (
+        <div className="flex items-center justify-between shrink-0">
+          <div>
+            <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: '#2D8C7A' }}>
+              <Heart className="w-5 h-5" />
+              Skrining Kebutuhan Sosial
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Penilaian kebutuhan sosial pasien paliatif berbasis skrining komprehensif
+            </p>
+          </div>
+          {currentUser && (
+            <Badge variant="outline" className="text-xs shrink-0">
+              {currentUser.name} ({currentUser.role})
+            </Badge>
+          )}
         </div>
-        {currentUser && (
-          <Badge variant="outline" className="text-xs shrink-0">
-            {currentUser.name} ({currentUser.role})
-          </Badge>
-        )}
-      </div>
+      )}
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 mt-3">
-        <TabsList className="w-full grid grid-cols-3 shrink-0">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className={cn('flex-1 flex flex-col min-h-0', !embedded && 'mt-3')}>
+        <TabsList className={cn('grid grid-cols-3 shrink-0', embedded ? 'w-full' : 'w-full')}>
           <TabsTrigger value="screening" className="gap-1.5 text-xs sm:text-sm">
             <ClipboardList className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Skrining</span>

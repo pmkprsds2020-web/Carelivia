@@ -139,6 +139,9 @@ import {
   Apple,
   Scale,
   Flame,
+  ArrowRight,
+  Calendar,
+  Heart,
 } from 'lucide-react';
 import { PalliativeChatPanel } from './palliative-chat-panel';
 import { MedicationMonitoringDashboard } from './medication-monitoring-dashboard';
@@ -1246,6 +1249,48 @@ export function PalliativeMonitoringPanel() {
           <p className="text-2xl font-bold text-primary">{new Set(palliativeChatMessages.map(m => m.roomId)).size}</p>
         </Card>
       </div>
+
+      {/* Status Sosial Pasien Card */}
+      <Card className="border-[#2D8C7A]/20 bg-gradient-to-r from-[#2D8C7A]/5 to-[#6DB8A8]/5">
+        <CardContent className="p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#2D8C7A]/10 flex items-center justify-center">
+                <Users className="w-5 h-5 text-[#2D8C7A]" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                  Status Sosial Pasien
+                  <Badge className="text-[9px] bg-[#2D8C7A] text-white">Aktif</Badge>
+                </h3>
+                <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Shield className="w-3 h-3 text-amber-500" />
+                    Skor Risiko: <span className="font-semibold text-amber-600">Sedang</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Heart className="w-3 h-3 text-pink-500" />
+                    Dukungan Keluarga: <span className="font-semibold text-pink-600">Cukup</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3 h-3 text-muted-foreground" />
+                    Skrining Terakhir: <span className="font-semibold">10 Sep 2025</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-[#2D8C7A]/30 text-[#2D8C7A] hover:bg-[#2D8C7A]/10 shrink-0"
+              onClick={() => setActiveTab('sosial')}
+            >
+              <ArrowRight className="w-3.5 h-3.5" />
+              Lihat Detail Skrining Sosial
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Search and Filter */}
       <div className="flex flex-col gap-2">

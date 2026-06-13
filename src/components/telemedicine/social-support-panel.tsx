@@ -55,6 +55,7 @@ import {
 } from 'lucide-react';
 
 import AISocialAnalysisTab from './ai-social-analysis-tab';
+import { SocialNeedsScreeningPanel } from './social-needs-screening-panel';
 
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -658,7 +659,15 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
 
   // ── 2. Skrining Kebutuhan Sosial ────────────────────────────────────────
 
-  const ScreeningTab = () => {
+  const ScreeningTab = () => (
+    <div className="h-[calc(100vh-300px)] min-h-[500px]">
+      <SocialNeedsScreeningPanel embedded />
+    </div>
+  );
+
+  // ── Legacy ScreeningTab (kept for reference / fallback) ──────────────
+
+  const ScreeningTabLegacy = () => {
     const [form, setForm] = useState<ScreeningFormState>(emptyScreeningForm());
     const [showResult, setShowResult] = useState(false);
 
@@ -2498,17 +2507,19 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
   return (
     <div className="space-y-4">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <ScrollArea className="w-full">
-          <TabsList className="flex w-max gap-1 bg-slate-100 p-1 rounded-lg">
-            {tabItems.map(tab => (
-              <TabsTrigger key={tab.value} value={tab.value}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md whitespace-nowrap">
-                <tab.icon className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{tab.label}</span>
+        <div className="relative">
+          <ScrollArea className="w-full" type="always">
+            <TabsList className="flex w-max gap-1 bg-slate-100 p-1 rounded-lg">
+              {tabItems.map(tab => (
+                <TabsTrigger key={tab.value} value={tab.value}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md whitespace-nowrap">
+                  <tab.icon className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{tab.label}</span>
               </TabsTrigger>
             ))}
-          </TabsList>
-        </ScrollArea>
+            </TabsList>
+          </ScrollArea>
+        </div>
 
         <TabsContent value="dashboard" className="mt-4">
           {renderDashboard()}
