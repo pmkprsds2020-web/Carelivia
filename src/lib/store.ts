@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { firestoreSync } from '@/lib/firestore-sync';
 import type { 
   User, Consultation, Message, Medicine, CartItem, 
   HomeCareService, HomeCareBooking, Notification, Article,
@@ -647,15 +648,27 @@ export const useStore = create<TelemedicineStore>((set) => ({
     },
   ] as PalliativePatientInfo[],
   setPalliativePatients: (patients) => set({ palliativePatients: patients }),
-  addPalliativePatient: (patient) => set((state) => ({ palliativePatients: [...state.palliativePatients, patient] })),
-  updatePalliativePatient: (patientId, data) => set((state) => ({
-    palliativePatients: state.palliativePatients.map(p =>
-      p.id === patientId ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
-    ),
-  })),
-  removePalliativePatient: (patientId) => set((state) => ({
-    palliativePatients: state.palliativePatients.filter(p => p.id !== patientId),
-  })),
+  addPalliativePatient: (patient) => {
+    set((state) => ({ palliativePatients: [...state.palliativePatients, patient] }));
+    // Persist to Firestore (fire-and-forget)
+    firestoreSync.addPatient({ ...patient }).catch(err => console.error('[Store] Firestore sync error (addPatient):', err));
+  },
+  updatePalliativePatient: (patientId, data) => {
+    set((state) => ({
+      palliativePatients: state.palliativePatients.map(p =>
+        p.id === patientId ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
+      ),
+    }));
+    // Persist to Firestore
+    firestoreSync.updatePatient(patientId, data).catch(err => console.error('[Store] Firestore sync error (updatePatient):', err));
+  },
+  removePalliativePatient: (patientId) => {
+    set((state) => ({
+      palliativePatients: state.palliativePatients.filter(p => p.id !== patientId),
+    }));
+    // Persist to Firestore
+    firestoreSync.deletePatient(patientId).catch(err => console.error('[Store] Firestore sync error (removePatient):', err));
+  },
   selectedPalliativePatientId: null,
   setSelectedPalliativePatientId: (id) => set({ selectedPalliativePatientId: id }),
   vitalSignRecords: [
@@ -697,7 +710,11 @@ export const useStore = create<TelemedicineStore>((set) => ({
     },
   ] as VitalSignRecordInfo[],
   setVitalSignRecords: (records) => set({ vitalSignRecords: records }),
-  addVitalSignRecord: (record) => set((state) => ({ vitalSignRecords: [...state.vitalSignRecords, record] })),
+  addVitalSignRecord: (record) => {
+    set((state) => ({ vitalSignRecords: [...state.vitalSignRecords, record] }));
+    // Persist to Firestore
+    firestoreSync.addTTV(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addTTV):', err));
+  },
   palliativeMedications: [
     { id: 'pm-1', palliativePatientId: 'pp-1', medicineName: 'Morfine 10mg', dosage: '10mg', frequency: '3x1', route: 'oral', startDate: '2025-01-15', indication: 'Nyeri kronis', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
     { id: 'pm-2', palliativePatientId: 'pp-1', medicineName: 'Ondansetron 4mg', dosage: '4mg', frequency: '2x1', route: 'oral', startDate: '2025-01-15', indication: 'Mual', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
@@ -708,12 +725,24 @@ export const useStore = create<TelemedicineStore>((set) => ({
     { id: 'pm-7', palliativePatientId: 'pp-3', medicineName: 'Diazepam 5mg', dosage: '5mg', frequency: '1x1', route: 'oral', startDate: '2025-01-10', indication: 'Kecemasan, insomnia', isActive: true, notes: 'Diberikan malam hari', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
   ] as PalliativeMedicationInfo[],
   setPalliativeMedications: (meds) => set({ palliativeMedications: meds }),
-  addPalliativeMedication: (med) => set((state) => ({ palliativeMedications: [...state.palliativeMedications, med] })),
-  updatePalliativeMedication: (medId, data) => set((state) => ({
-    palliativeMedications: state.palliativeMedications.map(m =>
-      m.id === medId ? { ...m, ...data, updatedAt: new Date().toISOString() } : m
-    ),
-  })),
+  addPalliativeMedication: (med) => {
+    set((state) => ({ palliativeMedications: [...state.palliativeMedications, med] }));
+    // Persist to Firestore
+    firestoreSync.addObat(med.palliativePatientId, { ...med }).catch(err => console.error('[Store] Firestore sync error (addObat):', err));
+  },
+  updatePalliativeMedication: (medId, data) => {
+    const state = useStore.getState();
+    const med = state.palliativeMedications.find(m => m.id === medId);
+    set((state) => ({
+      palliativeMedications: state.palliativeMedications.map(m =>
+        m.id === medId ? { ...m, ...data, updatedAt: new Date().toISOString() } : m
+      ),
+    }));
+    // Persist to Firestore
+    if (med) {
+      firestoreSync.updateObat(med.palliativePatientId, medId, data).catch(err => console.error('[Store] Firestore sync error (updateObat):', err));
+    }
+  },
   advanceCarePlans: [
     {
       id: 'acp-1', palliativePatientId: 'pp-1',
@@ -750,12 +779,24 @@ export const useStore = create<TelemedicineStore>((set) => ({
     },
   ] as AdvanceCarePlanInfo[],
   setAdvanceCarePlans: (plans) => set({ advanceCarePlans: plans }),
-  addAdvanceCarePlan: (plan) => set((state) => ({ advanceCarePlans: [...state.advanceCarePlans, plan] })),
-  updateAdvanceCarePlan: (planId, data) => set((state) => ({
-    advanceCarePlans: state.advanceCarePlans.map(p =>
-      p.id === planId ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
-    ),
-  })),
+  addAdvanceCarePlan: (plan) => {
+    set((state) => ({ advanceCarePlans: [...state.advanceCarePlans, plan] }));
+    // Persist to Firestore
+    firestoreSync.addACP(plan.palliativePatientId, { ...plan }).catch(err => console.error('[Store] Firestore sync error (addACP):', err));
+  },
+  updateAdvanceCarePlan: (planId, data) => {
+    const state = useStore.getState();
+    const plan = state.advanceCarePlans.find(p => p.id === planId);
+    set((state) => ({
+      advanceCarePlans: state.advanceCarePlans.map(p =>
+        p.id === planId ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
+      ),
+    }));
+    // Persist to Firestore
+    if (plan) {
+      firestoreSync.updateACP(plan.palliativePatientId, planId, data).catch(err => console.error('[Store] Firestore sync error (updateACP):', err));
+    }
+  },
   palliativeScreeningRecords: [
     { id: 'psr-1', palliativePatientId: 'pp-1', screeningType: 'esas', score: 45, scoreLabel: 'Gejala Berat', interpretation: 'Skor ESAS 45/90 menunjukkan beban gejala berat', ewsLevel: 'merah', performedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString() },
     { id: 'psr-2', palliativePatientId: 'pp-1', screeningType: 'pps', score: 40, scoreLabel: 'Ketergantungan', interpretation: 'PPS 40% - Pasien memerlukan bantuan substantial', ewsLevel: 'merah', performedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString() },
@@ -763,7 +804,11 @@ export const useStore = create<TelemedicineStore>((set) => ({
     { id: 'psr-4', palliativePatientId: 'pp-3', screeningType: 'distress', score: 8, scoreLabel: 'Distress Berat', interpretation: 'Skor 8/10 menunjukkan distress berat', ewsLevel: 'merah', performedAt: new Date(Date.now() - 43200000).toISOString(), createdAt: new Date(Date.now() - 43200000).toISOString() },
   ] as PalliativeScreeningRecordInfo[],
   setPalliativeScreeningRecords: (records) => set({ palliativeScreeningRecords: records }),
-  addPalliativeScreeningRecord: (record) => set((state) => ({ palliativeScreeningRecords: [...state.palliativeScreeningRecords, record] })),
+  addPalliativeScreeningRecord: (record) => {
+    set((state) => ({ palliativeScreeningRecords: [...state.palliativeScreeningRecords, record] }));
+    // Persist to Firestore
+    firestoreSync.addSkrining(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addSkrining):', err));
+  },
   palliativeAiSummary: '',
   setPalliativeAiSummary: (summary) => set({ palliativeAiSummary: summary }),
   nutritionRecords: [
@@ -811,7 +856,11 @@ export const useStore = create<TelemedicineStore>((set) => ({
     },
   ] as NutritionRecordInfo[],
   setNutritionRecords: (records) => set({ nutritionRecords: records }),
-  addNutritionRecord: (record) => set((state) => ({ nutritionRecords: [...state.nutritionRecords, record] })),
+  addNutritionRecord: (record) => {
+    set((state) => ({ nutritionRecords: [...state.nutritionRecords, record] }));
+    // Persist to Firestore
+    firestoreSync.addNutrisi(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addNutrisi):', err));
+  },
   nutritionAiRecommendation: null,
   setNutritionAiRecommendation: (rec) => set({ nutritionAiRecommendation: rec }),
 
@@ -956,12 +1005,24 @@ export const useStore = create<TelemedicineStore>((set) => ({
     },
   ] as PalliativeChatMessage[],
   setPalliativeChatMessages: (messages) => set({ palliativeChatMessages: messages }),
-  addPalliativeChatMessage: (message) => set((state) => ({ palliativeChatMessages: [...state.palliativeChatMessages, message] })),
-  updatePalliativeChatMessage: (msgId, data) => set((state) => ({
-    palliativeChatMessages: state.palliativeChatMessages.map(m =>
-      m.id === msgId ? { ...m, ...data } : m
-    ),
-  })),
+  addPalliativeChatMessage: (message) => {
+    set((state) => ({ palliativeChatMessages: [...state.palliativeChatMessages, message] }));
+    // Persist to Firestore
+    firestoreSync.addChatMessage(message.palliativePatientId, { ...message }).catch(err => console.error('[Store] Firestore sync error (addChat):', err));
+  },
+  updatePalliativeChatMessage: (msgId, data) => {
+    const state = useStore.getState();
+    const msg = state.palliativeChatMessages.find(m => m.id === msgId);
+    set((state) => ({
+      palliativeChatMessages: state.palliativeChatMessages.map(m =>
+        m.id === msgId ? { ...m, ...data } : m
+      ),
+    }));
+    // Persist to Firestore
+    if (msg) {
+      firestoreSync.updateChatMessage(msg.palliativePatientId, msgId, data).catch(err => console.error('[Store] Firestore sync error (updateChat):', err));
+    }
+  },
   palliativeClinicalAlerts: [
     {
       id: 'alert-1',
@@ -986,12 +1047,24 @@ export const useStore = create<TelemedicineStore>((set) => ({
       createdAt: new Date(Date.now() - 1800000).toISOString(),
     },
   ] as PalliativeClinicalAlert[],
-  addPalliativeClinicalAlert: (alert) => set((state) => ({ palliativeClinicalAlerts: [...state.palliativeClinicalAlerts, alert] })),
-  markPalliativeAlertRead: (alertId) => set((state) => ({
-    palliativeClinicalAlerts: state.palliativeClinicalAlerts.map(a =>
-      a.id === alertId ? { ...a, isRead: true } : a
-    ),
-  })),
+  addPalliativeClinicalAlert: (alert) => {
+    set((state) => ({ palliativeClinicalAlerts: [...state.palliativeClinicalAlerts, alert] }));
+    // Persist to Firestore
+    firestoreSync.addClinicalAlert(alert.palliativePatientId || alert.patientId, { ...alert }).catch(err => console.error('[Store] Firestore sync error (addAlert):', err));
+  },
+  markPalliativeAlertRead: (alertId) => {
+    const state = useStore.getState();
+    const alert = state.palliativeClinicalAlerts.find(a => a.id === alertId);
+    set((state) => ({
+      palliativeClinicalAlerts: state.palliativeClinicalAlerts.map(a =>
+        a.id === alertId ? { ...a, isRead: true } : a
+      ),
+    }));
+    // Persist to Firestore
+    if (alert) {
+      firestoreSync.markAlertRead(alert.palliativePatientId || alert.patientId, alertId).catch(err => console.error('[Store] Firestore sync error (markAlertRead):', err));
+    }
+  },
   palliativeAuditLog: [
     {
       id: 'audit-1',
@@ -1030,7 +1103,11 @@ export const useStore = create<TelemedicineStore>((set) => ({
       createdAt: new Date(Date.now() - 4800000).toISOString(),
     },
   ] as PalliativeAuditEntry[],
-  addPalliativeAuditEntry: (entry) => set((state) => ({ palliativeAuditLog: [...state.palliativeAuditLog, entry] })),
+  addPalliativeAuditEntry: (entry) => {
+    set((state) => ({ palliativeAuditLog: [...state.palliativeAuditLog, entry] }));
+    // Persist to Firestore
+    firestoreSync.addAuditEntry(entry.patientId || '', { ...entry }).catch(err => console.error('[Store] Firestore sync error (addAudit):', err));
+  },
 
   // Palliative Monitoring Integration
   palliativeMonitoringNotifications: [] as PalliativeMonitoringNotification[],
@@ -1122,7 +1199,11 @@ export const useStore = create<TelemedicineStore>((set) => ({
   // Daily Complaint (Keluhan Harian)
   dailyComplaints: [] as DailyComplaintRecord[],
   setDailyComplaints: (complaints) => set({ dailyComplaints: complaints }),
-  addDailyComplaint: (complaint) => set((state) => ({ dailyComplaints: [complaint, ...state.dailyComplaints] })),
+  addDailyComplaint: (complaint) => {
+    set((state) => ({ dailyComplaints: [complaint, ...state.dailyComplaints] }));
+    // Persist to Firestore
+    firestoreSync.addKeluhan(complaint.palliativePatientId, { ...complaint }).catch(err => console.error('[Store] Firestore sync error (addKeluhan):', err));
+  },
 
   // RVSM
   rvsmDevices: [
@@ -1348,12 +1429,24 @@ export const useStore = create<TelemedicineStore>((set) => ({
 
   // Palliative Resume Medis & Surat Rujukan
   palliativeResumes: [] as PalliativeResumeMedis[],
-  addPalliativeResume: (resume) => set((state) => ({ palliativeResumes: [...state.palliativeResumes, resume] })),
-  updatePalliativeResume: (resumeId, data) => set((state) => ({
-    palliativeResumes: state.palliativeResumes.map(r =>
-      r.id === resumeId ? { ...r, ...data, updatedAt: new Date().toISOString() } : r
-    ),
-  })),
+  addPalliativeResume: (resume) => {
+    set((state) => ({ palliativeResumes: [...state.palliativeResumes, resume] }));
+    // Persist to Firestore
+    firestoreSync.addResume(resume.palliativePatientId, { ...resume }).catch(err => console.error('[Store] Firestore sync error (addResume):', err));
+  },
+  updatePalliativeResume: (resumeId, data) => {
+    const state = useStore.getState();
+    const resume = state.palliativeResumes.find(r => r.id === resumeId);
+    set((state) => ({
+      palliativeResumes: state.palliativeResumes.map(r =>
+        r.id === resumeId ? { ...r, ...data, updatedAt: new Date().toISOString() } : r
+      ),
+    }));
+    // Persist to Firestore
+    if (resume) {
+      firestoreSync.updateResume(resume.palliativePatientId, resumeId, data).catch(err => console.error('[Store] Firestore sync error (updateResume):', err));
+    }
+  },
   palliativeReferralLetters: [] as PalliativeReferralLetter[],
   addPalliativeReferralLetter: (letter) => set((state) => ({ palliativeReferralLetters: [...state.palliativeReferralLetters, letter] })),
   updatePalliativeReferralLetter: (letterId, data) => set((state) => ({
@@ -1401,7 +1494,11 @@ export const useStore = create<TelemedicineStore>((set) => ({
       createdAt: new Date(Date.now() - 86400000).toISOString(), updatedAt: new Date(Date.now() - 86400000).toISOString(),
     },
   ] as SocialAssessmentRecord[],
-  addSocialAssessment: (record) => set((state) => ({ socialAssessments: [...state.socialAssessments, record] })),
+  addSocialAssessment: (record) => {
+    set((state) => ({ socialAssessments: [...state.socialAssessments, record] }));
+    // Persist to Firestore
+    firestoreSync.addSosial(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addSosial):', err));
+  },
   updateSocialAssessment: (id, data) => set((state) => ({
     socialAssessments: state.socialAssessments.map(a => a.id === id ? { ...a, ...data, updatedAt: new Date().toISOString() } : a),
   })),
