@@ -1,0 +1,1690 @@
+     1→import { create } from 'zustand';
+     2→import type { 
+     3→  User, Consultation, Message, Medicine, CartItem, 
+     4→  HomeCareService, HomeCareBooking, Notification, Article,
+     5→  ActivePanel, DashboardStats, MedicalRecord, Payment,
+     6→  MedicineCategory, Prescription, MedicalRecordStatus,
+     7→  ScreeningForm, ScreeningAuditLog, ScreeningModuleId,
+     8→  PalliativeScreeningForm, PalliativeToolType,
+     9→  PalliativePatientInfo, VitalSignRecordInfo, PalliativeMedicationInfo,
+    10→  AdvanceCarePlanInfo, PalliativeScreeningRecordInfo,
+    11→  PalliativeChatMessage, PalliativeClinicalAlert, PalliativeAuditEntry,
+    12→  PalliativeMonitoringStatus, PalliativeMarkingData, PalliativeMonitoringNotification,
+    13→  PalliativeProgramCompletion, PalliativeProgramCompletionReason,
+    14→  PalliativeClinicalSummary, PalliativeCommunicationPatient, PalliativeMonitoringFormType,
+    15→  WearableDevice, WearableVitalData, RVSMAlert, RVSMDailyReport,
+    16→  RVSMFamilyAccess, RVSMAuditEntry, RVSMPalliativeScoreEstimate,
+    17→  MedicationMonitoringFormInfo, MedicationMonitoringAlert, MedicationMonitoringAuditEntry,
+    18→  MedicationComplianceSummary,
+    19→  PalliativeResumeMedis, PalliativeReferralLetter, PalliativeDocumentAuditEntry,
+    20→  ReferralTargetDepartment, ReferralStatus,
+    21→  NutritionRecordInfo, NutritionAIRecommendation, NutritionActivityLevel,
+    22→  NutritionWeightStatus, NutritionMetabolicStress, NutritionSpecialCondition,
+    23→  NutritionCalculationResult,
+    24→  SocialAssessmentRecord, CaregiverInfo, FamilyMeetingRecord,
+    25→  EduMaterial, FamilyCoordinationNote, EmergencyContact,
+    26→  FinancialSupportRecord, TransportRecord, SocialMonitoringAlert,
+    27→  AISocialAnalysisResult, AISocialAnalysisRecord, AISocialPopulationStats,
+    28→  PatientTransportRequest, PatientCareUpdate, PatientPaliatifChatMessage,
+    29→  DailyComplaintRecord
+    30→} from './types';
+    31→
+    32→interface TelemedicineStore {
+    33→  // Navigation
+    34→  activePanel: ActivePanel;
+    35→  setActivePanel: (panel: ActivePanel) => void;
+    36→  
+    37→  // User
+    38→  currentUser: User | null;
+    39→  setCurrentUser: (user: User | null) => void;
+    40→  
+    41→  // Dashboard
+    42→  dashboardStats: DashboardStats | null;
+    43→  setDashboardStats: (stats: DashboardStats | null) => void;
+    44→  
+    45→  // Doctors
+    46→  doctors: User[];
+    47→  setDoctors: (doctors: User[]) => void;
+    48→  onlineDoctors: string[];
+    49→  setOnlineDoctors: (ids: string[]) => void;
+    50→  
+    51→  // Consultations
+    52→  consultations: Consultation[];
+    53→  setConsultations: (consultations: Consultation[]) => void;
+    54→  updateConsultation: (consultationId: string, data: Partial<Consultation>) => void;
+    55→  activeConsultation: Consultation | null;
+    56→  setActiveConsultation: (consultation: Consultation | null) => void;
+    57→  messages: Message[];
+    58→  setMessages: (messages: Message[]) => void;
+    59→  addMessage: (message: Message) => void;
+    60→  typingUsers: Map<string, string[]>;
+    61→  setTypingUsers: (map: Map<string, string[]>) => void;
+    62→  
+    63→  // Pharmacy
+    64→  medicines: Medicine[];
+    65→  setMedicines: (medicines: Medicine[]) => void;
+    66→  cart: CartItem[];
+    67→  addToCart: (item: CartItem) => void;
+    68→  removeFromCart: (medicineId: string) => void;
+    69→  updateCartQuantity: (medicineId: string, quantity: number) => void;
+    70→  clearCart: () => void;
+    71→  
+    72→  // Home Care
+    73→  homeCareServices: HomeCareService[];
+    74→  setHomeCareServices: (services: HomeCareService[]) => void;
+    75→  homeCareBookings: HomeCareBooking[];
+    76→  setHomeCareBookings: (bookings: HomeCareBooking[]) => void;
+    77→  
+    78→  // Medical Records
+    79→  medicalRecords: MedicalRecord[];
+    80→  setMedicalRecords: (records: MedicalRecord[]) => void;
+    81→  addMedicalRecord: (record: MedicalRecord) => void;
+    82→  updateMedicalRecord: (recordId: string, data: Partial<MedicalRecord>) => void;
+    83→  
+    84→  // Notifications
+    85→  notifications: Notification[];
+    86→  setNotifications: (notifications: Notification[]) => void;
+    87→  unreadCount: number;
+    88→  setUnreadCount: (count: number) => void;
+    89→  
+    90→  // Payments
+    91→  payments: Payment[];
+    92→  setPayments: (payments: Payment[]) => void;
+    93→  
+    94→  // Prescriptions
+    95→  prescriptions: Prescription[];
+    96→  setPrescriptions: (prescriptions: Prescription[]) => void;
+    97→  addPrescription: (prescription: Prescription) => void;
+    98→  updatePrescriptionStatus: (prescriptionId: string, status: string) => void;
+    99→  
+   100→  // Articles
+   101→  articles: Article[];
+   102→  setArticles: (articles: Article[]) => void;
+   103→  
+   104→  // UI
+   105→  sidebarOpen: boolean;
+   106→  setSidebarOpen: (open: boolean) => void;
+   107→  isLoading: boolean;
+   108→  setIsLoading: (loading: boolean) => void;
+   109→  selectedChatDoctor: User | null;
+   110→  setSelectedChatDoctor: (doctor: User | null) => void;
+   111→
+   112→  // Prescription Checkout
+   113→  pendingPrescriptionCheckout: Prescription | null;
+   114→  setPendingPrescriptionCheckout: (prescription: Prescription | null) => void;
+   115→
+   116→  // Screening
+   117→  screeningForms: ScreeningForm[];
+   118→  setScreeningForms: (forms: ScreeningForm[]) => void;
+   119→  addScreeningForm: (form: ScreeningForm) => void;
+   120→  updateScreeningForm: (formId: string, data: Partial<ScreeningForm>) => void;
+   121→  screeningAuditLog: ScreeningAuditLog[];
+   122→  addAuditLog: (log: ScreeningAuditLog) => void;
+   123→  clinicalAlerts: Notification[];
+   124→  addClinicalAlert: (alert: Notification) => void;
+   125→
+   126→  // Palliative Screening
+   127→  palliativeScreeningForms: PalliativeScreeningForm[];
+   128→  setPalliativeScreeningForms: (forms: PalliativeScreeningForm[]) => void;
+   129→  addPalliativeScreeningForm: (form: PalliativeScreeningForm) => void;
+   130→  updatePalliativeScreeningForm: (formId: string, data: Partial<PalliativeScreeningForm>) => void;
+   131→  activePalliativeFormId: string | null;
+   132→  setActivePalliativeFormId: (id: string | null) => void;
+   133→
+   134→  // Palliative Monitoring
+   135→  palliativePatients: PalliativePatientInfo[];
+   136→  setPalliativePatients: (patients: PalliativePatientInfo[]) => void;
+   137→  addPalliativePatient: (patient: PalliativePatientInfo) => void;
+   138→  updatePalliativePatient: (patientId: string, data: Partial<PalliativePatientInfo>) => void;
+   139→  removePalliativePatient: (patientId: string) => void;
+   140→  selectedPalliativePatientId: string | null;
+   141→  setSelectedPalliativePatientId: (id: string | null) => void;
+   142→  vitalSignRecords: VitalSignRecordInfo[];
+   143→  setVitalSignRecords: (records: VitalSignRecordInfo[]) => void;
+   144→  addVitalSignRecord: (record: VitalSignRecordInfo) => void;
+   145→  palliativeMedications: PalliativeMedicationInfo[];
+   146→  setPalliativeMedications: (meds: PalliativeMedicationInfo[]) => void;
+   147→  addPalliativeMedication: (med: PalliativeMedicationInfo) => void;
+   148→  updatePalliativeMedication: (medId: string, data: Partial<PalliativeMedicationInfo>) => void;
+   149→  advanceCarePlans: AdvanceCarePlanInfo[];
+   150→  setAdvanceCarePlans: (plans: AdvanceCarePlanInfo[]) => void;
+   151→  addAdvanceCarePlan: (plan: AdvanceCarePlanInfo) => void;
+   152→  updateAdvanceCarePlan: (planId: string, data: Partial<AdvanceCarePlanInfo>) => void;
+   153→  palliativeScreeningRecords: PalliativeScreeningRecordInfo[];
+   154→  setPalliativeScreeningRecords: (records: PalliativeScreeningRecordInfo[]) => void;
+   155→  addPalliativeScreeningRecord: (record: PalliativeScreeningRecordInfo) => void;
+   156→  palliativeAiSummary: string;
+   157→  setPalliativeAiSummary: (summary: string) => void;
+   158→
+   159→  // Nutrition Records
+   160→  nutritionRecords: NutritionRecordInfo[];
+   161→  setNutritionRecords: (records: NutritionRecordInfo[]) => void;
+   162→  addNutritionRecord: (record: NutritionRecordInfo) => void;
+   163→  nutritionAiRecommendation: NutritionAIRecommendation | null;
+   164→  setNutritionAiRecommendation: (rec: NutritionAIRecommendation | null) => void;
+   165→
+   166→  // Palliative Chat
+   167→  palliativeChatMessages: PalliativeChatMessage[];
+   168→  setPalliativeChatMessages: (messages: PalliativeChatMessage[]) => void;
+   169→  addPalliativeChatMessage: (message: PalliativeChatMessage) => void;
+   170→  updatePalliativeChatMessage: (msgId: string, data: Partial<PalliativeChatMessage>) => void;
+   171→  palliativeClinicalAlerts: PalliativeClinicalAlert[];
+   172→  addPalliativeClinicalAlert: (alert: PalliativeClinicalAlert) => void;
+   173→  markPalliativeAlertRead: (alertId: string) => void;
+   174→  palliativeAuditLog: PalliativeAuditEntry[];
+   175→  addPalliativeAuditEntry: (entry: PalliativeAuditEntry) => void;
+   176→
+   177→  // Palliative Monitoring Integration
+   178→  palliativeMonitoringNotifications: PalliativeMonitoringNotification[];
+   179→  addPalliativeMonitoringNotification: (notification: PalliativeMonitoringNotification) => void;
+   180→  markPalliativeNotificationRead: (notificationId: string) => void;
+   181→  markPatientAsPalliative: (consultationId: string, doctorId: string, patientId: string, patientName: string, markingData: PalliativeMarkingData) => void;
+   182→  updatePalliativeMonitoringStatus: (patientId: string, status: PalliativeMonitoringStatus) => void;
+   183→  activeInlineScreeningFormId: string | null;
+   184→  setActiveInlineScreeningFormId: (id: string | null) => void;
+   185→  activeInlineScreeningType: PalliativeMonitoringFormType | null;
+   186→  setActiveInlineScreeningType: (type: PalliativeMonitoringFormType | null) => void;
+   187→
+   188→  // Screening Navigation (from Monitoring Paliatif to Skrining Paliatif)
+   189→  screeningNavigationFrom: 'monitoring' | null;
+   190→  setScreeningNavigationFrom: (from: 'monitoring' | null) => void;
+   191→  screeningPreselectedPatientId: string | null;
+   192→  setScreeningPreselectedPatientId: (id: string | null) => void;
+   193→
+   194→  // Palliative Program Completion
+   195→  palliativeProgramCompletions: PalliativeProgramCompletion[];
+   196→  completePalliativeProgram: (patientId: string, completionData: Omit<PalliativeProgramCompletion, 'id' | 'createdAt'>) => void;
+   197→
+   198→  // Daily Complaint (Keluhan Harian)
+   199→  dailyComplaints: DailyComplaintRecord[];
+   200→  setDailyComplaints: (complaints: DailyComplaintRecord[]) => void;
+   201→  addDailyComplaint: (complaint: DailyComplaintRecord) => void;
+   202→
+   203→  // RVSM (Remote Vital Sign Monitoring)
+   204→  rvsmDevices: WearableDevice[];
+   205→  addRvsmDevice: (device: WearableDevice) => void;
+   206→  updateRvsmDevice: (deviceId: string, data: Partial<WearableDevice>) => void;
+   207→  removeRvsmDevice: (deviceId: string) => void;
+   208→  rvsmVitalData: WearableVitalData[];
+   209→  addRvsmVitalData: (data: WearableVitalData) => void;
+   210→  rvsmAlerts: RVSMAlert[];
+   211→  addRvsmAlert: (alert: RVSMAlert) => void;
+   212→  markRvsmAlertRead: (alertId: string) => void;
+   213→  acknowledgeRvsmAlert: (alertId: string, acknowledgedBy: string) => void;
+   214→  rvsmDailyReports: RVSMDailyReport[];
+   215→  addRvsmDailyReport: (report: RVSMDailyReport) => void;
+   216→  rvsmFamilyAccess: RVSMFamilyAccess[];
+   217→  addRvsmFamilyAccess: (access: RVSMFamilyAccess) => void;
+   218→  removeRvsmFamilyAccess: (accessId: string) => void;
+   219→  rvsmAuditLog: RVSMAuditEntry[];
+   220→  addRvsmAuditEntry: (entry: RVSMAuditEntry) => void;
+   221→  rvsmPalliativeEstimates: RVSMPalliativeScoreEstimate[];
+   222→  addRvsmPalliativeEstimate: (estimate: RVSMPalliativeScoreEstimate) => void;
+   223→  rvsmAiSummary: string;
+   224→  setRvsmAiSummary: (summary: string) => void;
+   225→
+   226→  // Medication Monitoring
+   227→  medicationMonitoringForms: MedicationMonitoringFormInfo[];
+   228→  addMedicationMonitoringForm: (form: MedicationMonitoringFormInfo) => void;
+   229→  updateMedicationMonitoringForm: (formId: string, data: Partial<MedicationMonitoringFormInfo>) => void;
+   230→  medicationMonitoringAlerts: MedicationMonitoringAlert[];
+   231→  addMedicationMonitoringAlert: (alert: MedicationMonitoringAlert) => void;
+   232→  markMedicationMonitoringAlertRead: (alertId: string) => void;
+   233→  medicationMonitoringAuditLog: MedicationMonitoringAuditEntry[];
+   234→  addMedicationMonitoringAuditEntry: (entry: MedicationMonitoringAuditEntry) => void;
+   235→  medicationComplianceSummaries: MedicationComplianceSummary[];
+   236→  addMedicationComplianceSummary: (summary: MedicationComplianceSummary) => void;
+   237→
+   238→  // Palliative Resume Medis & Surat Rujukan
+   239→  palliativeResumes: PalliativeResumeMedis[];
+   240→  addPalliativeResume: (resume: PalliativeResumeMedis) => void;
+   241→  updatePalliativeResume: (resumeId: string, data: Partial<PalliativeResumeMedis>) => void;
+   242→  palliativeReferralLetters: PalliativeReferralLetter[];
+   243→  addPalliativeReferralLetter: (letter: PalliativeReferralLetter) => void;
+   244→  updatePalliativeReferralLetter: (letterId: string, data: Partial<PalliativeReferralLetter>) => void;
+   245→  palliativeDocumentAuditLog: PalliativeDocumentAuditEntry[];
+   246→  addPalliativeDocumentAuditEntry: (entry: PalliativeDocumentAuditEntry) => void;
+   247→
+   248→  // Social Support Management
+   249→  socialAssessments: SocialAssessmentRecord[];
+   250→  addSocialAssessment: (record: SocialAssessmentRecord) => void;
+   251→  updateSocialAssessment: (id: string, data: Partial<SocialAssessmentRecord>) => void;
+   252→  caregivers: CaregiverInfo[];
+   253→  addCaregiver: (caregiver: CaregiverInfo) => void;
+   254→  updateCaregiver: (id: string, data: Partial<CaregiverInfo>) => void;
+   255→  removeCaregiver: (id: string) => void;
+   256→  familyMeetings: FamilyMeetingRecord[];
+   257→  addFamilyMeeting: (meeting: FamilyMeetingRecord) => void;
+   258→  updateFamilyMeeting: (id: string, data: Partial<FamilyMeetingRecord>) => void;
+   259→  eduMaterials: EduMaterial[];
+   260→  addEduMaterial: (material: EduMaterial) => void;
+   261→  updateEduMaterial: (id: string, data: Partial<EduMaterial>) => void;
+   262→  logEduMaterialAccess: (materialId: string, accessedBy: string) => void;
+   263→  familyCoordinationNotes: FamilyCoordinationNote[];
+   264→  addFamilyCoordinationNote: (note: FamilyCoordinationNote) => void;
+   265→  updateFamilyCoordinationNote: (id: string, data: Partial<FamilyCoordinationNote>) => void;
+   266→  emergencyContacts: EmergencyContact[];
+   267→  addEmergencyContact: (contact: EmergencyContact) => void;
+   268→  updateEmergencyContact: (id: string, data: Partial<EmergencyContact>) => void;
+   269→  removeEmergencyContact: (id: string) => void;
+   270→  financialSupportRecords: FinancialSupportRecord[];
+   271→  addFinancialSupportRecord: (record: FinancialSupportRecord) => void;
+   272→  updateFinancialSupportRecord: (id: string, data: Partial<FinancialSupportRecord>) => void;
+   273→  transportRecords: TransportRecord[];
+   274→  addTransportRecord: (record: TransportRecord) => void;
+   275→  updateTransportRecord: (id: string, data: Partial<TransportRecord>) => void;
+   276→  socialAlerts: SocialMonitoringAlert[];
+   277→  addSocialAlert: (alert: SocialMonitoringAlert) => void;
+   278→  markSocialAlertRead: (alertId: string) => void;
+   279→
+   280→  // AI Social Needs Analysis
+   281→  aiSocialAnalysisResult: AISocialAnalysisResult | null;
+   282→  setAiSocialAnalysisResult: (result: AISocialAnalysisResult | null) => void;
+   283→  aiSocialAnalysisLoading: boolean;
+   284→  setAiSocialAnalysisLoading: (loading: boolean) => void;
+   285→  aiSocialAnalysisRecords: AISocialAnalysisRecord[];
+   286→  addAiSocialAnalysisRecord: (record: AISocialAnalysisRecord) => void;
+   287→  aiSocialPopulationStats: AISocialPopulationStats | null;
+   288→  setAiSocialPopulationStats: (stats: AISocialPopulationStats | null) => void;
+   289→
+   290→  // Patient Paliatif Module
+   291→  patientTransportRequests: PatientTransportRequest[];
+   292→  addPatientTransportRequest: (request: PatientTransportRequest) => void;
+   293→  updatePatientTransportRequest: (id: string, data: Partial<PatientTransportRequest>) => void;
+   294→  patientCareUpdates: PatientCareUpdate[];
+   295→  addPatientCareUpdate: (update: PatientCareUpdate) => void;
+   296→  markCareUpdateViewed: (id: string) => void;
+   297→  patientPaliatifMessages: PatientPaliatifChatMessage[];
+   298→  addPatientPaliatifMessage: (message: PatientPaliatifChatMessage) => void;
+   299→}
+   300→
+   301→export const useStore = create<TelemedicineStore>((set) => ({
+   302→  // Debug: expose store to window
+   303→  _debugInit: (() => { if (typeof window !== 'undefined') { (window as unknown as Record<string, unknown>).__STORE__ = () => useStore.getState(); } })(),
+   304→  // Navigation
+   305→  activePanel: 'home' as ActivePanel,
+   306→  setActivePanel: (panel) => set({ activePanel: panel }),
+   307→  
+   308→  // User
+   309→  currentUser: null,
+   310→  setCurrentUser: (user) => set({ currentUser: user }),
+   311→  
+   312→  // Dashboard
+   313→  dashboardStats: null,
+   314→  setDashboardStats: (stats) => set({ dashboardStats: stats }),
+   315→  
+   316→  // Doctors
+   317→  doctors: [
+   318→    {
+   319→      id: 'doc-sarah',
+   320→      email: 'sarah@carelivia.id',
+   321→      name: 'dr. Sarah Wijaya',
+   322→      role: 'doctor' as const,
+   323→      avatar: '',
+   324→      isVerified: true,
+   325→      isActive: true,
+   326→      createdAt: new Date().toISOString(),
+   327→      updatedAt: new Date().toISOString(),
+   328→      doctorProfile: {
+   329→        id: 'dp-doc-sarah',
+   330→        userId: 'doc-sarah',
+   331→        specialization: 'umum',
+   332→        rating: 4.9,
+   333→        reviewCount: 156,
+   334→        consultationFee: 150000,
+   335→        isOnline: true,
+   336→        isAvailable: true,
+   337→      }
+   338→    },
+   339→    {
+   340→      id: 'doc-ahmad',
+   341→      email: 'ahmad@carelivia.id',
+   342→      name: 'dr. Ahmad Rizki',
+   343→      role: 'doctor' as const,
+   344→      avatar: '',
+   345→      isVerified: true,
+   346→      isActive: true,
+   347→      createdAt: new Date().toISOString(),
+   348→      updatedAt: new Date().toISOString(),
+   349→      doctorProfile: {
+   350→        id: 'dp-doc-ahmad',
+   351→        userId: 'doc-ahmad',
+   352→        specialization: 'anak',
+   353→        rating: 4.8,
+   354→        reviewCount: 98,
+   355→        consultationFee: 175000,
+   356→        isOnline: true,
+   357→        isAvailable: true,
+   358→      }
+   359→    },
+   360→    {
+   361→      id: 'doc-lisa',
+   362→      email: 'lisa@carelivia.id',
+   363→      name: 'dr. Lisa Permata',
+   364→      role: 'doctor' as const,
+   365→      avatar: '',
+   366→      isVerified: true,
+   367→      isActive: true,
+   368→      createdAt: new Date().toISOString(),
+   369→      updatedAt: new Date().toISOString(),
+   370→      doctorProfile: {
+   371→        id: 'dp-doc-lisa',
+   372→        userId: 'doc-lisa',
+   373→        specialization: 'penyakit_dalam',
+   374→        rating: 4.7,
+   375→        reviewCount: 73,
+   376→        consultationFee: 200000,
+   377→        isOnline: true,
+   378→        isAvailable: true,
+   379→      }
+   380→    },
+   381→    {
+   382→      id: 'doc-dewi',
+   383→      email: 'dewi@carelivia.id',
+   384→      name: 'dr. Dewi Sartika',
+   385→      role: 'doctor' as const,
+   386→      avatar: '',
+   387→      isVerified: true,
+   388→      isActive: true,
+   389→      createdAt: new Date().toISOString(),
+   390→      updatedAt: new Date().toISOString(),
+   391→      doctorProfile: {
+   392→        id: 'dp-doc-dewi',
+   393→        userId: 'doc-dewi',
+   394→        specialization: 'kebidanan',
+   395→        rating: 4.9,
+   396→        reviewCount: 112,
+   397→        consultationFee: 175000,
+   398→        isOnline: false,
+   399→        isAvailable: true,
+   400→      }
+   401→    },
+   402→    {
+   403→      id: 'doc-budi',
+   404→      email: 'budi@carelivia.id',
+   405→      name: 'drg. Budi Santoso',
+   406→      role: 'doctor' as const,
+   407→      avatar: '',
+   408→      isVerified: true,
+   409→      isActive: true,
+   410→      createdAt: new Date().toISOString(),
+   411→      updatedAt: new Date().toISOString(),
+   412→      doctorProfile: {
+   413→        id: 'dp-doc-budi',
+   414→        userId: 'doc-budi',
+   415→        specialization: 'gigi',
+   416→        rating: 4.6,
+   417→        reviewCount: 45,
+   418→        consultationFee: 200000,
+   419→        isOnline: true,
+   420→        isAvailable: true,
+   421→      }
+   422→    }
+   423→  ] as User[],
+   424→  setDoctors: (doctors) => set({ doctors }),
+   425→  onlineDoctors: ['doc-sarah', 'doc-ahmad', 'doc-lisa', 'doc-budi'],
+   426→  setOnlineDoctors: (ids) => set({ onlineDoctors: ids }),
+   427→  
+   428→  // Consultations
+   429→  consultations: [],
+   430→  setConsultations: (consultations) => set({ consultations }),
+   431→  updateConsultation: (consultationId, data) => set((state) => ({
+   432→    consultations: state.consultations.map(c =>
+   433→      c.id === consultationId ? { ...c, ...data, updatedAt: new Date().toISOString() } : c
+   434→    ),
+   435→    activeConsultation: state.activeConsultation?.id === consultationId
+   436→      ? { ...state.activeConsultation, ...data, updatedAt: new Date().toISOString() }
+   437→      : state.activeConsultation,
+   438→  })),
+   439→  activeConsultation: null,
+   440→  setActiveConsultation: (consultation) => set({ activeConsultation: consultation }),
+   441→  messages: [],
+   442→  setMessages: (messages) => set({ messages }),
+   443→  addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
+   444→  typingUsers: new Map(),
+   445→  setTypingUsers: (map) => set({ typingUsers: map }),
+   446→  
+   447→  // Pharmacy
+   448→  medicines: [
+   449→    { id: 'med-1', name: 'Paracetamol 500mg', genericName: 'Paracetamol', category: 'bebas' as MedicineCategory, price: 15000, stock: 150, unit: 'Tablet (10)', manufacturer: 'Kimia Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   450→    { id: 'med-2', name: 'Amoxicillin 500mg', genericName: 'Amoxicillin', category: 'resep' as MedicineCategory, price: 25000, stock: 80, unit: 'Kapsul (10)', manufacturer: 'Sanbe Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   451→    { id: 'med-3', name: 'Omeprazole 20mg', genericName: 'Omeprazole', category: 'resep' as MedicineCategory, price: 35000, stock: 60, unit: 'Kapsul (10)', manufacturer: 'Bernofarm', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   452→    { id: 'med-4', name: 'CTM (Chlorpheniramine)', genericName: 'Chlorpheniramine Maleate', category: 'bebas' as MedicineCategory, price: 8000, stock: 200, unit: 'Tablet (10)', manufacturer: 'Kimia Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   453→    { id: 'med-5', name: 'Vitamin C 1000mg', genericName: 'Ascorbic Acid', category: 'vitamin' as MedicineCategory, price: 45000, stock: 120, unit: 'Tablet (20)', manufacturer: 'Nature Made', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   454→    { id: 'med-6', name: 'Ibuprofen 400mg', genericName: 'Ibuprofen', category: 'bebas' as MedicineCategory, price: 18000, stock: 90, unit: 'Tablet (10)', manufacturer: 'Pharos', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   455→    { id: 'med-7', name: 'Metformin 500mg', genericName: 'Metformin HCl', category: 'resep' as MedicineCategory, price: 22000, stock: 100, unit: 'Tablet (20)', manufacturer: 'Indofarma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   456→    { id: 'med-8', name: 'Loratadine 10mg', genericName: 'Loratadine', category: 'bebas' as MedicineCategory, price: 28000, stock: 75, unit: 'Tablet (10)', manufacturer: 'Kalbe Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   457→    { id: 'med-9', name: 'Termometer Digital', category: 'alat_kesehatan' as MedicineCategory, price: 85000, stock: 30, unit: 'Unit', manufacturer: 'Omron', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   458→    { id: 'med-10', name: 'Tensimeter Digital', category: 'alat_kesehatan' as MedicineCategory, price: 350000, stock: 15, unit: 'Unit', manufacturer: 'Omron', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   459→    { id: 'med-11', name: 'Vitamin D3 1000IU', genericName: 'Cholecalciferol', category: 'vitamin' as MedicineCategory, price: 65000, stock: 85, unit: 'Softgel (30)', manufacturer: 'Nature Made', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   460→    { id: 'med-12', name: 'Antasida Sirup', genericName: 'Aluminium Hydroxide + Magnesium Hydroxide', category: 'bebas' as MedicineCategory, price: 22000, stock: 60, unit: 'Botol (60ml)', manufacturer: 'Kimia Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   461→  ] as Medicine[],
+   462→  setMedicines: (medicines) => set({ medicines }),
+   463→  cart: [],
+   464→  addToCart: (item) => set((state) => {
+   465→    const existing = state.cart.find(c => c.medicine.id === item.medicine.id);
+   466→    if (existing) {
+   467→      return {
+   468→        cart: state.cart.map(c => 
+   469→          c.medicine.id === item.medicine.id 
+   470→            ? { ...c, quantity: c.quantity + item.quantity }
+   471→            : c
+   472→        )
+   473→      };
+   474→    }
+   475→    return { cart: [...state.cart, item] };
+   476→  }),
+   477→  removeFromCart: (medicineId) => set((state) => ({
+   478→    cart: state.cart.filter(c => c.medicine.id !== medicineId)
+   479→  })),
+   480→  updateCartQuantity: (medicineId, quantity) => set((state) => ({
+   481→    cart: state.cart.map(c => 
+   482→      c.medicine.id === medicineId ? { ...c, quantity } : c
+   483→    )
+   484→  })),
+   485→  clearCart: () => set({ cart: [] }),
+   486→  
+   487→  // Home Care
+   488→  homeCareServices: [
+   489→    { id: 'hc-1', name: 'Perawatan Luka', description: 'Perawatan luka di rumah oleh perawat profesional', category: 'perawatan', price: 150000, duration: 60, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   490→    { id: 'hc-2', name: 'Injeksi/Suntik', description: 'Pemberian injeksi obat sesuai resep dokter', category: 'perawatan', price: 100000, duration: 30, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   491→    { id: 'hc-3', name: 'Cek Kesehatan Umum', description: 'Pemeriksaan kesehatan umum di rumah', category: 'pemeriksaan', price: 200000, duration: 45, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   492→    { id: 'hc-4', name: 'Fisioterapi', description: 'Terapi fisik di rumah', category: 'terapi', price: 250000, duration: 60, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   493→    { id: 'hc-5', name: 'Perawatan Lansia', description: 'Perawatan dan pendampingan lansia', category: 'pendampingan', price: 300000, duration: 120, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   494→  ] as HomeCareService[],
+   495→  setHomeCareServices: (services) => set({ homeCareServices: services }),
+   496→  homeCareBookings: [],
+   497→  setHomeCareBookings: (bookings) => set({ homeCareBookings: bookings }),
+   498→  
+   499→  // Medical Records
+   500→  medicalRecords: [],
+   501→  setMedicalRecords: (records) => set({ medicalRecords: records }),
+   502→  addMedicalRecord: (record) => set((state) => ({ medicalRecords: [...state.medicalRecords, record] })),
+   503→  updateMedicalRecord: (recordId, data) => set((state) => ({
+   504→    medicalRecords: state.medicalRecords.map(r => 
+   505→      r.id === recordId ? { ...r, ...data, updatedAt: new Date().toISOString() } : r
+   506→    )
+   507→  })),
+   508→  
+   509→  // Notifications
+   510→  notifications: [
+   511→    { id: 'notif-1', userId: '', title: 'Selamat Datang!', message: "Selamat datang di CareLivia. Mulai konsultasi dengan dokter sekarang!", type: 'chat' as const, isRead: false, createdAt: new Date().toISOString() },
+   512→    { id: 'notif-2', userId: '', title: 'Promo Spesial', message: 'Diskon 20% untuk pembelian vitamin minggu ini!', type: 'pharmacy' as const, isRead: false, createdAt: new Date(Date.now() - 3600000).toISOString() },
+   513→    { id: 'notif-3', userId: '', title: 'Jadwal Konsultasi', message: 'Konsultasi Anda akan dimulai dalam 30 menit', type: 'consultation' as const, isRead: true, createdAt: new Date(Date.now() - 7200000).toISOString() },
+   514→  ] as Notification[],
+   515→  setNotifications: (notifications) => set({ notifications }),
+   516→  unreadCount: 0,
+   517→  setUnreadCount: (count) => set({ unreadCount: count }),
+   518→  
+   519→  // Payments
+   520→  payments: [],
+   521→  setPayments: (payments) => set({ payments }),
+   522→  
+   523→  // Prescriptions
+   524→  prescriptions: [],
+   525→  setPrescriptions: (prescriptions) => set({ prescriptions }),
+   526→  addPrescription: (prescription) => set((state) => ({ prescriptions: [...state.prescriptions, prescription] })),
+   527→  updatePrescriptionStatus: (prescriptionId, status) => set((state) => ({
+   528→    prescriptions: state.prescriptions.map(p => 
+   529→      p.id === prescriptionId ? { ...p, status } : p
+   530→    )
+   531→  })),
+   532→  
+   533→  // Articles
+   534→  articles: [],
+   535→  setArticles: (articles) => set({ articles }),
+   536→  
+   537→  // UI
+   538→  sidebarOpen: true,
+   539→  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+   540→  isLoading: false,
+   541→  setIsLoading: (loading) => set({ isLoading: loading }),
+   542→  selectedChatDoctor: null,
+   543→  setSelectedChatDoctor: (doctor) => set({ selectedChatDoctor: doctor }),
+   544→
+   545→  // Prescription Checkout
+   546→  pendingPrescriptionCheckout: null,
+   547→  setPendingPrescriptionCheckout: (prescription) => set({ pendingPrescriptionCheckout: prescription }),
+   548→
+   549→  // Screening
+   550→  screeningForms: [],
+   551→  setScreeningForms: (forms) => set({ screeningForms: forms }),
+   552→  addScreeningForm: (form) => set((state) => ({ screeningForms: [...state.screeningForms, form] })),
+   553→  updateScreeningForm: (formId, data) => set((state) => ({
+   554→    screeningForms: state.screeningForms.map((f) =>
+   555→      f.id === formId ? { ...f, ...data, updatedAt: new Date().toISOString() } : f
+   556→    ),
+   557→  })),
+   558→  screeningAuditLog: [],
+   559→  addAuditLog: (log) => set((state) => ({ screeningAuditLog: [...state.screeningAuditLog, log] })),
+   560→  clinicalAlerts: [],
+   561→  addClinicalAlert: (alert) => set((state) => ({ clinicalAlerts: [...state.clinicalAlerts, alert] })),
+   562→
+   563→  // Palliative Screening
+   564→  palliativeScreeningForms: [],
+   565→  setPalliativeScreeningForms: (forms) => set({ palliativeScreeningForms: forms }),
+   566→  addPalliativeScreeningForm: (form) => set((state) => ({ palliativeScreeningForms: [...state.palliativeScreeningForms, form] })),
+   567→  updatePalliativeScreeningForm: (formId, data) => set((state) => ({
+   568→    palliativeScreeningForms: state.palliativeScreeningForms.map((f) =>
+   569→      f.id === formId ? { ...f, ...data, updatedAt: new Date().toISOString() } : f
+   570→    ),
+   571→  })),
+   572→  activePalliativeFormId: null,
+   573→  setActivePalliativeFormId: (id) => set({ activePalliativeFormId: id }),
+   574→
+   575→  // Palliative Monitoring
+   576→  palliativePatients: [
+   577→    {
+   578→      id: 'pp-1',
+   579→      patientId: 'patient-1',
+   580→      patientName: 'Siti Rahayu',
+   581→      rmNumber: 'RM-2025-001',
+   582→      bpjsNumber: '0001234567890',
+   583→      nik: '3201014505870001',
+   584→      dateOfBirth: '1945-05-08',
+   585→      gender: 'Perempuan',
+   586→      primaryDiagnosis: 'Kanker Payudara Stadium IV',
+   587→      secondaryDiagnosis: 'Diabetes Melitus Tipe 2, Hipertensi',
+   588→      diseaseStage: 'Stadium IV',
+   589→      attendingDoctorId: 'doc-sarah',
+   590→      attendingDoctorName: 'dr. Sarah Wijaya',
+   591→      familyContactName: 'Budi Rahayu',
+   592→      familyContactRelation: 'Anak',
+   593→      familyContactPhone: '081234567890',
+   594→      address: 'Jl. Melati No. 12, Bandung',
+   595→      careStatus: 'home_care',
+   596→      patientStatus: 'aktif',
+   597→      riskLevel: 'merah',
+   598→      notes: 'Pasien memerlukan perawatan paliatif intensif',
+   599→      createdAt: new Date().toISOString(),
+   600→      updatedAt: new Date().toISOString(),
+   601→    },
+   602→    {
+   603→      id: 'pp-2',
+   604→      patientId: 'patient-2',
+   605→      patientName: 'Ahmad Sudrajat',
+   606→      rmNumber: 'RM-2025-002',
+   607→      bpjsNumber: '0009876543210',
+   608→      nik: '3201015003790002',
+   609→      dateOfBirth: '1950-03-15',
+   610→      gender: 'Laki-laki',
+   611→      primaryDiagnosis: 'PPOK Stadium Berat',
+   612→      secondaryDiagnosis: 'Gagal Jantung Kongestif',
+   613→      diseaseStage: 'Stadium Berat',
+   614→      attendingDoctorId: 'doc-lisa',
+   615→      attendingDoctorName: 'dr. Lisa Permata',
+   616→      familyContactName: 'Dewi Sudrajat',
+   617→      familyContactRelation: 'Istri',
+   618→      familyContactPhone: '082345678901',
+   619→      address: 'Jl. Kenanga No. 5, Jakarta',
+   620→      careStatus: 'rawat_jalan',
+   621→      patientStatus: 'aktif',
+   622→      riskLevel: 'kuning',
+   623→      notes: 'Kondisi stabil namun perlu monitoring rutin',
+   624→      createdAt: new Date(Date.now() - 86400000).toISOString(),
+   625→      updatedAt: new Date(Date.now() - 86400000).toISOString(),
+   626→    },
+   627→    {
+   628→      id: 'pp-3',
+   629→      patientId: 'patient-3',
+   630→      patientName: 'Maria Susanti',
+   631→      rmNumber: 'RM-2025-003',
+   632→      primaryDiagnosis: 'Stroke Berat',
+   633→      secondaryDiagnosis: 'Hipertensi',
+   634→      diseaseStage: 'Kronis',
+   635→      attendingDoctorId: 'doc-sarah',
+   636→      attendingDoctorName: 'dr. Sarah Wijaya',
+   637→      familyContactName: 'Yohanes Susanti',
+   638→      familyContactRelation: 'Suami',
+   639→      familyContactPhone: '083456789012',
+   640→      address: 'Jl. Anggrek No. 8, Surabaya',
+   641→      careStatus: 'hospice',
+   642→      patientStatus: 'aktif',
+   643→      riskLevel: 'merah',
+   644→      notes: 'Pasien bed rest total, perlu perawatan paliatif penuh',
+   645→      createdAt: new Date(Date.now() - 172800000).toISOString(),
+   646→      updatedAt: new Date(Date.now() - 172800000).toISOString(),
+   647→    },
+   648→  ] as PalliativePatientInfo[],
+   649→  setPalliativePatients: (patients) => set({ palliativePatients: patients }),
+   650→  addPalliativePatient: (patient) => set((state) => ({ palliativePatients: [...state.palliativePatients, patient] })),
+   651→  updatePalliativePatient: (patientId, data) => set((state) => ({
+   652→    palliativePatients: state.palliativePatients.map(p =>
+   653→      p.id === patientId ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
+   654→    ),
+   655→  })),
+   656→  removePalliativePatient: (patientId) => set((state) => ({
+   657→    palliativePatients: state.palliativePatients.filter(p => p.id !== patientId),
+   658→  })),
+   659→  selectedPalliativePatientId: null,
+   660→  setSelectedPalliativePatientId: (id) => set({ selectedPalliativePatientId: id }),
+   661→  vitalSignRecords: [
+   662→    {
+   663→      id: 'vs-1', palliativePatientId: 'pp-1', recordedBy: 'doctor',
+   664→      systolicBP: 110, diastolicBP: 70, heartRate: 88, respiratoryRate: 22,
+   665→      temperature: 36.8, oxygenSat: 93, weight: 52, height: 155, bmi: 21.6,
+   666→      notes: 'Saturasi perlu dimonitor', recordedAt: new Date(Date.now() - 3600000).toISOString(), createdAt: new Date(Date.now() - 3600000).toISOString(),
+   667→    },
+   668→    {
+   669→      id: 'vs-2', palliativePatientId: 'pp-1', recordedBy: 'family',
+   670→      systolicBP: 105, diastolicBP: 65, heartRate: 92, respiratoryRate: 24,
+   671→      temperature: 37.1, oxygenSat: 91, weight: 51.5, height: 155, bmi: 21.4,
+   672→      notes: 'Pasien sesak ringan', recordedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString(),
+   673→    },
+   674→    {
+   675→      id: 'vs-3', palliativePatientId: 'pp-1', recordedBy: 'nurse',
+   676→      systolicBP: 115, diastolicBP: 72, heartRate: 85, respiratoryRate: 20,
+   677→      temperature: 36.5, oxygenSat: 95, weight: 52.5, height: 155, bmi: 21.8,
+   678→      recordedAt: new Date(Date.now() - 172800000).toISOString(), createdAt: new Date(Date.now() - 172800000).toISOString(),
+   679→    },
+   680→    {
+   681→      id: 'vs-4', palliativePatientId: 'pp-2', recordedBy: 'doctor',
+   682→      systolicBP: 135, diastolicBP: 85, heartRate: 78, respiratoryRate: 18,
+   683→      temperature: 36.6, oxygenSat: 96, weight: 68, height: 170, bmi: 23.5,
+   684→      recordedAt: new Date(Date.now() - 7200000).toISOString(), createdAt: new Date(Date.now() - 7200000).toISOString(),
+   685→    },
+   686→    {
+   687→      id: 'vs-5', palliativePatientId: 'pp-2', recordedBy: 'patient',
+   688→      systolicBP: 130, diastolicBP: 82, heartRate: 80, respiratoryRate: 20,
+   689→      temperature: 36.7, oxygenSat: 94, weight: 67.5, height: 170, bmi: 23.4,
+   690→      recordedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString(),
+   691→    },
+   692→    {
+   693→      id: 'vs-6', palliativePatientId: 'pp-3', recordedBy: 'nurse',
+   694→      systolicBP: 90, diastolicBP: 60, heartRate: 95, respiratoryRate: 26,
+   695→      temperature: 37.5, oxygenSat: 88, weight: 45, height: 160, bmi: 17.6,
+   696→      notes: 'Tekanan darah rendah, saturasi kritis', recordedAt: new Date(Date.now() - 1800000).toISOString(), createdAt: new Date(Date.now() - 1800000).toISOString(),
+   697→    },
+   698→  ] as VitalSignRecordInfo[],
+   699→  setVitalSignRecords: (records) => set({ vitalSignRecords: records }),
+   700→  addVitalSignRecord: (record) => set((state) => ({ vitalSignRecords: [...state.vitalSignRecords, record] })),
+   701→  palliativeMedications: [
+   702→    { id: 'pm-1', palliativePatientId: 'pp-1', medicineName: 'Morfine 10mg', dosage: '10mg', frequency: '3x1', route: 'oral', startDate: '2025-01-15', indication: 'Nyeri kronis', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   703→    { id: 'pm-2', palliativePatientId: 'pp-1', medicineName: 'Ondansetron 4mg', dosage: '4mg', frequency: '2x1', route: 'oral', startDate: '2025-01-15', indication: 'Mual', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   704→    { id: 'pm-3', palliativePatientId: 'pp-1', medicineName: 'Metformin 500mg', dosage: '500mg', frequency: '2x1', route: 'oral', startDate: '2024-06-01', indication: 'Diabetes', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   705→    { id: 'pm-4', palliativePatientId: 'pp-2', medicineName: 'Salbutamol Inhaler', dosage: '2 puff', frequency: '4x1', route: 'inhalasi', startDate: '2025-02-01', indication: 'Sesak napas PPOK', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   706→    { id: 'pm-5', palliativePatientId: 'pp-2', medicineName: 'Amlodipine 5mg', dosage: '5mg', frequency: '1x1', route: 'oral', startDate: '2024-03-15', indication: 'Hipertensi', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   707→    { id: 'pm-6', palliativePatientId: 'pp-3', medicineName: 'Morfine 20mg', dosage: '20mg', frequency: '2x1', route: 'oral', startDate: '2025-01-01', indication: 'Nyeri berat', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   708→    { id: 'pm-7', palliativePatientId: 'pp-3', medicineName: 'Diazepam 5mg', dosage: '5mg', frequency: '1x1', route: 'oral', startDate: '2025-01-10', indication: 'Kecemasan, insomnia', isActive: true, notes: 'Diberikan malam hari', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   709→  ] as PalliativeMedicationInfo[],
+   710→  setPalliativeMedications: (meds) => set({ palliativeMedications: meds }),
+   711→  addPalliativeMedication: (med) => set((state) => ({ palliativeMedications: [...state.palliativeMedications, med] })),
+   712→  updatePalliativeMedication: (medId, data) => set((state) => ({
+   713→    palliativeMedications: state.palliativeMedications.map(m =>
+   714→      m.id === medId ? { ...m, ...data, updatedAt: new Date().toISOString() } : m
+   715→    ),
+   716→  })),
+   717→  advanceCarePlans: [
+   718→    {
+   719→      id: 'acp-1', palliativePatientId: 'pp-1',
+   720→      decisionMakerName: 'Budi Rahayu', decisionMakerRelation: 'Anak', decisionMakerPhone: '081234567890',
+   721→      preferredCareLocation: 'rumah', careGoal: 'fokus_kenyamanan',
+   722→      resuscitationPref: 'dnr', ventilatorPref: 'tidak_bersedia',
+   723→      icuPref: 'tidak_bersedia', artificialNutrition: 'bersedia',
+   724→      dialysisPref: 'tidak_bersedia', organDonation: 'tidak',
+   725→      patientHopes: 'Ingin menghabiskan waktu bersama keluarga di rumah',
+   726→      patientWorries: 'Khawatir menjadi beban keluarga dan rasa sakit yang tidak terkontrol',
+   727→      lifeValues: 'Keluarga adalah segalanya, ingin meninggal dengan tenang',
+   728→      endOfLifePrefs: 'Ingin dirawat di rumah dengan keluarga di sekitar',
+   729→      patientSigned: true, familySigned: true, doctorSigned: true,
+   730→      signedAt: new Date(Date.now() - 259200000).toISOString(),
+   731→      isActive: true,
+   732→      createdAt: new Date(Date.now() - 259200000).toISOString(),
+   733→      updatedAt: new Date(Date.now() - 259200000).toISOString(),
+   734→    },
+   735→    {
+   736→      id: 'acp-2', palliativePatientId: 'pp-3',
+   737→      decisionMakerName: 'Yohanes Susanti', decisionMakerRelation: 'Suami', decisionMakerPhone: '083456789012',
+   738→      preferredCareLocation: 'hospice', careGoal: 'mengurangi_gejala',
+   739→      resuscitationPref: 'dnr', ventilatorPref: 'tidak_bersedia',
+   740→      icuPref: 'tidak_bersedia', artificialNutrition: 'tidak_bersedia',
+   741→      dialysisPref: 'tidak_bersedia', organDonation: 'ya',
+   742→      patientHopes: 'Tidak ingin menderita lama',
+   743→      patientWorries: 'Takut kesakitan saat menjelang wafat',
+   744→      lifeValues: 'Ingin damai dan dikelilingi keluarga',
+   745→      endOfLifePrefs: 'Dirawat di hospice, didoakan bersama',
+   746→      patientSigned: true, familySigned: true, doctorSigned: false,
+   747→      isActive: true,
+   748→      createdAt: new Date(Date.now() - 432000000).toISOString(),
+   749→      updatedAt: new Date(Date.now() - 432000000).toISOString(),
+   750→    },
+   751→  ] as AdvanceCarePlanInfo[],
+   752→  setAdvanceCarePlans: (plans) => set({ advanceCarePlans: plans }),
+   753→  addAdvanceCarePlan: (plan) => set((state) => ({ advanceCarePlans: [...state.advanceCarePlans, plan] })),
+   754→  updateAdvanceCarePlan: (planId, data) => set((state) => ({
+   755→    advanceCarePlans: state.advanceCarePlans.map(p =>
+   756→      p.id === planId ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
+   757→    ),
+   758→  })),
+   759→  palliativeScreeningRecords: [
+   760→    { id: 'psr-1', palliativePatientId: 'pp-1', screeningType: 'esas', score: 45, scoreLabel: 'Gejala Berat', interpretation: 'Skor ESAS 45/90 menunjukkan beban gejala berat', ewsLevel: 'merah', performedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString() },
+   761→    { id: 'psr-2', palliativePatientId: 'pp-1', screeningType: 'pps', score: 40, scoreLabel: 'Ketergantungan', interpretation: 'PPS 40% - Pasien memerlukan bantuan substantial', ewsLevel: 'merah', performedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString() },
+   762→    { id: 'psr-3', palliativePatientId: 'pp-2', screeningType: 'esas', score: 25, scoreLabel: 'Gejala Sedang', interpretation: 'Skor ESAS 25/90 menunjukkan beban gejala sedang', ewsLevel: 'kuning', performedAt: new Date(Date.now() - 172800000).toISOString(), createdAt: new Date(Date.now() - 172800000).toISOString() },
+   763→    { id: 'psr-4', palliativePatientId: 'pp-3', screeningType: 'distress', score: 8, scoreLabel: 'Distress Berat', interpretation: 'Skor 8/10 menunjukkan distress berat', ewsLevel: 'merah', performedAt: new Date(Date.now() - 43200000).toISOString(), createdAt: new Date(Date.now() - 43200000).toISOString() },
+   764→  ] as PalliativeScreeningRecordInfo[],
+   765→  setPalliativeScreeningRecords: (records) => set({ palliativeScreeningRecords: records }),
+   766→  addPalliativeScreeningRecord: (record) => set((state) => ({ palliativeScreeningRecords: [...state.palliativeScreeningRecords, record] })),
+   767→  palliativeAiSummary: '',
+   768→  setPalliativeAiSummary: (summary) => set({ palliativeAiSummary: summary }),
+   769→  nutritionRecords: [
+   770→    {
+   771→      id: 'nr-1', palliativePatientId: 'pp-1', age: 81, gender: 'P', weight: 48, height: 155,
+   772→      activityLevel: 'bed_rest', metabolicStress: 'sedang', specialCondition: 'tidak_ada',
+   773→      calculation: {
+   774→        bmi: 19.98, bmiCategory: 'normal', idealBodyWeight: 49.5, basalCalories: 1237.5,
+   775→        ageCorrectionKcal: -247.5, ageCorrectionPercent: -20, activityCorrectionKcal: 123.75, activityCorrectionPercent: 10,
+   776→        weightCorrectionKcal: 0, weightCorrectionPercent: 0, stressCorrectionKcal: 247.5, stressCorrectionPercent: 20,
+   777→        specialConditionKcal: 0, totalCalorieNeeds: 1361.25,
+   778→        carbohydrateKcal: 612.56, proteinKcal: 340.31, fatKcal: 272.25, mineralKcal: 136.13,
+   779→        carbohydrateGrams: 153.14, proteinGrams: 85.08, fatGrams: 30.25,
+   780→      },
+   781→      actualIntakeKcal: 1100, notes: 'Pasien makan sedikit, sering mual',
+   782→      recordedBy: 'dr. Sarah Wijaya', recordedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString(),
+   783→    },
+   784→    {
+   785→      id: 'nr-2', palliativePatientId: 'pp-2', age: 72, gender: 'L', weight: 55, height: 165,
+   786→      activityLevel: 'ringan', metabolicStress: 'ringan', specialCondition: 'tidak_ada',
+   787→      calculation: {
+   788→        bmi: 20.2, bmiCategory: 'normal', idealBodyWeight: 58.5, basalCalories: 1755,
+   789→        ageCorrectionKcal: -351, ageCorrectionPercent: -20, activityCorrectionKcal: 263.25, activityCorrectionPercent: 15,
+   790→        weightCorrectionKcal: 0, weightCorrectionPercent: 0, stressCorrectionKcal: 175.5, stressCorrectionPercent: 10,
+   791→        specialConditionKcal: 0, totalCalorieNeeds: 1842.75,
+   792→        carbohydrateKcal: 829.24, proteinKcal: 460.69, fatKcal: 368.55, mineralKcal: 184.28,
+   793→        carbohydrateGrams: 207.31, proteinGrams: 115.17, fatGrams: 40.95,
+   794→      },
+   795→      actualIntakeKcal: 1500, notes: 'Nafsu makan menurun, sesak saat makan',
+   796→      recordedBy: 'dr. Lisa Permata', recordedAt: new Date(Date.now() - 172800000).toISOString(), createdAt: new Date(Date.now() - 172800000).toISOString(),
+   797→    },
+   798→    {
+   799→      id: 'nr-3', palliativePatientId: 'pp-3', age: 68, gender: 'P', weight: 40, height: 150,
+   800→      activityLevel: 'bed_rest', metabolicStress: 'berat', specialCondition: 'tidak_ada',
+   801→      calculation: {
+   802→        bmi: 17.78, bmiCategory: 'underweight', idealBodyWeight: 45, basalCalories: 1125,
+   803→        ageCorrectionKcal: -112.5, ageCorrectionPercent: -10, activityCorrectionKcal: 112.5, activityCorrectionPercent: 10,
+   804→        weightCorrectionKcal: 225, weightCorrectionPercent: 20, stressCorrectionKcal: 337.5, stressCorrectionPercent: 30,
+   805→        specialConditionKcal: 0, totalCalorieNeeds: 1687.5,
+   806→        carbohydrateKcal: 759.38, proteinKcal: 421.88, fatKcal: 337.5, mineralKcal: 168.75,
+   807→        carbohydrateGrams: 189.84, proteinGrams: 105.47, fatGrams: 37.5,
+   808→      },
+   809→      actualIntakeKcal: 650, notes: 'Cachexia berat, mual muntah terus menerus',
+   810→      recordedBy: 'dr. Lisa Permata', recordedAt: new Date(Date.now() - 259200000).toISOString(), createdAt: new Date(Date.now() - 259200000).toISOString(),
+   811→    },
+   812→  ] as NutritionRecordInfo[],
+   813→  setNutritionRecords: (records) => set({ nutritionRecords: records }),
+   814→  addNutritionRecord: (record) => set((state) => ({ nutritionRecords: [...state.nutritionRecords, record] })),
+   815→  nutritionAiRecommendation: null,
+   816→  setNutritionAiRecommendation: (rec) => set({ nutritionAiRecommendation: rec }),
+   817→
+   818→  // Palliative Chat
+   819→  palliativeChatMessages: [
+   820→    {
+   821→      id: 'pcm-1',
+   822→      roomId: 'pp-1_doc-sarah',
+   823→      senderId: 'doc-sarah',
+   824→      senderName: 'dr. Sarah Wijaya',
+   825→      senderRole: 'doctor',
+   826→      type: 'text',
+   827→      content: 'Selamat pagi Bu Siti, bagaimana kondisi Anda hari ini?',
+   828→      status: 'read',
+   829→      createdAt: new Date(Date.now() - 7200000).toISOString(),
+   830→      readAt: new Date(Date.now() - 7000000).toISOString(),
+   831→    },
+   832→    {
+   833→      id: 'pcm-2',
+   834→      roomId: 'pp-1_doc-sarah',
+   835→      senderId: 'patient-1',
+   836→      senderName: 'Siti Rahayu',
+   837→      senderRole: 'patient',
+   838→      type: 'text',
+   839→      content: 'Selamat pagi Dok, agak sesak hari ini dan nafsu makan berkurang.',
+   840→      status: 'read',
+   841→      createdAt: new Date(Date.now() - 6800000).toISOString(),
+   842→    },
+   843→    {
+   844→      id: 'pcm-3',
+   845→      roomId: 'pp-1_doc-sarah',
+   846→      senderId: 'doc-sarah',
+   847→      senderName: 'dr. Sarah Wijaya',
+   848→      senderRole: 'doctor',
+   849→      type: 'form_ttv',
+   850→      content: 'Silakan isi formulir TTV untuk memantau kondisi Anda hari ini.',
+   851→      status: 'delivered',
+   852→      formType: 'ttv',
+   853→      formData: {
+   854→        id: 'form-ttv-1',
+   855→        formType: 'ttv',
+   856→        status: 'sent',
+   857→        progress: 0,
+   858→      },
+   859→      createdAt: new Date(Date.now() - 6000000).toISOString(),
+   860→    },
+   861→    {
+   862→      id: 'pcm-4',
+   863→      roomId: 'pp-1_doc-sarah',
+   864→      senderId: 'doc-sarah',
+   865→      senderName: 'dr. Sarah Wijaya',
+   866→      senderRole: 'doctor',
+   867→      type: 'form_keluhan',
+   868→      content: 'Mohon isi form keluhan harian untuk evaluasi gejala Anda.',
+   869→      status: 'delivered',
+   870→      formType: 'keluhan',
+   871→      formData: {
+   872→        id: 'form-keluhan-1',
+   873→        formType: 'keluhan',
+   874→        status: 'sent',
+   875→        progress: 0,
+   876→      },
+   877→      createdAt: new Date(Date.now() - 5800000).toISOString(),
+   878→    },
+   879→    {
+   880→      id: 'pcm-5',
+   881→      roomId: 'pp-1_doc-sarah',
+   882→      senderId: 'patient-1',
+   883→      senderName: 'Siti Rahayu',
+   884→      senderRole: 'patient',
+   885→      type: 'form_response',
+   886→      content: 'Form TTV telah diisi.',
+   887→      formType: 'ttv',
+   888→      formResponse: {
+   889→        formId: 'form-ttv-1',
+   890→        formType: 'ttv',
+   891→        ttvAnswers: {
+   892→          systolicBP: 105,
+   893→          diastolicBP: 65,
+   894→          heartRate: 92,
+   895→          respiratoryRate: 24,
+   896→          temperature: 37.1,
+   897→          oxygenSat: 91,
+   898→          weight: 51.5,
+   899→          symptoms: {
+   900→            nyeri: true, sesak: true, batuk: false, mual: true, muntah: false,
+   901→            sulit_menelan: false, sulit_tidur: true, lemas: true, nafsu_makan_menurun: true,
+   902→            konstipasi: false, diare: false, lainnya: '',
+   903→          },
+   904→          painScore: 5,
+   905→          notes: 'Sesak terasa saat berbaring',
+   906→        },
+   907→        submittedAt: new Date(Date.now() - 5000000).toISOString(),
+   908→      },
+   909→      status: 'read',
+   910→      createdAt: new Date(Date.now() - 5000000).toISOString(),
+   911→    },
+   912→    {
+   913→      id: 'pcm-6',
+   914→      roomId: 'pp-1_doc-sarah',
+   915→      senderId: 'system',
+   916→      senderName: 'Sistem',
+   917→      senderRole: 'system',
+   918→      type: 'clinical_alert',
+   919→      content: 'Peringatan: SpO2 rendah (91%) dan frekuensi napas meningkat (24/menit).',
+   920→      clinicalAlert: {
+   921→        id: 'alert-1',
+   922→        patientId: 'pp-1',
+   923→        alertType: 'ttv_abnormal',
+   924→        severity: 'kuning',
+   925→        title: 'TTV Abnormal',
+   926→        description: 'SpO2 rendah (91%) dan frekuensi napas meningkat (24/menit)',
+   927→        values: { oxygenSat: 91, respiratoryRate: 24 },
+   928→        isRead: false,
+   929→        createdAt: new Date(Date.now() - 4900000).toISOString(),
+   930→      },
+   931→      status: 'delivered',
+   932→      createdAt: new Date(Date.now() - 4900000).toISOString(),
+   933→    },
+   934→    {
+   935→      id: 'pcm-7',
+   936→      roomId: 'pp-1_doc-sarah',
+   937→      senderId: 'system',
+   938→      senderName: 'AI Clinical Assistant',
+   939→      senderRole: 'system',
+   940→      type: 'ai_summary',
+   941→      content: 'Ringkasan AI: Pasien menunjukkan penurunan SpO2 dan peningkatan frekuensi napas. Nyeri terkontrol dengan skor 5/10. Gejala utama: sesak, mual, lemas.',
+   942→      aiSummary: 'S: Pasien Siti Rahayu mengeluhkan sesak napas terutama saat berbaring, nafsu makan menurun, dan lemas.\nO: TD 105/65 mmHg, Nadi 92 x/menit, RR 24/menit, Suhu 37.1°C, SpO2 91%, BB 51.5 kg. Nyeri 5/10.\nA: Penurunan saturasi oksigen dengan peningkatan frekuensi napas. Gejala sesak dan mual perlu pemantauan.\nP: Evaluasi oksigen tambahan, optimasi manajemen sesak, monitoring ulang 6 jam.',
+   943→      status: 'delivered',
+   944→      createdAt: new Date(Date.now() - 4800000).toISOString(),
+   945→    },
+   946→    {
+   947→      id: 'pcm-8',
+   948→      roomId: 'pp-3_doc-sarah',
+   949→      senderId: 'doc-sarah',
+   950→      senderName: 'dr. Sarah Wijaya',
+   951→      senderRole: 'doctor',
+   952→      type: 'text',
+   953→      content: 'Ibu Maria, hari ini saya akan kirimkan form skrining untuk evaluasi kondisi Anda.',
+   954→      status: 'sent',
+   955→      createdAt: new Date(Date.now() - 3600000).toISOString(),
+   956→    },
+   957→  ] as PalliativeChatMessage[],
+   958→  setPalliativeChatMessages: (messages) => set({ palliativeChatMessages: messages }),
+   959→  addPalliativeChatMessage: (message) => set((state) => ({ palliativeChatMessages: [...state.palliativeChatMessages, message] })),
+   960→  updatePalliativeChatMessage: (msgId, data) => set((state) => ({
+   961→    palliativeChatMessages: state.palliativeChatMessages.map(m =>
+   962→      m.id === msgId ? { ...m, ...data } : m
+   963→    ),
+   964→  })),
+   965→  palliativeClinicalAlerts: [
+   966→    {
+   967→      id: 'alert-1',
+   968→      patientId: 'pp-1',
+   969→      alertType: 'ttv_abnormal',
+   970→      severity: 'kuning',
+   971→      title: 'TTV Abnormal',
+   972→      description: 'SpO2 rendah (91%) dan frekuensi napas meningkat (24/menit)',
+   973→      values: { oxygenSat: 91, respiratoryRate: 24 },
+   974→      isRead: false,
+   975→      createdAt: new Date(Date.now() - 4900000).toISOString(),
+   976→    },
+   977→    {
+   978→      id: 'alert-2',
+   979→      patientId: 'pp-3',
+   980→      alertType: 'ttv_abnormal',
+   981→      severity: 'merah',
+   982→      title: 'TTV Kritis',
+   983→      description: 'SpO2 sangat rendah (88%), hipotensi (90/60), dan takipnea (26/menit)',
+   984→      values: { oxygenSat: 88, systolicBP: 90, diastolicBP: 60, respiratoryRate: 26 },
+   985→      isRead: false,
+   986→      createdAt: new Date(Date.now() - 1800000).toISOString(),
+   987→    },
+   988→  ] as PalliativeClinicalAlert[],
+   989→  addPalliativeClinicalAlert: (alert) => set((state) => ({ palliativeClinicalAlerts: [...state.palliativeClinicalAlerts, alert] })),
+   990→  markPalliativeAlertRead: (alertId) => set((state) => ({
+   991→    palliativeClinicalAlerts: state.palliativeClinicalAlerts.map(a =>
+   992→      a.id === alertId ? { ...a, isRead: true } : a
+   993→    ),
+   994→  })),
+   995→  palliativeAuditLog: [
+   996→    {
+   997→      id: 'audit-1',
+   998→      patientId: 'pp-1',
+   999→      action: 'form_sent',
+  1000→      performedBy: 'doc-sarah',
+  1001→      performedByRole: 'doctor',
+  1002→      details: 'Dokter mengirim Form TTV kepada pasien Siti Rahayu',
+  1003→      createdAt: new Date(Date.now() - 6000000).toISOString(),
+  1004→    },
+  1005→    {
+  1006→      id: 'audit-2',
+  1007→      patientId: 'pp-1',
+  1008→      action: 'form_submitted',
+  1009→      performedBy: 'patient-1',
+  1010→      performedByRole: 'patient',
+  1011→      details: 'Pasien mengirimkan hasil Form TTV',
+  1012→      createdAt: new Date(Date.now() - 5000000).toISOString(),
+  1013→    },
+  1014→    {
+  1015→      id: 'audit-3',
+  1016→      patientId: 'pp-1',
+  1017→      action: 'alert_triggered',
+  1018→      performedBy: 'system',
+  1019→      performedByRole: 'system',
+  1020→      details: 'Alert: SpO2 rendah (91%) dan RR tinggi (24/menit)',
+  1021→      createdAt: new Date(Date.now() - 4900000).toISOString(),
+  1022→    },
+  1023→    {
+  1024→      id: 'audit-4',
+  1025→      patientId: 'pp-1',
+  1026→      action: 'ai_generated',
+  1027→      performedBy: 'system',
+  1028→      performedByRole: 'system',
+  1029→      details: 'AI menghasilkan ringkasan klinis otomatis',
+  1030→      createdAt: new Date(Date.now() - 4800000).toISOString(),
+  1031→    },
+  1032→  ] as PalliativeAuditEntry[],
+  1033→  addPalliativeAuditEntry: (entry) => set((state) => ({ palliativeAuditLog: [...state.palliativeAuditLog, entry] })),
+  1034→
+  1035→  // Palliative Monitoring Integration
+  1036→  palliativeMonitoringNotifications: [] as PalliativeMonitoringNotification[],
+  1037→  addPalliativeMonitoringNotification: (notification) => set((state) => ({
+  1038→    palliativeMonitoringNotifications: [notification, ...state.palliativeMonitoringNotifications],
+  1039→  })),
+  1040→  markPalliativeNotificationRead: (notificationId) => set((state) => ({
+  1041→    palliativeMonitoringNotifications: state.palliativeMonitoringNotifications.map(n =>
+  1042→      n.id === notificationId ? { ...n, isRead: true } : n
+  1043→    ),
+  1044→  })),
+  1045→  markPatientAsPalliative: (consultationId, doctorId, patientId, patientName, markingData) => set((state) => {
+  1046→    // Check if patient already exists in palliative patients
+  1047→    const exists = state.palliativePatients.some(p => p.patientId === patientId);
+  1048→    if (exists) return state;
+  1049→
+  1050→    const newPatient: PalliativePatientInfo = {
+  1051→      id: `pp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+  1052→      patientId,
+  1053→      patientName,
+  1054→      primaryDiagnosis: markingData.primaryDiagnosis,
+  1055→      secondaryDiagnosis: markingData.secondaryDiagnosis,
+  1056→      attendingDoctorId: doctorId,
+  1057→      attendingDoctorName: state.doctors.find(d => d.id === doctorId)?.name,
+  1058→      careStatus: 'rawat_jalan',
+  1059→      patientStatus: 'aktif',
+  1060→      monitoringStatus: 'monitoring_aktif',
+  1061→      riskLevel: 'kuning',
+  1062→      markingData,
+  1063→      consultationId,
+  1064→      createdAt: new Date().toISOString(),
+  1065→      updatedAt: new Date().toISOString(),
+  1066→    };
+  1067→
+  1068→    // Create notification
+  1069→    const notification: PalliativeMonitoringNotification = {
+  1070→      id: `pn-${Date.now()}`,
+  1071→      patientId,
+  1072→      patientName,
+  1073→      type: 'status_change',
+  1074→      title: 'Pasien Baru Monitoring Paliatif',
+  1075→      description: `${patientName} telah ditambahkan ke program monitoring paliatif`,
+  1076→      severity: 'info',
+  1077→      isRead: false,
+  1078→      createdAt: new Date().toISOString(),
+  1079→    };
+  1080→
+  1081→    return {
+  1082→      palliativePatients: [...state.palliativePatients, newPatient],
+  1083→      palliativeMonitoringNotifications: [notification, ...state.palliativeMonitoringNotifications],
+  1084→    };
+  1085→  }),
+  1086→  updatePalliativeMonitoringStatus: (patientId, status) => set((state) => ({
+  1087→    palliativePatients: state.palliativePatients.map(p =>
+  1088→      p.id === patientId ? { ...p, monitoringStatus: status, updatedAt: new Date().toISOString() } : p
+  1089→    ),
+  1090→  })),
+  1091→  activeInlineScreeningFormId: null as string | null,
+  1092→  setActiveInlineScreeningFormId: (id) => set({ activeInlineScreeningFormId: id }),
+  1093→  activeInlineScreeningType: null as PalliativeMonitoringFormType | null,
+  1094→  setActiveInlineScreeningType: (type) => set({ activeInlineScreeningType: type }),
+  1095→
+  1096→  // Screening Navigation state
+  1097→  screeningNavigationFrom: null as 'monitoring' | null,
+  1098→  setScreeningNavigationFrom: (from) => set({ screeningNavigationFrom: from }),
+  1099→  screeningPreselectedPatientId: null as string | null,
+  1100→  setScreeningPreselectedPatientId: (id) => set({ screeningPreselectedPatientId: id }),
+  1101→
+  1102→  // Palliative Program Completion
+  1103→  palliativeProgramCompletions: [] as PalliativeProgramCompletion[],
+  1104→  completePalliativeProgram: (patientId, completionData) => set((state) => {
+  1105→    const completion: PalliativeProgramCompletion = {
+  1106→      ...completionData,
+  1107→      id: `pcomp-${Date.now()}`,
+  1108→      createdAt: new Date().toISOString(),
+  1109→    };
+  1110→    // Update patient status to program_selesai
+  1111→    const updatedPatients = state.palliativePatients.map(p =>
+  1112→      p.id === patientId
+  1113→        ? { ...p, patientStatus: 'program_selesai' as const, monitoringStatus: 'program_selesai' as PalliativeMonitoringStatus, updatedAt: new Date().toISOString() }
+  1114→        : p
+  1115→    );
+  1116→    return {
+  1117→      palliativeProgramCompletions: [...state.palliativeProgramCompletions, completion],
+  1118→      palliativePatients: updatedPatients,
+  1119→    };
+  1120→  }),
+  1121→
+  1122→  // Daily Complaint (Keluhan Harian)
+  1123→  dailyComplaints: [] as DailyComplaintRecord[],
+  1124→  setDailyComplaints: (complaints) => set({ dailyComplaints: complaints }),
+  1125→  addDailyComplaint: (complaint) => set((state) => ({ dailyComplaints: [complaint, ...state.dailyComplaints] })),
+  1126→
+  1127→  // RVSM
+  1128→  rvsmDevices: [
+  1129→    {
+  1130→      id: 'wd-1', patientId: 'pp-1', deviceType: 'apple_watch' as const,
+  1131→      deviceName: 'Apple Watch Series 9', integrationMethod: 'apple_healthkit' as const,
+  1132→      status: 'connected' as const, batteryLevel: 72, isConnected: true,
+  1133→      lastSyncAt: new Date(Date.now() - 300000).toISOString(),
+  1134→      firmwareVersion: '10.3.1', serialNumber: 'AW9-2024-00123',
+  1135→      registeredAt: new Date(Date.now() - 2592000000).toISOString(),
+  1136→    },
+  1137→    {
+  1138→      id: 'wd-2', patientId: 'pp-2', deviceType: 'samsung_galaxy_watch' as const,
+  1139→      deviceName: 'Samsung Galaxy Watch 6', integrationMethod: 'samsung_health' as const,
+  1140→      status: 'connected' as const, batteryLevel: 45, isConnected: true,
+  1141→      lastSyncAt: new Date(Date.now() - 600000).toISOString(),
+  1142→      firmwareVersion: '5.0.2', serialNumber: 'SGW6-2024-00456',
+  1143→      registeredAt: new Date(Date.now() - 1728000000).toISOString(),
+  1144→    },
+  1145→    {
+  1146→      id: 'wd-3', patientId: 'pp-3', deviceType: 'garmin_watch' as const,
+  1147→      deviceName: 'Garmin Vivosmart 5', integrationMethod: 'rest_api' as const,
+  1148→      status: 'low_battery' as const, batteryLevel: 12, isConnected: true,
+  1149→      lastSyncAt: new Date(Date.now() - 1800000).toISOString(),
+  1150→      firmwareVersion: '8.15', serialNumber: 'GV5-2024-00789',
+  1151→      registeredAt: new Date(Date.now() - 864000000).toISOString(),
+  1152→    },
+  1153→  ] as WearableDevice[],
+  1154→  addRvsmDevice: (device) => set((state) => ({ rvsmDevices: [...state.rvsmDevices, device] })),
+  1155→  updateRvsmDevice: (deviceId, data) => set((state) => ({
+  1156→    rvsmDevices: state.rvsmDevices.map(d => d.id === deviceId ? { ...d, ...data } : d),
+  1157→  })),
+  1158→  removeRvsmDevice: (deviceId) => set((state) => ({ rvsmDevices: state.rvsmDevices.filter(d => d.id !== deviceId) })),
+  1159→
+  1160→  rvsmVitalData: (() => {
+  1161→    const now = Date.now();
+  1162→    const data: WearableVitalData[] = [];
+  1163→    // Generate 24 data points for each palliative patient over last 24h
+  1164→    const patients = [
+  1165→      { id: 'pp-1', deviceId: 'wd-1', hr: 88, spo2: 93, rr: 22, steps: 450, sleep: 420, temp: 36.8 },
+  1166→      { id: 'pp-2', deviceId: 'wd-2', hr: 78, spo2: 96, rr: 18, steps: 3200, sleep: 390, temp: 36.6 },
+  1167→      { id: 'pp-3', deviceId: 'wd-3', hr: 95, spo2: 88, rr: 26, steps: 120, sleep: 540, temp: 37.5 },
+  1168→    ];
+  1169→    patients.forEach(p => {
+  1170→      for (let i = 23; i >= 0; i--) {
+  1171→        const t = now - i * 3600000;
+  1172→        const hrVar = Math.round(p.hr + (Math.random() - 0.5) * 10);
+  1173→        const spo2Var = Math.round(p.spo2 + (Math.random() - 0.5) * 3);
+  1174→        const rrVar = Math.round(p.rr + (Math.random() - 0.5) * 4);
+  1175→        data.push({
+  1176→          id: `rvd-${p.id}-${i}`,
+  1177→          deviceId: p.deviceId,
+  1178→          patientId: p.id,
+  1179→          timestamp: new Date(t).toISOString(),
+  1180→          heartRate: hrVar,
+  1181→          heartRateVariability: Math.round(30 + Math.random() * 40),
+  1182→          heartRhythm: hrVar > 100 ? 'sinus_tachycardia' : hrVar < 60 ? 'sinus_bradycardia' : 'normal_sinus',
+  1183→          arrhythmiaDetected: Math.random() < 0.05,
+  1184→          respiratoryRate: rrVar,
+  1185→          respiratoryPattern: rrVar > 24 ? 'tachypneic' : rrVar < 10 ? 'bradypneic' : 'normal',
+  1186→          apneaEpisode: Math.random() < 0.03,
+  1187→          oxygenSat: spo2Var,
+  1188→          steps: i < 12 ? Math.round(p.steps / 12 + (Math.random() - 0.5) * 50) : undefined,
+  1189→          distance: i < 12 ? Math.round(p.steps * 0.7 + (Math.random() - 0.5) * 200) : undefined,
+  1190→          walkDuration: i < 12 ? Math.round(p.steps / 10 + (Math.random() - 0.5) * 5) : undefined,
+  1191→          dailyActivityLevel: p.steps < 500 ? 'sedentary' : p.steps < 3000 ? 'light' : 'moderate',
+  1192→          sittingDuration: i === 0 ? Math.round(180 + Math.random() * 120) : undefined,
+  1193→          standingDuration: i === 0 ? Math.round(30 + Math.random() * 60) : undefined,
+  1194→          lyingDuration: i === 0 ? Math.round(p.sleep + Math.random() * 60) : undefined,
+  1195→          postureChangeCount: i === 0 ? Math.round(5 + Math.random() * 10) : undefined,
+  1196→          sleepDuration: i === 0 ? p.sleep : undefined,
+  1197→          sleepQuality: p.sleep < 300 ? 'poor' : p.sleep < 420 ? 'fair' : 'good',
+  1198→          sleepDisturbances: Math.round(Math.random() * 5),
+  1199→          sleepPattern: p.sleep > 540 ? 'hypersomnia' : p.sleep < 300 ? 'insomnia' : 'normal',
+  1200→          skinTemperature: Math.round((p.temp - 0.5 + Math.random()) * 10) / 10,
+  1201→          estimatedCoreTemp: p.temp,
+  1202→          painScore: p.id === 'pp-3' ? Math.round(6 + Math.random() * 3) : p.id === 'pp-1' ? Math.round(3 + Math.random() * 3) : Math.round(1 + Math.random() * 2),
+  1203→          stressLevel: Math.round(p.id === 'pp-3' ? 65 + Math.random() * 25 : p.id === 'pp-1' ? 40 + Math.random() * 30 : 20 + Math.random() * 20),
+  1204→          fatigueLevel: Math.round(p.id === 'pp-3' ? 70 + Math.random() * 20 : p.id === 'pp-1' ? 50 + Math.random() * 25 : 25 + Math.random() * 15),
+  1205→          systolicBP: p.id === 'pp-1' ? 105 + Math.round((Math.random() - 0.5) * 10) : p.id === 'pp-2' ? 130 + Math.round((Math.random() - 0.5) * 10) : 90 + Math.round((Math.random() - 0.5) * 8),
+  1206→          diastolicBP: p.id === 'pp-1' ? 65 + Math.round((Math.random() - 0.5) * 8) : p.id === 'pp-2' ? 82 + Math.round((Math.random() - 0.5) * 8) : 60 + Math.round((Math.random() - 0.5) * 6),
+  1207→        });
+  1208→      }
+  1209→    });
+  1210→    return data;
+  1211→  })() as WearableVitalData[],
+  1212→  addRvsmVitalData: (d) => set((state) => ({ rvsmVitalData: [...state.rvsmVitalData, d] })),
+  1213→
+  1214→  rvsmAlerts: [
+  1215→    {
+  1216→      id: 'rva-1', patientId: 'pp-3', patientName: 'Maria Susanti', deviceId: 'wd-3',
+  1217→      category: 'oxygenation' as const, severity: 'critical' as const,
+  1218→      title: 'SpO2 Sangat Rendah',
+  1219→      description: 'Saturasi oksigen pasien turun di bawah 90%. Diperlukan tindakan segera.',
+  1220→      values: { oxygenSat: 88 }, threshold: { parameter: 'oxygenSat', operator: '<', value: 92 },
+  1221→      actualValue: 88, isRead: false, isAcknowledged: false,
+  1222→      createdAt: new Date(Date.now() - 1800000).toISOString(),
+  1223→    },
+  1224→    {
+  1225→      id: 'rva-2', patientId: 'pp-1', patientName: 'Siti Rahayu', deviceId: 'wd-1',
+  1226→      category: 'cardiovascular' as const, severity: 'attention' as const,
+  1227→      title: 'Takikardia Deteksi',
+  1228→      description: 'Denyut jantung pasien melebihi 100 bpm secara konsisten.',
+  1229→      values: { heartRate: 105 }, threshold: { parameter: 'heartRate', operator: '>', value: 100 },
+  1230→      actualValue: 105, isRead: false, isAcknowledged: false,
+  1231→      createdAt: new Date(Date.now() - 3600000).toISOString(),
+  1232→    },
+  1233→    {
+  1234→      id: 'rva-3', patientId: 'pp-3', patientName: 'Maria Susanti', deviceId: 'wd-3',
+  1235→      category: 'mobility' as const, severity: 'attention' as const,
+  1236→      title: 'Penurunan Aktivitas Signifikan',
+  1237→      description: 'Aktivitas pasien menurun lebih dari 30% dibanding baseline. Pasien lebih banyak berbaring.',
+  1238→      values: { activityChange: -35, lyingHours: 12.5 },
+  1239→      actualValue: -35, isRead: true, isAcknowledged: true,
+  1240→      acknowledgedBy: 'dr. Sarah Wijaya',
+  1241→      acknowledgedAt: new Date(Date.now() - 900000).toISOString(),
+  1242→      createdAt: new Date(Date.now() - 7200000).toISOString(),
+  1243→    },
+  1244→    {
+  1245→      id: 'rva-4', patientId: 'pp-1', patientName: 'Siti Rahayu', deviceId: 'wd-1',
+  1246→      category: 'sleep' as const, severity: 'attention' as const,
+  1247→      title: 'Gangguan Tidur',
+  1248→      description: 'Kualitas tidur pasien menurun. Durasi tidur hanya 4.2 jam dengan 5 kali gangguan.',
+  1249→      values: { sleepDuration: 252, sleepDisturbances: 5 },
+  1250→      isRead: false, isAcknowledged: false,
+  1251→      createdAt: new Date(Date.now() - 5400000).toISOString(),
+  1252→    },
+  1253→  ] as RVSMAlert[],
+  1254→  addRvsmAlert: (alert) => set((state) => ({ rvsmAlerts: [...state.rvsmAlerts, alert] })),
+  1255→  markRvsmAlertRead: (alertId) => set((state) => ({
+  1256→    rvsmAlerts: state.rvsmAlerts.map(a => a.id === alertId ? { ...a, isRead: true } : a),
+  1257→  })),
+  1258→  acknowledgeRvsmAlert: (alertId, acknowledgedBy) => set((state) => ({
+  1259→    rvsmAlerts: state.rvsmAlerts.map(a => a.id === alertId ? { ...a, isAcknowledged: true, acknowledgedBy, acknowledgedAt: new Date().toISOString() } : a),
+  1260→  })),
+  1261→
+  1262→  rvsmDailyReports: [
+  1263→    {
+  1264→      id: 'rdr-1', patientId: 'pp-1', patientName: 'Siti Rahayu',
+  1265→      reportDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+  1266→      activityChangePercent: -25, avgSpO2: 92, avgHeartRate: 90, avgRespiratoryRate: 23,
+  1267→      sleepDurationHours: 4.2, lyingDurationHours: 14, stepsCount: 450, painScoreAvg: 4.5,
+  1268→      stressLevelAvg: 55, fatigueLevelAvg: 62,
+  1269→      aiSummary: 'Aktivitas pasien menurun 25% dibanding minggu sebelumnya. Rata-rata SpO2 92% (menurun dari 94%). Durasi tidur hanya 4.2 jam menunjukkan insomnia. Temuan mengindikasikan penurunan status fungsional.',
+  1270→      riskPrediction: { hospitalizationRisk: 'moderate', symptomWorseningRisk: 'high', ppsDeclineRisk: 'moderate', homeVisitNeedRisk: 'high' },
+  1271→      createdAt: new Date(Date.now() - 86400000).toISOString(),
+  1272→    },
+  1273→    {
+  1274→      id: 'rdr-2', patientId: 'pp-3', patientName: 'Maria Susanti',
+  1275→      reportDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+  1276→      activityChangePercent: -45, avgSpO2: 88, avgHeartRate: 96, avgRespiratoryRate: 26,
+  1277→      sleepDurationHours: 9.5, lyingDurationHours: 20, stepsCount: 80, painScoreAvg: 7.5,
+  1278→      stressLevelAvg: 78, fatigueLevelAvg: 82,
+  1279→      aiSummary: 'Penurunan aktivitas signifikan 45%. SpO2 konsisten rendah (rata-rata 88%). Pasien hampir sepenuhnya bed rest. Nyeri tinggi (7.5/10) dan fatigue berat (82/100). Risiko perburukan TINGGI.',
+  1280→      riskPrediction: { hospitalizationRisk: 'high', symptomWorseningRisk: 'high', ppsDeclineRisk: 'high', homeVisitNeedRisk: 'high' },
+  1281→      createdAt: new Date(Date.now() - 86400000).toISOString(),
+  1282→    },
+  1283→  ] as RVSMDailyReport[],
+  1284→  addRvsmDailyReport: (report) => set((state) => ({ rvsmDailyReports: [...state.rvsmDailyReports, report] })),
+  1285→
+  1286→  rvsmFamilyAccess: [
+  1287→    {
+  1288→      id: 'rfa-1', patientId: 'pp-1', familyMemberId: 'fam-budi', familyMemberName: 'Budi Rahayu',
+  1289→      relationship: 'Anak', canViewActivity: true, canViewDeviceStatus: true,
+  1290→      canViewHealthGraphs: true, canReceiveAlerts: true, canViewSchedule: true,
+  1291→      grantedAt: new Date(Date.now() - 2592000000).toISOString(),
+  1292→    },
+  1293→    {
+  1294→      id: 'rfa-2', patientId: 'pp-3', familyMemberId: 'fam-yohanes', familyMemberName: 'Yohanes Susanti',
+  1295→      relationship: 'Suami', canViewActivity: true, canViewDeviceStatus: true,
+  1296→      canViewHealthGraphs: true, canReceiveAlerts: true, canViewSchedule: true,
+  1297→      grantedAt: new Date(Date.now() - 1728000000).toISOString(),
+  1298→    },
+  1299→  ] as RVSMFamilyAccess[],
+  1300→  addRvsmFamilyAccess: (access) => set((state) => ({ rvsmFamilyAccess: [...state.rvsmFamilyAccess, access] })),
+  1301→  removeRvsmFamilyAccess: (accessId) => set((state) => ({ rvsmFamilyAccess: state.rvsmFamilyAccess.filter(a => a.id !== accessId) })),
+  1302→
+  1303→  rvsmAuditLog: [
+  1304→    { id: 'ra-1', patientId: 'pp-1', action: 'data_received' as const, performedBy: 'wd-1', performedByRole: 'system' as const, details: 'Data vital diterima dari Apple Watch', deviceId: 'wd-1', createdAt: new Date(Date.now() - 300000).toISOString() },
+  1305→    { id: 'ra-2', patientId: 'pp-3', action: 'alert_generated' as const, performedBy: 'system', performedByRole: 'system' as const, details: 'Alert: SpO2 rendah terdeteksi (88%)', deviceId: 'wd-3', createdAt: new Date(Date.now() - 1800000).toISOString() },
+  1306→    { id: 'ra-3', patientId: 'pp-3', action: 'alert_acknowledged' as const, performedBy: 'doc-sarah', performedByRole: 'doctor' as const, details: 'Dokter mengakui alert SpO2 rendah', createdAt: new Date(Date.now() - 900000).toISOString() },
+  1307→  ] as RVSMAuditEntry[],
+  1308→  addRvsmAuditEntry: (entry) => set((state) => ({ rvsmAuditLog: [...state.rvsmAuditLog, entry] })),
+  1309→
+  1310→  rvsmPalliativeEstimates: [
+  1311→    {
+  1312→      patientId: 'pp-1', estimatedAt: new Date(Date.now() - 3600000).toISOString(),
+  1313→      ppsEstimate: { currentEstimate: 40, previousEstimate: 50, change: -10, confidence: 0.78, factors: ['Penurunan aktivitas 25%', 'SpO2 menurun', 'Durasi tidur berkurang'] },
+  1314→      esasEstimate: { fatigueLevel: 7, sleepDisturbance: 6, activityDecline: 5, estimatedTotalScore: 45 },
+  1315→      spictEstimate: { deteriorationRisk: 'high', indicators: ['Penurunan fungsi fisik', 'Hipoksemia berulang', 'Penurunan berat badan'] },
+  1316→    },
+  1317→    {
+  1318→      patientId: 'pp-3', estimatedAt: new Date(Date.now() - 3600000).toISOString(),
+  1319→      ppsEstimate: { currentEstimate: 20, previousEstimate: 30, change: -10, confidence: 0.85, factors: ['Bed rest total', 'SpO2 konsisten rendah', 'Nyeri tidak terkontrol'] },
+  1320→      esasEstimate: { fatigueLevel: 9, sleepDisturbance: 8, activityDecline: 9, estimatedTotalScore: 72 },
+  1321→      spictEstimate: { deteriorationRisk: 'high', indicators: ['Ketergantungan total', 'Hipoksemia persisten', 'Penurunan kesadaran', 'Disfungsi multiorgan'] },
+  1322→    },
+  1323→  ] as RVSMPalliativeScoreEstimate[],
+  1324→  addRvsmPalliativeEstimate: (estimate) => set((state) => ({ rvsmPalliativeEstimates: [...state.rvsmPalliativeEstimates, estimate] })),
+  1325→
+  1326→  rvsmAiSummary: '',
+  1327→  setRvsmAiSummary: (summary) => set({ rvsmAiSummary: summary }),
+  1328→
+  1329→  // Medication Monitoring
+  1330→  medicationMonitoringForms: [] as MedicationMonitoringFormInfo[],
+  1331→  addMedicationMonitoringForm: (form) => set((state) => ({ medicationMonitoringForms: [...state.medicationMonitoringForms, form] })),
+  1332→  updateMedicationMonitoringForm: (formId, data) => set((state) => ({
+  1333→    medicationMonitoringForms: state.medicationMonitoringForms.map(f =>
+  1334→      f.id === formId ? { ...f, ...data, updatedAt: new Date().toISOString() } : f
+  1335→    ),
+  1336→  })),
+  1337→  medicationMonitoringAlerts: [] as MedicationMonitoringAlert[],
+  1338→  addMedicationMonitoringAlert: (alert) => set((state) => ({ medicationMonitoringAlerts: [...state.medicationMonitoringAlerts, alert] })),
+  1339→  markMedicationMonitoringAlertRead: (alertId) => set((state) => ({
+  1340→    medicationMonitoringAlerts: state.medicationMonitoringAlerts.map(a =>
+  1341→      a.id === alertId ? { ...a, isRead: true } : a
+  1342→    ),
+  1343→  })),
+  1344→  medicationMonitoringAuditLog: [] as MedicationMonitoringAuditEntry[],
+  1345→  addMedicationMonitoringAuditEntry: (entry) => set((state) => ({ medicationMonitoringAuditLog: [...state.medicationMonitoringAuditLog, entry] })),
+  1346→  medicationComplianceSummaries: [] as MedicationComplianceSummary[],
+  1347→  addMedicationComplianceSummary: (summary) => set((state) => ({ medicationComplianceSummaries: [...state.medicationComplianceSummaries, summary] })),
+  1348→
+  1349→  // Palliative Resume Medis & Surat Rujukan
+  1350→  palliativeResumes: [] as PalliativeResumeMedis[],
+  1351→  addPalliativeResume: (resume) => set((state) => ({ palliativeResumes: [...state.palliativeResumes, resume] })),
+  1352→  updatePalliativeResume: (resumeId, data) => set((state) => ({
+  1353→    palliativeResumes: state.palliativeResumes.map(r =>
+  1354→      r.id === resumeId ? { ...r, ...data, updatedAt: new Date().toISOString() } : r
+  1355→    ),
+  1356→  })),
+  1357→  palliativeReferralLetters: [] as PalliativeReferralLetter[],
+  1358→  addPalliativeReferralLetter: (letter) => set((state) => ({ palliativeReferralLetters: [...state.palliativeReferralLetters, letter] })),
+  1359→  updatePalliativeReferralLetter: (letterId, data) => set((state) => ({
+  1360→    palliativeReferralLetters: state.palliativeReferralLetters.map(l =>
+  1361→      l.id === letterId ? { ...l, ...data, updatedAt: new Date().toISOString() } : l
+  1362→    ),
+  1363→  })),
+  1364→  palliativeDocumentAuditLog: [] as PalliativeDocumentAuditEntry[],
+  1365→  addPalliativeDocumentAuditEntry: (entry) => set((state) => ({ palliativeDocumentAuditLog: [...state.palliativeDocumentAuditLog, entry] })),
+  1366→
+  1367→  // Social Support Management
+  1368→  socialAssessments: [
+  1369→    {
+  1370→      id: 'sa-1', palliativePatientId: 'pp-1',
+  1371→      housingCondition: 'kurang_layak' as const, housingNotes: 'Rumah tidak luas, akses jalan sulit',
+  1372→      caregiverAvailability: 'terbatas' as const, caregiverNotes: 'Anak bekerja di siang hari',
+  1373→      familySupportLevel: 'cukup' as const, familySupportNotes: 'Keluarga rutin menengok',
+  1374→      transportDifficulty: 'sedang' as const, transportNotes: 'Jarak ke RS 15km, tidak ada kendaraan',
+  1375→      economicConstraint: 'sedang' as const, economicNotes: 'Penghasilan terbatas, bergantung BPJS',
+  1376→      healthcareAccess: 'sulit' as const, healthcareAccessNotes: 'Fasilitas kesehatan terdekat 10km',
+  1377→      medicalEquipmentNeed: 'sedang' as const, medicalEquipmentNotes: 'Perlu oksigen konsentrator dan kasur anti dekubitus',
+  1378→      socialAssistanceNeed: 'sedang' as const, socialAssistanceNotes: 'Perlu bantuan biaya transportasi',
+  1379→      socialIsolationRisk: 'sedang' as const, socialIsolationNotes: 'Pasien jarang keluar rumah',
+  1380→      overallStatus: 'sebagian' as const, priorityLevel: 'sedang' as const,
+  1381→      recommendations: ['Fasilitas kunjungan rumah', 'Bantuan transportasi medis', 'Alat kesehatan rumahan'],
+  1382→      assessedBy: 'dr. Sarah Wijaya', assessedByRole: 'doctor' as const,
+  1383→      assessedAt: new Date(Date.now() - 172800000).toISOString(),
+  1384→      createdAt: new Date(Date.now() - 172800000).toISOString(), updatedAt: new Date(Date.now() - 172800000).toISOString(),
+  1385→    },
+  1386→    {
+  1387→      id: 'sa-2', palliativePatientId: 'pp-3',
+  1388→      housingCondition: 'layak' as const,
+  1389→      caregiverAvailability: 'tersedia' as const,
+  1390→      familySupportLevel: 'kuat' as const,
+  1391→      transportDifficulty: 'ringan' as const,
+  1392→      economicConstraint: 'berat' as const, economicNotes: 'Biaya pengobatan sangat memberatkan',
+  1393→      healthcareAccess: 'cukup' as const,
+  1394→      medicalEquipmentNeed: 'berat' as const, medicalEquipmentNotes: 'Perlu ventilator portabel, suction, dan nebulizer',
+  1395→      socialAssistanceNeed: 'berat' as const, socialAssistanceNotes: 'Perlu bantuan biaya pengobatan dan alat kesehatan',
+  1396→      socialIsolationRisk: 'rendah' as const,
+  1397→      overallStatus: 'lengkap' as const, priorityLevel: 'tinggi' as const,
+  1398→      recommendations: ['Bantuan biaya pengobatan', 'Pengadaan alat kesehatan', 'Program JKN-KIS'],
+  1399→      assessedBy: 'dr. Sarah Wijaya', assessedByRole: 'doctor' as const,
+  1400→      assessedAt: new Date(Date.now() - 86400000).toISOString(),
+  1401→      createdAt: new Date(Date.now() - 86400000).toISOString(), updatedAt: new Date(Date.now() - 86400000).toISOString(),
+  1402→    },
+  1403→  ] as SocialAssessmentRecord[],
+  1404→  addSocialAssessment: (record) => set((state) => ({ socialAssessments: [...state.socialAssessments, record] })),
+  1405→  updateSocialAssessment: (id, data) => set((state) => ({
+  1406→    socialAssessments: state.socialAssessments.map(a => a.id === id ? { ...a, ...data, updatedAt: new Date().toISOString() } : a),
+  1407→  })),
+  1408→  caregivers: [
+  1409→    {
+  1410→      id: 'cg-1', palliativePatientId: 'pp-1', name: 'Budi Rahayu', role: 'utama' as const, relation: 'anak' as const,
+  1411→      phone: '081234567890', email: 'budi.rahayu@email.com', address: 'Jl. Melati No. 12, Bandung',
+  1412→      schedule: 'Senin-Sabtu, 08:00-17:00', tasks: ['Pemberian obat', 'Monitoring TTV', 'Memasak makanan'],
+  1413→      isActive: true, zaritScore: 28, zaritLevel: 'beban_sedang' as const,
+  1414→      familyApgarScore: 7, familyApgarLevel: 'good' as const,
+  1415→      notes: 'Kadang merasa terbebani namun berusaha ikhlas',
+  1416→      createdAt: new Date(Date.now() - 259200000).toISOString(), updatedAt: new Date(Date.now() - 259200000).toISOString(),
+  1417→    },
+  1418→    {
+  1419→      id: 'cg-2', palliativePatientId: 'pp-1', name: 'Sari Rahayu', role: 'pendamping' as const, relation: 'anak' as const,
+  1420→      phone: '082345678901', schedule: 'Minggu dan malam hari', tasks: ['Menemani ibu', 'Bantu makan'],
+  1421→      isActive: true, zaritScore: 18, zaritLevel: 'beban_ringan' as const,
+  1422→      notes: 'Membantu kakak di akhir pekan',
+  1423→      createdAt: new Date(Date.now() - 172800000).toISOString(), updatedAt: new Date(Date.now() - 172800000).toISOString(),
+  1424→    },
+  1425→    {
+  1426→      id: 'cg-3', palliativePatientId: 'pp-3', name: 'Yohanes Susanti', role: 'utama' as const, relation: 'suami' as const,
+  1427→      phone: '083456789012', address: 'Jl. Anggrek No. 8, Surabaya',
+  1428→      schedule: 'Setiap hari, 24 jam', tasks: ['Perawatan lengkap', 'Pemberian obat', 'Monitoring kondisi', 'Koordinasi dokter'],
+  1429→      isActive: true, zaritScore: 42, zaritLevel: 'beban_berat' as const,
+  1430→      familyApgarScore: 5, familyApgarLevel: 'moderate_dysfunction' as const,
+  1431→      notes: 'Beban sangat berat, perlu dukungan psikologis',
+  1432→      createdAt: new Date(Date.now() - 432000000).toISOString(), updatedAt: new Date(Date.now() - 432000000).toISOString(),
+  1433→    },
+  1434→  ] as CaregiverInfo[],
+  1435→  addCaregiver: (caregiver) => set((state) => ({ caregivers: [...state.caregivers, caregiver] })),
+  1436→  updateCaregiver: (id, data) => set((state) => ({
+  1437→    caregivers: state.caregivers.map(c => c.id === id ? { ...c, ...data, updatedAt: new Date().toISOString() } : c),
+  1438→  })),
+  1439→  removeCaregiver: (id) => set((state) => ({ caregivers: state.caregivers.filter(c => c.id !== id) })),
+  1440→  familyMeetings: [
+  1441→    {
+  1442→      id: 'fm-1', palliativePatientId: 'pp-1', title: 'Family Meeting: Rencana Perawatan Lanjutan',
+  1443→      scheduledAt: new Date(Date.now() + 86400000 * 3).toISOString(), duration: 60,
+  1444→      status: 'dijadwalkan' as const,
+  1445→      participants: [
+  1446→        { name: 'Budi Rahayu', role: 'Anak/Caregiver', phone: '081234567890', attended: false },
+  1447→        { name: 'Sari Rahayu', role: 'Anak', phone: '082345678901', attended: false },
+  1448→        { name: 'dr. Sarah Wijaya', role: 'Dokter', attended: false },
+  1449→      ],
+  1450→      agenda: 'Diskusi perawatan lanjutan dan kebutuhan alat kesehatan di rumah',
+  1451→      createdBy: 'dr. Sarah Wijaya',
+  1452→      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  1453→    },
+  1454→    {
+  1455→      id: 'fm-2', palliativePatientId: 'pp-3', title: 'Family Meeting: Evaluasi Kondisi dan Dukungan',
+  1456→      scheduledAt: new Date(Date.now() - 172800000).toISOString(), duration: 45,
+  1457→      status: 'selesai' as const,
+  1458→      participants: [
+  1459→        { name: 'Yohanes Susanti', role: 'Suami/Caregiver', phone: '083456789012', attended: true },
+  1460→        { name: 'Maria Susanti Jr', role: 'Anak', phone: '084567890123', attended: true },
+  1461→        { name: 'dr. Sarah Wijaya', role: 'Dokter', attended: true },
+  1462→      ],
+  1463→      agenda: 'Evaluasi kondisi pasien, beban caregiver, dan dukungan finansial',
+  1464→      discussionNotes: 'Pasien membutuhkan perawatan intensif. Suami merasa sangat terbebani. Perlu bantuan caregiver tambahan.',
+  1465→      resume: 'Disepakati untuk menambah perawat shift malam dan mengajukan bantuan sosial',
+  1466→      followUpActions: ['Menghubungi perawat home care', 'Mengajukan bantuan JKN-KIS', 'Konseling caregiver'],
+  1467→      createdBy: 'dr. Sarah Wijaya',
+  1468→      createdAt: new Date(Date.now() - 259200000).toISOString(), updatedAt: new Date(Date.now() - 172800000).toISOString(),
+  1469→    },
+  1470→  ] as FamilyMeetingRecord[],
+  1471→  addFamilyMeeting: (meeting) => set((state) => ({ familyMeetings: [...state.familyMeetings, meeting] })),
+  1472→  updateFamilyMeeting: (id, data) => set((state) => ({
+  1473→    familyMeetings: state.familyMeetings.map(m => m.id === id ? { ...m, ...data, updatedAt: new Date().toISOString() } : m),
+  1474→  })),
+  1475→  eduMaterials: [
+  1476→    { id: 'edu-1', title: 'Panduan Perawatan Pasien Paliatif di Rumah', category: 'perawatan_rumah' as const, description: 'Panduan lengkap perawatan harian pasien paliatif di rumah', type: 'pdf' as const, accessCount: 45, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1477→    { id: 'edu-2', title: 'Cara Mengelola Nyeri di Rumah', category: 'perawatan_rumah' as const, description: 'Tips dan panduan manajemen nyeri untuk caregiver', type: 'artikel' as const, accessCount: 38, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1478→    { id: 'edu-3', title: 'Panduan Caregiver: Menjaga Kesehatan Mental', category: 'panduan_caregiver' as const, description: 'Self-care untuk caregiver agar tidak burnout', type: 'artikel' as const, accessCount: 22, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1479→    { id: 'edu-4', title: 'Video: Posisi Nyaman Pasien Bed Rest', category: 'video_edukasi' as const, description: 'Video tutorial posisi nyaman dan pencegahan dekubitus', type: 'video' as const, accessCount: 56, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1480→    { id: 'edu-5', title: 'Dukungan Psikososial untuk Keluarga', category: 'dukungan_psikososial' as const, description: 'Mengenali tanda stres dan cara mengatasinya', type: 'artikel' as const, accessCount: 18, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1481→    { id: 'edu-6', title: 'Kapan Harus ke UGD?', category: 'gawat_darurat' as const, description: 'Panduan mengenali tanda bahaya yang memerlukan penanganan darurat', type: 'infografis' as const, accessCount: 62, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1482→    { id: 'edu-7', title: 'Persiapan Akhir Kehidupan', category: 'end_of_life' as const, description: 'Panduan mempersiapkan tahap akhir kehidupan dengan bermartabat', type: 'pdf' as const, accessCount: 12, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1483→    { id: 'edu-8', title: 'FAQ: Pertanyaan Umum Keluarga Pasien Paliatif', category: 'faq' as const, description: 'Jawaban atas pertanyaan yang sering diajukan keluarga', type: 'faq' as const, accessCount: 89, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1484→  ] as EduMaterial[],
+  1485→  addEduMaterial: (material) => set((state) => ({ eduMaterials: [...state.eduMaterials, material] })),
+  1486→  updateEduMaterial: (id, data) => set((state) => ({
+  1487→    eduMaterials: state.eduMaterials.map(m => m.id === id ? { ...m, ...data, updatedAt: new Date().toISOString() } : m),
+  1488→  })),
+  1489→  logEduMaterialAccess: (materialId, accessedBy) => set((state) => ({
+  1490→    eduMaterials: state.eduMaterials.map(m => m.id === materialId ? {
+  1491→      ...m, accessCount: m.accessCount + 1,
+  1492→      accessLogs: [...m.accessLogs, { materialId, accessedBy, accessedAt: new Date().toISOString() }],
+  1493→    } : m),
+  1494→  })),
+  1495→  familyCoordinationNotes: [
+  1496→    { id: 'fcn-1', palliativePatientId: 'pp-1', authorName: 'Budi Rahayu', authorRelation: 'Anak', content: 'Ibu hari ini makan lebih banyak, sesak berkurang', type: 'perkembangan' as const, isCompleted: false, createdAt: new Date(Date.now() - 43200000).toISOString(), updatedAt: new Date(Date.now() - 43200000).toISOString() },
+  1497→    { id: 'fcn-2', palliativePatientId: 'pp-1', authorName: 'Sari Rahayu', authorRelation: 'Anak', content: 'Beli obat Morfine di apotek', type: 'tugas' as const, isCompleted: false, dueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0], createdAt: new Date(Date.now() - 3600000).toISOString(), updatedAt: new Date(Date.now() - 3600000).toISOString() },
+  1498→    { id: 'fcn-3', palliativePatientId: 'pp-3', authorName: 'Yohanes Susanti', authorRelation: 'Suami', content: 'Jadwal kontrol dr. Sarah tanggal 15', type: 'pengingat_kontrol' as const, isCompleted: false, dueDate: new Date(Date.now() + 86400000 * 5).toISOString().split('T')[0], createdAt: new Date(Date.now() - 7200000).toISOString(), updatedAt: new Date(Date.now() - 7200000).toISOString() },
+  1499→  ] as FamilyCoordinationNote[],
+  1500→  addFamilyCoordinationNote: (note) => set((state) => ({ familyCoordinationNotes: [...state.familyCoordinationNotes, note] })),
+  1501→  updateFamilyCoordinationNote: (id, data) => set((state) => ({
+  1502→    familyCoordinationNotes: state.familyCoordinationNotes.map(n => n.id === id ? { ...n, ...data, updatedAt: new Date().toISOString() } : n),
+  1503→  })),
+  1504→  emergencyContacts: [
+  1505→    { id: 'ec-1', palliativePatientId: 'pp-1', name: 'dr. Sarah Wijaya', role: 'dokter' as const, phone: '081111111111', isPrimary: true, notes: 'Dokter penanggung jawab', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1506→    { id: 'ec-2', palliativePatientId: 'pp-1', name: 'Budi Rahayu', role: 'caregiver_utama' as const, phone: '081234567890', isPrimary: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1507→    { id: 'ec-3', palliativePatientId: 'pp-1', name: 'Ambulans 119', role: 'ambulans' as const, phone: '119', isPrimary: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1508→    { id: 'ec-4', palliativePatientId: 'pp-1', name: 'RS Hasan Sadikin', role: 'rumah_sakit' as const, phone: '0222034953', isPrimary: false, notes: 'RS rujukan utama', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1509→    { id: 'ec-5', palliativePatientId: 'pp-3', name: 'dr. Sarah Wijaya', role: 'dokter' as const, phone: '081111111111', isPrimary: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1510→    { id: 'ec-6', palliativePatientId: 'pp-3', name: 'Yohanes Susanti', role: 'caregiver_utama' as const, phone: '083456789012', isPrimary: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1511→    { id: 'ec-7', palliativePatientId: 'pp-3', name: 'UGD RS Dr. Soetomo', role: 'gawat_darurat' as const, phone: '0315501171', isPrimary: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1512→  ] as EmergencyContact[],
+  1513→  addEmergencyContact: (contact) => set((state) => ({ emergencyContacts: [...state.emergencyContacts, contact] })),
+  1514→  updateEmergencyContact: (id, data) => set((state) => ({
+  1515→    emergencyContacts: state.emergencyContacts.map(c => c.id === id ? { ...c, ...data, updatedAt: new Date().toISOString() } : c),
+  1516→  })),
+  1517→  removeEmergencyContact: (id) => set((state) => ({ emergencyContacts: state.emergencyContacts.filter(c => c.id !== id) })),
+  1518→  financialSupportRecords: [
+  1519→    {
+  1520→      id: 'fs-1', palliativePatientId: 'pp-1', insuranceStatus: 'bpjs' as const, bpjsNumber: '0001234567890',
+  1521→      insuranceDetails: 'BPJS Kesehatan Kelas 2', socialAidStatus: 'menerima' as const, socialAidDetails: 'PKH, BPNT',
+  1522→      treatmentCostNeed: 'sedang' as const, medicalEquipmentCostNeed: 'sedang' as const, transportCostNeed: 'ringan' as const,
+  1523→      recommendedPrograms: ['BPJS Kesehatan', 'Program Keluarga Harapan', 'Bantuan Sosial DA'],
+  1524→      notes: 'Biaya transportasi masih menjadi kendala', assessedBy: 'Pekerja Sosial',
+  1525→      assessedAt: new Date(Date.now() - 172800000).toISOString(),
+  1526→      createdAt: new Date(Date.now() - 172800000).toISOString(), updatedAt: new Date(Date.now() - 172800000).toISOString(),
+  1527→    },
+  1528→    {
+  1529→      id: 'fs-2', palliativePatientId: 'pp-3', insuranceStatus: 'campuran' as const,
+  1530→      insuranceDetails: 'BPJS + Asuransi Prudential', socialAidStatus: 'belum_menerima' as const,
+  1531→      treatmentCostNeed: 'berat' as const, medicalEquipmentCostNeed: 'berat' as const, transportCostNeed: 'ringan' as const,
+  1532→      recommendedPrograms: ['JKN-KIS', 'Kartu Indonesia Pintar', 'Bantuan Medis Hospice', 'Program CSR RS'],
+  1533→      notes: 'Biaya perawatan sangat memberatkan keluarga', assessedBy: 'Pekerja Sosial',
+  1534→      assessedAt: new Date(Date.now() - 86400000).toISOString(),
+  1535→      createdAt: new Date(Date.now() - 86400000).toISOString(), updatedAt: new Date(Date.now() - 86400000).toISOString(),
+  1536→    },
+  1537→  ] as FinancialSupportRecord[],
+  1538→  addFinancialSupportRecord: (record) => set((state) => ({ financialSupportRecords: [...state.financialSupportRecords, record] })),
+  1539→  updateFinancialSupportRecord: (id, data) => set((state) => ({
+  1540→    financialSupportRecords: state.financialSupportRecords.map(r => r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r),
+  1541→  })),
+  1542→  transportRecords: [
+  1543→    { id: 'tr-1', palliativePatientId: 'pp-1', type: 'transportasi_medis' as const, status: 'selesai' as const, scheduledAt: new Date(Date.now() - 86400000 * 7).toISOString(), completedAt: new Date(Date.now() - 86400000 * 7).toISOString(), origin: 'Jl. Melati No. 12, Bandung', destination: 'RS Hasan Sadikin', notes: 'Kontrol rutin', requestedBy: 'Budi Rahayu', createdAt: new Date(Date.now() - 86400000 * 8).toISOString(), updatedAt: new Date(Date.now() - 86400000 * 7).toISOString() },
+  1544→    { id: 'tr-2', palliativePatientId: 'pp-3', type: 'ambulans_darurat' as const, status: 'selesai' as const, scheduledAt: new Date(Date.now() - 259200000).toISOString(), completedAt: new Date(Date.now() - 259200000).toISOString(), origin: 'Jl. Anggrek No. 8, Surabaya', destination: 'RS Dr. Soetomo', notes: 'Sesak napas berat', requestedBy: 'Yohanes Susanti', createdAt: new Date(Date.now() - 259200000).toISOString(), updatedAt: new Date(Date.now() - 259200000).toISOString() },
+  1545→  ] as TransportRecord[],
+  1546→  addTransportRecord: (record) => set((state) => ({ transportRecords: [...state.transportRecords, record] })),
+  1547→  updateTransportRecord: (id, data) => set((state) => ({
+  1548→    transportRecords: state.transportRecords.map(r => r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r),
+  1549→  })),
+  1550→  socialAlerts: [
+  1551→    { id: 'sal-1', patientId: 'pp-3', patientName: 'Maria Susanti', type: 'beban_caregiver' as const, severity: 'critical' as const, title: 'Beban Caregiver Berat', description: 'Skor Zarit 42/48 - Suami pasien mengalami beban caregiver berat, perlu intervensi segera', isRead: false, createdAt: new Date(Date.now() - 3600000).toISOString() },
+  1552→    { id: 'sal-2', patientId: 'pp-1', patientName: 'Siti Rahayu', type: 'kendala_ekonomi' as const, severity: 'warning' as const, title: 'Kendala Ekonomi Sedang', description: 'Pasien mengalami kendala ekonomi sedang, perlu evaluasi bantuan sosial', isRead: false, createdAt: new Date(Date.now() - 86400000).toISOString() },
+  1553→  ] as SocialMonitoringAlert[],
+  1554→  addSocialAlert: (alert) => set((state) => ({ socialAlerts: [...state.socialAlerts, alert] })),
+  1555→  markSocialAlertRead: (alertId) => set((state) => ({
+  1556→    socialAlerts: state.socialAlerts.map(a => a.id === alertId ? { ...a, isRead: true } : a),
+  1557→  })),
+  1558→
+  1559→  // AI Social Needs Analysis
+  1560→  aiSocialAnalysisResult: null,
+  1561→  setAiSocialAnalysisResult: (result) => set({ aiSocialAnalysisResult: result }),
+  1562→  aiSocialAnalysisLoading: false,
+  1563→  setAiSocialAnalysisLoading: (loading) => set({ aiSocialAnalysisLoading: loading }),
+  1564→  aiSocialAnalysisRecords: [],
+  1565→  addAiSocialAnalysisRecord: (record) => set((state) => ({ aiSocialAnalysisRecords: [...state.aiSocialAnalysisRecords, record] })),
+  1566→  aiSocialPopulationStats: null,
+  1567→  setAiSocialPopulationStats: (stats) => set({ aiSocialPopulationStats: stats }),
+  1568→
+  1569→  // Patient Paliatif Module
+  1570→  patientTransportRequests: [
+  1571→    {
+  1572→      id: 'ptr-1',
+  1573→      palliativePatientId: 'pp-1',
+  1574→      requestType: 'kontrol_faskes',
+  1575→      requestDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+  1576→      requestTime: '09:00',
+  1577→      pickupLocation: 'Jl. Melati No. 12, Bandung',
+  1578→      destination: 'RS Hasan Sadikin, Bandung',
+  1579→      notes: 'Kontrol rutin dengan dr. Sarah',
+  1580→      status: 'disetujui',
+  1581→      requestedBy: 'Siti Rahayu',
+  1582→      confirmedBy: 'dr. Sarah Wijaya',
+  1583→      confirmedAt: new Date(Date.now() - 3600000).toISOString(),
+  1584→      createdAt: new Date(Date.now() - 86400000).toISOString(),
+  1585→      updatedAt: new Date(Date.now() - 3600000).toISOString(),
+  1586→    },
+  1587→    {
+  1588→      id: 'ptr-2',
+  1589→      palliativePatientId: 'pp-1',
+  1590→      requestType: 'pengambilan_obat',
+  1591→      requestDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+  1592→      requestTime: '14:00',
+  1593→      pickupLocation: 'Jl. Melati No. 12, Bandung',
+  1594→      destination: 'Apotek Kimia Farma, Jl. Asia Afrika',
+  1595→      status: 'menunggu_konfirmasi',
+  1596→      requestedBy: 'Siti Rahayu',
+  1597→      createdAt: new Date(Date.now() - 7200000).toISOString(),
+  1598→      updatedAt: new Date(Date.now() - 7200000).toISOString(),
+  1599→    },
+  1600→  ] as PatientTransportRequest[],
+  1601→  addPatientTransportRequest: (request) => set((state) => ({ patientTransportRequests: [...state.patientTransportRequests, request] })),
+  1602→  updatePatientTransportRequest: (id, data) => set((state) => ({
+  1603→    patientTransportRequests: state.patientTransportRequests.map(r =>
+  1604→      r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r
+  1605→    ),
+  1606→  })),
+  1607→  patientCareUpdates: [
+  1608→    {
+  1609→      id: 'pcu-1',
+  1610→      palliativePatientId: 'pp-1',
+  1611→      conditionStatus: 'stabil',
+  1612→      newComplaints: false,
+  1613→      activityChange: false,
+  1614→      appetiteChange: true,
+  1615→      sleepQualityChange: false,
+  1616→      additionalNotes: 'Nafsu makan sedikit berkurang hari ini',
+  1617→      submittedBy: 'Siti Rahayu',
+  1618→      viewedByDoctor: true,
+  1619→      createdAt: new Date(Date.now() - 172800000).toISOString(),
+  1620→    },
+  1621→    {
+  1622→      id: 'pcu-2',
+  1623→      palliativePatientId: 'pp-1',
+  1624→      conditionStatus: 'menurun',
+  1625→      newComplaints: true,
+  1626→      activityChange: true,
+  1627→      appetiteChange: true,
+  1628→      sleepQualityChange: true,
+  1629→      additionalNotes: 'Sesak napas bertambah, sulit tidur, nafsu makan menurun',
+  1630→      submittedBy: 'Siti Rahayu',
+  1631→      viewedByDoctor: false,
+  1632→      createdAt: new Date(Date.now() - 3600000).toISOString(),
+  1633→    },
+  1634→  ] as PatientCareUpdate[],
+  1635→  addPatientCareUpdate: (update) => set((state) => ({ patientCareUpdates: [...state.patientCareUpdates, update] })),
+  1636→  markCareUpdateViewed: (id) => set((state) => ({
+  1637→    patientCareUpdates: state.patientCareUpdates.map(u =>
+  1638→      u.id === id ? { ...u, viewedByDoctor: true } : u
+  1639→    ),
+  1640→  })),
+  1641→  patientPaliatifMessages: [
+  1642→    {
+  1643→      id: 'ppm-1',
+  1644→      roomId: 'pp-1_doc-sarah',
+  1645→      senderId: 'doc-sarah',
+  1646→      senderName: 'dr. Sarah Wijaya',
+  1647→      senderRole: 'doctor',
+  1648→      content: 'Selamat pagi Ibu Siti, bagaimana kondisi Anda hari ini?',
+  1649→      type: 'text',
+  1650→      status: 'read',
+  1651→      createdAt: new Date(Date.now() - 7200000).toISOString(),
+  1652→      readAt: new Date(Date.now() - 7000000).toISOString(),
+  1653→    },
+  1654→    {
+  1655→      id: 'ppm-2',
+  1656→      roomId: 'pp-1_doc-sarah',
+  1657→      senderId: 'patient-1',
+  1658→      senderName: 'Siti Rahayu',
+  1659→      senderRole: 'patient',
+  1660→      content: 'Selamat pagi Dokter, alhamdulillah hari ini cukup baik, tapi sesak sedikit bertambah',
+  1661→      type: 'text',
+  1662→      status: 'read',
+  1663→      createdAt: new Date(Date.now() - 6800000).toISOString(),
+  1664→    },
+  1665→    {
+  1666→      id: 'ppm-3',
+  1667→      roomId: 'pp-1_doc-sarah',
+  1668→      senderId: 'doc-sarah',
+  1669→      senderName: 'dr. Sarah Wijaya',
+  1670→      senderRole: 'doctor',
+  1671→      content: 'Baik Bu Siti, tolong isi form TTV hari ini ya untuk memantau kondisi Anda',
+  1672→      type: 'form_ttv',
+  1673→      status: 'delivered',
+  1674→      createdAt: new Date(Date.now() - 3600000).toISOString(),
+  1675→    },
+  1676→    {
+  1677→      id: 'ppm-4',
+  1678→      roomId: 'pp-1_doc-sarah',
+  1679→      senderId: 'doc-sarah',
+  1680→      senderName: 'dr. Sarah Wijaya',
+  1681→      senderRole: 'doctor',
+  1682→      content: 'Juga tolong isi form ESAS-r untuk evaluasi gejala Anda',
+  1683→      type: 'form_esas',
+  1684→      status: 'delivered',
+  1685→      createdAt: new Date(Date.now() - 3500000).toISOString(),
+  1686→    },
+  1687→  ] as PatientPaliatifChatMessage[],
+  1688→  addPatientPaliatifMessage: (message) => set((state) => ({ patientPaliatifMessages: [...state.patientPaliatifMessages, message] })),
+  1689→}));
+  1690→
