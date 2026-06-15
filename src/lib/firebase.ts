@@ -1,6 +1,6 @@
 // Firebase Configuration — using environment variables for security
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, enableMultiTabIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -12,21 +12,25 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase (prevent duplicate initialization in dev mode)
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+// Check if Firebase config is available
+const hasFirebaseConfig = firebaseConfig.apiKey && firebaseConfig.projectId;
 
-// Initialize Firestore
-export const db = getFirestore(app);
+let app;
+let db: ReturnType<typeof getFirestore> | null = null;
 
-// Enable offline persistence for better UX
-if (typeof window !== 'undefined') {
-  enableMultiTabIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('[Firebase] Multiple tabs open, persistence enabled in first tab only');
-    } else if (err.code === 'unimplemented') {
-      console.warn('[Firebase] Browser does not support persistence');
-    }
-  });
+try {
+  if (hasFirebaseConfig) {
+    // Initialize Firebase (prevent duplicate initialization in dev mode)
+    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    db = getFirestore(app);
+    console.log('[Firebase] Initialized successfully');
+  } else {
+    console.warn('[Firebase] No configuration found — running in offline/demo mode');
+  }
+} catch (err) {
+  console.warn('[Firebase] Initialization failed — running in offline/demo mode:', err);
+  db = null;
 }
 
+export { db };
 export default app;

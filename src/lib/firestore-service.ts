@@ -22,6 +22,15 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
+// ─── Guard: if Firebase is not configured, return empty results ────────
+function guardDb(): boolean {
+  if (!db) {
+    console.warn('[FirestoreService] Firebase not configured — skipping operation');
+    return false;
+  }
+  return true;
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────
 
 export interface FirestoreTimestamp {
@@ -55,11 +64,12 @@ export async function createDoc<T extends DocumentData>(
   data: T,
   useServerTimestamp = true
 ): Promise<string> {
+  if (!guardDb()) return `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   try {
     const docData = useServerTimestamp
       ? { ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
       : { ...data, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-    const docRef = await addDoc(collection(db, collectionPath), docData);
+    const docRef = await addDoc(collection(db!, collectionPath), docData);
     return docRef.id;
   } catch (error) {
     console.error(`[Firestore] Error creating doc in ${collectionPath}:`, error);
@@ -75,11 +85,12 @@ export async function setDocById<T extends DocumentData>(
   merge = true,
   useServerTimestamp = true
 ): Promise<void> {
+  if (!guardDb()) return;
   try {
     const docData = useServerTimestamp
       ? { ...data, updatedAt: serverTimestamp() }
       : { ...data, updatedAt: new Date().toISOString() };
-    await setDoc(doc(db, collectionPath, docId), docData, { merge });
+    await setDoc(doc(db!, collectionPath, docId), docData, { merge });
   } catch (error) {
     console.error(`[Firestore] Error setting doc ${collectionPath}/${docId}:`, error);
     throw error;
@@ -91,8 +102,9 @@ export async function getDocById<T>(
   collectionPath: string,
   docId: string
 ): Promise<(T & { id: string }) | null> {
+  if (!guardDb()) return null;
   try {
-    const docSnap = await getDoc(doc(db, collectionPath, docId));
+    const docSnap = await getDoc(doc(db!, collectionPath, docId));
     if (docSnap.exists()) {
       return { id: docSnap.id, ...docSnap.data() } as T & { id: string };
     }
@@ -108,8 +120,9 @@ export async function getCollection<T>(
   collectionPath: string,
   constraints: QueryConstraint[] = []
 ): Promise<(T & { id: string })[]> {
+  if (!guardDb()) return [];
   try {
-    const q = query(collection(db, collectionPath), ...constraints);
+    const q = query(collection(db!, collectionPath), ...constraints);
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T & { id: string }));
   } catch (error) {
@@ -125,9 +138,10 @@ export async function getDocsByField<T>(
   value: unknown,
   constraints: QueryConstraint[] = []
 ): Promise<(T & { id: string })[]> {
+  if (!guardDb()) return [];
   try {
     const q = query(
-      collection(db, collectionPath),
+      collection(db!, collectionPath),
       where(field, '==', value),
       ...constraints
     );
@@ -146,11 +160,12 @@ export async function updateDocById<T extends DocumentData>(
   data: Partial<T>,
   useServerTimestamp = true
 ): Promise<void> {
+  if (!guardDb()) return;
   try {
     const updateData = useServerTimestamp
       ? { ...data, updatedAt: serverTimestamp() }
       : { ...data, updatedAt: new Date().toISOString() };
-    await updateDoc(doc(db, collectionPath, docId), updateData);
+    await updateDoc(doc(db!, collectionPath, docId), updateData);
   } catch (error) {
     console.error(`[Firestore] Error updating doc ${collectionPath}/${docId}:`, error);
     throw error;
@@ -162,8 +177,9 @@ export async function deleteDocById(
   collectionPath: string,
   docId: string
 ): Promise<void> {
+  if (!guardDb()) return;
   try {
-    await deleteDoc(doc(db, collectionPath, docId));
+    await deleteDoc(doc(db!, collectionPath, docId));
   } catch (error) {
     console.error(`[Firestore] Error deleting doc ${collectionPath}/${docId}:`, error);
     throw error;
@@ -177,6 +193,10 @@ export function onCollectionSnapshot<T>(
   callback: (data: (T & { id: string })[]) => void,
   onError?: (error: Error) => void
 ): Unsubscribe {
+  if (!db) {
+    // Return a no-op unsubscribe if Firebase is not configured
+    return () => {};
+  }
   const q = query(collection(db, collectionPath), ...constraints);
   return onSnapshot(
     q,
@@ -198,6 +218,9 @@ export function onDocSnapshot<T>(
   callback: (data: (T & { id: string }) | null) => void,
   onError?: (error: Error) => void
 ): Unsubscribe {
+  if (!db) {
+    return () => {};
+  }
   return onSnapshot(
     doc(db, collectionPath, docId),
     (docSnap) => {

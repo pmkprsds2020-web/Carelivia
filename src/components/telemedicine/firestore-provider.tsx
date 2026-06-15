@@ -1,20 +1,17 @@
-// Firestore Provider — Initializes Firestore and seeds demo data if needed
+// Firestore Provider — Non-blocking: loads Firestore data in the background
+// The app renders immediately with Zustand demo data as fallback.
+// Firestore data syncs in once available.
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store';
 import * as firestoreService from '@/lib/firestore-service';
 import { seedFirestore } from '@/lib/firestore-seed';
-import { firestoreSync } from '@/lib/firestore-sync';
 import type {
   PalliativePatientInfo, VitalSignRecordInfo, PalliativeMedicationInfo,
   AdvanceCarePlanInfo, PalliativeScreeningRecordInfo, DailyComplaintRecord,
   NutritionRecordInfo, SocialAssessmentRecord, PalliativeChatMessage,
   PalliativeClinicalAlert, PalliativeAuditEntry, PalliativeResumeMedis,
-  CaregiverInfo, EmergencyContact, FamilyMeetingRecord,
-  FinancialSupportRecord, TransportRecord, SocialMonitoringAlert,
-  FamilyCoordinationNote, EduMaterial,
-  WearableDevice, WearableVitalData, RVSMAlert, RVSMPalliativeScoreEstimate,
 } from '@/lib/types';
 
 interface FirestoreProviderProps {
@@ -22,25 +19,35 @@ interface FirestoreProviderProps {
 }
 
 export function FirestoreProvider({ children }: FirestoreProviderProps) {
-  const [isReady, setIsReady] = useState(false);
-  const [isSeeding, setIsSeeding] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const unsubscribers = useRef<(() => void)[]>([]);
   const isInitialized = useRef(false);
-
   const store = useStore();
 
-  // Seed Firestore with demo data if empty
+  // Seed Firestore with demo data if empty (non-blocking)
   const initializeFirestore = useCallback(async () => {
     if (isInitialized.current) return;
     isInitialized.current = true;
 
     try {
-      setIsSeeding(true);
       console.log('[FirestoreProvider] Checking if Firestore needs seeding...');
 
-      // Check if patients collection has data
-      const patients = await firestoreService.patientsService.getAll();
+      // Add a timeout so we don't hang forever
+      const timeoutPromise = new Promise<null>((resolve) => {
+        setTimeout(() => {
+          console.warn('[FirestoreProvider] Firestore check timed out, using local data');
+          resolve(null);
+        }, 8000);
+      });
+
+      const patients = await Promise.race([
+        firestoreService.patientsService.getAll(),
+        timeoutPromise,
+      ]);
+
+      if (patients === null) {
+        console.log('[FirestoreProvider] Timed out — app works with local demo data');
+        return;
+      }
 
       if (patients.length === 0) {
         console.log('[FirestoreProvider] Firestore is empty, seeding demo data...');
@@ -50,111 +57,112 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
         console.log(`[FirestoreProvider] Firestore already has ${patients.length} patients, skipping seed.`);
       }
     } catch (err) {
-      console.error('[FirestoreProvider] Error during seeding:', err);
-      setError(String(err));
-    } finally {
-      setIsSeeding(false);
+      console.warn('[FirestoreProvider] Firestore init skipped (offline or rules):', err);
+      // Non-blocking: app continues with local Zustand data
     }
   }, []);
 
-  // Load data from Firestore into Zustand store
+  // Load data from Firestore into Zustand store (non-blocking, best-effort)
   const loadFirestoreDataIntoStore = useCallback(async () => {
     try {
-      console.log('[FirestoreProvider] Loading Firestore data into Zustand store...');
+      console.log('[FirestoreProvider] Loading Firestore data into Zustand store (background)...');
 
-      // Load patients
-      const patients = await firestoreService.patientsService.getAll();
-      if (patients.length > 0) {
-        const patientInfos: PalliativePatientInfo[] = patients.map(p => ({
-          id: p.id,
-          patientId: (p.patientId as string) || p.id,
-          patientName: (p.patientName || p.nama || '') as string,
-          rmNumber: (p.rmNumber || p.no_rm || '') as string,
-          bpjsNumber: (p.bpjsNumber || '') as string,
-          primaryDiagnosis: (p.primaryDiagnosis || p.diagnosis || '') as string,
-          secondaryDiagnosis: (p.secondaryDiagnosis || '') as string,
-          diseaseStage: (p.diseaseStage || '') as string,
-          careStatus: (p.careStatus || 'rawat_jalan') as PalliativePatientInfo['careStatus'],
-          patientStatus: (p.patientStatus || 'aktif') as PalliativePatientInfo['patientStatus'],
-          riskLevel: (p.riskLevel || 'sedang') as PalliativePatientInfo['riskLevel'],
-          monitoringStatus: (p.monitoringStatus || 'aktif') as PalliativePatientInfo['monitoringStatus'],
-          familyContactName: (p.familyContactName || '') as string,
-          familyContactPhone: (p.familyContactPhone || '') as string,
-          familyContactRelation: (p.familyContactRelation || '') as string,
-          dokterPenanggungJawab: (p.dokterPenanggungJawab || p.dokter_penanggung_jawab || '') as string,
-          createdAt: (p.createdAt as string) || new Date().toISOString(),
-          updatedAt: (p.updatedAt as string) || new Date().toISOString(),
-        }));
-        store.setPalliativePatients(patientInfos);
-      }
+      // Add a timeout for the entire data load
+      const timeoutPromise = new Promise<void>((resolve) => {
+        setTimeout(() => {
+          console.warn('[FirestoreProvider] Data load timed out, using local data');
+          resolve();
+        }, 15000);
+      });
 
-      // For each patient, load subcollections
-      for (const patient of patients) {
-        const patientId = patient.id;
+      const loadPromise = async () => {
+        // Load patients
+        const patients = await firestoreService.patientsService.getAll();
+        if (patients.length > 0) {
+          const patientInfos: PalliativePatientInfo[] = patients.map(p => ({
+            id: p.id,
+            patientId: (p.patientId as string) || p.id,
+            patientName: (p.patientName || p.nama || '') as string,
+            rmNumber: (p.rmNumber || p.no_rm || '') as string,
+            bpjsNumber: (p.bpjsNumber || '') as string,
+            primaryDiagnosis: (p.primaryDiagnosis || p.diagnosis || '') as string,
+            secondaryDiagnosis: (p.secondaryDiagnosis || '') as string,
+            diseaseStage: (p.diseaseStage || '') as string,
+            careStatus: (p.careStatus || 'rawat_jalan') as PalliativePatientInfo['careStatus'],
+            patientStatus: (p.patientStatus || 'aktif') as PalliativePatientInfo['patientStatus'],
+            riskLevel: (p.riskLevel || 'sedang') as PalliativePatientInfo['riskLevel'],
+            monitoringStatus: (p.monitoringStatus || 'aktif') as PalliativePatientInfo['monitoringStatus'],
+            familyContactName: (p.familyContactName || '') as string,
+            familyContactPhone: (p.familyContactPhone || '') as string,
+            familyContactRelation: (p.familyContactRelation || '') as string,
+            dokterPenanggungJawab: (p.dokterPenanggungJawab || p.dokter_penanggung_jawab || '') as string,
+            createdAt: (p.createdAt as string) || new Date().toISOString(),
+            updatedAt: (p.updatedAt as string) || new Date().toISOString(),
+          }));
+          store.setPalliativePatients(patientInfos);
+        }
 
-        // TTV Serial
-        try {
-          const ttvRecords = await firestoreService.ttvService.getAll(patientId);
-          if (ttvRecords.length > 0) {
-            const vitals: VitalSignRecordInfo[] = ttvRecords.map(r => ({
-              id: r.id,
-              palliativePatientId: patientId,
-              systolicBP: (r.systolicBP || r.tekanan_darah_sistolik || 0) as number,
-              diastolicBP: (r.diastolicBP || r.tekanan_darah_diastolik || 0) as number,
-              heartRate: (r.heartRate || r.nadi || 0) as number,
-              respiratoryRate: (r.respiratoryRate || r.respirasi || 0) as number,
-              temperature: (r.temperature || r.suhu || 0) as number,
-              oxygenSat: (r.oxygenSat || r.spo2 || 0) as number,
-              weight: (r.weight || r.berat_badan || 0) as number,
-              height: (r.height || r.tinggi_badan || 0) as number,
-              bmi: (r.bmi || 0) as number,
-              recordedBy: (r.recordedBy || '') as string,
-              recordedAt: (r.recordedAt || r.tanggal || r.createdAt || '') as string,
-            }));
-            // Merge into store (don't replace existing)
-            for (const v of vitals) {
-              const exists = store.vitalSignRecords.some(r => r.id === v.id);
-              if (!exists) store.addVitalSignRecord(v);
+        // For each patient, load subcollections (best-effort, skip on error)
+        for (const patient of patients) {
+          const patientId = patient.id;
+
+          // TTV Serial
+          try {
+            const ttvRecords = await firestoreService.ttvService.getAll(patientId);
+            if (ttvRecords.length > 0) {
+              const vitals: VitalSignRecordInfo[] = ttvRecords.map(r => ({
+                id: r.id,
+                palliativePatientId: patientId,
+                systolicBP: (r.systolicBP || r.tekanan_darah_sistolik || 0) as number,
+                diastolicBP: (r.diastolicBP || r.tekanan_darah_diastolik || 0) as number,
+                heartRate: (r.heartRate || r.nadi || 0) as number,
+                respiratoryRate: (r.respiratoryRate || r.respirasi || 0) as number,
+                temperature: (r.temperature || r.suhu || 0) as number,
+                oxygenSat: (r.oxygenSat || r.spo2 || 0) as number,
+                weight: (r.weight || r.berat_badan || 0) as number,
+                height: (r.height || r.tinggi_badan || 0) as number,
+                bmi: (r.bmi || 0) as number,
+                recordedBy: (r.recordedBy || '') as string,
+                recordedAt: (r.recordedAt || r.tanggal || r.createdAt || '') as string,
+              }));
+              for (const v of vitals) {
+                const exists = store.vitalSignRecords.some(r => r.id === v.id);
+                if (!exists) store.addVitalSignRecord(v);
+              }
             }
-          }
-        } catch (err) {
-          console.warn(`[FirestoreProvider] Error loading TTV for ${patientId}:`, err);
-        }
+          } catch { /* skip */ }
 
-        // Keluhan Harian
-        try {
-          const keluhanRecords = await firestoreService.keluhanService.getAll(patientId);
-          if (keluhanRecords.length > 0) {
-            const complaints: DailyComplaintRecord[] = keluhanRecords.map(r => ({
-              id: r.id,
-              palliativePatientId: patientId,
-              kondisiHariIni: (r.kondisiHariIni || '') as string,
-              alasanKondisi: (r.alasanKondisi || '') as string,
-              keluhanBaru: (r.keluhanBaru || '') as string,
-              deskripsiKeluhanBaru: (r.deskripsiKeluhanBaru || '') as string,
-              kondisiNyeri: (r.kondisiNyeri || '') as string,
-              kondisiSesak: (r.kondisiSesak || '') as string,
-              makanMinum: (r.makanMinum || '') as string,
-              alasanMakanMinum: (r.alasanMakanMinum || '') as string,
-              tidur: (r.tidur || '') as string,
-              alasanTidur: (r.alasanTidur || '') as string,
-              masalahObat: (r.masalahObat || '') as string,
-              deskripsiMasalahObat: (r.deskripsiMasalahObat || '') as string,
-              severityLevel: (r.severityLevel || 'ringan') as DailyComplaintRecord['severityLevel'],
-              sumberPengisian: (r.sumberPengisian || 'manual') as DailyComplaintRecord['sumberPengisian'],
-              submittedAt: (r.submittedAt || r.tanggal || r.createdAt || '') as string,
-              createdAt: (r.createdAt as string) || new Date().toISOString(),
-            }));
-            store.setDailyComplaints(complaints);
-          }
-        } catch (err) {
-          console.warn(`[FirestoreProvider] Error loading keluhan for ${patientId}:`, err);
-        }
+          // Keluhan Harian
+          try {
+            const keluhanRecords = await firestoreService.keluhanService.getAll(patientId);
+            if (keluhanRecords.length > 0) {
+              const complaints: DailyComplaintRecord[] = keluhanRecords.map(r => ({
+                id: r.id,
+                palliativePatientId: patientId,
+                kondisiHariIni: (r.kondisiHariIni || '') as string,
+                alasanKondisi: (r.alasanKondisi || '') as string,
+                keluhanBaru: (r.keluhanBaru || '') as string,
+                deskripsiKeluhanBaru: (r.deskripsiKeluhanBaru || '') as string,
+                kondisiNyeri: (r.kondisiNyeri || '') as string,
+                kondisiSesak: (r.kondisiSesak || '') as string,
+                makanMinum: (r.makanMinum || '') as string,
+                alasanMakanMinum: (r.alasanMakanMinum || '') as string,
+                tidur: (r.tidur || '') as string,
+                alasanTidur: (r.alasanTidur || '') as string,
+                masalahObat: (r.masalahObat || '') as string,
+                deskripsiMasalahObat: (r.deskripsiMasalahObat || '') as string,
+                severityLevel: (r.severityLevel || 'ringan') as DailyComplaintRecord['severityLevel'],
+                sumberPengisian: (r.sumberPengisian || 'manual') as DailyComplaintRecord['sumberPengisian'],
+                submittedAt: (r.submittedAt || r.tanggal || r.createdAt || '') as string,
+                createdAt: (r.createdAt as string) || new Date().toISOString(),
+              }));
+              store.setDailyComplaints(complaints);
+            }
+          } catch { /* skip */ }
 
-        // Obat
-        try {
-          const obatRecords = await firestoreService.obatService.getAll(patientId);
-          if (obatRecords.length > 0) {
+          // Obat
+          try {
+            const obatRecords = await firestoreService.obatService.getAll(patientId);
             for (const r of obatRecords) {
               const exists = store.palliativeMedications.some(m => m.id === r.id);
               if (!exists) {
@@ -172,15 +180,11 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                 });
               }
             }
-          }
-        } catch (err) {
-          console.warn(`[FirestoreProvider] Error loading obat for ${patientId}:`, err);
-        }
+          } catch { /* skip */ }
 
-        // Skrining
-        try {
-          const skriningRecords = await firestoreService.skriningService.getAll(patientId);
-          if (skriningRecords.length > 0) {
+          // Skrining
+          try {
+            const skriningRecords = await firestoreService.skriningService.getAll(patientId);
             for (const r of skriningRecords) {
               const exists = store.palliativeScreeningRecords.some(s => s.id === r.id);
               if (!exists) {
@@ -198,15 +202,11 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                 });
               }
             }
-          }
-        } catch (err) {
-          console.warn(`[FirestoreProvider] Error loading skrining for ${patientId}:`, err);
-        }
+          } catch { /* skip */ }
 
-        // ACP
-        try {
-          const acpRecords = await firestoreService.acpService.getAll(patientId);
-          if (acpRecords.length > 0) {
+          // ACP
+          try {
+            const acpRecords = await firestoreService.acpService.getAll(patientId);
             for (const r of acpRecords) {
               const exists = store.advanceCarePlans.some(a => a.id === r.id);
               if (!exists) {
@@ -230,15 +230,11 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                 });
               }
             }
-          }
-        } catch (err) {
-          console.warn(`[FirestoreProvider] Error loading ACP for ${patientId}:`, err);
-        }
+          } catch { /* skip */ }
 
-        // Nutrisi
-        try {
-          const nutrisiRecords = await firestoreService.nutrisiService.getAll(patientId);
-          if (nutrisiRecords.length > 0) {
+          // Nutrisi
+          try {
+            const nutrisiRecords = await firestoreService.nutrisiService.getAll(patientId);
             for (const r of nutrisiRecords) {
               const exists = store.nutritionRecords.some(n => n.id === r.id);
               if (!exists) {
@@ -259,15 +255,11 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                 });
               }
             }
-          }
-        } catch (err) {
-          console.warn(`[FirestoreProvider] Error loading nutrisi for ${patientId}:`, err);
-        }
+          } catch { /* skip */ }
 
-        // Sosial
-        try {
-          const sosialRecords = await firestoreService.sosialService.getAll(patientId);
-          if (sosialRecords.length > 0) {
+          // Sosial
+          try {
+            const sosialRecords = await firestoreService.sosialService.getAll(patientId);
             for (const r of sosialRecords) {
               const exists = store.socialAssessments.some(s => s.id === r.id);
               if (!exists) {
@@ -285,15 +277,11 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                 } as SocialAssessmentRecord);
               }
             }
-          }
-        } catch (err) {
-          console.warn(`[FirestoreProvider] Error loading sosial for ${patientId}:`, err);
-        }
+          } catch { /* skip */ }
 
-        // Chat Messages
-        try {
-          const chatRecords = await firestoreService.chatService.getAll(patientId);
-          if (chatRecords.length > 0) {
+          // Chat Messages
+          try {
+            const chatRecords = await firestoreService.chatService.getAll(patientId);
             for (const r of chatRecords) {
               const exists = store.palliativeChatMessages.some(m => m.id === r.id);
               if (!exists) {
@@ -309,15 +297,11 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                 });
               }
             }
-          }
-        } catch (err) {
-          console.warn(`[FirestoreProvider] Error loading chat for ${patientId}:`, err);
-        }
+          } catch { /* skip */ }
 
-        // Clinical Alerts
-        try {
-          const alertRecords = await firestoreService.clinicalAlertsService.getAll(patientId);
-          if (alertRecords.length > 0) {
+          // Clinical Alerts
+          try {
+            const alertRecords = await firestoreService.clinicalAlertsService.getAll(patientId);
             for (const r of alertRecords) {
               const exists = store.palliativeClinicalAlerts.some(a => a.id === r.id);
               if (!exists) {
@@ -333,15 +317,11 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                 });
               }
             }
-          }
-        } catch (err) {
-          console.warn(`[FirestoreProvider] Error loading alerts for ${patientId}:`, err);
-        }
+          } catch { /* skip */ }
 
-        // Resumes
-        try {
-          const resumeRecords = await firestoreService.resumeService.getAll(patientId);
-          if (resumeRecords.length > 0) {
+          // Resumes
+          try {
+            const resumeRecords = await firestoreService.resumeService.getAll(patientId);
             for (const r of resumeRecords) {
               const exists = store.palliativeResumes.some(res => res.id === r.id);
               if (!exists) {
@@ -358,15 +338,11 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                 });
               }
             }
-          }
-        } catch (err) {
-          console.warn(`[FirestoreProvider] Error loading resumes for ${patientId}:`, err);
-        }
+          } catch { /* skip */ }
 
-        // Audit Entries
-        try {
-          const auditRecords = await firestoreService.auditService.getAll(patientId);
-          if (auditRecords.length > 0) {
+          // Audit Entries
+          try {
+            const auditRecords = await firestoreService.auditService.getAll(patientId);
             for (const r of auditRecords) {
               const exists = store.palliativeAuditLog.some(a => a.id === r.id);
               if (!exists) {
@@ -380,35 +356,23 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                 });
               }
             }
-          }
-        } catch (err) {
-          console.warn(`[FirestoreProvider] Error loading audit for ${patientId}:`, err);
+          } catch { /* skip */ }
         }
-      }
 
-      console.log('[FirestoreProvider] Firestore data loaded into store successfully!');
+        console.log('[FirestoreProvider] Firestore data loaded into store successfully!');
+      };
+
+      await Promise.race([loadPromise(), timeoutPromise]);
     } catch (err) {
-      console.error('[FirestoreProvider] Error loading Firestore data:', err);
-      setError(String(err));
+      console.warn('[FirestoreProvider] Firestore data load skipped:', err);
+      // Non-blocking: app continues with local Zustand data
     }
   }, [store]);
 
-  // Initialize on mount
+  // Initialize on mount — completely non-blocking
   useEffect(() => {
-    const init = async () => {
-      try {
-        await initializeFirestore();
-        await loadFirestoreDataIntoStore();
-        setIsReady(true);
-      } catch (err) {
-        console.error('[FirestoreProvider] Initialization failed:', err);
-        setError(String(err));
-        // Still mark as ready so the app loads with Zustand demo data as fallback
-        setIsReady(true);
-      }
-    };
-
-    init();
+    // Fire and forget: the app renders immediately with local data
+    initializeFirestore().then(() => loadFirestoreDataIntoStore());
 
     // Cleanup real-time listeners on unmount
     return () => {
@@ -417,38 +381,7 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
     };
   }, [initializeFirestore, loadFirestoreDataIntoStore]);
 
-  // Show loading state while initializing
-  if (isSeeding) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-t-transparent border-[#2D8C7A] rounded-full animate-spin mx-auto mb-4" />
-          <h2 className="text-lg font-semibold text-foreground mb-1">Menginisialisasi Database</h2>
-          <p className="text-sm text-muted-foreground">Menyiapkan Firestore dan memuat data...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error && !isReady) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center max-w-md">
-          <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
-            <span className="text-2xl">⚠️</span>
-          </div>
-          <h2 className="text-lg font-semibold text-foreground mb-1">Koneksi Database Gagal</h2>
-          <p className="text-sm text-muted-foreground mb-4">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-[#2D8C7A] text-white rounded-lg text-sm font-medium hover:bg-[#1F6B5C] transition-colors"
-          >
-            Coba Lagi
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // ALWAYS render children immediately — no blocking states!
+  // Firestore data syncs in the background once available.
   return <>{children}</>;
 }

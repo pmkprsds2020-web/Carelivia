@@ -17,12 +17,14 @@ const iso = (offsetMs = 0) => new Date(now.getTime() + offsetMs).toISOString();
 
 /** Check whether a top-level collection already has documents. */
 async function collectionExists(path: string): Promise<boolean> {
+  if (!db) return false;
   const snap = await getDocs(collection(db, path));
   return snap.size > 0;
 }
 
 /** Check whether a subcollection already has documents. */
 async function subcollectionExists(parentCol: string, parentId: string, subCol: string): Promise<boolean> {
+  if (!db) return false;
   const snap = await getDocs(collection(db, parentCol, parentId, subCol));
   return snap.size > 0;
 }
@@ -1227,6 +1229,10 @@ const notificationsData: Record<string, unknown>[] = [
 // ─── Main Seed Function ───────────────────────────────────────────────────────
 
 export async function seedFirestore(): Promise<void> {
+  if (!db) {
+    console.warn('[Seed] Firebase not configured — skipping seeding');
+    return;
+  }
   console.log('[Seed] 🌱 Starting Firestore seeding...');
 
   try {
