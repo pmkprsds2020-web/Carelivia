@@ -5,7 +5,6 @@ import dynamic from 'next/dynamic';
 import { useStore } from '@/lib/store';
 import { Sidebar } from '@/components/telemedicine/sidebar';
 import { LoginPage } from '@/components/telemedicine/login-page';
-import { FirestoreProvider } from '@/components/telemedicine/firestore-provider';
 import { Button } from '@/components/ui/button';
 import { Menu, X } from 'lucide-react';
 
@@ -129,7 +128,6 @@ export default function TelemedicineApp() {
   };
 
   return (
-    <FirestoreProvider>
     <div className="min-h-screen flex bg-background">
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -205,6 +203,5 @@ export default function TelemedicineApp() {
         </footer>
       </div>
     </div>
-    </FirestoreProvider>
   );
 }
