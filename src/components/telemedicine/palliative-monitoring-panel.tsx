@@ -214,7 +214,6 @@ function getPatientStatusLabel(status: PalliativePatientStatus): string {
     case 'meninggal': return 'Meninggal';
     case 'lost_follow_up': return 'Lost to Follow-up';
     case 'pindah_faskes': return 'Pindah Faskes';
-    case 'program_selesai': return 'Program Selesai';
   }
 }
 
@@ -2272,7 +2271,7 @@ export function PalliativeMonitoringPanel() {
                   const prevSameType = patientScreenings.find(
                     (ps, pi) => pi > idx && ps.screeningType === s.screeningType
                   );
-                  let trendIcon: React.ReactNode = null;
+                  let trendIcon = null;
                   if (prevSameType && s.score !== undefined && prevSameType.score !== undefined) {
                     if (s.score > prevSameType.score) {
                       trendIcon = <TrendingUp className="w-4 h-4 text-red-500" />;

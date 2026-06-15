@@ -8,7 +8,6 @@ import type {
   CaregiverInfo,
   FamilyMeetingRecord,
   FamilyMeetingParticipant,
-  FamilyCoordinationNote,
   EduMaterialCategory,
   EmergencyContact,
   FinancialSupportRecord,
@@ -228,27 +227,22 @@ const noteTypeBadge = (t: string) => {
 
 // ─── Social Score Calculator ────────────────────────────────────────────────
 
-// Separate score maps per category to avoid key collisions
-// (e.g. "tidak_ada" has different scores for caregiver vs economic constraint)
-const housingScores: Record<string, number> = { layak: 0, kurang_layak: 1, tidak_layak: 2 };
-const caregiverScores: Record<string, number> = { tersedia: 0, terbatas: 1, tidak_tersedia: 2 };
-const familySupportScores: Record<string, number> = { kuat: 0, cukup: 1, lemah: 2, tidak_ada: 3 };
-const economicScores: Record<string, number> = { tidak_ada: 0, ringan: 1, sedang: 2, berat: 3 };
-const transportScores: Record<string, number> = { mudah: 0, cukup: 1, sulit: 2, sangat_sulit: 3 };
-const generalScores: Record<string, number> = { rendah: 0, sedang: 1, tinggi: 2 };
+const scoreMap: Record<string, number> = {
+  layak: 0, kurang_layak: 1, tidak_layak: 2,
+  tersedia: 0, terbatas: 1, tidak_tersedia: 2,
+  kuat: 0, cukup: 1, lemah: 2, tidak_ada: 3,
+  tidak_ada: 0, ringan: 1, sedang: 2, berat: 3,
+  mudah: 0, cukup: 1, sulit: 2, sangat_sulit: 3,
+  rendah: 0, sedang: 1, tinggi: 2,
+};
 
 const calculateSocialScore = (a: SocialAssessmentRecord): number => {
-  let total = 0;
-  total += housingScores[a.housingCondition] ?? 0;
-  total += caregiverScores[a.caregiverAvailability] ?? 0;
-  total += familySupportScores[a.familySupportLevel] ?? 0;
-  total += transportScores[a.transportDifficulty] ?? 0;
-  total += economicScores[a.economicConstraint] ?? 0;
-  total += generalScores[a.healthcareAccess] ?? 0;
-  total += generalScores[a.medicalEquipmentNeed] ?? 0;
-  total += generalScores[a.socialAssistanceNeed] ?? 0;
-  total += generalScores[a.socialIsolationRisk] ?? 0;
-  return total;
+  const fields: string[] = [
+    a.housingCondition, a.caregiverAvailability, a.familySupportLevel,
+    a.transportDifficulty, a.economicConstraint, a.healthcareAccess,
+    a.medicalEquipmentNeed, a.socialAssistanceNeed, a.socialIsolationRisk,
+  ];
+  return fields.reduce((sum, f) => sum + (scoreMap[f] ?? 0), 0);
 };
 
 const calculatePriority = (form: ScreeningFormState): SocialScreeningPriority => {
