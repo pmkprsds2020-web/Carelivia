@@ -130,6 +130,7 @@ function getSeverityColor(severity: 'hijau' | 'kuning' | 'merah') {
     case 'merah': return 'bg-red-100 text-red-800 border-red-300';
     case 'kuning': return 'bg-amber-100 text-amber-800 border-amber-300';
     case 'hijau': return 'bg-green-100 text-green-800 border-green-300';
+    default: return 'bg-gray-100 text-gray-800 border-gray-300';
   }
 }
 
@@ -138,6 +139,7 @@ function getSeverityLabel(severity: 'hijau' | 'kuning' | 'merah') {
     case 'merah': return 'Perlu Tindak Lanjut Segera';
     case 'kuning': return 'Perlu Pemantauan';
     case 'hijau': return 'Stabil';
+    default: return 'Tidak Diketahui';
   }
 }
 

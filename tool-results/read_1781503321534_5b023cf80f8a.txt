@@ -1,0 +1,2002 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+     4→import { useStore } from '@/lib/store';
+     5→import { cn } from '@/lib/utils';
+     6→import type {
+     7→  PalliativePatientInfo,
+     8→  PalliativeResumeMedis,
+     9→  PalliativeReferralLetter,
+    10→  PalliativeDocumentAuditEntry,
+    11→  PalliativeAuditEntry,
+    12→  PalliativeChatMessage,
+    13→  PalliativeResumeDataPasien,
+    14→  PalliativeResumeTTVRecord,
+    15→  PalliativeResumeKeluhan,
+    16→  PalliativeResumeAIAnalysis,
+    17→  ReferralTargetDepartment,
+    18→  ReferralStatus,
+    19→} from '@/lib/types';
+    20→import { Button } from '@/components/ui/button';
+    21→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+    22→import { Label } from '@/components/ui/label';
+    23→import { Textarea } from '@/components/ui/textarea';
+    24→import {
+    25→  Select,
+    26→  SelectContent,
+    27→  SelectItem,
+    28→  SelectTrigger,
+    29→  SelectValue,
+    30→} from '@/components/ui/select';
+    31→import {
+    32→  Dialog,
+    33→  DialogContent,
+    34→  DialogHeader,
+    35→  DialogTitle,
+    36→  DialogDescription,
+    37→  DialogFooter,
+    38→} from '@/components/ui/dialog';
+    39→import {
+    40→  Tabs,
+    41→  TabsContent,
+    42→  TabsList,
+    43→  TabsTrigger,
+    44→} from '@/components/ui/tabs';
+    45→import { Badge } from '@/components/ui/badge';
+    46→import { Separator } from '@/components/ui/separator';
+    47→import {
+    48→  Table,
+    49→  TableBody,
+    50→  TableCell,
+    51→  TableHead,
+    52→  TableHeader,
+    53→  TableRow,
+    54→} from '@/components/ui/table';
+    55→import { Input } from '@/components/ui/input';
+    56→import {
+    57→  FileText,
+    58→  Sparkles,
+    59→  Download,
+    60→  Printer,
+    61→  Send,
+    62→  Eye,
+    63→  RefreshCw,
+    64→  Stethoscope,
+    65→  Building2,
+    66→  CheckCircle2,
+    67→  Clock,
+    68→  History,
+    69→  FileCheck,
+    70→  QrCode,
+    71→  Mail,
+    72→  MessageCircle,
+    73→  Shield,
+    74→  Archive,
+    75→  ChevronDown,
+    76→  AlertCircle,
+    77→  Activity,
+    78→  Heart,
+    79→  Pill,
+    80→  Apple,
+    81→  Users,
+    82→  ScrollText,
+    83→  Brain,
+    84→  TrendingUp,
+    85→  Save,
+    86→  AlertTriangle,
+    87→  Thermometer,
+    88→  Droplets,
+    89→  Wind,
+    90→  Gauge,
+    91→} from 'lucide-react';
+    92→import { useToast } from '@/hooks/use-toast';
+    93→import QRCode from 'qrcode';
+    94→
+    95→// ── Types ────────────────────────────────────────────────────────────────
+    96→
+    97→type DocTab = 'resume' | 'referral' | 'history';
+    98→
+    99→interface KeluhanEntry {
+   100→  kondisiHariIni?: string;
+   101→  kondisiNyeri?: string;
+   102→  kondisiSesak?: string;
+   103→  makanMinum?: string;
+   104→  tidur?: string;
+   105→  masalahObat?: string;
+   106→  severityLevel?: string;
+   107→  submittedAt?: string;
+   108→  alasanKondisi?: string | null;
+   109→  deskripsiKeluhanBaru?: string | null;
+   110→  alasanMakanMinum?: string | null;
+   111→  alasanTidur?: string | null;
+   112→  deskripsiMasalahObat?: string | null;
+   113→}
+   114→
+   115→interface EsasScoreEntry {
+   116→  score?: number;
+   117→  performedAt?: string;
+   118→  nyeri?: number;
+   119→  kelelahan?: number;
+   120→  mengantuk?: number;
+   121→  mual?: number;
+   122→  nafsuMakan?: number;
+   123→  sesak?: number;
+   124→  kecemasan?: number;
+   125→  depresi?: number;
+   126→  kesejahteraan?: number;
+   127→}
+   128→
+   129→interface MedicationEntry {
+   130→  medicineName?: string;
+   131→  dosage?: string;
+   132→  frequency?: string;
+   133→  route?: string | null;
+   134→  indication?: string | null;
+   135→  isActive?: boolean;
+   136→  adherences?: unknown[];
+   137→}
+   138→
+   139→// ── Helper Functions ─────────────────────────────────────────────────────
+   140→
+   141→function formatDate(dateStr: string | null | undefined): string {
+   142→  if (!dateStr) return '-';
+   143→  try {
+   144→    return new Date(dateStr).toLocaleDateString('id-ID', {
+   145→      day: 'numeric',
+   146→      month: 'long',
+   147→      year: 'numeric',
+   148→    });
+   149→  } catch {
+   150→    return dateStr;
+   151→  }
+   152→}
+   153→
+   154→function formatDateTime(dateStr: string | null | undefined): string {
+   155→  if (!dateStr) return '-';
+   156→  try {
+   157→    return new Date(dateStr).toLocaleDateString('id-ID', {
+   158→      day: 'numeric',
+   159→      month: 'short',
+   160→      year: 'numeric',
+   161→      hour: '2-digit',
+   162→      minute: '2-digit',
+   163→    });
+   164→  } catch {
+   165→    return dateStr;
+   166→  }
+   167→}
+   168→
+   169→function genId(prefix: string): string {
+   170→  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+   171→}
+   172→
+   173→function genDocNumber(prefix: string): string {
+   174→  const now = new Date();
+   175→  const y = now.getFullYear();
+   176→  const m = String(now.getMonth() + 1).padStart(2, '0');
+   177→  const seq = String(Math.floor(Math.random() * 9000) + 1000);
+   178→  return `${prefix}/${y}/${m}/${seq}`;
+   179→}
+   180→
+   181→function getDeptLabel(dept: ReferralTargetDepartment): string {
+   182→  const map: Record<ReferralTargetDepartment, string> = {
+   183→    penyakit_dalam: 'Penyakit Dalam',
+   184→    onkologi: 'Onkologi',
+   185→    neurologi: 'Neurologi',
+   186→    jantung: 'Jantung / Kardiologi',
+   187→    pulmonologi: 'Pulmonologi',
+   188→    geriatri: 'Geriatri',
+   189→    kedokteran_paliatif: 'Kedokteran Paliatif',
+   190→    rehabilitasi_medik: 'Rehabilitasi Medik',
+   191→    rumah_sakit_rujukan_lanjutan: 'RS Rujukan Lanjutan',
+   192→  };
+   193→  return map[dept] || dept;
+   194→}
+   195→
+   196→function getReferralStatusLabel(status: ReferralStatus): { label: string; className: string } {
+   197→  switch (status) {
+   198→    case 'belum_dirujuk':
+   199→      return { label: 'Belum Dirujuk', className: 'bg-slate-100 text-slate-700 border-slate-300' };
+   200→    case 'menunggu':
+   201→      return { label: 'Menunggu', className: 'bg-amber-100 text-amber-800 border-amber-300' };
+   202→    case 'sudah_dirujuk':
+   203→      return { label: 'Sudah Dirujuk', className: 'bg-blue-100 text-blue-800 border-blue-300' };
+   204→    case 'selesai':
+   205→      return { label: 'Selesai', className: 'bg-green-100 text-green-800 border-green-300' };
+   206→  }
+   207→}
+   208→
+   209→function getTrendBadge(trend: string) {
+   210→  const t = trend?.toLowerCase() || '';
+   211→  if (t.includes('membaik')) return { label: 'Membaik', className: 'bg-green-100 text-green-800 border-green-300' };
+   212→  if (t.includes('stabil')) return { label: 'Stabil', className: 'bg-blue-100 text-blue-800 border-blue-300' };
+   213→  if (t.includes('fluktuatif')) return { label: 'Fluktuatif', className: 'bg-amber-100 text-amber-800 border-amber-300' };
+   214→  if (t.includes('memburuk')) return { label: 'Memburuk', className: 'bg-orange-100 text-orange-800 border-orange-300' };
+   215→  if (t.includes('terminal')) return { label: 'Terminal', className: 'bg-red-100 text-red-800 border-red-300' };
+   216→  if (t.includes('end of life') || t.includes('end_of_life')) return { label: 'End of Life', className: 'bg-red-200 text-red-900 border-red-400' };
+   217→  return { label: trend || 'N/A', className: 'bg-slate-100 text-slate-700 border-slate-300' };
+   218→}
+   219→
+   220→function getSeverityBadge(level: string | undefined) {
+   221→  if (!level) return null;
+   222→  const l = level.toLowerCase();
+   223→  if (l.includes('ringan')) return <Badge className="bg-green-100 text-green-800 border border-green-300 text-[10px]">Ringan</Badge>;
+   224→  if (l.includes('sedang')) return <Badge className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px]">Sedang</Badge>;
+   225→  if (l.includes('berat') || l.includes('kritis')) return <Badge className="bg-red-100 text-red-800 border border-red-300 text-[10px]">Berat</Badge>;
+   226→  return <Badge variant="outline" className="text-[10px]">{level}</Badge>;
+   227→}
+   228→
+   229→function nullish(v: unknown): string {
+   230→  if (v === null || v === undefined || v === '') return '-';
+   231→  return String(v);
+   232→}
+   233→
+   234→function getEsasColor(val: number | undefined | null): string {
+   235→  if (val == null) return 'bg-slate-100 text-slate-500';
+   236→  if (val <= 3) return 'bg-green-50 text-green-800';
+   237→  if (val <= 6) return 'bg-amber-50 text-amber-800';
+   238→  return 'bg-red-50 text-red-800';
+   239→}
+   240→
+   241→// ── Generic record renderer for unknown[] data ──
+   242→function renderGenericRecords(records: unknown[], title: string): React.ReactNode {
+   243→  if (!records || !Array.isArray(records) || records.length === 0) return null;
+   244→  return (
+   245→    <div className="space-y-3 mb-3">
+   246→      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{title} ({records.length})</h4>
+   247→      {records.map((rec, idx) => {
+   248→        if (typeof rec !== 'object' || rec === null) return null;
+   249→        const entries = Object.entries(rec as Record<string, unknown>)
+   250→          .filter(([k, v]) => v != null && v !== '' && !['id', 'patientId', 'createdAt', 'updatedAt'].includes(k));
+   251→        if (entries.length === 0) return null;
+   252→        return (
+   253→          <div key={idx} className="rounded-lg border p-2.5 bg-muted/20 text-sm">
+   254→            {entries.map(([key, val]) => (
+   255→              <div key={key} className="flex items-start gap-2 py-0.5">
+   256→                <span className="text-xs text-muted-foreground w-36 shrink-0">{key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</span>
+   257→                <span className="text-xs">{String(val)}</span>
+   258→              </div>
+   259→            ))}
+   260→          </div>
+   261→        );
+   262→      })}
+   263→    </div>
+   264→  );
+   265→}
+   266→
+   267→// ── ACP Document renderer with specific labels ──
+   268→function renderAcpDocument(doc: Record<string, unknown>, idx: number): React.ReactNode {
+   269→  const prefLabels: Record<string, string> = {
+   270→    careGoal: 'Tujuan Perawatan',
+   271→    preferredCareLocation: 'Preferensi Tempat Perawatan',
+   272→    resuscitationPref: 'Resusitasi',
+   273→    ventilatorPref: 'Ventilator',
+   274→    icuPref: 'ICU',
+   275→    artificialNutrition: 'Nutrisi Buatan',
+   276→    dialysisPref: 'Dialisis',
+   277→    organDonation: 'Donasi Organ',
+   278→    decisionMakerName: 'Pengambil Keputusan',
+   279→    decisionMakerRelation: 'Hubungan',
+   280→    patientHopes: 'Harapan Pasien',
+   281→    patientWorries: 'Kekhawatiran Pasien',
+   282→    lifeValues: 'Nilai Hidup Penting',
+   283→    endOfLifePrefs: 'Preferensi Akhir Hayat',
+   284→    status: 'Status',
+   285→    signedAt: 'Tanggal Tanda Tangan',
+   286→    createdAt: 'Tanggal Dibuat',
+   287→    documentType: 'Jenis Dokumen',
+   288→    notes: 'Catatan',
+   289→  };
+   290→
+   291→  const entries = Object.entries(doc)
+   292→    .filter(([k, v]) => v != null && v !== '' && !['id', 'patientId', 'updatedAt'].includes(k));
+   293→
+   294→  if (entries.length === 0) return null;
+   295→
+   296→  return (
+   297→    <div key={idx} className="rounded-lg border p-3 bg-muted/10 text-sm">
+   298→      {entries.map(([key, val]) => {
+   299→        const label = prefLabels[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+   300→        const displayVal = key === 'signedAt' || key === 'createdAt'
+   301→          ? formatDate(String(val))
+   302→          : String(val);
+   303→        return (
+   304→          <div key={key} className="flex items-start gap-2 py-1 border-b border-muted/50 last:border-b-0">
+   305→            <span className="text-xs text-muted-foreground w-40 shrink-0 font-medium">{label}</span>
+   306→            <span className="text-xs flex-1 whitespace-pre-wrap">{displayVal}</span>
+   307→          </div>
+   308→        );
+   309→      })}
+   310→    </div>
+   311→  );
+   312→}
+   313→
+   314→// ── Print HTML builder for structured resume ──
+   315→function buildResumePrintHtml(doc: PalliativeResumeMedis): string {
+   316→  const dp = doc.dataPasien as PalliativeResumeDataPasien | undefined;
+   317→  const ttv = doc.ttvSerial as { ttvAwal: PalliativeResumeTTVRecord | null; ttvKritis: PalliativeResumeTTVRecord | null; ttvTerakhir: PalliativeResumeTTVRecord | null } | undefined;
+   318→  const keluhan = doc.keluhanHarian as PalliativeResumeKeluhan | undefined;
+   319→  const esas = doc.esasScores as { skorAwal: Record<string, unknown> | null; skorTertinggi: Record<string, unknown> | null; skorTerakhir: Record<string, unknown> | null } | undefined;
+   320→  const obat = doc.obat as Record<string, unknown> | undefined;
+   321→  const nutrisi = doc.nutrisi as { catatan?: unknown[]; ringkasan?: string } | undefined;
+   322→  const sosial = doc.sosial as { penilaianSosial?: unknown[]; caregiver?: unknown[]; pertemuanKeluarga?: unknown[]; dukunganKeuangan?: unknown[]; ringkasan?: string } | undefined;
+   323→  const acp = doc.acp as { dokumen?: unknown[]; ringkasan?: string } | undefined;
+   324→  const ai = doc.aiAnalysis as PalliativeResumeAIAnalysis | undefined;
+   325→
+   326→  const escHtml = (s: string | null | undefined) => (s ?? '-').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+   327→
+   328→  const sectionHeader = (title: string) => `<h2 style="background:#f0fdf8;color:#1a5c4a;padding:6px 10px;margin:18px 0 8px;font-size:12pt;border-left:4px solid #2D8C7A;">${title}</h2>`;
+   329→  const kvRow = (label: string, value: string | null | undefined) => `<tr><td style="padding:3px 8px;font-size:9pt;color:#666;width:180px;vertical-align:top;">${escHtml(label)}</td><td style="padding:3px 8px;font-size:9pt;">${escHtml(value)}</td></tr>`;
+   330→  const kvTable = (rows: string[]) => `<table style="width:100%;border-collapse:collapse;">${rows.join('')}</table>`;
+   331→
+   332→  let html = '';
+   333→
+   334→  // DATA PASIEN
+   335→  html += sectionHeader('DATA PASIEN');
+   336→  html += kvTable([
+   337→    kvRow('Nama', dp?.nama || doc.patientName),
+   338→    kvRow('No. RM', dp?.noRM || doc.rmNumber),
+   339→    kvRow('NIK', dp?.nik),
+   340→    kvRow('Tanggal Lahir', dp?.tanggalLahir),
+   341→    kvRow('Jenis Kelamin', dp?.jenisKelamin),
+   342→    kvRow('Alamat', dp?.alamat),
+   343→    kvRow('Diagnosa Utama', dp?.diagnosaUtama),
+   344→    kvRow('Diagnosa Penyerta', dp?.diagnosaPenyerta),
+   345→    kvRow('Stadium', dp?.stadiumPenyakit),
+   346→    kvRow('Status Perawatan', dp?.statusPerawatan),
+   347→    kvRow('Tingkat Risiko', dp?.tingkatRisiko),
+   348→    kvRow('Kontak Keluarga', `${dp?.kontakKeluarga?.nama || '-'} (${dp?.kontakKeluarga?.hubungan || '-'}) - ${dp?.kontakKeluarga?.telepon || '-'}`),
+   349→  ]);
+   350→
+   351→  // TTV SERIAL
+   352→  if (ttv?.ttvAwal || ttv?.ttvKritis || ttv?.ttvTerakhir) {
+   353→    html += sectionHeader('TTV SERIAL');
+   354→    const renderTtvBlock = (title: string, d: PalliativeResumeTTVRecord | null | undefined) => {
+   355→      if (!d) return '';
+   356→      return `<h3 style="font-size:10pt;margin:8px 0 4px;color:#2D8C7A;">${title} (${formatDate(d.tanggal)})</h3>` +
+   357→        kvTable([
+   358→          kvRow('Tekanan Darah', d.sistolik != null && d.diastolik != null ? `${d.sistolik}/${d.diastolik} mmHg` : '-'),
+   359→          kvRow('Nadi', d.nadi != null ? `${d.nadi} x/mnt` : '-'),
+   360→          kvRow('RR', d.rr != null ? `${d.rr} x/mnt` : '-'),
+   361→          kvRow('Suhu', d.suhu != null ? `${d.suhu}°C` : '-'),
+   362→          kvRow('SpO2', d.spo2 != null ? `${d.spo2}%` : '-'),
+   363→          kvRow('Berat Badan', d.berat != null ? `${d.berat} kg` : '-'),
+   364→          kvRow('BMI', d.bmi != null ? String(d.bmi) : '-'),
+   365→        ]);
+   366→    };
+   367→    html += renderTtvBlock('TTV Awal', ttv.ttvAwal);
+   368→    html += renderTtvBlock('TTV Kritis', ttv.ttvKritis);
+   369→    html += renderTtvBlock('TTV Terakhir', ttv.ttvTerakhir);
+   370→  }
+   371→
+   372→  // KELUHAN HARIAN
+   373→  if (keluhan?.keluhanAwal || keluhan?.keluhanTerberat || keluhan?.keluhanTerakhir) {
+   374→    html += sectionHeader('KELUHAN HARIAN');
+   375→    const renderKeluhanBlock = (title: string, k: Record<string, unknown> | null | undefined) => {
+   376→      if (!k) return '';
+   377→      return `<h3 style="font-size:10pt;margin:8px 0 4px;color:#D9B26F;">${title}</h3>` +
+   378→        kvTable([
+   379→          kvRow('Kondisi', String(k.kondisiHariIni ?? '-')),
+   380→          kvRow('Nyeri', String(k.kondisiNyeri ?? '-')),
+   381→          kvRow('Sesak', String(k.kondisiSesak ?? '-')),
+   382→          kvRow('Makan/Minum', String(k.makanMinum ?? '-')),
+   383→          kvRow('Tidur', String(k.tidur ?? '-')),
+   384→          kvRow('Masalah Obat', String(k.masalahObat ?? '-')),
+   385→          kvRow('Severity', String(k.severityLevel ?? '-')),
+   386→        ]);
+   387→    };
+   388→    html += renderKeluhanBlock('Keluhan Awal', keluhan.keluhanAwal as Record<string, unknown> | null);
+   389→    html += renderKeluhanBlock('Keluhan Terberat', keluhan.keluhanTerberat as Record<string, unknown> | null);
+   390→    html += renderKeluhanBlock('Keluhan Terakhir', keluhan.keluhanTerakhir as Record<string, unknown> | null);
+   391→    if (keluhan.analisis) {
+   392→      html += `<p style="font-size:9pt;color:#666;margin:4px 0;"><i>Analisis: ${escHtml(keluhan.analisis)}</i></p>`;
+   393→    }
+   394→  }
+   395→
+   396→  // ESAS
+   397→  if (esas?.skorAwal || esas?.skorTertinggi || esas?.skorTerakhir) {
+   398→    html += sectionHeader('ESAS (Edmonton Symptom Assessment System)');
+   399→    const symptoms = ['nyeri', 'kelelahan', 'mengantuk', 'mual', 'nafsuMakan', 'sesak', 'kecemasan', 'depresi', 'kesejahteraan'];
+   400→    const symptomLabels: Record<string, string> = { nyeri: 'Nyeri', kelelahan: 'Kelelahan', mengantuk: 'Mengantuk', mual: 'Mual', nafsuMakan: 'Nafsu Makan', sesak: 'Sesak', kecemasan: 'Kecemasan', depresi: 'Depresi', kesejahteraan: 'Kesejahteraan' };
+   401→    html += '<table style="width:100%;border-collapse:collapse;font-size:9pt;"><tr style="background:#f5f5f5;"><th style="padding:4px;border:1px solid #ddd;">Parameter</th><th style="padding:4px;border:1px solid #ddd;">Awal</th><th style="padding:4px;border:1px solid #ddd;">Tertinggi</th><th style="padding:4px;border:1px solid #ddd;">Terakhir</th></tr>';
+   402→    for (const s of symptoms) {
+   403→      const awal = (esas.skorAwal as Record<string, unknown>)?.[s];
+   404→      const tinggi = (esas.skorTertinggi as Record<string, unknown>)?.[s];
+   405→      const akhir = (esas.skorTerakhir as Record<string, unknown>)?.[s];
+   406→      html += `<tr><td style="padding:3px 6px;border:1px solid #ddd;">${symptomLabels[s] || s}</td><td style="padding:3px 6px;border:1px solid #ddd;text-align:center;">${awal != null ? String(awal) : '-'}</td><td style="padding:3px 6px;border:1px solid #ddd;text-align:center;">${tinggi != null ? String(tinggi) : '-'}</td><td style="padding:3px 6px;border:1px solid #ddd;text-align:center;">${akhir != null ? String(akhir) : '-'}</td></tr>`;
+   407→    }
+   408→    html += '</table>';
+   409→  }
+   410→
+   411→  // TERAPI OBAT
+   412→  if (obat) {
+   413→    html += sectionHeader('TERAPI OBAT');
+   414→    const renderMedBlock = (title: string, meds: unknown[]) => {
+   415→      if (!Array.isArray(meds) || meds.length === 0) return '';
+   416→      let t = `<h3 style="font-size:10pt;margin:6px 0 4px;">${escHtml(title)}</h3>`;
+   417→      t += '<table style="width:100%;border-collapse:collapse;font-size:9pt;"><tr style="background:#f5f5f5;"><th style="padding:3px 6px;border:1px solid #ddd;">Obat</th><th style="padding:3px 6px;border:1px solid #ddd;">Dosis</th><th style="padding:3px 6px;border:1px solid #ddd;">Frekuensi</th><th style="padding:3px 6px;border:1px solid #ddd;">Indikasi</th></tr>';
+   418→      for (const m of meds) {
+   419→        const r = m as Record<string, unknown>;
+   420→        t += `<tr><td style="padding:2px 6px;border:1px solid #ddd;">${escHtml(String(r.medicineName ?? '-'))}</td><td style="padding:2px 6px;border:1px solid #ddd;">${escHtml(String(r.dosage ?? '-'))}</td><td style="padding:2px 6px;border:1px solid #ddd;">${escHtml(String(r.frequency ?? '-'))}</td><td style="padding:2px 6px;border:1px solid #ddd;">${escHtml(String(r.indication ?? '-'))}</td></tr>`;
+   421→      }
+   422→      t += '</table>';
+   423→      return t;
+   424→    };
+   425→    html += renderMedBlock('Analgesik', obat.analgesik as unknown[] ?? []);
+   426→    const simtomatik = obat.simtomatik as Record<string, unknown[]> | undefined;
+   427→    if (simtomatik) {
+   428→      for (const [cat, meds] of Object.entries(simtomatik)) {
+   429→        html += renderMedBlock(cat.charAt(0).toUpperCase() + cat.slice(1), meds);
+   430→      }
+   431→    }
+   432→    html += renderMedBlock('Obat Lainnya', obat.obatLainnya as unknown[] ?? []);
+   433→  }
+   434→
+   435→  // NUTRISI
+   436→  if (nutrisi?.catatan || nutrisi?.ringkasan) {
+   437→    html += sectionHeader('NUTRISI');
+   438→    if (nutrisi.catatan && Array.isArray(nutrisi.catatan)) {
+   439→      for (const rec of nutrisi.catatan) {
+   440→        if (typeof rec !== 'object' || rec === null) continue;
+   441→        const entries = Object.entries(rec as Record<string, unknown>).filter(([k, v]) => v != null && v !== '' && !['id', 'patientId', 'updatedAt'].includes(k));
+   442→        if (entries.length > 0) {
+   443→          html += kvTable(entries.map(([k, v]) => kvRow(k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()), String(v))));
+   444→        }
+   445→      }
+   446→    }
+   447→    if (nutrisi.ringkasan) {
+   448→      html += `<p style="font-size:9pt;color:#22c55e;margin:6px 0;padding:6px;background:#f0fdf4;border:1px solid #dcfce7;"><b>Ringkasan AI:</b> ${escHtml(nutrisi.ringkasan)}</p>`;
+   449→    }
+   450→  }
+   451→
+   452→  // SOSIAL
+   453→  if (sosial?.penilaianSosial || sosial?.caregiver || sosial?.pertemuanKeluarga || sosial?.dukunganKeuangan || sosial?.ringkasan) {
+   454→    html += sectionHeader('SOSIAL');
+   455→    const renderRecords = (title: string, recs: unknown[]) => {
+   456→      if (!Array.isArray(recs) || recs.length === 0) return '';
+   457→      let r = `<h3 style="font-size:10pt;margin:6px 0 4px;color:#3b82f6;">${escHtml(title)} (${recs.length})</h3>`;
+   458→      for (const rec of recs) {
+   459→        if (typeof rec !== 'object' || rec === null) continue;
+   460→        const entries = Object.entries(rec as Record<string, unknown>).filter(([k, v]) => v != null && v !== '' && !['id', 'patientId', 'updatedAt'].includes(k));
+   461→        if (entries.length > 0) {
+   462→          r += kvTable(entries.map(([k, v]) => kvRow(k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()), String(v))));
+   463→          r += '<hr style="border:none;border-top:1px solid #eee;margin:4px 0;"/>';
+   464→        }
+   465→      }
+   466→      return r;
+   467→    };
+   468→    html += renderRecords('Penilaian Sosial', sosial.penilaianSosial ?? []);
+   469→    html += renderRecords('Caregiver', sosial.caregiver ?? []);
+   470→    html += renderRecords('Pertemuan Keluarga', sosial.pertemuanKeluarga ?? []);
+   471→    html += renderRecords('Dukungan Keuangan', sosial.dukunganKeuangan ?? []);
+   472→    if (sosial.ringkasan) {
+   473→      html += `<p style="font-size:9pt;color:#3b82f6;margin:6px 0;padding:6px;background:#eff6ff;border:1px solid #dbeafe;"><b>Ringkasan AI:</b> ${escHtml(sosial.ringkasan)}</p>`;
+   474→    }
+   475→  }
+   476→
+   477→  // ACP
+   478→  if (acp?.dokumen || acp?.ringkasan) {
+   479→    html += sectionHeader('ADVANCE CARE PLANNING (ACP)');
+   480→    const prefLabels: Record<string, string> = {
+   481→      careGoal: 'Tujuan Perawatan', preferredCareLocation: 'Preferensi Tempat Perawatan',
+   482→      resuscitationPref: 'Resusitasi', ventilatorPref: 'Ventilator', icuPref: 'ICU',
+   483→      artificialNutrition: 'Nutrisi Buatan', dialysisPref: 'Dialisis', organDonation: 'Donasi Organ',
+   484→      decisionMakerName: 'Pengambil Keputusan', decisionMakerRelation: 'Hubungan',
+   485→      patientHopes: 'Harapan Pasien', patientWorries: 'Kekhawatiran Pasien',
+   486→      lifeValues: 'Nilai Hidup Penting', endOfLifePrefs: 'Preferensi Akhir Hayat',
+   487→      status: 'Status', signedAt: 'Tanggal Tanda Tangan', createdAt: 'Tanggal Dibuat',
+   488→      documentType: 'Jenis Dokumen', notes: 'Catatan',
+   489→    };
+   490→    if (acp.dokumen && Array.isArray(acp.dokumen)) {
+   491→      for (let i = 0; i < acp.dokumen.length; i++) {
+   492→        const d = acp.dokumen[i] as Record<string, unknown>;
+   493→        if (typeof d !== 'object' || d === null) continue;
+   494→        html += `<h3 style="font-size:10pt;margin:6px 0 4px;color:#D9B26F;">Dokumen ACP #${i + 1}</h3>`;
+   495→        const entries = Object.entries(d).filter(([k, v]) => v != null && v !== '' && !['id', 'patientId', 'updatedAt'].includes(k));
+   496→        html += kvTable(entries.map(([k, v]) => kvRow(prefLabels[k] || k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()), String(v))));
+   497→      }
+   498→    }
+   499→    if (acp.ringkasan) {
+   500→      html += `<p style="font-size:9pt;color:#D9B26F;margin:6px 0;padding:6px;background:#fefce8;border:1px solid #fef08a;"><b>Ringkasan AI:</b> ${escHtml(acp.ringkasan)}</p>`;
+   501→    }
+   502→  }
+   503→
+   504→  // AI ANALISIS
+   505→  if (ai) {
+   506→    html += sectionHeader('AI ANALISIS');
+   507→    if (ai.ringkasanPerjalananKlinis) html += `<p style="font-size:9pt;margin:4px 0;"><b>Ringkasan Perjalanan Klinis:</b> ${escHtml(ai.ringkasanPerjalananKlinis)}</p>`;
+   508→    if (ai.identifikasiKondisiKritis) html += `<p style="font-size:9pt;margin:4px 0;"><b>Identifikasi Kondisi Kritis:</b> ${escHtml(ai.identifikasiKondisiKritis)}</p>`;
+   509→    if (ai.analisisTrenPasien) html += `<p style="font-size:9pt;margin:4px 0;"><b>Analisis Tren Pasien:</b> ${escHtml(ai.analisisTrenPasien)}</p>`;
+   510→    if (ai.rekomendasi && ai.rekomendasi.length > 0) {
+   511→      html += '<h3 style="font-size:10pt;margin:8px 0 4px;">Rekomendasi</h3><ol style="font-size:9pt;margin:2px 0 2px 18px;">';
+   512→      for (const r of ai.rekomendasi) { html += `<li>${escHtml(r)}</li>`; }
+   513→      html += '</ol>';
+   514→    }
+   515→  }
+   516→
+   517→  return html;
+   518→}
+   519→
+   520→// ── Section Wrapper ──────────────────────────────────────────────────────
+   521→
+   522→function SectionCard({
+   523→  title,
+   524→  icon,
+   525→  accentColor = '#2D8C7A',
+   526→  children,
+   527→  className,
+   528→}: {
+   529→  title: string;
+   530→  icon?: React.ReactNode;
+   531→  accentColor?: string;
+   532→  children: React.ReactNode;
+   533→  className?: string;
+   534→}) {
+   535→  return (
+   536→    <div
+   537→      className={cn(
+   538→        'rounded-lg border bg-white overflow-hidden',
+   539→        className
+   540→      )}
+   541→      style={{ borderLeftWidth: '4px', borderLeftColor: accentColor }}
+   542→    >
+   543→      <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50/80 border-b">
+   544→        {icon}
+   545→        <h3 className="font-semibold text-sm">{title}</h3>
+   546→      </div>
+   547→      <div className="p-4">{children}</div>
+   548→    </div>
+   549→  );
+   550→}
+   551→
+   552→// ── Main Component ───────────────────────────────────────────────────────
+   553→
+   554→interface Props {
+   555→  patient: PalliativePatientInfo | null;
+   556→  onBack?: () => void;
+   557→}
+   558→
+   559→export function PalliativeResumeReferralPanel({ patient }: Props) {
+   560→  const [docTab, setDocTab] = useState<DocTab>('resume');
+   561→  const [resumeLoading, setResumeLoading] = useState(false);
+   562→  const [referralLoading, setReferralLoading] = useState(false);
+   563→  const [selectedResume, setSelectedResume] = useState<PalliativeResumeMedis | null>(null);
+   564→  const [selectedReferral, setSelectedReferral] = useState<PalliativeReferralLetter | null>(null);
+   565→  const [showReferralDeptDialog, setShowReferralDeptDialog] = useState(false);
+   566→  const [targetDept, setTargetDept] = useState<ReferralTargetDepartment>('kedokteran_paliatif');
+   567→  const [showSendDialog, setShowSendDialog] = useState(false);
+   568→  const [sendDocType, setSendDocType] = useState<'resume' | 'referral'>('resume');
+   569→  const [sendDocId, setSendDocId] = useState('');
+   570→  const [doctorSip, setDoctorSip] = useState('');
+   571→  const [showSignDialog, setShowSignDialog] = useState(false);
+   572→  const [signDocType, setSignDocType] = useState<'resume' | 'referral'>('resume');
+   573→  const [signDocId, setSignDocId] = useState('');
+   574→  const [resumeQrDataUrl, setResumeQrDataUrl] = useState<string | null>(null);
+   575→  const [referralQrDataUrl, setReferralQrDataUrl] = useState<string | null>(null);
+   576→  const [downloading, setDownloading] = useState(false);
+   577→  const [savingFinal, setSavingFinal] = useState(false);
+   578→
+   579→  // Editable AI narrative fields
+   580→  const [editRingkasanPerjalananKlinis, setEditRingkasanPerjalananKlinis] = useState('');
+   581→  const [editIdentifikasiKondisiKritis, setEditIdentifikasiKondisiKritis] = useState('');
+   582→  const [editAnalisisTrenPasien, setEditAnalisisTrenPasien] = useState('');
+   583→
+   584→  const resumeContentRef = useRef<HTMLDivElement>(null);
+   585→  const referralContentRef = useRef<HTMLDivElement>(null);
+   586→
+   587→  const {
+   588→    palliativeResumes,
+   589→    addPalliativeResume,
+   590→    updatePalliativeResume,
+   591→    palliativeReferralLetters,
+   592→    addPalliativeReferralLetter,
+   593→    updatePalliativeReferralLetter,
+   594→    addPalliativeDocumentAuditEntry,
+   595→    addPalliativeAuditEntry,
+   596→    addPalliativeChatMessage,
+   597→    currentUser,
+   598→    nutritionRecords,
+   599→    socialAssessments,
+   600→    caregivers,
+   601→    familyMeetings,
+   602→    financialSupportRecords,
+   603→  } = useStore();
+   604→
+   605→  const { toast } = useToast();
+   606→
+   607→  // ── Patient-specific data ──
+   608→  const patientResumes = useMemo(
+   609→    () =>
+   610→      palliativeResumes
+   611→        .filter((r) => r.palliativePatientId === patient?.id)
+   612→        .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()),
+   613→    [palliativeResumes, patient]
+   614→  );
+   615→
+   616→  const patientReferrals = useMemo(
+   617→    () =>
+   618→      palliativeReferralLetters
+   619→        .filter((l) => l.palliativePatientId === patient?.id)
+   620→        .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()),
+   621→    [palliativeReferralLetters, patient]
+   622→  );
+   623→
+   624→  const latestResume = patientResumes[0] || null;
+   625→  const latestReferral = patientReferrals[0] || null;
+   626→
+   627→  // Sync editable fields when selected resume changes
+   628→  useEffect(() => {
+   629→    if (selectedResume?.aiAnalysis) {
+   630→      setEditRingkasanPerjalananKlinis(selectedResume.aiAnalysis.ringkasanPerjalananKlinis || '');
+   631→      setEditIdentifikasiKondisiKritis(selectedResume.aiAnalysis.identifikasiKondisiKritis || '');
+   632→      setEditAnalisisTrenPasien(selectedResume.aiAnalysis.analisisTrenPasien || '');
+   633→    }
+   634→  }, [selectedResume?.id, selectedResume?.aiAnalysis]);
+   635→
+   636→  // ── QR Code Generation ──
+   637→  useEffect(() => {
+   638→    if (selectedResume?.isSigned) {
+   639→      const qrData = JSON.stringify({
+   640→        docId: selectedResume.id,
+   641→        docNumber: selectedResume.documentNumber,
+   642→        timestamp: selectedResume.signedAt || selectedResume.generatedAt,
+   643→        doctor: selectedResume.doctorName || '-',
+   644→        sip: selectedResume.doctorSip || '-',
+   645→        signed: true,
+   646→        type: 'resume_medis',
+   647→      });
+   648→      QRCode.toDataURL(qrData, { width: 120, margin: 1, color: { dark: '#1a1a2e', light: '#ffffff' } })
+   649→        .then((url) => setResumeQrDataUrl(url))
+   650→        .catch(() => setResumeQrDataUrl(null));
+   651→    } else {
+   652→      setResumeQrDataUrl(null);
+   653→    }
+   654→  }, [selectedResume?.isSigned, selectedResume?.id, selectedResume?.documentNumber, selectedResume?.signedAt, selectedResume?.generatedAt, selectedResume?.doctorName, selectedResume?.doctorSip]);
+   655→
+   656→  useEffect(() => {
+   657→    if (selectedReferral?.isSigned) {
+   658→      const qrData = JSON.stringify({
+   659→        docId: selectedReferral.id,
+   660→        docNumber: selectedReferral.documentNumber,
+   661→        timestamp: selectedReferral.signedAt || selectedReferral.generatedAt,
+   662→        doctor: selectedReferral.doctorName || '-',
+   663→        sip: selectedReferral.doctorSip || '-',
+   664→        signed: true,
+   665→        type: 'surat_rujukan',
+   666→      });
+   667→      QRCode.toDataURL(qrData, { width: 120, margin: 1, color: { dark: '#1a1a2e', light: '#ffffff' } })
+   668→        .then((url) => setReferralQrDataUrl(url))
+   669→        .catch(() => setReferralQrDataUrl(null));
+   670→    } else {
+   671→      setReferralQrDataUrl(null);
+   672→    }
+   673→  }, [selectedReferral?.isSigned, selectedReferral?.id, selectedReferral?.documentNumber, selectedReferral?.signedAt, selectedReferral?.generatedAt, selectedReferral?.doctorName, selectedReferral?.doctorSip]);
+   674→
+   675→  // ── Handlers ──
+   676→  const handleGenerateResume = useCallback(async () => {
+   677→    if (!patient) return;
+   678→    setResumeLoading(true);
+   679→    try {
+   680→      const response = await fetch('/api/palliative-resume', {
+   681→        method: 'POST',
+   682→        headers: { 'Content-Type': 'application/json' },
+   683→        body: JSON.stringify({
+   684→          palliativePatientId: patient.id,
+   685→          additionalData: {
+   686→            nutritionRecords: nutritionRecords.filter(r => r.patientId === patient.id),
+   687→            socialAssessmentRecords: socialAssessments.filter(r => r.patientId === patient.id),
+   688→            caregivers: caregivers.filter(c => c.patientId === patient.id),
+   689→            familyMeetings: familyMeetings.filter(m => m.patientId === patient.id),
+   690→            financialSupportRecords: financialSupportRecords.filter(r => r.patientId === patient.id),
+   691→          },
+   692→        }),
+   693→      });
+   694→
+   695→      let resumeData;
+   696→      if (response.ok) {
+   697→        const data = await response.json();
+   698→        resumeData = data.resume;
+   699→      } else {
+   700→        resumeData = generateLocalResumeData(patient);
+   701→      }
+   702→
+   703→      const resume: PalliativeResumeMedis = {
+   704→        id: genId('resume'),
+   705→        palliativePatientId: patient.id,
+   706→        patientName: patient.patientName,
+   707→        rmNumber: patient.rmNumber,
+   708→        documentNumber: resumeData?.documentNumber || genDocNumber('RM-PAL'),
+   709→        generatedAt: new Date().toISOString(),
+   710→        generatedBy: currentUser?.name || 'Dokter',
+   711→        generatedByRole: 'doctor',
+   712→        doctorSip: doctorSip || undefined,
+   713→        doctorName: currentUser?.name || 'Dokter',
+   714→        dataPasien: resumeData?.dataPasien,
+   715→        ttvSerial: resumeData?.ttvSerial,
+   716→        keluhanHarian: resumeData?.keluhanHarian,
+   717→        skriningPaliatif: resumeData?.skriningPaliatif,
+   718→        esasScores: resumeData?.esasScores,
+   719→        obat: resumeData?.obat,
+   720→        nutrisi: resumeData?.nutrisi,
+   721→        sosial: resumeData?.sosial,
+   722→        acp: resumeData?.acp,
+   723→        aiAnalysis: resumeData?.aiAnalysis,
+   724→        ringkasanKondisi: resumeData?.ringkasanKondisi || resumeData?.aiAnalysis?.ringkasanPerjalananKlinis,
+   725→        ringkasanPemeriksaan: resumeData?.ringkasanPemeriksaan,
+   726→        ringkasanTerapi: resumeData?.ringkasanTerapi,
+   727→        ringkasanACP: resumeData?.ringkasanACP || resumeData?.aiAnalysis?.ringkasanACP,
+   728→        kesimpulanKlinis: resumeData?.kesimpulanKlinis,
+   729→        rekomendasiAI: resumeData?.rekomendasiAI || resumeData?.aiAnalysis?.rekomendasi || [],
+   730→        fullContent: resumeData?.fullContent || '',
+   731→        version: latestResume ? latestResume.version + 1 : (resumeData?.version || 1),
+   732→        previousVersionId: latestResume?.id,
+   733→        isSigned: false,
+   734→        downloadCount: 0,
+   735→        printCount: 0,
+   736→        createdAt: new Date().toISOString(),
+   737→        updatedAt: new Date().toISOString(),
+   738→      };
+   739→
+   740→      addPalliativeResume(resume);
+   741→
+   742→      const auditEntry: PalliativeDocumentAuditEntry = {
+   743→        id: genId('docaudit'),
+   744→        documentType: 'resume_medis',
+   745→        documentId: resume.id,
+   746→        patientId: patient.id,
+   747→        action: 'generated',
+   748→        performedBy: currentUser?.name || 'Dokter',
+   749→        performedByRole: 'doctor',
+   750→        details: `Resume Medis AI dihasilkan untuk ${patient.patientName || 'Pasien'} (v${resume.version})`,
+   751→        createdAt: new Date().toISOString(),
+   752→      };
+   753→      addPalliativeDocumentAuditEntry(auditEntry);
+   754→
+   755→      const pallAudit: PalliativeAuditEntry = {
+   756→        id: genId('audit'),
+   757→        patientId: patient.id,
+   758→        action: 'resume_generated',
+   759→        performedBy: currentUser?.name || 'Dokter',
+   760→        performedByRole: 'doctor',
+   761→        details: `Resume Medis AI dihasilkan (Dok: ${resume.documentNumber}, v${resume.version})`,
+   762→        createdAt: new Date().toISOString(),
+   763→      };
+   764→      addPalliativeAuditEntry(pallAudit);
+   765→
+   766→      setSelectedResume(resume);
+   767→      setDocTab('resume');
+   768→
+   769→      toast({
+   770→        title: 'Resume Medis Berhasil Dibuat',
+   771→        description: `Resume Medis AI untuk ${patient.patientName || 'Pasien'} telah dihasilkan (v${resume.version}).`,
+   772→      });
+   773→    } catch {
+   774→      const resumeData = generateLocalResumeData(patient);
+   775→      const resume: PalliativeResumeMedis = {
+   776→        id: genId('resume'),
+   777→        palliativePatientId: patient.id,
+   778→        patientName: patient.patientName,
+   779→        rmNumber: patient.rmNumber,
+   780→        documentNumber: genDocNumber('RM-PAL'),
+   781→        generatedAt: new Date().toISOString(),
+   782→        generatedBy: currentUser?.name || 'Dokter',
+   783→        generatedByRole: 'doctor',
+   784→        doctorName: currentUser?.name || 'Dokter',
+   785→        ringkasanKondisi: resumeData.ringkasanKondisi,
+   786→        ringkasanPemeriksaan: resumeData.ringkasanPemeriksaan,
+   787→        ringkasanTerapi: resumeData.ringkasanTerapi,
+   788→        ringkasanACP: resumeData.ringkasanACP,
+   789→        kesimpulanKlinis: resumeData.kesimpulanKlinis,
+   790→        rekomendasiAI: resumeData.rekomendasiAI || [],
+   791→        fullContent: resumeData.fullContent,
+   792→        version: latestResume ? latestResume.version + 1 : 1,
+   793→        previousVersionId: latestResume?.id,
+   794→        isSigned: false,
+   795→        downloadCount: 0,
+   796→        printCount: 0,
+   797→        createdAt: new Date().toISOString(),
+   798→        updatedAt: new Date().toISOString(),
+   799→      };
+   800→      addPalliativeResume(resume);
+   801→      setSelectedResume(resume);
+   802→      toast({ title: 'Resume Medis Dibuat (Offline)', description: 'Resume dibuat menggunakan data lokal.' });
+   803→    }
+   804→    setResumeLoading(false);
+   805→  }, [patient, currentUser, doctorSip, latestResume, addPalliativeResume, addPalliativeDocumentAuditEntry, addPalliativeAuditEntry, toast, nutritionRecords, socialAssessments, caregivers, familyMeetings, financialSupportRecords]);
+   806→
+   807→  const handleGenerateReferral = useCallback(async () => {
+   808→    if (!patient) return;
+   809→    setReferralLoading(true);
+   810→    try {
+   811→      const response = await fetch('/api/palliative-referral', {
+   812→        method: 'POST',
+   813→        headers: { 'Content-Type': 'application/json' },
+   814→        body: JSON.stringify({ palliativePatientId: patient.id, targetDepartment: targetDept }),
+   815→      });
+   816→
+   817→      let referralData;
+   818→      if (response.ok) {
+   819→        const data = await response.json();
+   820→        referralData = data.referral;
+   821→      } else {
+   822→        referralData = generateLocalReferralData(patient, targetDept);
+   823→      }
+   824→
+   825→      const letter: PalliativeReferralLetter = {
+   826→        id: genId('referral'),
+   827→        palliativePatientId: patient.id,
+   828→        patientName: patient.patientName,
+   829→        rmNumber: patient.rmNumber,
+   830→        documentNumber: genDocNumber('SR-PAL'),
+   831→        generatedAt: new Date().toISOString(),
+   832→        generatedBy: currentUser?.name || 'Dokter',
+   833→        generatedByRole: 'doctor',
+   834→        doctorSip: doctorSip || undefined,
+   835→        doctorName: currentUser?.name || 'Dokter',
+   836→        nik: patient.nik,
+   837→        bpjsNumber: patient.bpjsNumber,
+   838→        primaryDiagnosis: patient.primaryDiagnosis || '-',
+   839→        secondaryDiagnosis: patient.secondaryDiagnosis,
+   840→        referralReason: referralData.referralReason,
+   841→        clinicalSummary: referralData.clinicalSummary,
+   842→        targetDepartment: targetDept,
+   843→        consultationRequest: referralData.consultationRequest,
+   844→        fullContent: referralData.fullContent,
+   845→        referralStatus: 'belum_dirujuk',
+   846→        version: latestReferral ? latestReferral.version + 1 : 1,
+   847→        previousVersionId: latestReferral?.id,
+   848→        isSigned: false,
+   849→        downloadCount: 0,
+   850→        printCount: 0,
+   851→        createdAt: new Date().toISOString(),
+   852→        updatedAt: new Date().toISOString(),
+   853→      };
+   854→
+   855→      addPalliativeReferralLetter(letter);
+   856→
+   857→      const auditEntry: PalliativeDocumentAuditEntry = {
+   858→        id: genId('docaudit'),
+   859→        documentType: 'surat_rujukan',
+   860→        documentId: letter.id,
+   861→        patientId: patient.id,
+   862→        action: 'generated',
+   863→        performedBy: currentUser?.name || 'Dokter',
+   864→        performedByRole: 'doctor',
+   865→        details: `Surat Rujukan AI dihasilkan untuk ${patient.patientName || 'Pasien'} ke ${getDeptLabel(targetDept)}`,
+   866→        createdAt: new Date().toISOString(),
+   867→      };
+   868→      addPalliativeDocumentAuditEntry(auditEntry);
+   869→
+   870→      const pallAudit: PalliativeAuditEntry = {
+   871→        id: genId('audit'),
+   872→        patientId: patient.id,
+   873→        action: 'referral_generated',
+   874→        performedBy: currentUser?.name || 'Dokter',
+   875→        performedByRole: 'doctor',
+   876→        details: `Surat Rujukan AI dihasilkan (Dok: ${letter.documentNumber}, ke ${getDeptLabel(targetDept)})`,
+   877→        createdAt: new Date().toISOString(),
+   878→      };
+   879→      addPalliativeAuditEntry(pallAudit);
+   880→
+   881→      setSelectedReferral(letter);
+   882→      setDocTab('referral');
+   883→      setShowReferralDeptDialog(false);
+   884→
+   885→      toast({
+   886→        title: 'Surat Rujukan Berhasil Dibuat',
+   887→        description: `Surat Rujukan AI ke ${getDeptLabel(targetDept)} untuk ${patient.patientName || 'Pasien'} telah dihasilkan.`,
+   888→      });
+   889→    } catch {
+   890→      const referralData = generateLocalReferralData(patient, targetDept);
+   891→      const letter: PalliativeReferralLetter = {
+   892→        id: genId('referral'),
+   893→        palliativePatientId: patient.id,
+   894→        patientName: patient.patientName,
+   895→        rmNumber: patient.rmNumber,
+   896→        documentNumber: genDocNumber('SR-PAL'),
+   897→        generatedAt: new Date().toISOString(),
+   898→        generatedBy: currentUser?.name || 'Dokter',
+   899→        generatedByRole: 'doctor',
+   900→        doctorName: currentUser?.name || 'Dokter',
+   901→        nik: patient.nik,
+   902→        bpjsNumber: patient.bpjsNumber,
+   903→        primaryDiagnosis: patient.primaryDiagnosis || '-',
+   904→        secondaryDiagnosis: patient.secondaryDiagnosis,
+   905→        referralReason: referralData.referralReason,
+   906→        clinicalSummary: referralData.clinicalSummary,
+   907→        targetDepartment: targetDept,
+   908→        consultationRequest: referralData.consultationRequest,
+   909→        fullContent: referralData.fullContent,
+   910→        referralStatus: 'belum_dirujuk',
+   911→        version: latestReferral ? latestReferral.version + 1 : 1,
+   912→        previousVersionId: latestReferral?.id,
+   913→        isSigned: false,
+   914→        downloadCount: 0,
+   915→        printCount: 0,
+   916→        createdAt: new Date().toISOString(),
+   917→        updatedAt: new Date().toISOString(),
+   918→      };
+   919→      addPalliativeReferralLetter(letter);
+   920→      setSelectedReferral(letter);
+   921→      setShowReferralDeptDialog(false);
+   922→      toast({ title: 'Surat Rujukan Dibuat (Offline)', description: 'Surat rujukan dibuat menggunakan data lokal.' });
+   923→    }
+   924→    setReferralLoading(false);
+   925→  }, [patient, currentUser, doctorSip, targetDept, latestReferral, addPalliativeReferralLetter, addPalliativeDocumentAuditEntry, addPalliativeAuditEntry, toast]);
+   926→
+   927→  const handleSignDocument = useCallback((docType: 'resume' | 'referral', docId: string) => {
+   928→    const sip = doctorSip || 'SIP-' + (currentUser?.id || '000');
+   929→    if (docType === 'resume') {
+   930→      updatePalliativeResume(docId, { isSigned: true, signedAt: new Date().toISOString(), doctorSip: sip });
+   931→      addPalliativeDocumentAuditEntry({
+   932→        id: genId('docaudit'), documentType: 'resume_medis', documentId: docId, patientId: patient?.id || '',
+   933→        action: 'signed', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+   934→        details: 'Resume Medis ditandatangani secara elektronik', createdAt: new Date().toISOString(),
+   935→      });
+   936→    } else {
+   937→      updatePalliativeReferralLetter(docId, { isSigned: true, signedAt: new Date().toISOString(), doctorSip: sip });
+   938→      addPalliativeDocumentAuditEntry({
+   939→        id: genId('docaudit'), documentType: 'surat_rujukan', documentId: docId, patientId: patient?.id || '',
+   940→        action: 'signed', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+   941→        details: 'Surat Rujukan ditandatangani secara elektronik', createdAt: new Date().toISOString(),
+   942→      });
+   943→    }
+   944→    setShowSignDialog(false);
+   945→    toast({ title: 'Dokumen Ditandatangani', description: 'Tanda tangan elektronik berhasil diterapkan.' });
+   946→  }, [currentUser, doctorSip, patient, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry, toast]);
+   947→
+   948→  const handleSendToChat = useCallback((docType: 'resume' | 'referral', docId: string) => {
+   949→    if (!patient) return;
+   950→    const roomId = `room-${patient.id}`;
+   951→    const doc = docType === 'resume'
+   952→      ? palliativeResumes.find((r) => r.id === docId)
+   953→      : palliativeReferralLetters.find((l) => l.id === docId);
+   954→    if (!doc) return;
+   955→
+   956→    const docLabel = docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan';
+   957→    const chatMsg: PalliativeChatMessage = {
+   958→      id: genId('msg'),
+   959→      roomId,
+   960→      senderId: currentUser?.id || 'doctor',
+   961→      senderName: currentUser?.name || 'Dokter',
+   962→      senderRole: 'doctor',
+   963→      type: 'text',
+   964→      content: `${docLabel} telah diterbitkan untuk pasien.\n\nNo. Dokumen: ${doc.documentNumber}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}${doc.isSigned ? '\nStatus: Ditandatangani secara elektronik' : '\nStatus: Belum ditandatangani'}`,
+   965→      status: 'sent',
+   966→      createdAt: new Date().toISOString(),
+   967→    };
+   968→    addPalliativeChatMessage(chatMsg);
+   969→
+   970→    if (docType === 'resume') {
+   971→      updatePalliativeResume(docId, { sentToChatAt: new Date().toISOString() });
+   972→    } else {
+   973→      updatePalliativeReferralLetter(docId, { sentToChatAt: new Date().toISOString() });
+   974→    }
+   975→
+   976→    addPalliativeDocumentAuditEntry({
+   977→      id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+   978→      documentId: docId, patientId: patient.id,
+   979→      action: 'sent_to_chat', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+   980→      details: `${docLabel} dikirim ke chat pasien`, createdAt: new Date().toISOString(),
+   981→    });
+   982→
+   983→    setShowSendDialog(false);
+   984→    toast({ title: 'Dokumen Terkirim', description: `${docLabel} berhasil dikirim ke chat pasien.` });
+   985→  }, [patient, currentUser, palliativeResumes, palliativeReferralLetters, addPalliativeChatMessage, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry, toast]);
+   986→
+   987→  const handleSendToWhatsApp = useCallback((docType: 'resume' | 'referral', docId: string) => {
+   988→    if (!patient) return;
+   989→    const doc = docType === 'resume'
+   990→      ? palliativeResumes.find((r) => r.id === docId)
+   991→      : palliativeReferralLetters.find((l) => l.id === docId);
+   992→    if (!doc) return;
+   993→
+   994→    const docLabel = docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan';
+   995→    const phone = patient.familyContactPhone?.replace(/\D/g, '') || '';
+   996→    if (!phone) {
+   997→      toast({ title: 'Nomor WhatsApp Tidak Tersedia', description: 'Nomor telepon keluarga pasien belum diisi.', variant: 'destructive' });
+   998→      return;
+   999→    }
+  1000→
+  1001→    const message = `${docLabel} - ${doc.patientName || 'Pasien'}\n\nNo. Dokumen: ${doc.documentNumber}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}\nStatus: ${doc.isSigned ? 'Ditandatangani secara elektronik' : 'Belum ditandatangani'}\n\nDokumen ini dihasilkan oleh CareLivia`;
+  1002→    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  1003→    window.open(waUrl, '_blank');
+  1004→
+  1005→    if (docType === 'resume') {
+  1006→      updatePalliativeResume(docId, { sentToWhatsAppAt: new Date().toISOString() });
+  1007→    } else {
+  1008→      updatePalliativeReferralLetter(docId, { sentToWhatsAppAt: new Date().toISOString() });
+  1009→    }
+  1010→
+  1011→    addPalliativeDocumentAuditEntry({
+  1012→      id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+  1013→      documentId: docId, patientId: patient.id,
+  1014→      action: 'sent_to_whatsapp', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+  1015→      details: `${docLabel} dikirim ke WhatsApp keluarga pasien`, createdAt: new Date().toISOString(),
+  1016→    });
+  1017→
+  1018→    setShowSendDialog(false);
+  1019→    toast({ title: 'WhatsApp Terbuka', description: `${docLabel} akan dikirim melalui WhatsApp.` });
+  1020→  }, [patient, currentUser, palliativeResumes, palliativeReferralLetters, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry, toast]);
+  1021→
+  1022→  const handleSendToEmail = useCallback((docType: 'resume' | 'referral', docId: string) => {
+  1023→    if (!patient) return;
+  1024→    const doc = docType === 'resume'
+  1025→      ? palliativeResumes.find((r) => r.id === docId)
+  1026→      : palliativeReferralLetters.find((l) => l.id === docId);
+  1027→    if (!doc) return;
+  1028→
+  1029→    const docLabel = docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan';
+  1030→    const subject = encodeURIComponent(`[CareLivia] ${docLabel} - ${doc.patientName || 'Pasien'} - ${doc.documentNumber}`);
+  1031→    const body = encodeURIComponent(`Kepada Yth.,\n\nBerikut kami sampaikan ${docLabel} untuk pasien ${doc.patientName || '-'} (RM: ${doc.rmNumber || '-'}).\n\nDetail Dokumen:\n- No. Dokumen: ${doc.documentNumber}\n- Tanggal: ${formatDate(doc.generatedAt)}\n- Dokter: ${doc.doctorName || '-'}\n- SIP: ${doc.doctorSip || '-'}\n- Status Tanda Tangan: ${doc.isSigned ? 'Ditandatangani secara elektronik' : 'Belum ditandatangani'}\n- Versi: ${doc.version}\n\nDokumen ini dihasilkan oleh CareLivia.\nHormat kami,\n${currentUser?.name || 'Dokter'}`);
+  1032→    window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
+  1033→
+  1034→    if (docType === 'resume') {
+  1035→      updatePalliativeResume(docId, { sentToEmailAt: new Date().toISOString() });
+  1036→    } else {
+  1037→      updatePalliativeReferralLetter(docId, { sentToEmailAt: new Date().toISOString() });
+  1038→    }
+  1039→
+  1040→    addPalliativeDocumentAuditEntry({
+  1041→      id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+  1042→      documentId: docId, patientId: patient.id,
+  1043→      action: 'sent_to_email', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+  1044→      details: `${docLabel} dikirim via email`, createdAt: new Date().toISOString(),
+  1045→    });
+  1046→
+  1047→    setShowSendDialog(false);
+  1048→    toast({ title: 'Email Terbuka', description: `Klien email akan terbuka dengan ${docLabel}.` });
+  1049→  }, [patient, currentUser, palliativeResumes, palliativeReferralLetters, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry, toast]);
+  1050→
+  1051→  const handleDownloadPdf = useCallback(async (docType: 'resume' | 'referral', docId: string) => {
+  1052→    const doc = docType === 'resume'
+  1053→      ? palliativeResumes.find((r) => r.id === docId)
+  1054→      : palliativeReferralLetters.find((l) => l.id === docId);
+  1055→    if (!doc || !patient) return;
+  1056→
+  1057→    setDownloading(true);
+  1058→    const docLabel = docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan';
+  1059→
+  1060→    try {
+  1061→      const referralDoc = docType === 'referral' ? doc as PalliativeReferralLetter : undefined;
+  1062→      const response = await fetch('/api/palliative-pdf', {
+  1063→        method: 'POST',
+  1064→        headers: { 'Content-Type': 'application/json' },
+  1065→        body: JSON.stringify({
+  1066→          documentType: docType,
+  1067→          documentId: doc.id,
+  1068→          patientData: {
+  1069→            patientName: doc.patientName || patient.patientName || '-',
+  1070→            rmNumber: doc.rmNumber || patient.rmNumber || '-',
+  1071→            nik: patient.nik,
+  1072→            bpjsNumber: patient.bpjsNumber,
+  1073→            primaryDiagnosis: patient.primaryDiagnosis || '-',
+  1074→            secondaryDiagnosis: patient.secondaryDiagnosis,
+  1075→            diseaseStage: patient.diseaseStage,
+  1076→            careStatus: patient.careStatus,
+  1077→            riskLevel: patient.riskLevel,
+  1078→          },
+  1079→          documentData: {
+  1080→            documentNumber: doc.documentNumber,
+  1081→            generatedAt: doc.generatedAt,
+  1082→            doctorName: doc.doctorName || '-',
+  1083→            doctorSip: doc.doctorSip || '',
+  1084→            isSigned: doc.isSigned,
+  1085→            signedAt: doc.signedAt,
+  1086→            fullContent: doc.fullContent,
+  1087→            targetDepartment: referralDoc?.targetDepartment,
+  1088→            referralStatus: referralDoc?.referralStatus,
+  1089→            version: doc.version,
+  1090→          },
+  1091→          ...(docType === 'resume' && (doc as PalliativeResumeMedis).dataPasien ? {
+  1092→            resumeData: {
+  1093→              dataPasien: (doc as PalliativeResumeMedis).dataPasien,
+  1094→              ttvSerial: (doc as PalliativeResumeMedis).ttvSerial || { ttvAwal: null, ttvKritis: null, ttvTerakhir: null },
+  1095→              keluhanHarian: (doc as PalliativeResumeMedis).keluhanHarian || { keluhanAwal: null, keluhanTerberat: null, keluhanTerakhir: null, analisis: '' },
+  1096→              skriningPaliatif: (doc as PalliativeResumeMedis).skriningPaliatif || {},
+  1097→              esasScores: (doc as PalliativeResumeMedis).esasScores || { skorAwal: null, skorTertinggi: null, skorTerakhir: null },
+  1098→              obat: (doc as PalliativeResumeMedis).obat || {},
+  1099→              nutrisi: (doc as PalliativeResumeMedis).nutrisi || {},
+  1100→              sosial: (doc as PalliativeResumeMedis).sosial || {},
+  1101→              acp: (doc as PalliativeResumeMedis).acp || {},
+  1102→              aiAnalysis: (doc as PalliativeResumeMedis).aiAnalysis,
+  1103→            },
+  1104→          } : {}),
+  1105→        }),
+  1106→      });
+  1107→
+  1108→      if (response.ok) {
+  1109→        const blob = await response.blob();
+  1110→        const url = URL.createObjectURL(blob);
+  1111→        const a = document.createElement('a');
+  1112→        a.href = url;
+  1113→        a.download = `${docType === 'resume' ? 'Resume_Medis' : 'Surat_Rujukan'}_${doc.patientName || 'Pasien'}_${new Date().toISOString().split('T')[0]}.pdf`;
+  1114→        document.body.appendChild(a);
+  1115→        a.click();
+  1116→        document.body.removeChild(a);
+  1117→        URL.revokeObjectURL(url);
+  1118→
+  1119→        if (docType === 'resume') {
+  1120→          updatePalliativeResume(docId, { downloadCount: (doc.downloadCount || 0) + 1, lastDownloadAt: new Date().toISOString() });
+  1121→        } else {
+  1122→          updatePalliativeReferralLetter(docId, { downloadCount: (doc.downloadCount || 0) + 1, lastDownloadAt: new Date().toISOString() });
+  1123→        }
+  1124→
+  1125→        addPalliativeDocumentAuditEntry({
+  1126→          id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+  1127→          documentId: docId, patientId: patient.id,
+  1128→          action: 'downloaded', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+  1129→          details: `${docLabel} diunduh (PDF)`, createdAt: new Date().toISOString(),
+  1130→        });
+  1131→
+  1132→        toast({ title: 'PDF Berhasil Diunduh', description: `${docLabel} telah diunduh dalam format PDF.` });
+  1133→      } else {
+  1134→        throw new Error('PDF API failed');
+  1135→      }
+  1136→    } catch {
+  1137→      const content = doc.fullContent;
+  1138→      const header = docType === 'resume'
+  1139→        ? `RESUME MEDIS PALIATIF\nNo. Dokumen: ${doc.documentNumber}\nPasien: ${doc.patientName || '-'}\nRM: ${doc.rmNumber || '-'}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}${doc.isSigned ? `\nSIP: ${doc.doctorSip || '-'}` : ''}\n${'='.repeat(60)}\n\n`
+  1140→        : `SURAT RUJUKAN RUMAH SAKIT\nNo. Dokumen: ${doc.documentNumber}\nPasien: ${doc.patientName || '-'}\nRM: ${doc.rmNumber || '-'}\nTujuan: ${getDeptLabel((doc as PalliativeReferralLetter).targetDepartment)}\nTanggal: ${formatDate(doc.generatedAt)}\nDokter: ${doc.doctorName || '-'}${doc.isSigned ? `\nSIP: ${doc.doctorSip || '-'}` : ''}\n${'='.repeat(60)}\n\n`;
+  1141→      const footer = `\n\n${'='.repeat(60)}\nDokter: ${doc.doctorName || '-'}\n${doc.doctorSip ? `SIP: ${doc.doctorSip}` : ''}\n${doc.isSigned ? 'Tanda Tangan Elektronik: ✓ Verified' : 'Belum ditandatangani'}\nTanggal: ${formatDate(doc.generatedAt)}`;
+  1142→
+  1143→      const blob = new Blob([header + content + footer], { type: 'text/plain;charset=utf-8' });
+  1144→      const url = URL.createObjectURL(blob);
+  1145→      const a = document.createElement('a');
+  1146→      a.href = url;
+  1147→      a.download = `${docType === 'resume' ? 'Resume_Medis' : 'Surat_Rujukan'}_${doc.patientName || 'Pasien'}_${new Date().toISOString().split('T')[0]}.txt`;
+  1148→      document.body.appendChild(a);
+  1149→      a.click();
+  1150→      document.body.removeChild(a);
+  1151→      URL.revokeObjectURL(url);
+  1152→
+  1153→      if (docType === 'resume') {
+  1154→        updatePalliativeResume(docId, { downloadCount: (doc.downloadCount || 0) + 1, lastDownloadAt: new Date().toISOString() });
+  1155→      } else {
+  1156→        updatePalliativeReferralLetter(docId, { downloadCount: (doc.downloadCount || 0) + 1, lastDownloadAt: new Date().toISOString() });
+  1157→      }
+  1158→
+  1159→      addPalliativeDocumentAuditEntry({
+  1160→        id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+  1161→        documentId: docId, patientId: patient.id,
+  1162→        action: 'downloaded', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+  1163→        details: `${docLabel} diunduh (TXT fallback)`, createdAt: new Date().toISOString(),
+  1164→      });
+  1165→
+  1166→      toast({ title: 'Dokumen Diunduh (TXT)', description: 'PDF API tidak tersedia, diunduh sebagai file teks.' });
+  1167→    }
+  1168→    setDownloading(false);
+  1169→  }, [palliativeResumes, palliativeReferralLetters, patient, currentUser, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry, toast]);
+  1170→
+  1171→  const handlePrint = useCallback((docType: 'resume' | 'referral', docId: string) => {
+  1172→    const doc = docType === 'resume'
+  1173→      ? palliativeResumes.find((r) => r.id === docId)
+  1174→      : palliativeReferralLetters.find((l) => l.id === docId);
+  1175→    if (!doc) return;
+  1176→
+  1177→    const printWindow = window.open('', '_blank');
+  1178→    if (!printWindow) return;
+  1179→
+  1180→    // Build structured content for resume, raw fullContent for referral
+  1181→    const resumeContent = docType === 'resume' && (doc as PalliativeResumeMedis).dataPasien
+  1182→      ? buildResumePrintHtml(doc as PalliativeResumeMedis)
+  1183→      : `<div class="content">${doc.fullContent}</div>`;
+  1184→
+  1185→    const html = `
+  1186→      <!DOCTYPE html>
+  1187→      <html>
+  1188→      <head>
+  1189→        <title>${docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'}</title>
+  1190→        <style>
+  1191→          body { font-family: 'Times New Roman', serif; margin: 40px; line-height: 1.6; color: #333; }
+  1192→          h1 { text-align: center; font-size: 18pt; margin-bottom: 5px; }
+  1193→          h2 { font-size: 14pt; border-bottom: 1px solid #333; padding-bottom: 4px; margin-top: 20px; }
+  1194→          h3 { font-size: 12pt; margin-top: 15px; }
+  1195→          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+  1196→          .header p { margin: 2px 0; font-size: 10pt; }
+  1197→          .doc-info { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 10pt; }
+  1198→          .content { white-space: pre-wrap; font-size: 11pt; }
+  1199→          .footer { margin-top: 40px; border-top: 1px solid #333; padding-top: 15px; }
+  1200→          .signature { margin-top: 30px; text-align: right; }
+  1201→          .signature-line { display: inline-block; width: 200px; text-align: center; }
+  1202→          @media print { body { margin: 20px; } }
+  1203→        </style>
+  1204→      </head>
+  1205→      <body>
+  1206→        <div class="header">
+  1207→          <h1>FASILITAS KESEHATAN PRIMER</h1>
+  1208→          <p>Jl. Kesehatan No. 1, Kota, Provinsi</p>
+  1209→          <p>Telp: (021) 123-4567 | Email: faskes@kesehatan.go.id</p>
+  1210→        </div>
+  1211→        <div class="doc-info">
+  1212→          <span>No. Dokumen: ${doc.documentNumber}</span>
+  1213→          <span>Tanggal: ${formatDate(doc.generatedAt)}</span>
+  1214→          ${docType === 'resume' ? '<span>Versi: ' + (doc as PalliativeResumeMedis).version + '</span>' : ''}
+  1215→        </div>
+  1216→        <h1>${docType === 'resume' ? 'RESUME MEDIS TELEPALIATIF' : 'SURAT RUJUKAN'}</h1>
+  1217→        ${resumeContent}
+  1218→        <div class="footer">
+  1219→          <div class="signature">
+  1220→            <p>Dokter Penanggung Jawab,</p>
+  1221→            <br/><br/><br/>
+  1222→            <p class="signature-line"><strong>${doc.doctorName || '-'}</strong></p>
+  1223→            <p class="signature-line">${doc.doctorSip ? `SIP: ${doc.doctorSip}` : ''}</p>
+  1224→            ${doc.isSigned ? '<p style="color: green; font-size: 9pt;">✓ Tanda Tangan Elektronik Terverifikasi</p>' : '<p style="color: #999; font-size: 9pt;">Belum ditandatangani</p>'}
+  1225→          </div>
+  1226→        </div>
+  1227→      </body>
+  1228→      </html>
+  1229→    `;
+  1230→
+  1231→    printWindow.document.write(html);
+  1232→    printWindow.document.close();
+  1233→    printWindow.focus();
+  1234→    printWindow.print();
+  1235→
+  1236→    if (docType === 'resume') {
+  1237→      updatePalliativeResume(docId, { printCount: (doc.printCount || 0) + 1, lastPrintAt: new Date().toISOString() });
+  1238→    } else {
+  1239→      updatePalliativeReferralLetter(docId, { printCount: (doc.printCount || 0) + 1, lastPrintAt: new Date().toISOString() });
+  1240→    }
+  1241→
+  1242→    addPalliativeDocumentAuditEntry({
+  1243→      id: genId('docaudit'), documentType: docType === 'resume' ? 'resume_medis' : 'surat_rujukan',
+  1244→      documentId: docId, patientId: patient?.id || '',
+  1245→      action: 'printed', performedBy: currentUser?.name || 'Dokter', performedByRole: 'doctor',
+  1246→      details: `${docType === 'resume' ? 'Resume Medis' : 'Surat Rujukan'} dicetak`, createdAt: new Date().toISOString(),
+  1247→    });
+  1248→  }, [palliativeResumes, palliativeReferralLetters, patient, currentUser, updatePalliativeResume, updatePalliativeReferralLetter, addPalliativeDocumentAuditEntry]);
+  1249→
+  1250→  // Save as Final handler
+  1251→  const handleSaveAsFinal = useCallback(() => {
+  1252→    if (!selectedResume) return;
+  1253→    setSavingFinal(true);
+  1254→
+  1255→    const updatedAiAnalysis: PalliativeResumeAIAnalysis = {
+  1256→      ...(selectedResume.aiAnalysis || {
+  1257→        ringkasanPerjalananKlinis: '',
+  1258→        identifikasiKondisiKritis: '',
+  1259→        analisisTrenPasien: '',
+  1260→        ringkasanSkrining: { domainFisik: '', domainPsikologis: '', domainSosial: '', domainSpiritual: '', kebutuhanEdukasi: '', bebanCaregiver: '' },
+  1261→        ringkasanNutrisi: '',
+  1262→        ringkasanSosial: '',
+  1263→        ringkasanACP: '',
+  1264→        kesimpulanTelepaliatif: { diagnosisUtama: '', statusFungsionalAwal: '', statusFungsionalTerakhir: '', masalahPaliatifUtama: '', keluhanDominan: '', kondisiPalingKritis: '', responsTerhadapIntervensi: '', kondisiKlinisSaatIni: '', tujuanPerawatanSaatIni: '', rencanaTindakLanjut: '', lokasiPerawatanSaatIni: '', jadwalMonitoringBerikutnya: '' },
+  1265→        rekomendasi: [],
+  1266→      }),
+  1267→      ringkasanPerjalananKlinis: editRingkasanPerjalananKlinis,
+  1268→      identifikasiKondisiKritis: editIdentifikasiKondisiKritis,
+  1269→      analisisTrenPasien: editAnalisisTrenPasien,
+  1270→    };
+  1271→
+  1272→    updatePalliativeResume(selectedResume.id, {
+  1273→      aiAnalysis: updatedAiAnalysis,
+  1274→      updatedAt: new Date().toISOString(),
+  1275→    });
+  1276→
+  1277→    addPalliativeDocumentAuditEntry({
+  1278→      id: genId('docaudit'),
+  1279→      documentType: 'resume_medis',
+  1280→      documentId: selectedResume.id,
+  1281→      patientId: patient?.id || '',
+  1282→      action: 'generated',
+  1283→      performedBy: currentUser?.name || 'Dokter',
+  1284→      performedByRole: 'doctor',
+  1285→      details: `Resume Medis disimpan sebagai final (v${selectedResume.version})`,
+  1286→      createdAt: new Date().toISOString(),
+  1287→    });
+  1288→
+  1289→    setSavingFinal(false);
+  1290→    toast({ title: 'Resume Disimpan', description: 'Resume Medis telah disimpan sebagai final di Riwayat Resume.' });
+  1291→  }, [selectedResume, editRingkasanPerjalananKlinis, editIdentifikasiKondisiKritis, editAnalisisTrenPasien, updatePalliativeResume, addPalliativeDocumentAuditEntry, patient, currentUser, toast]);
+  1292→
+  1293→  // ── Local fallback generators ──
+  1294→  function generateLocalResumeData(p: PalliativePatientInfo) {
+  1295→    const nd = '-';
+  1296→    const fullContent = `RINGKASAN KONDISI PASIEN
+  1297→Pasien ${p.patientName || nd} (RM: ${p.rmNumber || nd})
+  1298→Diagnosa Utama: ${p.primaryDiagnosis || nd}
+  1299→Diagnosa Penyerta: ${p.secondaryDiagnosis || nd}
+  1300→Stadium: ${p.diseaseStage || nd}
+  1301→Status Perawatan: ${p.careStatus}
+  1302→Tingkat Risiko: ${p.riskLevel}
+  1303→Pasien merupakan pasien paliatif yang sedang menjalani monitoring berkala. Kondisi saat ini ${p.riskLevel === 'merah' ? 'kritis dan memerlukan perhatian intensif' : p.riskLevel === 'kuning' ? 'perlu pemantauan ketat' : 'stabil namun tetap memerlukan monitoring'}.
+  1304→
+  1305→RINGKASAN PEMERIKSAAN TERKINI
+  1306→Data pemeriksaan terkini menunjukkan kondisi ${p.riskLevel === 'merah' ? 'kritis' : p.riskLevel === 'kuning' ? 'perlu perhatian' : 'stabil'}.
+  1307→Perlu monitoring tanda vital secara berkala dan evaluasi gejala dominan.
+  1308→
+  1309→RINGKASAN TERAPI
+  1310→Terapi paliatif sedang berjalan sesuai rencana perawatan.
+  1311→Manajemen gejala dilakukan sesuai pedoman perawatan paliatif.
+  1312→
+  1313→RINGKASAN ADVANCE CARE PLANNING
+  1314→${p.notes || 'Data ACP belum tersedia.'}
+  1315→
+  1316→KESIMPULAN KLINIS
+  1317→Pasien ${p.patientName || nd} dengan diagnosa ${p.primaryDiagnosis || nd} stadium ${p.diseaseStage || nd} sedang dalam program monitoring paliatif dengan tingkat risiko ${p.riskLevel}.
+  1318→
+  1319→REKOMENDASI
+  1320→- Lanjutkan monitoring paliatif secara berkala
+  1321→- Evaluasi manajemen gejala
+  1322→- Pertimbangkan konsultasi spesialis sesuai kebutuhan
+  1323→- Diskusikan Advance Care Planning jika belum dilakukan`;
+  1324→
+  1325→    return {
+  1326→      ringkasanKondisi: `Pasien ${p.patientName || nd} dengan diagnosa ${p.primaryDiagnosis || nd}. Kondisi saat ini ${p.riskLevel === 'merah' ? 'kritis' : p.riskLevel === 'kuning' ? 'perlu perhatian' : 'stabil'}.`,
+  1327→      ringkasanPemeriksaan: `Data pemeriksaan menunjukkan tingkat risiko ${p.riskLevel}. Perlu monitoring berkala.`,
+  1328→      ringkasanTerapi: 'Terapi paliatif berjalan sesuai rencana perawatan.',
+  1329→      ringkasanACP: p.notes || 'Data ACP belum tersedia.',
+  1330→      kesimpulanKlinis: `Pasien ${p.patientName || nd} dengan diagnosa ${p.primaryDiagnosis || nd} dalam program monitoring paliatif.`,
+  1331→      rekomendasiAI: ['Lanjutkan monitoring paliatif', 'Evaluasi manajemen gejala', 'Konsultasi spesialis sesuai kebutuhan'],
+  1332→      fullContent,
+  1333→    };
+  1334→  }
+  1335→
+  1336→  function generateLocalReferralData(p: PalliativePatientInfo, dept: ReferralTargetDepartment) {
+  1337→    const nd = '-';
+  1338→    const fullContent = `ALASAN RUJUKAN
+  1339→Pasien ${p.patientName || nd} dengan diagnosa ${p.primaryDiagnosis || nd} (${p.diseaseStage || nd}) memerlukan evaluasi dan tindakan lanjutan oleh bagian ${getDeptLabel(dept)}. Kondisi pasien saat ini berada dalam tingkat risiko ${p.riskLevel} dengan status perawatan ${p.careStatus}.
+  1340→
+  1341→RINGKASAN KONDISI KLINIS
+  1342→- Diagnosa Utama: ${p.primaryDiagnosis || nd}
+  1343→- Diagnosa Penyerta: ${p.secondaryDiagnosis || nd}
+  1344→- Stadium: ${p.diseaseStage || nd}
+  1345→- Status Perawatan: ${p.careStatus}
+  1346→- Tingkat Risiko: ${p.riskLevel}
+  1347→- Terapi paliatif sedang berjalan
+  1348→
+  1349→PERMINTAAN KONSULTASI
+  1350→Mohon evaluasi dan penanganan lebih lanjut terkait kondisi pasien oleh bagian ${getDeptLabel(dept)}. Diperlukan penilaian menyeluruh dan rekomendasi tindakan medis.`;
+  1351→
+  1352→    return {
+  1353→      referralReason: `Pasien dengan diagnosa ${p.primaryDiagnosis || nd} memerlukan evaluasi lanjutan oleh ${getDeptLabel(dept)}.`,
+  1354→      clinicalSummary: `Diagnosa: ${p.primaryDiagnosis || nd}, Stadium: ${p.diseaseStage || nd}, Risiko: ${p.riskLevel}`,
+  1355→      consultationRequest: `Mohon evaluasi dan penanganan lebih lanjut oleh ${getDeptLabel(dept)}.`,
+  1356→      fullContent,
+  1357→    };
+  1358→  }
+  1359→
+  1360→  // ── Data extraction helpers ──
+  1361→  const resumeDataPasien = selectedResume?.dataPasien as PalliativeResumeDataPasien | undefined;
+  1362→  const resumeTtv = selectedResume?.ttvSerial;
+  1363→  const resumeKeluhan = selectedResume?.keluhanHarian as PalliativeResumeKeluhan | undefined;
+  1364→  const resumeSkrining = selectedResume?.skriningPaliatif as Record<string, unknown[]> | undefined;
+  1365→  const resumeEsas = selectedResume?.esasScores as { skorAwal: EsasScoreEntry | null; skorTertinggi: EsasScoreEntry | null; skorTerakhir: EsasScoreEntry | null } | undefined;
+  1366→  const resumeObat = selectedResume?.obat as Record<string, unknown> | undefined;
+  1367→  const resumeNutrisi = selectedResume?.nutrisi as { catatan?: unknown[]; ringkasan?: string } | undefined;
+  1368→  const resumeSosial = selectedResume?.sosial as { penilaianSosial?: unknown[]; caregiver?: unknown[]; pertemuanKeluarga?: unknown[]; dukunganKeuangan?: unknown[]; ringkasan?: string } | undefined;
+  1369→  const resumeAcp = selectedResume?.acp as { dokumen?: unknown[]; ringkasan?: string } | undefined;
+  1370→  const resumeAiAnalysis = selectedResume?.aiAnalysis as PalliativeResumeAIAnalysis | undefined;
+  1371→
+  1372→  // ── Render ──
+  1373→  if (!patient) {
+  1374→    return (
+  1375→      <Card className="p-8 text-center text-muted-foreground">
+  1376→        <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+  1377→        <p className="font-medium mb-2">Resume Medis & Surat Rujukan AI</p>
+  1378→        <p className="text-sm">Pilih pasien terlebih dahulu untuk mengelola dokumen medis.</p>
+  1379→      </Card>
+  1380→    );
+  1381→  }
+  1382→
+  1383→  // ── Resume Tab Content ──
+  1384→  const renderResumeContent = () => {
+  1385→    if (!selectedResume) {
+  1386→      if (patientResumes.length > 0) {
+  1387→        return (
+  1388→          <Card className="p-6 text-center text-muted-foreground">
+  1389→            <FileText className="w-10 h-10 mx-auto mb-3 opacity-50" />
+  1390→            <p>Klik pada resume di riwayat untuk melihat detail.</p>
+  1391→          </Card>
+  1392→        );
+  1393→      }
+  1394→      return (
+  1395→        <Card className="p-8 text-center text-muted-foreground">
+  1396→          <Sparkles className="w-12 h-12 mx-auto mb-3 opacity-50" />
+  1397→          <p className="font-medium mb-2">Belum Ada Resume Medis</p>
+  1398→          <p className="text-sm mb-4">
+  1399→            Klik &quot;Generate Resume AI&quot; untuk membuat resume medis otomatis dari seluruh data pasien.
+  1400→          </p>
+  1401→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left max-w-md mx-auto text-sm">
+  1402→            <div className="flex items-center gap-2"><FileText className="w-4 h-4 text-primary" />Data Pasien</div>
+  1403→            <div className="flex items-center gap-2"><Activity className="w-4 h-4 text-primary" />TTV Serial</div>
+  1404→            <div className="flex items-center gap-2"><Heart className="w-4 h-4 text-primary" />Keluhan Harian</div>
+  1405→            <div className="flex items-center gap-2"><Brain className="w-4 h-4 text-primary" />Skrining Paliatif</div>
+  1406→            <div className="flex items-center gap-2"><Gauge className="w-4 h-4 text-primary" />ESAS Score</div>
+  1407→            <div className="flex items-center gap-2"><Pill className="w-4 h-4 text-primary" />Terapi Obat</div>
+  1408→            <div className="flex items-center gap-2"><Apple className="w-4 h-4 text-primary" />Nutrisi</div>
+  1409→            <div className="flex items-center gap-2"><Users className="w-4 h-4 text-primary" />Sosial</div>
+  1410→            <div className="flex items-center gap-2"><ScrollText className="w-4 h-4 text-primary" />ACP</div>
+  1411→            <div className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" />AI Analisis</div>
+  1412→          </div>
+  1413→        </Card>
+  1414→      );
+  1415→    }
+  1416→
+  1417→    return (
+  1418→      <div className="space-y-4" ref={resumeContentRef}>
+  1419→        {/* Sticky Action Bar */}
+  1420→        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b pb-3 -mx-1 px-1">
+  1421→          <div className="flex items-center gap-2 flex-wrap">
+  1422→            <Button
+  1423→              variant="outline"
+  1424→              size="sm"
+  1425→              onClick={() => handleDownloadPdf('resume', selectedResume.id)}
+  1426→              disabled={downloading}
+  1427→              className="gap-1.5"
+  1428→            >
+  1429→              {downloading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+  1430→              PDF
+  1431→            </Button>
+  1432→            <Button
+  1433→              variant="outline"
+  1434→              size="sm"
+  1435→              onClick={() => handlePrint('resume', selectedResume.id)}
+  1436→              className="gap-1.5"
+  1437→            >
+  1438→              <Printer className="w-3.5 h-3.5" />
+  1439→              Cetak
+  1440→            </Button>
+  1441→            <Button
+  1442→              variant="outline"
+  1443→              size="sm"
+  1444→              onClick={() => { setSendDocType('resume'); setSendDocId(selectedResume.id); setShowSendDialog(true); }}
+  1445→              className="gap-1.5"
+  1446→            >
+  1447→              <Send className="w-3.5 h-3.5" />
+  1448→              Kirim
+  1449→            </Button>
+  1450→            <Button
+  1451→              size="sm"
+  1452→              onClick={handleSaveAsFinal}
+  1453→              disabled={savingFinal}
+  1454→              className="gap-1.5 bg-[#2D8C7A] hover:bg-[#247A6A]"
+  1455→            >
+  1456→              {savingFinal ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+  1457→              Save as Final
+  1458→            </Button>
+  1459→            {!selectedResume.isSigned && (
+  1460→              <Button
+  1461→                size="sm"
+  1462→                onClick={() => { setSignDocType('resume'); setSignDocId(selectedResume.id); setShowSignDialog(true); }}
+  1463→                className="gap-1.5"
+  1464→              >
+  1465→                <CheckCircle2 className="w-3.5 h-3.5" />
+  1466→                Tanda Tangan
+  1467→              </Button>
+  1468→            )}
+  1469→            {selectedResume.isSigned && (
+  1470→              <Badge className="bg-green-100 text-green-800 border border-green-300">
+  1471→                <CheckCircle2 className="w-3 h-3 mr-1" />
+  1472→                Ditandatangani
+  1473→              </Badge>
+  1474→            )}
+  1475→          </div>
+  1476→        </div>
+  1477→
+  1478→        {/* Resume Document */}
+  1479→        <Card className="overflow-hidden">
+  1480→          {/* ── Header ── */}
+  1481→          <div className="bg-gradient-to-r from-[#2D8C7A] to-[#6DB8A8] text-white p-5">
+  1482→            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+  1483→              <div>
+  1484→                <div className="flex items-center gap-2 mb-1">
+  1485→                  <div className="w-8 h-8 rounded-md bg-white/20 flex items-center justify-center text-sm font-bold">C</div>
+  1486→                  <span className="text-sm font-medium opacity-80">CareLivia</span>
+  1487→                </div>
+  1488→                <h2 className="text-xl font-bold tracking-wide">RESUME MEDIS TELEPALIATIF</h2>
+  1489→                <div className="flex items-center gap-3 mt-1 text-sm opacity-90">
+  1490→                  <span>No. {selectedResume.documentNumber}</span>
+  1491→                  <span>|</span>
+  1492→                  <span>v{selectedResume.version}</span>
+  1493→                  <span>|</span>
+  1494→                  <span>{formatDate(selectedResume.generatedAt)}</span>
+  1495→                </div>
+  1496→              </div>
+  1497→              <div className="text-right text-sm opacity-90">
+  1498→                <p className="font-medium">{selectedResume.doctorName || '-'}</p>
+  1499→                <p>DPJP{selectedResume.doctorSip ? ` • SIP: ${selectedResume.doctorSip}` : ''}</p>
+  1500→                <div className="flex items-center justify-end gap-1.5 mt-1">
+  1501→                  {resumeDataPasien?.tingkatRisiko && (
+  1502→                    <Badge className={cn(
+  1503→                      'text-[10px] border',
+  1504→                      resumeDataPasien.tingkatRisiko === 'merah' ? 'bg-red-200/80 text-red-900 border-red-400' :
+  1505→                      resumeDataPasien.tingkatRisiko === 'kuning' ? 'bg-amber-200/80 text-amber-900 border-amber-400' :
+  1506→                      'bg-green-200/80 text-green-900 border-green-400'
+  1507→                    )}>
+  1508→                      Risiko: {resumeDataPasien.tingkatRisiko}
+  1509→                    </Badge>
+  1510→                  )}
+  1511→                  {resumeDataPasien?.statusPerawatan && (
+  1512→                    <Badge className="bg-white/20 text-white border border-white/30 text-[10px]">
+  1513→                      {resumeDataPasien.statusPerawatan}
+  1514→                    </Badge>
+  1515→                  )}
+  1516→                </div>
+  1517→              </div>
+  1518→            </div>
+  1519→          </div>
+  1520→
+  1521→          {/* ── Scrollable Content ── */}
+  1522→          <div className="max-h-[85vh] overflow-y-auto custom-scrollbar p-5 space-y-5">
+  1523→
+  1524→            {/* ═══ Section 1: DATA PASIEN ═══ */}
+  1525→            <SectionCard
+  1526→              title="DATA PASIEN"
+  1527→              icon={<FileText className="w-4 h-4 text-[#2D8C7A]" />}
+  1528→              accentColor="#2D8C7A"
+  1529→            >
+  1530→              <Table>
+  1531→                <TableBody>
+  1532→                  {[
+  1533→                    ['Nama', resumeDataPasien?.nama || selectedResume.patientName],
+  1534→                    ['No. RM', resumeDataPasien?.noRM || selectedResume.rmNumber],
+  1535→                    ['NIK', resumeDataPasien?.nik],
+  1536→                    ['Tanggal Lahir', resumeDataPasien?.tanggalLahir ? formatDate(resumeDataPasien.tanggalLahir) : null],
+  1537→                    ['Umur', resumeDataPasien?.umur],
+  1538→                    ['Jenis Kelamin', resumeDataPasien?.jenisKelamin],
+  1539→                    ['No. BPJS', resumeDataPasien?.noBPJS],
+  1540→                    ['Alamat', resumeDataPasien?.alamat],
+  1541→                    ['No. Telepon', resumeDataPasien?.noTelepon],
+  1542→                    ['Diagnosa Utama', resumeDataPasien?.diagnosaUtama || patient.primaryDiagnosis],
+  1543→                    ['Diagnosa Penyerta', resumeDataPasien?.diagnosaPenyerta || patient.secondaryDiagnosis],
+  1544→                    ['DPJP', resumeDataPasien?.dpjp ? `${resumeDataPasien.dpjp}${resumeDataPasien.dpjpSpesialisasi ? ` (${resumeDataPasien.dpjpSpesialisasi})` : ''}` : null],
+  1545→                    ['Tanggal Registrasi', resumeDataPasien?.tanggalRegistrasi ? formatDate(resumeDataPasien.tanggalRegistrasi) : null],
+  1546→                  ].map(([label, value], i) => (
+  1547→                    <TableRow key={i}>
+  1548→                      <TableCell className="font-medium text-xs text-muted-foreground w-40 whitespace-nowrap">{label}</TableCell>
+  1549→                      <TableCell className="text-sm">{nullish(value)}</TableCell>
+  1550→                    </TableRow>
+  1551→                  ))}
+  1552→                  {resumeDataPasien?.kontakKeluarga && (
+  1553→                    <TableRow>
+  1554→                      <TableCell className="font-medium text-xs text-muted-foreground">Kontak Keluarga</TableCell>
+  1555→                      <TableCell className="text-sm">
+  1556→                        {nullish(resumeDataPasien.kontakKeluarga.nama)}
+  1557→                        {resumeDataPasien.kontakKeluarga.hubungan && ` (${resumeDataPasien.kontakKeluarga.hubungan})`}
+  1558→                        {resumeDataPasien.kontakKeluarga.telepon && ` • ${resumeDataPasien.kontakKeluarga.telepon}`}
+  1559→                      </TableCell>
+  1560→                    </TableRow>
+  1561→                  )}
+  1562→                </TableBody>
+  1563→              </Table>
+  1564→            </SectionCard>
+  1565→
+  1566→            {/* ═══ Section 2: TTV SERIAL ═══ */}
+  1567→            <SectionCard
+  1568→              title="TTV SERIAL"
+  1569→              icon={<Activity className="w-4 h-4 text-[#2D8C7A]" />}
+  1570→              accentColor="#2D8C7A"
+  1571→            >
+  1572→              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  1573→                {/* TTV Awal */}
+  1574→                {renderTtvCard('TTV Awal', resumeTtv?.ttvAwal as PalliativeResumeTTVRecord | null, '#22c55e', 'awal')}
+  1575→                {/* TTV Kritis */}
+  1576→                {renderTtvCard('TTV Kritis', resumeTtv?.ttvKritis as PalliativeResumeTTVRecord | null, '#ef4444', 'kritis')}
+  1577→                {/* TTV Terakhir */}
+  1578→                {renderTtvCard('TTV Terakhir', resumeTtv?.ttvTerakhir as PalliativeResumeTTVRecord | null, '#3b82f6', 'terakhir')}
+  1579→              </div>
+  1580→              {!resumeTtv?.ttvAwal && !resumeTtv?.ttvKritis && !resumeTtv?.ttvTerakhir && (
+  1581→                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data TTV</p>
+  1582→              )}
+  1583→            </SectionCard>
+  1584→
+  1585→            {/* ═══ Section 3: KELUHAN HARIAN ═══ */}
+  1586→            <SectionCard
+  1587→              title="KELUHAN HARIAN"
+  1588→              icon={<Heart className="w-4 h-4 text-[#D9B26F]" />}
+  1589→              accentColor="#D9B26F"
+  1590→            >
+  1591→              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  1592→                {renderKeluhanCard('Keluhan Awal', resumeKeluhan?.keluhanAwal as KeluhanEntry | null, '#6b7280')}
+  1593→                {renderKeluhanCard('Keluhan Terberat', resumeKeluhan?.keluhanTerberat as KeluhanEntry | null, '#ef4444')}
+  1594→                {renderKeluhanCard('Keluhan Terakhir', resumeKeluhan?.keluhanTerakhir as KeluhanEntry | null, '#14b8a6')}
+  1595→              </div>
+  1596→              {resumeKeluhan?.analisis && (
+  1597→                <div className="mt-4 p-3 bg-[#2D8C7A]/5 rounded-lg border border-[#2D8C7A]/20">
+  1598→                  <div className="flex items-center gap-1.5 mb-1">
+  1599→                    <Sparkles className="w-3.5 h-3.5 text-[#2D8C7A]" />
+  1600→                    <span className="text-xs font-semibold text-[#2D8C7A]">Analisis Frekuensi Gejala</span>
+  1601→                  </div>
+  1602→                  <p className="text-sm text-muted-foreground">{resumeKeluhan.analisis}</p>
+  1603→                </div>
+  1604→              )}
+  1605→              {!resumeKeluhan?.keluhanAwal && !resumeKeluhan?.keluhanTerberat && !resumeKeluhan?.keluhanTerakhir && !resumeKeluhan?.analisis && (
+  1606→                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data Keluhan</p>
+  1607→              )}
+  1608→            </SectionCard>
+  1609→
+  1610→            {/* ═══ Section 4: SKRINING PALIATIF ═══ */}
+  1611→            <SectionCard
+  1612→              title="SKRINING PALIATIF"
+  1613→              icon={<Brain className="w-4 h-4 text-[#8B5CF6]" />}
+  1614→              accentColor="#8B5CF6"
+  1615→            >
+  1616→              {resumeAiAnalysis?.ringkasanSkrining ? (
+  1617→                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  1618→                  {[
+  1619→                    { title: 'Domain Fisik', content: resumeAiAnalysis.ringkasanSkrining.domainFisik, icon: <Activity className="w-4 h-4" />, color: '#22c55e' },
+  1620→                    { title: 'Domain Psikologis', content: resumeAiAnalysis.ringkasanSkrining.domainPsikologis, icon: <Brain className="w-4 h-4" />, color: '#8B5CF6' },
+  1621→                    { title: 'Domain Sosial', content: resumeAiAnalysis.ringkasanSkrining.domainSosial, icon: <Users className="w-4 h-4" />, color: '#3b82f6' },
+  1622→                    { title: 'Domain Spiritual', content: resumeAiAnalysis.ringkasanSkrining.domainSpiritual, icon: <Heart className="w-4 h-4" />, color: '#D9B26F' },
+  1623→                    { title: 'Kebutuhan Edukasi', content: resumeAiAnalysis.ringkasanSkrining.kebutuhanEdukasi, icon: <FileCheck className="w-4 h-4" />, color: '#f59e0b' },
+  1624→                    { title: 'Beban Caregiver', content: resumeAiAnalysis.ringkasanSkrining.bebanCaregiver, icon: <AlertTriangle className="w-4 h-4" />, color: '#ef4444' },
+  1625→                  ].map((domain) => (
+  1626→                    <div key={domain.title} className="rounded-lg border p-3" style={{ borderLeftWidth: '3px', borderLeftColor: domain.color }}>
+  1627→                      <div className="flex items-center gap-1.5 mb-2">
+  1628→                        <span style={{ color: domain.color }}>{domain.icon}</span>
+  1629→                        <span className="text-xs font-semibold">{domain.title}</span>
+  1630→                      </div>
+  1631→                      <p className="text-sm text-muted-foreground">{domain.content || 'Tidak Ada Data'}</p>
+  1632→                    </div>
+  1633→                  ))}
+  1634→                </div>
+  1635→              ) : (
+  1636→                <div>
+  1637→                  {resumeSkrining && Object.keys(resumeSkrining).length > 0 ? (
+  1638→                    <div className="space-y-2">
+  1639→                      {Object.entries(resumeSkrining).map(([key, value]) => (
+  1640→                        <div key={key} className="flex items-center justify-between p-2 rounded-lg bg-muted/50 text-sm">
+  1641→                          <span className="font-medium capitalize">{key}</span>
+  1642→                          <Badge variant="outline" className="text-[10px]">{Array.isArray(value) ? `${value.length} record(s)` : 'N/A'}</Badge>
+  1643→                        </div>
+  1644→                      ))}
+  1645→                    </div>
+  1646→                  ) : (
+  1647→                    <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data Skrining</p>
+  1648→                  )}
+  1649→                </div>
+  1650→              )}
+  1651→            </SectionCard>
+  1652→
+  1653→            {/* ═══ Section 5: ESAS ═══ */}
+  1654→            <SectionCard
+  1655→              title="ESAS (Edmonton Symptom Assessment System)"
+  1656→              icon={<Gauge className="w-4 h-4 text-[#2D8C7A]" />}
+  1657→              accentColor="#2D8C7A"
+  1658→            >
+  1659→              {resumeEsas?.skorAwal || resumeEsas?.skorTertinggi || resumeEsas?.skorTerakhir ? (
+  1660→                <div className="overflow-x-auto">
+  1661→                  <Table>
+  1662→                    <TableHeader>
+  1663→                      <TableRow>
+  1664→                        <TableHead className="text-xs">Parameter</TableHead>
+  1665→                        <TableHead className="text-xs text-center">Skor Awal</TableHead>
+  1666→                        <TableHead className="text-xs text-center">Skor Tertinggi</TableHead>
+  1667→                        <TableHead className="text-xs text-center">Skor Terakhir</TableHead>
+  1668→                      </TableRow>
+  1669→                    </TableHeader>
+  1670→                    <TableBody>
+  1671→                      {[
+  1672→                        { label: 'Nyeri', awal: resumeEsas.skorAwal?.nyeri, tinggi: resumeEsas.skorTertinggi?.nyeri, akhir: resumeEsas.skorTerakhir?.nyeri },
+  1673→                        { label: 'Kelelahan', awal: resumeEsas.skorAwal?.kelelahan, tinggi: resumeEsas.skorTertinggi?.kelelahan, akhir: resumeEsas.skorTerakhir?.kelelahan },
+  1674→                        { label: 'Mengantuk', awal: resumeEsas.skorAwal?.mengantuk, tinggi: resumeEsas.skorTertinggi?.mengantuk, akhir: resumeEsas.skorTerakhir?.mengantuk },
+  1675→                        { label: 'Mual', awal: resumeEsas.skorAwal?.mual, tinggi: resumeEsas.skorTertinggi?.mual, akhir: resumeEsas.skorTerakhir?.mual },
+  1676→                        { label: 'Nafsu Makan', awal: resumeEsas.skorAwal?.nafsuMakan, tinggi: resumeEsas.skorTertinggi?.nafsuMakan, akhir: resumeEsas.skorTerakhir?.nafsuMakan },
+  1677→                        { label: 'Sesak', awal: resumeEsas.skorAwal?.sesak, tinggi: resumeEsas.skorTertinggi?.sesak, akhir: resumeEsas.skorTerakhir?.sesak },
+  1678→                        { label: 'Kecemasan', awal: resumeEsas.skorAwal?.kecemasan, tinggi: resumeEsas.skorTertinggi?.kecemasan, akhir: resumeEsas.skorTerakhir?.kecemasan },
+  1679→                        { label: 'Depresi', awal: resumeEsas.skorAwal?.depresi, tinggi: resumeEsas.skorTertinggi?.depresi, akhir: resumeEsas.skorTerakhir?.depresi },
+  1680→                        { label: 'Kesejahteraan Umum', awal: resumeEsas.skorAwal?.kesejahteraan, tinggi: resumeEsas.skorTertinggi?.kesejahteraan, akhir: resumeEsas.skorTerakhir?.kesejahteraan },
+  1681→                      ].map((row) => (
+  1682→                        <TableRow key={row.label}>
+  1683→                          <TableCell className="text-sm font-medium">{row.label}</TableCell>
+  1684→                          <TableCell className="text-center">
+  1685→                            <span className={cn('inline-block px-2 py-0.5 rounded text-xs font-medium', getEsasColor(row.awal))}>
+  1686→                              {row.awal != null ? row.awal : '-'}
+  1687→                            </span>
+  1688→                          </TableCell>
+  1689→                          <TableCell className="text-center">
+  1690→                            <span className={cn('inline-block px-2 py-0.5 rounded text-xs font-medium', getEsasColor(row.tinggi))}>
+  1691→                              {row.tinggi != null ? row.tinggi : '-'}
+  1692→                            </span>
+  1693→                          </TableCell>
+  1694→                          <TableCell className="text-center">
+  1695→                            <span className={cn('inline-block px-2 py-0.5 rounded text-xs font-medium', getEsasColor(row.akhir))}>
+  1696→                              {row.akhir != null ? row.akhir : '-'}
+  1697→                            </span>
+  1698→                          </TableCell>
+  1699→                        </TableRow>
+  1700→                      ))}
+  1701→                      {/* Total Score Row */}
+  1702→                      <TableRow className="border-t-2">
+  1703→                        <TableCell className="text-sm font-bold">Total Skor</TableCell>
+  1704→                        <TableCell className="text-center">
+  1705→                          <span className="font-bold text-sm">{resumeEsas.skorAwal?.score != null ? resumeEsas.skorAwal.score : '-'}</span>
+  1706→                        </TableCell>
+  1707→                        <TableCell className="text-center">
+  1708→                          <span className="font-bold text-sm">{resumeEsas.skorTertinggi?.score != null ? resumeEsas.skorTertinggi.score : '-'}</span>
+  1709→                        </TableCell>
+  1710→                        <TableCell className="text-center">
+  1711→                          <span className="font-bold text-sm">{resumeEsas.skorTerakhir?.score != null ? resumeEsas.skorTerakhir.score : '-'}</span>
+  1712→                        </TableCell>
+  1713→                      </TableRow>
+  1714→                    </TableBody>
+  1715→                  </Table>
+  1716→                  <div className="flex items-center gap-4 mt-3 text-[10px] text-muted-foreground">
+  1717→                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-50 border border-green-200" /> 0–3 Ringan</span>
+  1718→                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-50 border border-amber-200" /> 4–6 Sedang</span>
+  1719→                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-50 border border-red-200" /> 7–10 Berat</span>
+  1720→                  </div>
+  1721→                </div>
+  1722→              ) : (
+  1723→                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data ESAS</p>
+  1724→              )}
+  1725→            </SectionCard>
+  1726→
+  1727→            {/* ═══ Section 6: TERAPI OBAT ═══ */}
+  1728→            <SectionCard
+  1729→              title="TERAPI OBAT"
+  1730→              icon={<Pill className="w-4 h-4 text-[#D9B26F]" />}
+  1731→              accentColor="#D9B26F"
+  1732→            >
+  1733→              {resumeObat ? (
+  1734→                <div className="space-y-4">
+  1735→                  {/* Analgesik */}
+  1736→                  {renderMedicationTable('Analgesik', resumeObat.analgesik as MedicationEntry[] | undefined, '#ef4444')}
+  1737→
+  1738→                  {/* Obat Simtomatik */}
+  1739→                  {(resumeObat.simtomatik as Record<string, MedicationEntry[]>) && (
+  1740→                    <div className="space-y-3">
+  1741→                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Obat Simtomatik</h4>
+  1742→                      {Object.entries(resumeObat.simtomatik as Record<string, MedicationEntry[]>).map(([category, meds]) => (
+  1743→                        <div key={category}>
+  1744→                          {renderMedicationTable(category.charAt(0).toUpperCase() + category.slice(1), meds, '#3b82f6')}
+  1745→                        </div>
+  1746→                      ))}
+  1747→                    </div>
+  1748→                  )}
+  1749→
+  1750→                  {/* Obat Lainnya */}
+  1751→                  {renderMedicationTable('Obat Lainnya', resumeObat.obatLainnya as MedicationEntry[] | undefined, '#6b7280')}
+  1752→
+  1753→                  {/* Summary Cards */}
+  1754→                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+  1755→                    <div className="rounded-lg border p-3 bg-muted/30">
+  1756→                      <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">Kepatuhan</div>
+  1757→                      <p className="text-sm">{nullish(resumeObat.kepatuhan)}</p>
+  1758→                    </div>
+  1759→                    <div className="rounded-lg border p-3 bg-muted/30">
+  1760→                      <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">Perubahan Regimen</div>
+  1761→                      <p className="text-sm">{nullish(resumeObat.perubahanRegimen)}</p>
+  1762→                    </div>
+  1763→                    <div className="rounded-lg border p-3 bg-muted/30">
+  1764→                      <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">Respons Terapi</div>
+  1765→                      <p className="text-sm">{nullish(resumeObat.responsTerapi)}</p>
+  1766→                    </div>
+  1767→                  </div>
+  1768→                </div>
+  1769→              ) : (
+  1770→                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data Terapi Obat</p>
+  1771→              )}
+  1772→            </SectionCard>
+  1773→
+  1774→            {/* ═══ Section 7: NUTRISI ═══ */}
+  1775→            <SectionCard
+  1776→              title="NUTRISI"
+  1777→              icon={<Apple className="w-4 h-4 text-[#22c55e]" />}
+  1778→              accentColor="#22c55e"
+  1779→            >
+  1780→              {resumeNutrisi?.catatan || resumeNutrisi?.ringkasan || resumeAiAnalysis?.ringkasanNutrisi ? (
+  1781→                <div className="space-y-3">
+  1782→                  {/* Actual nutrition records */}
+  1783→                  {resumeNutrisi?.catatan && Array.isArray(resumeNutrisi.catatan) && resumeNutrisi.catatan.length > 0 && (
+  1784→                    renderGenericRecords(resumeNutrisi.catatan, 'Catatan Nutrisi')
+  1785→                  )}
+  1786→                  {/* AI Summary */}
+  1787→                  {(resumeAiAnalysis?.ringkasanNutrisi || resumeNutrisi?.ringkasan) && (
+  1788→                    <div className="p-3 bg-[#22c55e]/5 rounded-lg border border-[#22c55e]/20">
+  1789→                      <div className="flex items-center gap-1.5 mb-1">
+  1790→                        <Sparkles className="w-3.5 h-3.5 text-[#22c55e]" />
+  1791→                        <span className="text-xs font-semibold text-[#22c55e]">Ringkasan Nutrisi AI</span>
+  1792→                      </div>
+  1793→                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+  1794→                        {resumeAiAnalysis?.ringkasanNutrisi || resumeNutrisi?.ringkasan}
+  1795→                      </p>
+  1796→                    </div>
+  1797→                  )}
+  1798→                </div>
+  1799→              ) : (
+  1800→                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data Nutrisi</p>
+  1801→              )}
+  1802→            </SectionCard>
+  1803→
+  1804→            {/* ═══ Section 8: SOSIAL ═══ */}
+  1805→            <SectionCard
+  1806→              title="SOSIAL"
+  1807→              icon={<Users className="w-4 h-4 text-[#3b82f6]" />}
+  1808→              accentColor="#3b82f6"
+  1809→            >
+  1810→              {resumeSosial?.penilaianSosial || resumeSosial?.caregiver || resumeSosial?.pertemuanKeluarga || resumeSosial?.dukunganKeuangan || resumeSosial?.ringkasan || resumeAiAnalysis?.ringkasanSosial ? (
+  1811→                <div className="space-y-3">
+  1812→                  {/* Penilaian Sosial */}
+  1813→                  {resumeSosial?.penilaianSosial && Array.isArray(resumeSosial.penilaianSosial) && resumeSosial.penilaianSosial.length > 0 && (
+  1814→                    renderGenericRecords(resumeSosial.penilaianSosial, 'Penilaian Sosial')
+  1815→                  )}
+  1816→                  {/* Caregiver */}
+  1817→                  {resumeSosial?.caregiver && Array.isArray(resumeSosial.caregiver) && resumeSosial.caregiver.length > 0 && (
+  1818→                    renderGenericRecords(resumeSosial.caregiver, 'Caregiver')
+  1819→                  )}
+  1820→                  {/* Pertemuan Keluarga */}
+  1821→                  {resumeSosial?.pertemuanKeluarga && Array.isArray(resumeSosial.pertemuanKeluarga) && resumeSosial.pertemuanKeluarga.length > 0 && (
+  1822→                    renderGenericRecords(resumeSosial.pertemuanKeluarga, 'Pertemuan Keluarga')
+  1823→                  )}
+  1824→                  {/* Dukungan Keuangan */}
+  1825→                  {resumeSosial?.dukunganKeuangan && Array.isArray(resumeSosial.dukunganKeuangan) && resumeSosial.dukunganKeuangan.length > 0 && (
+  1826→                    renderGenericRecords(resumeSosial.dukunganKeuangan, 'Dukungan Keuangan')
+  1827→                  )}
+  1828→                  {/* AI Summary */}
+  1829→                  {(resumeAiAnalysis?.ringkasanSosial || resumeSosial?.ringkasan) && (
+  1830→                    <div className="p-3 bg-[#3b82f6]/5 rounded-lg border border-[#3b82f6]/20">
+  1831→                      <div className="flex items-center gap-1.5 mb-1">
+  1832→                        <Sparkles className="w-3.5 h-3.5 text-[#3b82f6]" />
+  1833→                        <span className="text-xs font-semibold text-[#3b82f6]">Ringkasan Sosial AI</span>
+  1834→                      </div>
+  1835→                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+  1836→                        {resumeAiAnalysis?.ringkasanSosial || resumeSosial?.ringkasan}
+  1837→                      </p>
+  1838→                    </div>
+  1839→                  )}
+  1840→                </div>
+  1841→              ) : (
+  1842→                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data Sosial</p>
+  1843→              )}
+  1844→            </SectionCard>
+  1845→
+  1846→            {/* ═══ Section 9: ACP ═══ */}
+  1847→            <SectionCard
+  1848→              title="ADVANCE CARE PLANNING (ACP)"
+  1849→              icon={<ScrollText className="w-4 h-4 text-[#D9B26F]" />}
+  1850→              accentColor="#D9B26F"
+  1851→            >
+  1852→              {resumeAcp?.dokumen || resumeAcp?.ringkasan || resumeAiAnalysis?.ringkasanACP ? (
+  1853→                <div className="space-y-3">
+  1854→                  {/* ACP Documents */}
+  1855→                  {resumeAcp?.dokumen && Array.isArray(resumeAcp.dokumen) && resumeAcp.dokumen.length > 0 && (
+  1856→                    <div className="space-y-3 mb-3">
+  1857→                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dokumen ACP ({resumeAcp.dokumen.length})</h4>
+  1858→                      {resumeAcp.dokumen.map((doc, idx) => {
+  1859→                        if (typeof doc !== 'object' || doc === null) return null;
+  1860→                        return renderAcpDocument(doc as Record<string, unknown>, idx);
+  1861→                      })}
+  1862→                    </div>
+  1863→                  )}
+  1864→                  {/* AI Summary */}
+  1865→                  {(resumeAiAnalysis?.ringkasanACP || resumeAcp?.ringkasan) && (
+  1866→                    <div className="p-3 bg-[#D9B26F]/5 rounded-lg border border-[#D9B26F]/20">
+  1867→                      <div className="flex items-center gap-1.5 mb-1">
+  1868→                        <Sparkles className="w-3.5 h-3.5 text-[#D9B26F]" />
+  1869→                        <span className="text-xs font-semibold text-[#D9B26F]">Ringkasan ACP AI</span>
+  1870→                      </div>
+  1871→                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+  1872→                        {resumeAiAnalysis?.ringkasanACP || resumeAcp?.ringkasan}
+  1873→                      </p>
+  1874→                    </div>
+  1875→                  )}
+  1876→                </div>
+  1877→              ) : (
+  1878→                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data ACP</p>
+  1879→              )}
+  1880→            </SectionCard>
+  1881→
+  1882→            {/* ═══ Section 10: AI ANALISIS ═══ */}
+  1883→            <SectionCard
+  1884→              title="AI ANALISIS"
+  1885→              icon={<Sparkles className="w-4 h-4 text-[#2D8C7A]" />}
+  1886→              accentColor="#2D8C7A"
+  1887→            >
+  1888→              {resumeAiAnalysis ? (
+  1889→                <div className="space-y-4">
+  1890→                  {/* Ringkasan Perjalanan Klinis */}
+  1891→                  <div>
+  1892→                    <div className="flex items-center gap-1.5 mb-1.5">
+  1893→                      <TrendingUp className="w-3.5 h-3.5 text-[#2D8C7A]" />
+  1894→                      <Label className="text-xs font-semibold">Ringkasan Perjalanan Klinis</Label>
+  1895→                    </div>
+  1896→                    <Textarea
+  1897→                      value={editRingkasanPerjalananKlinis}
+  1898→                      onChange={(e) => setEditRingkasanPerjalananKlinis(e.target.value)}
+  1899→                      className="min-h-[100px] text-sm resize-y"
+  1900→                      placeholder="Ringkasan perjalanan klinis pasien..."
+  1901→                    />
+  1902→                  </div>
+  1903→
+  1904→                  {/* Identifikasi Kondisi Kritis */}
+  1905→                  <div>
+  1906→                    <div className="flex items-center gap-1.5 mb-1.5">
+  1907→                      <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+  1908→                      <Label className="text-xs font-semibold">Identifikasi Kondisi Kritis</Label>
+  1909→                    </div>
+  1910→                    <Textarea
+  1911→                      value={editIdentifikasiKondisiKritis}
+  1912→                      onChange={(e) => setEditIdentifikasiKondisiKritis(e.target.value)}
+  1913→                      className="min-h-[100px] text-sm resize-y"
+  1914→                      placeholder="Identifikasi kondisi kritis pasien..."
+  1915→                    />
+  1916→                  </div>
+  1917→
+  1918→                  {/* Analisis Tren Pasien */}
+  1919→                  <div>
+  1920→                    <div className="flex items-center gap-1.5 mb-1.5">
+  1921→                      <Activity className="w-3.5 h-3.5 text-blue-500" />
+  1922→                      <Label className="text-xs font-semibold">Analisis Tren Pasien</Label>
+  1923→                      {(() => {
+  1924→                        const badge = getTrendBadge(editAnalisisTrenPasien);
+  1925→                        return editAnalisisTrenPasien ? (
+  1926→                          <Badge variant="outline" className={cn('text-[10px] ml-1', badge.className)}>
+  1927→                            {badge.label}
+  1928→                          </Badge>
+  1929→                        ) : null;
+  1930→                      })()}
+  1931→                    </div>
+  1932→                    <Textarea
+  1933→                      value={editAnalisisTrenPasien}
+  1934→                      onChange={(e) => setEditAnalisisTrenPasien(e.target.value)}
+  1935→                      className="min-h-[100px] text-sm resize-y"
+  1936→                      placeholder="Analisis tren pasien..."
+  1937→                    />
+  1938→                  </div>
+  1939→                </div>
+  1940→              ) : (
+  1941→                <p className="text-sm text-muted-foreground text-center py-4">Tidak Ada Data AI Analisis</p>
+  1942→              )}
+  1943→            </SectionCard>
+  1944→
+  1945→            {/* ═══ Section 11: KESIMPULAN TELEPALIATIF ═══ */}
+  1946→            {resumeAiAnalysis?.kesimpulanTelepaliatif && (
+  1947→              <SectionCard
+  1948→                title="KESIMPULAN TELEPALIATIF"
+  1949→                icon={<FileCheck className="w-4 h-4 text-[#2D8C7A]" />}
+  1950→                accentColor="#2D8C7A"
+  1951→              >
+  1952→                <Table>
+  1953→                  <TableBody>
+  1954→                    {Object.entries(resumeAiAnalysis.kesimpulanTelepaliatif).map(([key, value]) => (
+  1955→                      <TableRow key={key}>
+  1956→                        <TableCell className="font-medium text-xs text-muted-foreground w-48 whitespace-nowrap">
+  1957→                          {key.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase())}
+  1958→                        </TableCell>
+  1959→                        <TableCell className="text-sm">{nullish(value)}</TableCell>
+  1960→                      </TableRow>
+  1961→                    ))}
+  1962→                  </TableBody>
+  1963→                </Table>
+  1964→              </SectionCard>
+  1965→            )}
+  1966→
+  1967→            {/* ═══ Section 12: REKOMENDASI ═══ */}
+  1968→            {resumeAiAnalysis?.rekomendasi && resumeAiAnalysis.rekomendasi.length > 0 && (
+  1969→              <SectionCard
+  1970→                title="REKOMENDASI"
+  1971→                icon={<Sparkles className="w-4 h-4 text-[#2D8C7A]" />}
+  1972→                accentColor="#2D8C7A"
+  1973→              >
+  1974→                <div className="space-y-2">
+  1975→                  {resumeAiAnalysis.rekomendasi.map((rec, i) => (
+  1976→                    <div key={i} className="flex items-start gap-2.5 text-sm">
+  1977→                      <span className="bg-[#2D8C7A] text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+  1978→                        {i + 1}
+  1979→                      </span>
+  1980→                      <span className="text-muted-foreground">{rec}</span>
+  1981→                    </div>
+  1982→                  ))}
+  1983→                </div>
+  1984→              </SectionCard>
+  1985→            )}
+  1986→
+  1987→            {/* ── Signature Area ── */}
+  1988→            <div className="border-t pt-4">
+  1989→              <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+  1990→                <div className="text-sm">
+  1991→                  <Badge variant="outline" className="text-[10px]">
+  1992→                    Unduh: {selectedResume.downloadCount}x | Cetak: {selectedResume.printCount}x
+  1993→                  </Badge>
+  1994→                </div>
+  1995→                {selectedResume.isSigned ? (
+  1996→                  <div className="flex items-end gap-3">
+  1997→                    <div className="text-right">
+  1998→                      <p className="text-sm font-medium">{selectedResume.doctorName || '-'}</p>
+  1999→                      <p className="text-xs text-muted-foreground">SIP: {selectedResume.doctorSip || '-'}</p>
+  2000→                      <div className="flex items-center justify-end gap-1 mt-1">
+
+[showing lines 1-2000 of 2865; use offset=2001 with limit to continue reading]

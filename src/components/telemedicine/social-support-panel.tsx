@@ -2532,6 +2532,14 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
     { value: 'ai-analysis', label: 'AI Analisis Sosial', icon: Brain },
   ];
 
+  if (!palliativePatientId) {
+    return (
+      <div className="flex items-center justify-center h-64 text-muted-foreground">
+        <p>Pilih pasien terlebih dahulu untuk melihat data sosial.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <Tabs value={activeTab} onValueChange={setActiveTab}>

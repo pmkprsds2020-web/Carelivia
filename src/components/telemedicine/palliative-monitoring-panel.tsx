@@ -192,6 +192,8 @@ function getRiskBadge(level: PalliativeRiskLevel) {
       return { label: 'Risiko Sedang', className: 'bg-amber-100 text-amber-800 border-amber-300' };
     case 'hijau':
       return { label: 'Risiko Rendah', className: 'bg-green-100 text-green-800 border-green-300' };
+    default:
+      return { label: 'Tidak Diketahui', className: 'bg-gray-100 text-gray-800 border-gray-300' };
   }
 }
 
@@ -205,6 +207,8 @@ function getCareStatusBadge(status: PalliativeCareStatus) {
       return { label: 'Hospice', className: 'bg-purple-100 text-purple-800' };
     case 'rawat_inap':
       return { label: 'Rawat Inap', className: 'bg-orange-100 text-orange-800' };
+    default:
+      return { label: status || 'Tidak Diketahui', className: 'bg-gray-100 text-gray-800' };
   }
 }
 
@@ -214,6 +218,8 @@ function getPatientStatusLabel(status: PalliativePatientStatus): string {
     case 'meninggal': return 'Meninggal';
     case 'lost_follow_up': return 'Lost to Follow-up';
     case 'pindah_faskes': return 'Pindah Faskes';
+    case 'program_selesai': return 'Program Selesai';
+    default: return status || 'Tidak Diketahui';
   }
 }
 
@@ -226,6 +232,8 @@ function getEwsBadge(level?: PalliativeEwsLevel) {
       return { label: 'Perhatian', className: 'bg-amber-100 text-amber-800 border-amber-300' };
     case 'hijau':
       return { label: 'Normal', className: 'bg-green-100 text-green-800 border-green-300' };
+    default:
+      return { label: '-', className: 'bg-gray-100 text-gray-600' };
   }
 }
 
@@ -237,6 +245,7 @@ function getToolTypeName(type: PalliativeToolType): string {
     case 'pps': return 'PPS';
     case 'zarit': return 'Zarit Burden';
     case 'eortc': return 'EORTC QLQ-C15-PAL';
+    default: return type;
   }
 }
 
@@ -573,6 +582,7 @@ export function PalliativeMonitoringPanel() {
       case 'terminal': return 'Terminal';
       case 'meninggal_dunia': return 'Meninggal Dunia';
       case 'program_selesai': return 'Program Selesai';
+      default: return status || 'Belum ditentukan';
     }
   }, []);
 
@@ -587,6 +597,7 @@ export function PalliativeMonitoringPanel() {
       case 'penilaian_sesak': return 'Penilaian Sesak';
       case 'penilaian_nutrisi': return 'Penilaian Nutrisi';
       case 'acp': return 'Advance Care Planning (ACP)';
+      default: return type;
     }
   }, []);
 
@@ -2271,7 +2282,7 @@ export function PalliativeMonitoringPanel() {
                   const prevSameType = patientScreenings.find(
                     (ps, pi) => pi > idx && ps.screeningType === s.screeningType
                   );
-                  let trendIcon = null;
+                  let trendIcon: React.ReactNode = null;
                   if (prevSameType && s.score !== undefined && prevSameType.score !== undefined) {
                     if (s.score > prevSameType.score) {
                       trendIcon = <TrendingUp className="w-4 h-4 text-red-500" />;
