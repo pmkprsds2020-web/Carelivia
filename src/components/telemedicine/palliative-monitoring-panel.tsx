@@ -79,6 +79,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
+import { MonitoringMarquee } from '@/components/telemedicine/monitoring-marquee';
+import { useMonitoringStatus } from '@/components/telemedicine/use-monitoring-status';
 import {
   LineChart,
   Line,
@@ -319,7 +321,7 @@ export function PalliativeMonitoringPanel() {
   const [showACPDetail, setShowACPDetail] = useState<string | null>(null);
 
   // Form states for new patient
-  const [newPatient, setNewPatient] = useState<Partial<PalliativePatientInfo>>({});
+  const [newPatient, setNewPatient] = useState<Partial<PalliativePatientInfo> & { weight?: number; height?: number }>({});
   // Form states for new vital sign
   const [newVital, setNewVital] = useState<Partial<VitalSignRecordInfo>>({});
   // Form states for new medication
@@ -381,6 +383,9 @@ export function PalliativeMonitoringPanel() {
   } = useStore();
 
   const { toast } = useToast();
+
+  // ── Monitoring Status ──
+  const monitoringStatus = useMonitoringStatus(selectedPalliativePatientId);
 
   // ── Selected patient data ──
   const selectedPatient = useMemo(
@@ -1207,6 +1212,46 @@ export function PalliativeMonitoringPanel() {
   // ── Render: Dashboard ──
   const renderDashboard = () => (
     <div className="space-y-4">
+      {/* Marquee - highest priority notification */}
+      <MonitoringMarquee priority={monitoringStatus.highestPriority} message={monitoringStatus.highestPriorityMessage} />
+
+      {/* Monitoring Status Summary */}
+      <Card className="p-4">
+        <CardHeader className="p-0 pb-3">
+          <CardTitle className="text-sm font-semibold">Status Monitoring Hari Ini</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0 space-y-2">
+          {([
+            { label: 'TTV Serial', info: monitoringStatus.ttv },
+            { label: 'Keluhan Harian', info: monitoringStatus.keluhan },
+            { label: 'Obat', info: monitoringStatus.obat },
+            { label: 'Nutrisi', info: monitoringStatus.nutrisi },
+            { label: 'Skrining Paliatif', info: monitoringStatus.skrining },
+          ] as const).map(({ label, info }) => {
+            const icon = info.status === 'tepat_waktu' ? '✅' : info.status === 'akan_jatuh_tempo' ? '⚠️' : '🔴';
+            const statusText =
+              info.status === 'tepat_waktu'
+                ? 'Sudah Diisi'
+                : info.status === 'akan_jatuh_tempo'
+                  ? 'Akan Jatuh Tempo'
+                  : 'Terlambat';
+            const textColor =
+              info.priority === 'hijau'
+                ? 'text-emerald-700'
+                : info.priority === 'kuning'
+                  ? 'text-amber-700'
+                  : 'text-red-700';
+            return (
+              <div key={label} className={cn('flex items-center gap-2 text-sm', textColor)}>
+                <span>{icon}</span>
+                <span className="font-medium">{label}:</span>
+                <span>{statusText}</span>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
         <Card className="p-4">
@@ -1932,6 +1977,7 @@ export function PalliativeMonitoringPanel() {
   // ── Render: TTV Serial ──
   const renderTTV = () => (
     <div className="space-y-4">
+      <MonitoringMarquee priority={monitoringStatus.ttv.priority} message={monitoringStatus.ttv.message} />
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Monitoring Tanda Vital Serial</h2>
         <Button onClick={() => setShowAddVital(true)} disabled={!selectedPatient}>
@@ -2221,6 +2267,7 @@ export function PalliativeMonitoringPanel() {
   // ── Render: Screening ──
   const renderScreening = () => (
     <div className="space-y-4">
+      <MonitoringMarquee priority={monitoringStatus.skrining.priority} message={monitoringStatus.skrining.message} />
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Riwayat Skrining Paliatif</h2>
         <Button
@@ -2328,6 +2375,7 @@ export function PalliativeMonitoringPanel() {
   // ── Render: Medication ──
   const renderMedication = () => (
     <div className="space-y-4">
+      <MonitoringMarquee priority={monitoringStatus.obat.priority} message={monitoringStatus.obat.message} />
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Monitoring Obat Paliatif</h2>
         <Button onClick={() => setShowAddMedication(true)} disabled={!selectedPatient}>
@@ -3214,6 +3262,7 @@ export function PalliativeMonitoringPanel() {
 
     return (
       <div className="space-y-4">
+        <MonitoringMarquee priority={monitoringStatus.nutrisi.priority} message={monitoringStatus.nutrisi.message} />
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Utensils className="w-5 h-5 text-primary" />
@@ -3748,6 +3797,7 @@ export function PalliativeMonitoringPanel() {
         <TabsContent value="medication">{renderMedication()}</TabsContent>
         <TabsContent value="nutrition">{renderNutrition()}</TabsContent>
         <TabsContent value="keluhan">
+          <MonitoringMarquee priority={monitoringStatus.keluhan.priority} message={monitoringStatus.keluhan.message} />
           <DailyComplaintPanel palliativePatientId={selectedPalliativePatientId} />
         </TabsContent>
         <TabsContent value="sosial">

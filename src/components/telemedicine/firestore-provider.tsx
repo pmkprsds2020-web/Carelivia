@@ -124,6 +124,7 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                 bmi: (r.bmi || 0) as number,
                 recordedBy: (r.recordedBy || '') as string,
                 recordedAt: (r.recordedAt || r.tanggal || r.createdAt || '') as string,
+                createdAt: (r.createdAt as string) || new Date().toISOString(),
               }));
               for (const v of vitals) {
                 const exists = store.vitalSignRecords.some(r => r.id === v.id);
@@ -139,17 +140,17 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
               const complaints: DailyComplaintRecord[] = keluhanRecords.map(r => ({
                 id: r.id,
                 palliativePatientId: patientId,
-                kondisiHariIni: (r.kondisiHariIni || '') as string,
+                kondisiHariIni: (r.kondisiHariIni || 'stabil') as DailyComplaintRecord['kondisiHariIni'],
                 alasanKondisi: (r.alasanKondisi || '') as string,
-                keluhanBaru: (r.keluhanBaru || '') as string,
+                keluhanBaru: (r.keluhanBaru || 'tidak') as DailyComplaintRecord['keluhanBaru'],
                 deskripsiKeluhanBaru: (r.deskripsiKeluhanBaru || '') as string,
-                kondisiNyeri: (r.kondisiNyeri || '') as string,
-                kondisiSesak: (r.kondisiSesak || '') as string,
-                makanMinum: (r.makanMinum || '') as string,
+                kondisiNyeri: (r.kondisiNyeri || 'tidak_ada') as DailyComplaintRecord['kondisiNyeri'],
+                kondisiSesak: (r.kondisiSesak || 'tidak_ada') as DailyComplaintRecord['kondisiSesak'],
+                makanMinum: (r.makanMinum || 'ya') as DailyComplaintRecord['makanMinum'],
                 alasanMakanMinum: (r.alasanMakanMinum || '') as string,
-                tidur: (r.tidur || '') as string,
+                tidur: (r.tidur || 'ya') as DailyComplaintRecord['tidur'],
                 alasanTidur: (r.alasanTidur || '') as string,
-                masalahObat: (r.masalahObat || '') as string,
+                masalahObat: (r.masalahObat || 'tidak') as DailyComplaintRecord['masalahObat'],
                 deskripsiMasalahObat: (r.deskripsiMasalahObat || '') as string,
                 severityLevel: (r.severityLevel || 'ringan') as DailyComplaintRecord['severityLevel'],
                 sumberPengisian: (r.sumberPengisian || 'manual') as DailyComplaintRecord['sumberPengisian'],
@@ -177,6 +178,8 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                   endDate: (r.endDate || '') as string,
                   isActive: (r.isActive ?? true) as boolean,
                   notes: (r.notes || '') as string,
+                  createdAt: (r.createdAt as string) || new Date().toISOString(),
+                  updatedAt: (r.updatedAt as string) || new Date().toISOString(),
                 });
               }
             }
@@ -196,9 +199,9 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                   scoreLabel: (r.scoreLabel || '') as string,
                   ewsLevel: (r.ewsLevel || 'rendah') as PalliativeScreeningRecordInfo['ewsLevel'],
                   interpretation: (r.interpretation || '') as string,
-                  details: (r.details || {}) as Record<string, unknown>,
-                  screenedAt: (r.screenedAt || r.tanggal || r.createdAt || '') as string,
-                  screenedBy: (r.screenedBy || '') as string,
+                  details: (typeof r.details === 'string' ? r.details : JSON.stringify(r.details || {})) as string,
+                  performedAt: (r.performedAt || r.screenedAt || r.tanggal || r.createdAt || '') as string,
+                  createdAt: (r.createdAt as string) || new Date().toISOString(),
                 });
               }
             }
@@ -222,9 +225,10 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                   icuPref: (r.icuPref || 'tidak') as AdvanceCarePlanInfo['icuPref'],
                   patientHopes: (r.patientHopes || '') as string,
                   patientWorries: (r.patientWorries || '') as string,
-                  isSignedByPatient: (r.isSignedByPatient ?? false) as boolean,
-                  isSignedByFamily: (r.isSignedByFamily ?? false) as boolean,
-                  isSignedByDoctor: (r.isSignedByDoctor ?? false) as boolean,
+                  patientSigned: (r.patientSigned ?? r.isSignedByPatient ?? false) as boolean,
+                  familySigned: (r.familySigned ?? r.isSignedByFamily ?? false) as boolean,
+                  doctorSigned: (r.doctorSigned ?? r.isSignedByDoctor ?? false) as boolean,
+                  isActive: (r.isActive ?? true) as boolean,
                   createdAt: (r.createdAt as string) || new Date().toISOString(),
                   updatedAt: (r.updatedAt as string) || new Date().toISOString(),
                 });
@@ -242,16 +246,23 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                   id: r.id,
                   palliativePatientId: patientId,
                   age: (r.age || 0) as number,
-                  gender: (r.gender || 'Perempuan') as string,
+                  gender: ((r.gender === 'L' || r.gender === 'P') ? r.gender : 'P') as 'L' | 'P',
                   weight: (r.weight || r.berat_badan || 0) as number,
                   height: (r.height || r.tinggi_badan || 0) as number,
-                  bmi: (r.bmi || 0) as number,
                   activityLevel: (r.activityLevel || 'bed_rest') as NutritionRecordInfo['activityLevel'],
                   metabolicStress: (r.metabolicStress || 'ringan') as NutritionRecordInfo['metabolicStress'],
                   specialCondition: (r.specialCondition || 'tidak_ada') as NutritionRecordInfo['specialCondition'],
-                  totalCalorieNeeds: (r.totalCalorieNeeds || r.kebutuhan_kalori || 0) as number,
-                  statusGizi: (r.statusGizi || r.status_gizi || 'normal') as string,
+                  calculation: (r.calculation || {
+                    bmi: r.bmi || 0,
+                    bbi: 0,
+                    totalCalorieNeeds: r.totalCalorieNeeds || r.kebutuhan_kalori || 0,
+                    proteinNeeds: 0,
+                    fatNeeds: 0,
+                    carbohydrateNeeds: 0,
+                    fluidNeeds: 0,
+                  }) as NutritionRecordInfo['calculation'],
                   recordedAt: (r.recordedAt || r.tanggal || r.createdAt || '') as string,
+                  createdAt: (r.createdAt as string) || new Date().toISOString(),
                 });
               }
             }
@@ -266,15 +277,24 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                 store.addSocialAssessment({
                   id: r.id,
                   palliativePatientId: patientId,
-                  housingCondition: (r.housingCondition || '') as string,
-                  caregiverAvailability: (r.caregiverAvailability || r.caregiver || '') as string,
-                  familySupportLevel: (r.familySupportLevel || r.dukungan_keluarga || '') as string,
-                  transportDifficulty: (r.transportDifficulty || '') as string,
-                  economicConstraint: (r.economicConstraint || r.kondisi_ekonomi || '') as string,
-                  kebutuhanSosial: (r.kebutuhanSosial || r.kebutuhan_sosial || '') as string,
-                  assessedAt: (r.assessedAt || r.createdAt || '') as string,
+                  housingCondition: (r.housingCondition || 'layak') as SocialAssessmentRecord['housingCondition'],
+                  caregiverAvailability: (r.caregiverAvailability || r.caregiver || 'tersedia') as SocialAssessmentRecord['caregiverAvailability'],
+                  familySupportLevel: (r.familySupportLevel || r.dukungan_keluarga || 'kuat') as SocialAssessmentRecord['familySupportLevel'],
+                  transportDifficulty: (r.transportDifficulty || 'mudah') as SocialAssessmentRecord['transportDifficulty'],
+                  economicConstraint: (r.economicConstraint || r.kondisi_ekonomi || 'tidak_ada') as SocialAssessmentRecord['economicConstraint'],
+                  healthcareAccess: (r.healthcareAccess || 'mudah') as SocialAssessmentRecord['healthcareAccess'],
+                  medicalEquipmentNeed: (r.medicalEquipmentNeed || 'tidak_ada') as SocialAssessmentRecord['medicalEquipmentNeed'],
+                  socialAssistanceNeed: (r.socialAssistanceNeed || 'tidak_ada') as SocialAssessmentRecord['socialAssistanceNeed'],
+                  socialIsolationRisk: (r.socialIsolationRisk || 'rendah') as SocialAssessmentRecord['socialIsolationRisk'],
+                  overallStatus: (r.overallStatus || 'lengkap') as SocialAssessmentRecord['overallStatus'],
+                  priorityLevel: (r.priorityLevel || 'rendah') as SocialAssessmentRecord['priorityLevel'],
+                  recommendations: (Array.isArray(r.recommendations) ? r.recommendations : []) as string[],
                   assessedBy: (r.assessedBy || '') as string,
-                } as SocialAssessmentRecord);
+                  assessedByRole: (r.assessedByRole || 'palliative_team') as SocialAssessmentRecord['assessedByRole'],
+                  assessedAt: (r.assessedAt || r.createdAt || '') as string,
+                  createdAt: (r.createdAt as string) || new Date().toISOString(),
+                  updatedAt: (r.updatedAt as string) || new Date().toISOString(),
+                });
               }
             }
           } catch { /* skip */ }
@@ -287,12 +307,13 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
               if (!exists) {
                 store.addPalliativeChatMessage({
                   id: r.id,
-                  palliativePatientId: patientId,
+                  roomId: (r.roomId || patientId) as string,
                   type: (r.type || 'text') as PalliativeChatMessage['type'],
                   content: (r.content || '') as string,
                   senderId: (r.senderId || '') as string,
                   senderName: (r.senderName || '') as string,
-                  formData: r.formData as Record<string, unknown> | undefined,
+                  senderRole: (r.senderRole || 'system') as PalliativeChatMessage['senderRole'],
+                  status: (r.status || 'delivered') as PalliativeChatMessage['status'],
                   createdAt: (r.createdAt as string) || new Date().toISOString(),
                 });
               }
@@ -307,9 +328,9 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
               if (!exists) {
                 store.addPalliativeClinicalAlert({
                   id: r.id,
-                  palliativePatientId: patientId,
-                  alertType: (r.alertType || 'warning') as PalliativeClinicalAlert['alertType'],
-                  severity: (r.severity || 'sedang') as PalliativeClinicalAlert['severity'],
+                  patientId: patientId,
+                  alertType: (r.alertType || 'form_tidak_diisi') as PalliativeClinicalAlert['alertType'],
+                  severity: (r.severity || 'kuning') as PalliativeClinicalAlert['severity'],
                   title: (r.title || '') as string,
                   description: (r.description || '') as string,
                   isRead: (r.isRead ?? false) as boolean,
@@ -330,11 +351,15 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                   palliativePatientId: patientId,
                   documentNumber: (r.documentNumber || '') as string,
                   generatedBy: (r.generatedBy || '') as string,
+                  generatedByRole: (r.generatedByRole || 'doctor') as PalliativeResumeMedis['generatedByRole'],
                   generatedAt: (r.generatedAt || r.createdAt || '') as string,
-                  resumeData: (r.resumeData || {}) as PalliativeResumeMedis['resumeData'],
                   fullContent: (r.fullContent || '') as string,
                   version: (r.version || 1) as number,
                   isSigned: (r.isSigned ?? false) as boolean,
+                  downloadCount: (r.downloadCount || 0) as number,
+                  printCount: (r.printCount || 0) as number,
+                  createdAt: (r.createdAt as string) || new Date().toISOString(),
+                  updatedAt: (r.updatedAt as string) || new Date().toISOString(),
                 });
               }
             }
@@ -348,11 +373,12 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
               if (!exists) {
                 store.addPalliativeAuditEntry({
                   id: r.id,
-                  action: (r.action || '') as string,
+                  action: (r.action || 'clinical_action') as PalliativeAuditEntry['action'],
                   performedBy: (r.performedBy || '') as string,
-                  performedAt: (r.performedAt || r.createdAt || '') as string,
+                  performedByRole: (r.performedByRole || 'system') as PalliativeAuditEntry['performedByRole'],
                   details: (r.details || '') as string,
                   patientId: patientId,
+                  createdAt: (r.createdAt as string) || new Date().toISOString(),
                 });
               }
             }

@@ -28,6 +28,7 @@ import type {
   MeetingStatus,
   TransportNeedType,
   TransportStatus,
+  FamilyCoordinationNote,
 } from '@/lib/types';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -227,13 +228,27 @@ const noteTypeBadge = (t: string) => {
 
 // ─── Social Score Calculator ────────────────────────────────────────────────
 
-const scoreMap: Record<string, number> = {
+const housingScoreMap: Record<string, number> = {
   layak: 0, kurang_layak: 1, tidak_layak: 2,
+};
+const caregiverScoreMap: Record<string, number> = {
   tersedia: 0, terbatas: 1, tidak_tersedia: 2,
+};
+const familyScoreMap: Record<string, number> = {
   kuat: 0, cukup: 1, lemah: 2, tidak_ada: 3,
+};
+const economicScoreMap: Record<string, number> = {
   tidak_ada: 0, ringan: 1, sedang: 2, berat: 3,
+};
+const transportScoreMap: Record<string, number> = {
   mudah: 0, cukup: 1, sulit: 2, sangat_sulit: 3,
+};
+const riskScoreMap: Record<string, number> = {
   rendah: 0, sedang: 1, tinggi: 2,
+};
+const scoreMap: Record<string, number> = {
+  ...housingScoreMap, ...caregiverScoreMap, ...familyScoreMap,
+  ...economicScoreMap, ...transportScoreMap, ...riskScoreMap,
 };
 
 const calculateSocialScore = (a: SocialAssessmentRecord): number => {

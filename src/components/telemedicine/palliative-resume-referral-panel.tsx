@@ -685,11 +685,11 @@ export function PalliativeResumeReferralPanel({ patient }: Props) {
         body: JSON.stringify({
           palliativePatientId: patient.id,
           additionalData: {
-            nutritionRecords: nutritionRecords.filter(r => r.patientId === patient.id),
-            socialAssessmentRecords: socialAssessments.filter(r => r.patientId === patient.id),
-            caregivers: caregivers.filter(c => c.patientId === patient.id),
-            familyMeetings: familyMeetings.filter(m => m.patientId === patient.id),
-            financialSupportRecords: financialSupportRecords.filter(r => r.patientId === patient.id),
+            nutritionRecords: nutritionRecords.filter(r => r.palliativePatientId === patient.id),
+            socialAssessmentRecords: socialAssessments.filter(r => r.palliativePatientId === patient.id),
+            caregivers: caregivers.filter(c => c.palliativePatientId === patient.id),
+            familyMeetings: familyMeetings.filter(m => m.palliativePatientId === patient.id),
+            financialSupportRecords: financialSupportRecords.filter(r => r.palliativePatientId === patient.id),
           },
         }),
       });
