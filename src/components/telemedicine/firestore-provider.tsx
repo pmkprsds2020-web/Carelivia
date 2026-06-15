@@ -222,9 +222,10 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
                   icuPref: (r.icuPref || 'tidak') as AdvanceCarePlanInfo['icuPref'],
                   patientHopes: (r.patientHopes || '') as string,
                   patientWorries: (r.patientWorries || '') as string,
-                  isSignedByPatient: (r.isSignedByPatient ?? false) as boolean,
-                  isSignedByFamily: (r.isSignedByFamily ?? false) as boolean,
-                  isSignedByDoctor: (r.isSignedByDoctor ?? false) as boolean,
+                  patientSigned: (r.patientSigned ?? r.isSignedByPatient ?? false) as boolean,
+                  familySigned: (r.familySigned ?? r.isSignedByFamily ?? false) as boolean,
+                  doctorSigned: (r.doctorSigned ?? r.isSignedByDoctor ?? false) as boolean,
+                  isActive: (r.isActive ?? true) as boolean,
                   createdAt: (r.createdAt as string) || new Date().toISOString(),
                   updatedAt: (r.updatedAt as string) || new Date().toISOString(),
                 });
@@ -307,9 +308,9 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
               if (!exists) {
                 store.addPalliativeClinicalAlert({
                   id: r.id,
-                  palliativePatientId: patientId,
-                  alertType: (r.alertType || 'warning') as PalliativeClinicalAlert['alertType'],
-                  severity: (r.severity || 'sedang') as PalliativeClinicalAlert['severity'],
+                  patientId: patientId,
+                  alertType: (r.alertType || 'perburukan') as PalliativeClinicalAlert['alertType'],
+                  severity: (r.severity || 'kuning') as PalliativeClinicalAlert['severity'],
                   title: (r.title || '') as string,
                   description: (r.description || '') as string,
                   isRead: (r.isRead ?? false) as boolean,
@@ -348,11 +349,12 @@ export function FirestoreProvider({ children }: FirestoreProviderProps) {
               if (!exists) {
                 store.addPalliativeAuditEntry({
                   id: r.id,
-                  action: (r.action || '') as string,
+                  action: (r.action || '') as PalliativeAuditEntry['action'],
                   performedBy: (r.performedBy || '') as string,
-                  performedAt: (r.performedAt || r.createdAt || '') as string,
+                  performedByRole: (r.performedByRole || 'system') as PalliativeAuditEntry['performedByRole'],
                   details: (r.details || '') as string,
                   patientId: patientId,
+                  createdAt: (r.createdAt as string) || new Date().toISOString(),
                 });
               }
             }
