@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { supabase } from '@/supabaseClient';
 
 // GET /api/daily-complaints?palliativePatientId=xxx
 export async function GET(req: NextRequest) {
@@ -7,6 +8,43 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const palliativePatientId = searchParams.get('palliativePatientId');
 
+    // ── Try Supabase first ─────────────────────────────────────────────────
+    if (palliativePatientId) {
+      try {
+        const { data: supaRows, error } = await supabase
+          .from('daily_complaints')
+          .select('*')
+          .eq('patient_id', palliativePatientId)
+          .order('submitted_at', { ascending: false });
+        if (!error && supaRows && supaRows.length > 0) {
+          const mapped = supaRows.map((r: any) => ({
+            id: r.id,
+            palliativePatientId: r.patient_id,
+            kondisiHariIni: r.kondisi_hari_ini,
+            alasanKondisi: r.alasan_kondisi,
+            keluhanBaru: r.keluhan_baru,
+            deskripsiKeluhanBaru: r.deskripsi_keluhan,
+            kondisiNyeri: r.kondisi_nyeri,
+            kondisiSesak: r.kondisi_sesak,
+            makanMinum: r.makan_minum,
+            alasanMakanMinum: r.alasan_makan_minum,
+            tidur: r.tidur,
+            alasanTidur: r.alasan_tidur,
+            masalahObat: r.masalah_obat,
+            deskripsiMasalahObat: r.deskripsi_masalah,
+            severityLevel: r.severity_level || 'ringan',
+            sumberPengisian: r.sumber_pengisian || 'manual',
+            submittedAt: r.submitted_at,
+            createdAt: r.created_at,
+          }));
+          return NextResponse.json({ complaints: mapped, source: 'supabase' });
+        }
+      } catch (e) {
+        console.warn('[daily-complaints] Supabase read failed, falling back to Prisma:', (e as any)?.message);
+      }
+    }
+
+    // ── Fallback to Prisma ─────────────────────────────────────────────────
     const where: Record<string, string> = {};
     if (palliativePatientId) {
       where.palliativePatientId = palliativePatientId;
@@ -115,6 +153,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── Mirror to Supabase (best-effort, never throws) ──────────────────────
+    await mirrorToSupabase(body, severityLevel);
+
     return NextResponse.json({
       complaint: {
         ...complaint,
@@ -127,6 +168,33 @@ export async function POST(req: NextRequest) {
     console.error('Error creating daily complaint:', error);
     const message = error instanceof Error ? error.message : 'Failed to create daily complaint';
     return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+// ── Mirror an inserted complaint to Supabase (best-effort, never throws) ────
+async function mirrorToSupabase(body: Record<string, string>, severityLevel: string) {
+  try {
+    const row = {
+      patient_id: body.palliativePatientId,
+      kondisi_hari_ini: body.kondisiHariIni,
+      alasan_kondisi: body.alasanKondisi || null,
+      keluhan_baru: body.keluhanBaru,
+      deskripsi_keluhan: body.deskripsiKeluhanBaru || null,
+      kondisi_nyeri: body.kondisiNyeri,
+      kondisi_sesak: body.kondisiSesak,
+      makan_minum: body.makanMinum,
+      alasan_makan_minum: body.alasanMakanMinum || null,
+      tidur: body.tidur,
+      alasan_tidur: body.alasanTidur || null,
+      masalah_obat: body.masalahObat,
+      deskripsi_masalah: body.deskripsiMasalahObat || null,
+      severity_level: severityLevel,
+      sumber_pengisian: body.sumberPengisian || 'monitoring',
+    };
+    const { error } = await supabase.from('daily_complaints').insert(row);
+    if (error) console.warn('[daily-complaints] Supabase insert failed:', error.message);
+  } catch (e) {
+    console.warn('[daily-complaints] Supabase mirror threw:', (e as any)?.message);
   }
 }
 
