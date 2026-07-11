@@ -42,16 +42,34 @@ function fromDb(row: any): PalliativePatientInfo {
 /**
  * Map a partial PalliativePatientInfo → DB row (snake_case).
  * Only writes fields that are explicitly provided.
+ *
+ * NOTE on `dokter_id`: the DB column is `uuid`, but the app uses string IDs
+ * like "doc-sarah" for doctors (they live in Prisma/SQLite, not Supabase).
+ * We only forward `dokter_id` when it looks like a real UUID; otherwise we
+ * skip it and rely on `dokter_nama` for display.
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function toDb(data: Partial<PalliativePatientInfo>): Record<string, any> {
   const out: Record<string, any> = {};
   if (data.patientName !== undefined) out.nama = data.patientName;
   if (data.rmNumber !== undefined) out.rm = data.rmNumber;
   if (data.nik !== undefined) out.nik = data.nik;
   if (data.dateOfBirth !== undefined) out.tanggal_lahir = data.dateOfBirth;
-  if (data.gender !== undefined) out.jenis_kelamin = data.gender;
+  if (data.gender !== undefined) {
+    // DB accepts 'L' or 'P'. Frontend may send 'Laki-laki'/'Perempuan'.
+    const g = String(data.gender).toLowerCase();
+    if (g === 'l' || g === 'p') out.jenis_kelamin = g;
+    else if (g.startsWith('l')) out.jenis_kelamin = 'L';
+    else if (g.startsWith('p')) out.jenis_kelamin = 'P';
+  }
   if (data.primaryDiagnosis !== undefined) out.diagnosa = data.primaryDiagnosis;
-  if (data.attendingDoctorId !== undefined) out.dokter_id = data.attendingDoctorId;
+  if (data.attendingDoctorId !== undefined) {
+    // Only forward if it's a real UUID; otherwise skip (DB column is uuid).
+    if (typeof data.attendingDoctorId === 'string' && UUID_RE.test(data.attendingDoctorId)) {
+      out.dokter_id = data.attendingDoctorId;
+    }
+  }
   if (data.attendingDoctorName !== undefined) out.dokter_nama = data.attendingDoctorName;
   if (data.familyContactName !== undefined) out.family_contact_name = data.familyContactName;
   if (data.familyContactRelation !== undefined) out.family_contact_relation = data.familyContactRelation;

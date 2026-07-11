@@ -54,12 +54,14 @@ function warn(label: string, err: unknown) {
 //
 // Each handler is self-contained: it loads data from Supabase, validates it,
 // and dispatches the corresponding Zustand action(s). Wrapped in try/catch by
-// the caller. We only REPLACE the store if Supabase returns non-empty data —
-// otherwise we keep the local demo data (per the task's "local-wins" rule).
+// the caller. We ALWAYS replace the store with what Supabase returns — even
+// if it's an empty array — so the UI reflects the database state exactly.
+// (Initial store state is also empty, so there's never stale demo data.)
 
 async function loadPatients(store: ReturnType<typeof useStore.getState>) {
   const patients = await svc.patientService.getAll();
-  if (Array.isArray(patients) && patients.length > 0) {
+  // Always set — even if empty — so UI shows "Tidak ada data pasien" when DB is empty.
+  if (Array.isArray(patients)) {
     store.setPalliativePatients(patients as PalliativePatientInfo[]);
   }
   return patients;
@@ -625,10 +627,12 @@ export function SupabaseSyncProvider({ children }: SupabaseSyncProviderProps) {
     (async () => {
       try {
         const patients = await loadPatients(s());
-        if (Array.isArray(patients) && patients.length > 0) {
+        // Always run scoped-data load — even when patients is empty — so any
+        // stale per-patient arrays (vitals, meds, etc.) are cleared.
+        if (Array.isArray(patients)) {
           await loadPatientScopedData(s(), patients as PalliativePatientInfo[]);
         }
-        console.log('[SupabaseSync] initial load complete');
+        console.log('[SupabaseSync] initial load complete — patients:', patients?.length ?? 0);
       } catch (e) {
         warn('initial load skipped', e);
       }

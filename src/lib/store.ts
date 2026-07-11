@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { firestoreSync } from '@/lib/firestore-sync';
+import { supabaseSync as firestoreSync } from '@/lib/supabase-sync';
 import type { 
   User, Consultation, Message, Medicine, CartItem, 
   HomeCareService, HomeCareBooking, Notification, Article,
@@ -573,80 +573,10 @@ export const useStore = create<TelemedicineStore>((set) => ({
   activePalliativeFormId: null,
   setActivePalliativeFormId: (id) => set({ activePalliativeFormId: id }),
 
-  // Palliative Monitoring
-  palliativePatients: [
-    {
-      id: 'pp-1',
-      patientId: 'patient-1',
-      patientName: 'Siti Rahayu',
-      rmNumber: 'RM-2025-001',
-      bpjsNumber: '0001234567890',
-      nik: '3201014505870001',
-      dateOfBirth: '1945-05-08',
-      gender: 'Perempuan',
-      primaryDiagnosis: 'Kanker Payudara Stadium IV',
-      secondaryDiagnosis: 'Diabetes Melitus Tipe 2, Hipertensi',
-      diseaseStage: 'Stadium IV',
-      attendingDoctorId: 'doc-sarah',
-      attendingDoctorName: 'dr. Sarah Wijaya',
-      familyContactName: 'Budi Rahayu',
-      familyContactRelation: 'Anak',
-      familyContactPhone: '081234567890',
-      address: 'Jl. Melati No. 12, Bandung',
-      careStatus: 'home_care',
-      patientStatus: 'aktif',
-      riskLevel: 'merah',
-      notes: 'Pasien memerlukan perawatan paliatif intensif',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: 'pp-2',
-      patientId: 'patient-2',
-      patientName: 'Ahmad Sudrajat',
-      rmNumber: 'RM-2025-002',
-      bpjsNumber: '0009876543210',
-      nik: '3201015003790002',
-      dateOfBirth: '1950-03-15',
-      gender: 'Laki-laki',
-      primaryDiagnosis: 'PPOK Stadium Berat',
-      secondaryDiagnosis: 'Gagal Jantung Kongestif',
-      diseaseStage: 'Stadium Berat',
-      attendingDoctorId: 'doc-lisa',
-      attendingDoctorName: 'dr. Lisa Permata',
-      familyContactName: 'Dewi Sudrajat',
-      familyContactRelation: 'Istri',
-      familyContactPhone: '082345678901',
-      address: 'Jl. Kenanga No. 5, Jakarta',
-      careStatus: 'rawat_jalan',
-      patientStatus: 'aktif',
-      riskLevel: 'kuning',
-      notes: 'Kondisi stabil namun perlu monitoring rutin',
-      createdAt: new Date(Date.now() - 86400000).toISOString(),
-      updatedAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-    {
-      id: 'pp-3',
-      patientId: 'patient-3',
-      patientName: 'Maria Susanti',
-      rmNumber: 'RM-2025-003',
-      primaryDiagnosis: 'Stroke Berat',
-      secondaryDiagnosis: 'Hipertensi',
-      diseaseStage: 'Kronis',
-      attendingDoctorId: 'doc-sarah',
-      attendingDoctorName: 'dr. Sarah Wijaya',
-      familyContactName: 'Yohanes Susanti',
-      familyContactRelation: 'Suami',
-      familyContactPhone: '083456789012',
-      address: 'Jl. Anggrek No. 8, Surabaya',
-      careStatus: 'hospice',
-      patientStatus: 'aktif',
-      riskLevel: 'merah',
-      notes: 'Pasien bed rest total, perlu perawatan paliatif penuh',
-      createdAt: new Date(Date.now() - 172800000).toISOString(),
-      updatedAt: new Date(Date.now() - 172800000).toISOString(),
-    },
-  ] as PalliativePatientInfo[],
+  // Palliative Monitoring — initial state is EMPTY. All data is loaded
+  // from Supabase by SupabaseSyncProvider on mount, and kept in sync via
+  // Realtime subscriptions. Dummy/demo data has been removed.
+  palliativePatients: [] as PalliativePatientInfo[],
   setPalliativePatients: (patients) => set({ palliativePatients: patients }),
   addPalliativePatient: (patient) => {
     set((state) => ({ palliativePatients: [...state.palliativePatients, patient] }));
@@ -671,59 +601,14 @@ export const useStore = create<TelemedicineStore>((set) => ({
   },
   selectedPalliativePatientId: null,
   setSelectedPalliativePatientId: (id) => set({ selectedPalliativePatientId: id }),
-  vitalSignRecords: [
-    {
-      id: 'vs-1', palliativePatientId: 'pp-1', recordedBy: 'doctor',
-      systolicBP: 110, diastolicBP: 70, heartRate: 88, respiratoryRate: 22,
-      temperature: 36.8, oxygenSat: 93, weight: 52, height: 155, bmi: 21.6,
-      notes: 'Saturasi perlu dimonitor', recordedAt: new Date(Date.now() - 3600000).toISOString(), createdAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-    {
-      id: 'vs-2', palliativePatientId: 'pp-1', recordedBy: 'family',
-      systolicBP: 105, diastolicBP: 65, heartRate: 92, respiratoryRate: 24,
-      temperature: 37.1, oxygenSat: 91, weight: 51.5, height: 155, bmi: 21.4,
-      notes: 'Pasien sesak ringan', recordedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-    {
-      id: 'vs-3', palliativePatientId: 'pp-1', recordedBy: 'nurse',
-      systolicBP: 115, diastolicBP: 72, heartRate: 85, respiratoryRate: 20,
-      temperature: 36.5, oxygenSat: 95, weight: 52.5, height: 155, bmi: 21.8,
-      recordedAt: new Date(Date.now() - 172800000).toISOString(), createdAt: new Date(Date.now() - 172800000).toISOString(),
-    },
-    {
-      id: 'vs-4', palliativePatientId: 'pp-2', recordedBy: 'doctor',
-      systolicBP: 135, diastolicBP: 85, heartRate: 78, respiratoryRate: 18,
-      temperature: 36.6, oxygenSat: 96, weight: 68, height: 170, bmi: 23.5,
-      recordedAt: new Date(Date.now() - 7200000).toISOString(), createdAt: new Date(Date.now() - 7200000).toISOString(),
-    },
-    {
-      id: 'vs-5', palliativePatientId: 'pp-2', recordedBy: 'patient',
-      systolicBP: 130, diastolicBP: 82, heartRate: 80, respiratoryRate: 20,
-      temperature: 36.7, oxygenSat: 94, weight: 67.5, height: 170, bmi: 23.4,
-      recordedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-    {
-      id: 'vs-6', palliativePatientId: 'pp-3', recordedBy: 'nurse',
-      systolicBP: 90, diastolicBP: 60, heartRate: 95, respiratoryRate: 26,
-      temperature: 37.5, oxygenSat: 88, weight: 45, height: 160, bmi: 17.6,
-      notes: 'Tekanan darah rendah, saturasi kritis', recordedAt: new Date(Date.now() - 1800000).toISOString(), createdAt: new Date(Date.now() - 1800000).toISOString(),
-    },
-  ] as VitalSignRecordInfo[],
+  vitalSignRecords: [] as VitalSignRecordInfo[],
   setVitalSignRecords: (records) => set({ vitalSignRecords: records }),
   addVitalSignRecord: (record) => {
     set((state) => ({ vitalSignRecords: [...state.vitalSignRecords, record] }));
     // Persist to Firestore
     firestoreSync.addTTV(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addTTV):', err));
   },
-  palliativeMedications: [
-    { id: 'pm-1', palliativePatientId: 'pp-1', medicineName: 'Morfine 10mg', dosage: '10mg', frequency: '3x1', route: 'oral', startDate: '2025-01-15', indication: 'Nyeri kronis', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'pm-2', palliativePatientId: 'pp-1', medicineName: 'Ondansetron 4mg', dosage: '4mg', frequency: '2x1', route: 'oral', startDate: '2025-01-15', indication: 'Mual', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'pm-3', palliativePatientId: 'pp-1', medicineName: 'Metformin 500mg', dosage: '500mg', frequency: '2x1', route: 'oral', startDate: '2024-06-01', indication: 'Diabetes', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'pm-4', palliativePatientId: 'pp-2', medicineName: 'Salbutamol Inhaler', dosage: '2 puff', frequency: '4x1', route: 'inhalasi', startDate: '2025-02-01', indication: 'Sesak napas PPOK', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'pm-5', palliativePatientId: 'pp-2', medicineName: 'Amlodipine 5mg', dosage: '5mg', frequency: '1x1', route: 'oral', startDate: '2024-03-15', indication: 'Hipertensi', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'pm-6', palliativePatientId: 'pp-3', medicineName: 'Morfine 20mg', dosage: '20mg', frequency: '2x1', route: 'oral', startDate: '2025-01-01', indication: 'Nyeri berat', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'pm-7', palliativePatientId: 'pp-3', medicineName: 'Diazepam 5mg', dosage: '5mg', frequency: '1x1', route: 'oral', startDate: '2025-01-10', indication: 'Kecemasan, insomnia', isActive: true, notes: 'Diberikan malam hari', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  ] as PalliativeMedicationInfo[],
+  palliativeMedications: [] as PalliativeMedicationInfo[],
   setPalliativeMedications: (meds) => set({ palliativeMedications: meds }),
   addPalliativeMedication: (med) => {
     set((state) => ({ palliativeMedications: [...state.palliativeMedications, med] }));
@@ -743,41 +628,7 @@ export const useStore = create<TelemedicineStore>((set) => ({
       firestoreSync.updateObat(med.palliativePatientId, medId, data).catch(err => console.error('[Store] Firestore sync error (updateObat):', err));
     }
   },
-  advanceCarePlans: [
-    {
-      id: 'acp-1', palliativePatientId: 'pp-1',
-      decisionMakerName: 'Budi Rahayu', decisionMakerRelation: 'Anak', decisionMakerPhone: '081234567890',
-      preferredCareLocation: 'rumah', careGoal: 'fokus_kenyamanan',
-      resuscitationPref: 'dnr', ventilatorPref: 'tidak_bersedia',
-      icuPref: 'tidak_bersedia', artificialNutrition: 'bersedia',
-      dialysisPref: 'tidak_bersedia', organDonation: 'tidak',
-      patientHopes: 'Ingin menghabiskan waktu bersama keluarga di rumah',
-      patientWorries: 'Khawatir menjadi beban keluarga dan rasa sakit yang tidak terkontrol',
-      lifeValues: 'Keluarga adalah segalanya, ingin meninggal dengan tenang',
-      endOfLifePrefs: 'Ingin dirawat di rumah dengan keluarga di sekitar',
-      patientSigned: true, familySigned: true, doctorSigned: true,
-      signedAt: new Date(Date.now() - 259200000).toISOString(),
-      isActive: true,
-      createdAt: new Date(Date.now() - 259200000).toISOString(),
-      updatedAt: new Date(Date.now() - 259200000).toISOString(),
-    },
-    {
-      id: 'acp-2', palliativePatientId: 'pp-3',
-      decisionMakerName: 'Yohanes Susanti', decisionMakerRelation: 'Suami', decisionMakerPhone: '083456789012',
-      preferredCareLocation: 'hospice', careGoal: 'mengurangi_gejala',
-      resuscitationPref: 'dnr', ventilatorPref: 'tidak_bersedia',
-      icuPref: 'tidak_bersedia', artificialNutrition: 'tidak_bersedia',
-      dialysisPref: 'tidak_bersedia', organDonation: 'ya',
-      patientHopes: 'Tidak ingin menderita lama',
-      patientWorries: 'Takut kesakitan saat menjelang wafat',
-      lifeValues: 'Ingin damai dan dikelilingi keluarga',
-      endOfLifePrefs: 'Dirawat di hospice, didoakan bersama',
-      patientSigned: true, familySigned: true, doctorSigned: false,
-      isActive: true,
-      createdAt: new Date(Date.now() - 432000000).toISOString(),
-      updatedAt: new Date(Date.now() - 432000000).toISOString(),
-    },
-  ] as AdvanceCarePlanInfo[],
+  advanceCarePlans: [] as AdvanceCarePlanInfo[],
   setAdvanceCarePlans: (plans) => set({ advanceCarePlans: plans }),
   addAdvanceCarePlan: (plan) => {
     set((state) => ({ advanceCarePlans: [...state.advanceCarePlans, plan] }));
@@ -797,12 +648,7 @@ export const useStore = create<TelemedicineStore>((set) => ({
       firestoreSync.updateACP(plan.palliativePatientId, planId, data).catch(err => console.error('[Store] Firestore sync error (updateACP):', err));
     }
   },
-  palliativeScreeningRecords: [
-    { id: 'psr-1', palliativePatientId: 'pp-1', screeningType: 'esas', score: 45, scoreLabel: 'Gejala Berat', interpretation: 'Skor ESAS 45/90 menunjukkan beban gejala berat', ewsLevel: 'merah', performedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString() },
-    { id: 'psr-2', palliativePatientId: 'pp-1', screeningType: 'pps', score: 40, scoreLabel: 'Ketergantungan', interpretation: 'PPS 40% - Pasien memerlukan bantuan substantial', ewsLevel: 'merah', performedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString() },
-    { id: 'psr-3', palliativePatientId: 'pp-2', screeningType: 'esas', score: 25, scoreLabel: 'Gejala Sedang', interpretation: 'Skor ESAS 25/90 menunjukkan beban gejala sedang', ewsLevel: 'kuning', performedAt: new Date(Date.now() - 172800000).toISOString(), createdAt: new Date(Date.now() - 172800000).toISOString() },
-    { id: 'psr-4', palliativePatientId: 'pp-3', screeningType: 'distress', score: 8, scoreLabel: 'Distress Berat', interpretation: 'Skor 8/10 menunjukkan distress berat', ewsLevel: 'merah', performedAt: new Date(Date.now() - 43200000).toISOString(), createdAt: new Date(Date.now() - 43200000).toISOString() },
-  ] as PalliativeScreeningRecordInfo[],
+  palliativeScreeningRecords: [] as PalliativeScreeningRecordInfo[],
   setPalliativeScreeningRecords: (records) => set({ palliativeScreeningRecords: records }),
   addPalliativeScreeningRecord: (record) => {
     set((state) => ({ palliativeScreeningRecords: [...state.palliativeScreeningRecords, record] }));
@@ -811,50 +657,7 @@ export const useStore = create<TelemedicineStore>((set) => ({
   },
   palliativeAiSummary: '',
   setPalliativeAiSummary: (summary) => set({ palliativeAiSummary: summary }),
-  nutritionRecords: [
-    {
-      id: 'nr-1', palliativePatientId: 'pp-1', age: 81, gender: 'P', weight: 48, height: 155,
-      activityLevel: 'bed_rest', metabolicStress: 'sedang', specialCondition: 'tidak_ada',
-      calculation: {
-        bmi: 19.98, bmiCategory: 'normal', idealBodyWeight: 49.5, basalCalories: 1237.5,
-        ageCorrectionKcal: -247.5, ageCorrectionPercent: -20, activityCorrectionKcal: 123.75, activityCorrectionPercent: 10,
-        weightCorrectionKcal: 0, weightCorrectionPercent: 0, stressCorrectionKcal: 247.5, stressCorrectionPercent: 20,
-        specialConditionKcal: 0, totalCalorieNeeds: 1361.25,
-        carbohydrateKcal: 612.56, proteinKcal: 340.31, fatKcal: 272.25, mineralKcal: 136.13,
-        carbohydrateGrams: 153.14, proteinGrams: 85.08, fatGrams: 30.25,
-      },
-      actualIntakeKcal: 1100, notes: 'Pasien makan sedikit, sering mual',
-      recordedBy: 'dr. Sarah Wijaya', recordedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-    {
-      id: 'nr-2', palliativePatientId: 'pp-2', age: 72, gender: 'L', weight: 55, height: 165,
-      activityLevel: 'ringan', metabolicStress: 'ringan', specialCondition: 'tidak_ada',
-      calculation: {
-        bmi: 20.2, bmiCategory: 'normal', idealBodyWeight: 58.5, basalCalories: 1755,
-        ageCorrectionKcal: -351, ageCorrectionPercent: -20, activityCorrectionKcal: 263.25, activityCorrectionPercent: 15,
-        weightCorrectionKcal: 0, weightCorrectionPercent: 0, stressCorrectionKcal: 175.5, stressCorrectionPercent: 10,
-        specialConditionKcal: 0, totalCalorieNeeds: 1842.75,
-        carbohydrateKcal: 829.24, proteinKcal: 460.69, fatKcal: 368.55, mineralKcal: 184.28,
-        carbohydrateGrams: 207.31, proteinGrams: 115.17, fatGrams: 40.95,
-      },
-      actualIntakeKcal: 1500, notes: 'Nafsu makan menurun, sesak saat makan',
-      recordedBy: 'dr. Lisa Permata', recordedAt: new Date(Date.now() - 172800000).toISOString(), createdAt: new Date(Date.now() - 172800000).toISOString(),
-    },
-    {
-      id: 'nr-3', palliativePatientId: 'pp-3', age: 68, gender: 'P', weight: 40, height: 150,
-      activityLevel: 'bed_rest', metabolicStress: 'berat', specialCondition: 'tidak_ada',
-      calculation: {
-        bmi: 17.78, bmiCategory: 'underweight', idealBodyWeight: 45, basalCalories: 1125,
-        ageCorrectionKcal: -112.5, ageCorrectionPercent: -10, activityCorrectionKcal: 112.5, activityCorrectionPercent: 10,
-        weightCorrectionKcal: 225, weightCorrectionPercent: 20, stressCorrectionKcal: 337.5, stressCorrectionPercent: 30,
-        specialConditionKcal: 0, totalCalorieNeeds: 1687.5,
-        carbohydrateKcal: 759.38, proteinKcal: 421.88, fatKcal: 337.5, mineralKcal: 168.75,
-        carbohydrateGrams: 189.84, proteinGrams: 105.47, fatGrams: 37.5,
-      },
-      actualIntakeKcal: 650, notes: 'Cachexia berat, mual muntah terus menerus',
-      recordedBy: 'dr. Lisa Permata', recordedAt: new Date(Date.now() - 259200000).toISOString(), createdAt: new Date(Date.now() - 259200000).toISOString(),
-    },
-  ] as NutritionRecordInfo[],
+  nutritionRecords: [] as NutritionRecordInfo[],
   setNutritionRecords: (records) => set({ nutritionRecords: records }),
   addNutritionRecord: (record) => {
     set((state) => ({ nutritionRecords: [...state.nutritionRecords, record] }));
@@ -864,146 +667,8 @@ export const useStore = create<TelemedicineStore>((set) => ({
   nutritionAiRecommendation: null,
   setNutritionAiRecommendation: (rec) => set({ nutritionAiRecommendation: rec }),
 
-  // Palliative Chat
-  palliativeChatMessages: [
-    {
-      id: 'pcm-1',
-      roomId: 'pp-1_doc-sarah',
-      senderId: 'doc-sarah',
-      senderName: 'dr. Sarah Wijaya',
-      senderRole: 'doctor',
-      type: 'text',
-      content: 'Selamat pagi Bu Siti, bagaimana kondisi Anda hari ini?',
-      status: 'read',
-      createdAt: new Date(Date.now() - 7200000).toISOString(),
-      readAt: new Date(Date.now() - 7000000).toISOString(),
-    },
-    {
-      id: 'pcm-2',
-      roomId: 'pp-1_doc-sarah',
-      senderId: 'patient-1',
-      senderName: 'Siti Rahayu',
-      senderRole: 'patient',
-      type: 'text',
-      content: 'Selamat pagi Dok, agak sesak hari ini dan nafsu makan berkurang.',
-      status: 'read',
-      createdAt: new Date(Date.now() - 6800000).toISOString(),
-    },
-    {
-      id: 'pcm-3',
-      roomId: 'pp-1_doc-sarah',
-      senderId: 'doc-sarah',
-      senderName: 'dr. Sarah Wijaya',
-      senderRole: 'doctor',
-      type: 'form_ttv',
-      content: 'Silakan isi formulir TTV untuk memantau kondisi Anda hari ini.',
-      status: 'delivered',
-      formType: 'ttv',
-      formData: {
-        id: 'form-ttv-1',
-        formType: 'ttv',
-        status: 'sent',
-        progress: 0,
-      },
-      createdAt: new Date(Date.now() - 6000000).toISOString(),
-    },
-    {
-      id: 'pcm-4',
-      roomId: 'pp-1_doc-sarah',
-      senderId: 'doc-sarah',
-      senderName: 'dr. Sarah Wijaya',
-      senderRole: 'doctor',
-      type: 'form_keluhan',
-      content: 'Mohon isi form keluhan harian untuk evaluasi gejala Anda.',
-      status: 'delivered',
-      formType: 'keluhan',
-      formData: {
-        id: 'form-keluhan-1',
-        formType: 'keluhan',
-        status: 'sent',
-        progress: 0,
-      },
-      createdAt: new Date(Date.now() - 5800000).toISOString(),
-    },
-    {
-      id: 'pcm-5',
-      roomId: 'pp-1_doc-sarah',
-      senderId: 'patient-1',
-      senderName: 'Siti Rahayu',
-      senderRole: 'patient',
-      type: 'form_response',
-      content: 'Form TTV telah diisi.',
-      formType: 'ttv',
-      formResponse: {
-        formId: 'form-ttv-1',
-        formType: 'ttv',
-        ttvAnswers: {
-          systolicBP: 105,
-          diastolicBP: 65,
-          heartRate: 92,
-          respiratoryRate: 24,
-          temperature: 37.1,
-          oxygenSat: 91,
-          weight: 51.5,
-          symptoms: {
-            nyeri: true, sesak: true, batuk: false, mual: true, muntah: false,
-            sulit_menelan: false, sulit_tidur: true, lemas: true, nafsu_makan_menurun: true,
-            konstipasi: false, diare: false, lainnya: '',
-          },
-          painScore: 5,
-          notes: 'Sesak terasa saat berbaring',
-        },
-        submittedAt: new Date(Date.now() - 5000000).toISOString(),
-      },
-      status: 'read',
-      createdAt: new Date(Date.now() - 5000000).toISOString(),
-    },
-    {
-      id: 'pcm-6',
-      roomId: 'pp-1_doc-sarah',
-      senderId: 'system',
-      senderName: 'Sistem',
-      senderRole: 'system',
-      type: 'clinical_alert',
-      content: 'Peringatan: SpO2 rendah (91%) dan frekuensi napas meningkat (24/menit).',
-      clinicalAlert: {
-        id: 'alert-1',
-        patientId: 'pp-1',
-        alertType: 'ttv_abnormal',
-        severity: 'kuning',
-        title: 'TTV Abnormal',
-        description: 'SpO2 rendah (91%) dan frekuensi napas meningkat (24/menit)',
-        values: { oxygenSat: 91, respiratoryRate: 24 },
-        isRead: false,
-        createdAt: new Date(Date.now() - 4900000).toISOString(),
-      },
-      status: 'delivered',
-      createdAt: new Date(Date.now() - 4900000).toISOString(),
-    },
-    {
-      id: 'pcm-7',
-      roomId: 'pp-1_doc-sarah',
-      senderId: 'system',
-      senderName: 'AI Clinical Assistant',
-      senderRole: 'system',
-      type: 'ai_summary',
-      content: 'Ringkasan AI: Pasien menunjukkan penurunan SpO2 dan peningkatan frekuensi napas. Nyeri terkontrol dengan skor 5/10. Gejala utama: sesak, mual, lemas.',
-      aiSummary: 'S: Pasien Siti Rahayu mengeluhkan sesak napas terutama saat berbaring, nafsu makan menurun, dan lemas.\nO: TD 105/65 mmHg, Nadi 92 x/menit, RR 24/menit, Suhu 37.1°C, SpO2 91%, BB 51.5 kg. Nyeri 5/10.\nA: Penurunan saturasi oksigen dengan peningkatan frekuensi napas. Gejala sesak dan mual perlu pemantauan.\nP: Evaluasi oksigen tambahan, optimasi manajemen sesak, monitoring ulang 6 jam.',
-      status: 'delivered',
-      createdAt: new Date(Date.now() - 4800000).toISOString(),
-    },
-    {
-      id: 'pcm-8',
-      roomId: 'pp-3_doc-sarah',
-      senderId: 'doc-sarah',
-      senderName: 'dr. Sarah Wijaya',
-      senderRole: 'doctor',
-      type: 'text',
-      content: 'Ibu Maria, hari ini saya akan kirimkan form skrining untuk evaluasi kondisi Anda.',
-      status: 'sent',
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-  ] as PalliativeChatMessage[],
+  // Palliative Chat — empty initial state; loaded from Supabase
+  palliativeChatMessages: [] as PalliativeChatMessage[],
   setPalliativeChatMessages: (messages) => set({ palliativeChatMessages: messages }),
   addPalliativeChatMessage: (message) => {
     set((state) => ({ palliativeChatMessages: [...state.palliativeChatMessages, message] }));
@@ -1023,30 +688,7 @@ export const useStore = create<TelemedicineStore>((set) => ({
       firestoreSync.updateChatMessage(msg.palliativePatientId, msgId, data).catch(err => console.error('[Store] Firestore sync error (updateChat):', err));
     }
   },
-  palliativeClinicalAlerts: [
-    {
-      id: 'alert-1',
-      patientId: 'pp-1',
-      alertType: 'ttv_abnormal',
-      severity: 'kuning',
-      title: 'TTV Abnormal',
-      description: 'SpO2 rendah (91%) dan frekuensi napas meningkat (24/menit)',
-      values: { oxygenSat: 91, respiratoryRate: 24 },
-      isRead: false,
-      createdAt: new Date(Date.now() - 4900000).toISOString(),
-    },
-    {
-      id: 'alert-2',
-      patientId: 'pp-3',
-      alertType: 'ttv_abnormal',
-      severity: 'merah',
-      title: 'TTV Kritis',
-      description: 'SpO2 sangat rendah (88%), hipotensi (90/60), dan takipnea (26/menit)',
-      values: { oxygenSat: 88, systolicBP: 90, diastolicBP: 60, respiratoryRate: 26 },
-      isRead: false,
-      createdAt: new Date(Date.now() - 1800000).toISOString(),
-    },
-  ] as PalliativeClinicalAlert[],
+  palliativeClinicalAlerts: [] as PalliativeClinicalAlert[],
   addPalliativeClinicalAlert: (alert) => {
     set((state) => ({ palliativeClinicalAlerts: [...state.palliativeClinicalAlerts, alert] }));
     // Persist to Firestore
@@ -1065,44 +707,7 @@ export const useStore = create<TelemedicineStore>((set) => ({
       firestoreSync.markAlertRead(alert.palliativePatientId || alert.patientId, alertId).catch(err => console.error('[Store] Firestore sync error (markAlertRead):', err));
     }
   },
-  palliativeAuditLog: [
-    {
-      id: 'audit-1',
-      patientId: 'pp-1',
-      action: 'form_sent',
-      performedBy: 'doc-sarah',
-      performedByRole: 'doctor',
-      details: 'Dokter mengirim Form TTV kepada pasien Siti Rahayu',
-      createdAt: new Date(Date.now() - 6000000).toISOString(),
-    },
-    {
-      id: 'audit-2',
-      patientId: 'pp-1',
-      action: 'form_submitted',
-      performedBy: 'patient-1',
-      performedByRole: 'patient',
-      details: 'Pasien mengirimkan hasil Form TTV',
-      createdAt: new Date(Date.now() - 5000000).toISOString(),
-    },
-    {
-      id: 'audit-3',
-      patientId: 'pp-1',
-      action: 'alert_triggered',
-      performedBy: 'system',
-      performedByRole: 'system',
-      details: 'Alert: SpO2 rendah (91%) dan RR tinggi (24/menit)',
-      createdAt: new Date(Date.now() - 4900000).toISOString(),
-    },
-    {
-      id: 'audit-4',
-      patientId: 'pp-1',
-      action: 'ai_generated',
-      performedBy: 'system',
-      performedByRole: 'system',
-      details: 'AI menghasilkan ringkasan klinis otomatis',
-      createdAt: new Date(Date.now() - 4800000).toISOString(),
-    },
-  ] as PalliativeAuditEntry[],
+  palliativeAuditLog: [] as PalliativeAuditEntry[],
   addPalliativeAuditEntry: (entry) => {
     set((state) => ({ palliativeAuditLog: [...state.palliativeAuditLog, entry] }));
     // Persist to Firestore
@@ -1205,133 +810,18 @@ export const useStore = create<TelemedicineStore>((set) => ({
     firestoreSync.addKeluhan(complaint.palliativePatientId, { ...complaint }).catch(err => console.error('[Store] Firestore sync error (addKeluhan):', err));
   },
 
-  // RVSM
-  rvsmDevices: [
-    {
-      id: 'wd-1', patientId: 'pp-1', deviceType: 'apple_watch' as const,
-      deviceName: 'Apple Watch Series 9', integrationMethod: 'apple_healthkit' as const,
-      status: 'connected' as const, batteryLevel: 72, isConnected: true,
-      lastSyncAt: new Date(Date.now() - 300000).toISOString(),
-      firmwareVersion: '10.3.1', serialNumber: 'AW9-2024-00123',
-      registeredAt: new Date(Date.now() - 2592000000).toISOString(),
-    },
-    {
-      id: 'wd-2', patientId: 'pp-2', deviceType: 'samsung_galaxy_watch' as const,
-      deviceName: 'Samsung Galaxy Watch 6', integrationMethod: 'samsung_health' as const,
-      status: 'connected' as const, batteryLevel: 45, isConnected: true,
-      lastSyncAt: new Date(Date.now() - 600000).toISOString(),
-      firmwareVersion: '5.0.2', serialNumber: 'SGW6-2024-00456',
-      registeredAt: new Date(Date.now() - 1728000000).toISOString(),
-    },
-    {
-      id: 'wd-3', patientId: 'pp-3', deviceType: 'garmin_watch' as const,
-      deviceName: 'Garmin Vivosmart 5', integrationMethod: 'rest_api' as const,
-      status: 'low_battery' as const, batteryLevel: 12, isConnected: true,
-      lastSyncAt: new Date(Date.now() - 1800000).toISOString(),
-      firmwareVersion: '8.15', serialNumber: 'GV5-2024-00789',
-      registeredAt: new Date(Date.now() - 864000000).toISOString(),
-    },
-  ] as WearableDevice[],
+  // RVSM — empty initial state; data is populated when a device connects
+  rvsmDevices: [] as WearableDevice[],
   addRvsmDevice: (device) => set((state) => ({ rvsmDevices: [...state.rvsmDevices, device] })),
   updateRvsmDevice: (deviceId, data) => set((state) => ({
     rvsmDevices: state.rvsmDevices.map(d => d.id === deviceId ? { ...d, ...data } : d),
   })),
   removeRvsmDevice: (deviceId) => set((state) => ({ rvsmDevices: state.rvsmDevices.filter(d => d.id !== deviceId) })),
 
-  rvsmVitalData: (() => {
-    const now = Date.now();
-    const data: WearableVitalData[] = [];
-    // Generate 24 data points for each palliative patient over last 24h
-    const patients = [
-      { id: 'pp-1', deviceId: 'wd-1', hr: 88, spo2: 93, rr: 22, steps: 450, sleep: 420, temp: 36.8 },
-      { id: 'pp-2', deviceId: 'wd-2', hr: 78, spo2: 96, rr: 18, steps: 3200, sleep: 390, temp: 36.6 },
-      { id: 'pp-3', deviceId: 'wd-3', hr: 95, spo2: 88, rr: 26, steps: 120, sleep: 540, temp: 37.5 },
-    ];
-    patients.forEach(p => {
-      for (let i = 23; i >= 0; i--) {
-        const t = now - i * 3600000;
-        const hrVar = Math.round(p.hr + (Math.random() - 0.5) * 10);
-        const spo2Var = Math.round(p.spo2 + (Math.random() - 0.5) * 3);
-        const rrVar = Math.round(p.rr + (Math.random() - 0.5) * 4);
-        data.push({
-          id: `rvd-${p.id}-${i}`,
-          deviceId: p.deviceId,
-          patientId: p.id,
-          timestamp: new Date(t).toISOString(),
-          heartRate: hrVar,
-          heartRateVariability: Math.round(30 + Math.random() * 40),
-          heartRhythm: hrVar > 100 ? 'sinus_tachycardia' : hrVar < 60 ? 'sinus_bradycardia' : 'normal_sinus',
-          arrhythmiaDetected: Math.random() < 0.05,
-          respiratoryRate: rrVar,
-          respiratoryPattern: rrVar > 24 ? 'tachypneic' : rrVar < 10 ? 'bradypneic' : 'normal',
-          apneaEpisode: Math.random() < 0.03,
-          oxygenSat: spo2Var,
-          steps: i < 12 ? Math.round(p.steps / 12 + (Math.random() - 0.5) * 50) : undefined,
-          distance: i < 12 ? Math.round(p.steps * 0.7 + (Math.random() - 0.5) * 200) : undefined,
-          walkDuration: i < 12 ? Math.round(p.steps / 10 + (Math.random() - 0.5) * 5) : undefined,
-          dailyActivityLevel: p.steps < 500 ? 'sedentary' : p.steps < 3000 ? 'light' : 'moderate',
-          sittingDuration: i === 0 ? Math.round(180 + Math.random() * 120) : undefined,
-          standingDuration: i === 0 ? Math.round(30 + Math.random() * 60) : undefined,
-          lyingDuration: i === 0 ? Math.round(p.sleep + Math.random() * 60) : undefined,
-          postureChangeCount: i === 0 ? Math.round(5 + Math.random() * 10) : undefined,
-          sleepDuration: i === 0 ? p.sleep : undefined,
-          sleepQuality: p.sleep < 300 ? 'poor' : p.sleep < 420 ? 'fair' : 'good',
-          sleepDisturbances: Math.round(Math.random() * 5),
-          sleepPattern: p.sleep > 540 ? 'hypersomnia' : p.sleep < 300 ? 'insomnia' : 'normal',
-          skinTemperature: Math.round((p.temp - 0.5 + Math.random()) * 10) / 10,
-          estimatedCoreTemp: p.temp,
-          painScore: p.id === 'pp-3' ? Math.round(6 + Math.random() * 3) : p.id === 'pp-1' ? Math.round(3 + Math.random() * 3) : Math.round(1 + Math.random() * 2),
-          stressLevel: Math.round(p.id === 'pp-3' ? 65 + Math.random() * 25 : p.id === 'pp-1' ? 40 + Math.random() * 30 : 20 + Math.random() * 20),
-          fatigueLevel: Math.round(p.id === 'pp-3' ? 70 + Math.random() * 20 : p.id === 'pp-1' ? 50 + Math.random() * 25 : 25 + Math.random() * 15),
-          systolicBP: p.id === 'pp-1' ? 105 + Math.round((Math.random() - 0.5) * 10) : p.id === 'pp-2' ? 130 + Math.round((Math.random() - 0.5) * 10) : 90 + Math.round((Math.random() - 0.5) * 8),
-          diastolicBP: p.id === 'pp-1' ? 65 + Math.round((Math.random() - 0.5) * 8) : p.id === 'pp-2' ? 82 + Math.round((Math.random() - 0.5) * 8) : 60 + Math.round((Math.random() - 0.5) * 6),
-        });
-      }
-    });
-    return data;
-  })() as WearableVitalData[],
+  rvsmVitalData: [] as WearableVitalData[],
   addRvsmVitalData: (d) => set((state) => ({ rvsmVitalData: [...state.rvsmVitalData, d] })),
 
-  rvsmAlerts: [
-    {
-      id: 'rva-1', patientId: 'pp-3', patientName: 'Maria Susanti', deviceId: 'wd-3',
-      category: 'oxygenation' as const, severity: 'critical' as const,
-      title: 'SpO2 Sangat Rendah',
-      description: 'Saturasi oksigen pasien turun di bawah 90%. Diperlukan tindakan segera.',
-      values: { oxygenSat: 88 }, threshold: { parameter: 'oxygenSat', operator: '<', value: 92 },
-      actualValue: 88, isRead: false, isAcknowledged: false,
-      createdAt: new Date(Date.now() - 1800000).toISOString(),
-    },
-    {
-      id: 'rva-2', patientId: 'pp-1', patientName: 'Siti Rahayu', deviceId: 'wd-1',
-      category: 'cardiovascular' as const, severity: 'attention' as const,
-      title: 'Takikardia Deteksi',
-      description: 'Denyut jantung pasien melebihi 100 bpm secara konsisten.',
-      values: { heartRate: 105 }, threshold: { parameter: 'heartRate', operator: '>', value: 100 },
-      actualValue: 105, isRead: false, isAcknowledged: false,
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-    {
-      id: 'rva-3', patientId: 'pp-3', patientName: 'Maria Susanti', deviceId: 'wd-3',
-      category: 'mobility' as const, severity: 'attention' as const,
-      title: 'Penurunan Aktivitas Signifikan',
-      description: 'Aktivitas pasien menurun lebih dari 30% dibanding baseline. Pasien lebih banyak berbaring.',
-      values: { activityChange: -35, lyingHours: 12.5 },
-      actualValue: -35, isRead: true, isAcknowledged: true,
-      acknowledgedBy: 'dr. Sarah Wijaya',
-      acknowledgedAt: new Date(Date.now() - 900000).toISOString(),
-      createdAt: new Date(Date.now() - 7200000).toISOString(),
-    },
-    {
-      id: 'rva-4', patientId: 'pp-1', patientName: 'Siti Rahayu', deviceId: 'wd-1',
-      category: 'sleep' as const, severity: 'attention' as const,
-      title: 'Gangguan Tidur',
-      description: 'Kualitas tidur pasien menurun. Durasi tidur hanya 4.2 jam dengan 5 kali gangguan.',
-      values: { sleepDuration: 252, sleepDisturbances: 5 },
-      isRead: false, isAcknowledged: false,
-      createdAt: new Date(Date.now() - 5400000).toISOString(),
-    },
-  ] as RVSMAlert[],
+  rvsmAlerts: [] as RVSMAlert[],
   addRvsmAlert: (alert) => set((state) => ({ rvsmAlerts: [...state.rvsmAlerts, alert] })),
   markRvsmAlertRead: (alertId) => set((state) => ({
     rvsmAlerts: state.rvsmAlerts.map(a => a.id === alertId ? { ...a, isRead: true } : a),
@@ -1340,68 +830,17 @@ export const useStore = create<TelemedicineStore>((set) => ({
     rvsmAlerts: state.rvsmAlerts.map(a => a.id === alertId ? { ...a, isAcknowledged: true, acknowledgedBy, acknowledgedAt: new Date().toISOString() } : a),
   })),
 
-  rvsmDailyReports: [
-    {
-      id: 'rdr-1', patientId: 'pp-1', patientName: 'Siti Rahayu',
-      reportDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-      activityChangePercent: -25, avgSpO2: 92, avgHeartRate: 90, avgRespiratoryRate: 23,
-      sleepDurationHours: 4.2, lyingDurationHours: 14, stepsCount: 450, painScoreAvg: 4.5,
-      stressLevelAvg: 55, fatigueLevelAvg: 62,
-      aiSummary: 'Aktivitas pasien menurun 25% dibanding minggu sebelumnya. Rata-rata SpO2 92% (menurun dari 94%). Durasi tidur hanya 4.2 jam menunjukkan insomnia. Temuan mengindikasikan penurunan status fungsional.',
-      riskPrediction: { hospitalizationRisk: 'moderate', symptomWorseningRisk: 'high', ppsDeclineRisk: 'moderate', homeVisitNeedRisk: 'high' },
-      createdAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-    {
-      id: 'rdr-2', patientId: 'pp-3', patientName: 'Maria Susanti',
-      reportDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-      activityChangePercent: -45, avgSpO2: 88, avgHeartRate: 96, avgRespiratoryRate: 26,
-      sleepDurationHours: 9.5, lyingDurationHours: 20, stepsCount: 80, painScoreAvg: 7.5,
-      stressLevelAvg: 78, fatigueLevelAvg: 82,
-      aiSummary: 'Penurunan aktivitas signifikan 45%. SpO2 konsisten rendah (rata-rata 88%). Pasien hampir sepenuhnya bed rest. Nyeri tinggi (7.5/10) dan fatigue berat (82/100). Risiko perburukan TINGGI.',
-      riskPrediction: { hospitalizationRisk: 'high', symptomWorseningRisk: 'high', ppsDeclineRisk: 'high', homeVisitNeedRisk: 'high' },
-      createdAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-  ] as RVSMDailyReport[],
+  rvsmDailyReports: [] as RVSMDailyReport[],
   addRvsmDailyReport: (report) => set((state) => ({ rvsmDailyReports: [...state.rvsmDailyReports, report] })),
 
-  rvsmFamilyAccess: [
-    {
-      id: 'rfa-1', patientId: 'pp-1', familyMemberId: 'fam-budi', familyMemberName: 'Budi Rahayu',
-      relationship: 'Anak', canViewActivity: true, canViewDeviceStatus: true,
-      canViewHealthGraphs: true, canReceiveAlerts: true, canViewSchedule: true,
-      grantedAt: new Date(Date.now() - 2592000000).toISOString(),
-    },
-    {
-      id: 'rfa-2', patientId: 'pp-3', familyMemberId: 'fam-yohanes', familyMemberName: 'Yohanes Susanti',
-      relationship: 'Suami', canViewActivity: true, canViewDeviceStatus: true,
-      canViewHealthGraphs: true, canReceiveAlerts: true, canViewSchedule: true,
-      grantedAt: new Date(Date.now() - 1728000000).toISOString(),
-    },
-  ] as RVSMFamilyAccess[],
+  rvsmFamilyAccess: [] as RVSMFamilyAccess[],
   addRvsmFamilyAccess: (access) => set((state) => ({ rvsmFamilyAccess: [...state.rvsmFamilyAccess, access] })),
   removeRvsmFamilyAccess: (accessId) => set((state) => ({ rvsmFamilyAccess: state.rvsmFamilyAccess.filter(a => a.id !== accessId) })),
 
-  rvsmAuditLog: [
-    { id: 'ra-1', patientId: 'pp-1', action: 'data_received' as const, performedBy: 'wd-1', performedByRole: 'system' as const, details: 'Data vital diterima dari Apple Watch', deviceId: 'wd-1', createdAt: new Date(Date.now() - 300000).toISOString() },
-    { id: 'ra-2', patientId: 'pp-3', action: 'alert_generated' as const, performedBy: 'system', performedByRole: 'system' as const, details: 'Alert: SpO2 rendah terdeteksi (88%)', deviceId: 'wd-3', createdAt: new Date(Date.now() - 1800000).toISOString() },
-    { id: 'ra-3', patientId: 'pp-3', action: 'alert_acknowledged' as const, performedBy: 'doc-sarah', performedByRole: 'doctor' as const, details: 'Dokter mengakui alert SpO2 rendah', createdAt: new Date(Date.now() - 900000).toISOString() },
-  ] as RVSMAuditEntry[],
+  rvsmAuditLog: [] as RVSMAuditEntry[],
   addRvsmAuditEntry: (entry) => set((state) => ({ rvsmAuditLog: [...state.rvsmAuditLog, entry] })),
 
-  rvsmPalliativeEstimates: [
-    {
-      patientId: 'pp-1', estimatedAt: new Date(Date.now() - 3600000).toISOString(),
-      ppsEstimate: { currentEstimate: 40, previousEstimate: 50, change: -10, confidence: 0.78, factors: ['Penurunan aktivitas 25%', 'SpO2 menurun', 'Durasi tidur berkurang'] },
-      esasEstimate: { fatigueLevel: 7, sleepDisturbance: 6, activityDecline: 5, estimatedTotalScore: 45 },
-      spictEstimate: { deteriorationRisk: 'high', indicators: ['Penurunan fungsi fisik', 'Hipoksemia berulang', 'Penurunan berat badan'] },
-    },
-    {
-      patientId: 'pp-3', estimatedAt: new Date(Date.now() - 3600000).toISOString(),
-      ppsEstimate: { currentEstimate: 20, previousEstimate: 30, change: -10, confidence: 0.85, factors: ['Bed rest total', 'SpO2 konsisten rendah', 'Nyeri tidak terkontrol'] },
-      esasEstimate: { fatigueLevel: 9, sleepDisturbance: 8, activityDecline: 9, estimatedTotalScore: 72 },
-      spictEstimate: { deteriorationRisk: 'high', indicators: ['Ketergantungan total', 'Hipoksemia persisten', 'Penurunan kesadaran', 'Disfungsi multiorgan'] },
-    },
-  ] as RVSMPalliativeScoreEstimate[],
+  rvsmPalliativeEstimates: [] as RVSMPalliativeScoreEstimate[],
   addRvsmPalliativeEstimate: (estimate) => set((state) => ({ rvsmPalliativeEstimates: [...state.rvsmPalliativeEstimates, estimate] })),
 
   rvsmAiSummary: '',
@@ -1457,43 +896,8 @@ export const useStore = create<TelemedicineStore>((set) => ({
   palliativeDocumentAuditLog: [] as PalliativeDocumentAuditEntry[],
   addPalliativeDocumentAuditEntry: (entry) => set((state) => ({ palliativeDocumentAuditLog: [...state.palliativeDocumentAuditLog, entry] })),
 
-  // Social Support Management
-  socialAssessments: [
-    {
-      id: 'sa-1', palliativePatientId: 'pp-1',
-      housingCondition: 'kurang_layak' as const, housingNotes: 'Rumah tidak luas, akses jalan sulit',
-      caregiverAvailability: 'terbatas' as const, caregiverNotes: 'Anak bekerja di siang hari',
-      familySupportLevel: 'cukup' as const, familySupportNotes: 'Keluarga rutin menengok',
-      transportDifficulty: 'sedang' as const, transportNotes: 'Jarak ke RS 15km, tidak ada kendaraan',
-      economicConstraint: 'sedang' as const, economicNotes: 'Penghasilan terbatas, bergantung BPJS',
-      healthcareAccess: 'sulit' as const, healthcareAccessNotes: 'Fasilitas kesehatan terdekat 10km',
-      medicalEquipmentNeed: 'sedang' as const, medicalEquipmentNotes: 'Perlu oksigen konsentrator dan kasur anti dekubitus',
-      socialAssistanceNeed: 'sedang' as const, socialAssistanceNotes: 'Perlu bantuan biaya transportasi',
-      socialIsolationRisk: 'sedang' as const, socialIsolationNotes: 'Pasien jarang keluar rumah',
-      overallStatus: 'sebagian' as const, priorityLevel: 'sedang' as const,
-      recommendations: ['Fasilitas kunjungan rumah', 'Bantuan transportasi medis', 'Alat kesehatan rumahan'],
-      assessedBy: 'dr. Sarah Wijaya', assessedByRole: 'doctor' as const,
-      assessedAt: new Date(Date.now() - 172800000).toISOString(),
-      createdAt: new Date(Date.now() - 172800000).toISOString(), updatedAt: new Date(Date.now() - 172800000).toISOString(),
-    },
-    {
-      id: 'sa-2', palliativePatientId: 'pp-3',
-      housingCondition: 'layak' as const,
-      caregiverAvailability: 'tersedia' as const,
-      familySupportLevel: 'kuat' as const,
-      transportDifficulty: 'ringan' as const,
-      economicConstraint: 'berat' as const, economicNotes: 'Biaya pengobatan sangat memberatkan',
-      healthcareAccess: 'cukup' as const,
-      medicalEquipmentNeed: 'berat' as const, medicalEquipmentNotes: 'Perlu ventilator portabel, suction, dan nebulizer',
-      socialAssistanceNeed: 'berat' as const, socialAssistanceNotes: 'Perlu bantuan biaya pengobatan dan alat kesehatan',
-      socialIsolationRisk: 'rendah' as const,
-      overallStatus: 'lengkap' as const, priorityLevel: 'tinggi' as const,
-      recommendations: ['Bantuan biaya pengobatan', 'Pengadaan alat kesehatan', 'Program JKN-KIS'],
-      assessedBy: 'dr. Sarah Wijaya', assessedByRole: 'doctor' as const,
-      assessedAt: new Date(Date.now() - 86400000).toISOString(),
-      createdAt: new Date(Date.now() - 86400000).toISOString(), updatedAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-  ] as SocialAssessmentRecord[],
+  // Social Support Management — empty initial state; loaded from Supabase
+  socialAssessments: [] as SocialAssessmentRecord[],
   addSocialAssessment: (record) => {
     set((state) => ({ socialAssessments: [...state.socialAssessments, record] }));
     // Persist to Firestore
@@ -1502,82 +906,27 @@ export const useStore = create<TelemedicineStore>((set) => ({
   updateSocialAssessment: (id, data) => set((state) => ({
     socialAssessments: state.socialAssessments.map(a => a.id === id ? { ...a, ...data, updatedAt: new Date().toISOString() } : a),
   })),
-  caregivers: [
-    {
-      id: 'cg-1', palliativePatientId: 'pp-1', name: 'Budi Rahayu', role: 'utama' as const, relation: 'anak' as const,
-      phone: '081234567890', email: 'budi.rahayu@email.com', address: 'Jl. Melati No. 12, Bandung',
-      schedule: 'Senin-Sabtu, 08:00-17:00', tasks: ['Pemberian obat', 'Monitoring TTV', 'Memasak makanan'],
-      isActive: true, zaritScore: 28, zaritLevel: 'beban_sedang' as const,
-      familyApgarScore: 7, familyApgarLevel: 'good' as const,
-      notes: 'Kadang merasa terbebani namun berusaha ikhlas',
-      createdAt: new Date(Date.now() - 259200000).toISOString(), updatedAt: new Date(Date.now() - 259200000).toISOString(),
-    },
-    {
-      id: 'cg-2', palliativePatientId: 'pp-1', name: 'Sari Rahayu', role: 'pendamping' as const, relation: 'anak' as const,
-      phone: '082345678901', schedule: 'Minggu dan malam hari', tasks: ['Menemani ibu', 'Bantu makan'],
-      isActive: true, zaritScore: 18, zaritLevel: 'beban_ringan' as const,
-      notes: 'Membantu kakak di akhir pekan',
-      createdAt: new Date(Date.now() - 172800000).toISOString(), updatedAt: new Date(Date.now() - 172800000).toISOString(),
-    },
-    {
-      id: 'cg-3', palliativePatientId: 'pp-3', name: 'Yohanes Susanti', role: 'utama' as const, relation: 'suami' as const,
-      phone: '083456789012', address: 'Jl. Anggrek No. 8, Surabaya',
-      schedule: 'Setiap hari, 24 jam', tasks: ['Perawatan lengkap', 'Pemberian obat', 'Monitoring kondisi', 'Koordinasi dokter'],
-      isActive: true, zaritScore: 42, zaritLevel: 'beban_berat' as const,
-      familyApgarScore: 5, familyApgarLevel: 'moderate_dysfunction' as const,
-      notes: 'Beban sangat berat, perlu dukungan psikologis',
-      createdAt: new Date(Date.now() - 432000000).toISOString(), updatedAt: new Date(Date.now() - 432000000).toISOString(),
-    },
-  ] as CaregiverInfo[],
+  caregivers: [] as CaregiverInfo[],
   addCaregiver: (caregiver) => set((state) => ({ caregivers: [...state.caregivers, caregiver] })),
   updateCaregiver: (id, data) => set((state) => ({
     caregivers: state.caregivers.map(c => c.id === id ? { ...c, ...data, updatedAt: new Date().toISOString() } : c),
   })),
   removeCaregiver: (id) => set((state) => ({ caregivers: state.caregivers.filter(c => c.id !== id) })),
-  familyMeetings: [
-    {
-      id: 'fm-1', palliativePatientId: 'pp-1', title: 'Family Meeting: Rencana Perawatan Lanjutan',
-      scheduledAt: new Date(Date.now() + 86400000 * 3).toISOString(), duration: 60,
-      status: 'dijadwalkan' as const,
-      participants: [
-        { name: 'Budi Rahayu', role: 'Anak/Caregiver', phone: '081234567890', attended: false },
-        { name: 'Sari Rahayu', role: 'Anak', phone: '082345678901', attended: false },
-        { name: 'dr. Sarah Wijaya', role: 'Dokter', attended: false },
-      ],
-      agenda: 'Diskusi perawatan lanjutan dan kebutuhan alat kesehatan di rumah',
-      createdBy: 'dr. Sarah Wijaya',
-      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    },
-    {
-      id: 'fm-2', palliativePatientId: 'pp-3', title: 'Family Meeting: Evaluasi Kondisi dan Dukungan',
-      scheduledAt: new Date(Date.now() - 172800000).toISOString(), duration: 45,
-      status: 'selesai' as const,
-      participants: [
-        { name: 'Yohanes Susanti', role: 'Suami/Caregiver', phone: '083456789012', attended: true },
-        { name: 'Maria Susanti Jr', role: 'Anak', phone: '084567890123', attended: true },
-        { name: 'dr. Sarah Wijaya', role: 'Dokter', attended: true },
-      ],
-      agenda: 'Evaluasi kondisi pasien, beban caregiver, dan dukungan finansial',
-      discussionNotes: 'Pasien membutuhkan perawatan intensif. Suami merasa sangat terbebani. Perlu bantuan caregiver tambahan.',
-      resume: 'Disepakati untuk menambah perawat shift malam dan mengajukan bantuan sosial',
-      followUpActions: ['Menghubungi perawat home care', 'Mengajukan bantuan JKN-KIS', 'Konseling caregiver'],
-      createdBy: 'dr. Sarah Wijaya',
-      createdAt: new Date(Date.now() - 259200000).toISOString(), updatedAt: new Date(Date.now() - 172800000).toISOString(),
-    },
-  ] as FamilyMeetingRecord[],
+  familyMeetings: [] as FamilyMeetingRecord[],
   addFamilyMeeting: (meeting) => set((state) => ({ familyMeetings: [...state.familyMeetings, meeting] })),
   updateFamilyMeeting: (id, data) => set((state) => ({
     familyMeetings: state.familyMeetings.map(m => m.id === id ? { ...m, ...data, updatedAt: new Date().toISOString() } : m),
   })),
+  // Edu materials are general (not patient-specific) — kept as default catalog
   eduMaterials: [
-    { id: 'edu-1', title: 'Panduan Perawatan Pasien Paliatif di Rumah', category: 'perawatan_rumah' as const, description: 'Panduan lengkap perawatan harian pasien paliatif di rumah', type: 'pdf' as const, accessCount: 45, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'edu-2', title: 'Cara Mengelola Nyeri di Rumah', category: 'perawatan_rumah' as const, description: 'Tips dan panduan manajemen nyeri untuk caregiver', type: 'artikel' as const, accessCount: 38, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'edu-3', title: 'Panduan Caregiver: Menjaga Kesehatan Mental', category: 'panduan_caregiver' as const, description: 'Self-care untuk caregiver agar tidak burnout', type: 'artikel' as const, accessCount: 22, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'edu-4', title: 'Video: Posisi Nyaman Pasien Bed Rest', category: 'video_edukasi' as const, description: 'Video tutorial posisi nyaman dan pencegahan dekubitus', type: 'video' as const, accessCount: 56, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'edu-5', title: 'Dukungan Psikososial untuk Keluarga', category: 'dukungan_psikososial' as const, description: 'Mengenali tanda stres dan cara mengatasinya', type: 'artikel' as const, accessCount: 18, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'edu-6', title: 'Kapan Harus ke UGD?', category: 'gawat_darurat' as const, description: 'Panduan mengenali tanda bahaya yang memerlukan penanganan darurat', type: 'infografis' as const, accessCount: 62, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'edu-7', title: 'Persiapan Akhir Kehidupan', category: 'end_of_life' as const, description: 'Panduan mempersiapkan tahap akhir kehidupan dengan bermartabat', type: 'pdf' as const, accessCount: 12, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'edu-8', title: 'FAQ: Pertanyaan Umum Keluarga Pasien Paliatif', category: 'faq' as const, description: 'Jawaban atas pertanyaan yang sering diajukan keluarga', type: 'faq' as const, accessCount: 89, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'edu-1', title: 'Panduan Perawatan Pasien Paliatif di Rumah', category: 'perawatan_rumah' as const, description: 'Panduan lengkap perawatan harian pasien paliatif di rumah', type: 'pdf' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'edu-2', title: 'Cara Mengelola Nyeri di Rumah', category: 'perawatan_rumah' as const, description: 'Tips dan panduan manajemen nyeri untuk caregiver', type: 'artikel' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'edu-3', title: 'Panduan Caregiver: Menjaga Kesehatan Mental', category: 'panduan_caregiver' as const, description: 'Self-care untuk caregiver agar tidak burnout', type: 'artikel' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'edu-4', title: 'Video: Posisi Nyaman Pasien Bed Rest', category: 'video_edukasi' as const, description: 'Video tutorial posisi nyaman dan pencegahan dekubitus', type: 'video' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'edu-5', title: 'Dukungan Psikososial untuk Keluarga', category: 'dukungan_psikososial' as const, description: 'Mengenali tanda stres dan cara mengatasinya', type: 'artikel' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'edu-6', title: 'Kapan Harus ke UGD?', category: 'gawat_darurat' as const, description: 'Panduan mengenali tanda bahaya yang memerlukan penanganan darurat', type: 'infografis' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'edu-7', title: 'Persiapan Akhir Kehidupan', category: 'end_of_life' as const, description: 'Panduan mempersiapkan tahap akhir kehidupan dengan bermartabat', type: 'pdf' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'edu-8', title: 'FAQ: Pertanyaan Umum Keluarga Pasien Paliatif', category: 'faq' as const, description: 'Jawaban atas pertanyaan yang sering diajukan keluarga', type: 'faq' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
   ] as EduMaterial[],
   addEduMaterial: (material) => set((state) => ({ eduMaterials: [...state.eduMaterials, material] })),
   updateEduMaterial: (id, data) => set((state) => ({
@@ -1589,65 +938,28 @@ export const useStore = create<TelemedicineStore>((set) => ({
       accessLogs: [...m.accessLogs, { materialId, accessedBy, accessedAt: new Date().toISOString() }],
     } : m),
   })),
-  familyCoordinationNotes: [
-    { id: 'fcn-1', palliativePatientId: 'pp-1', authorName: 'Budi Rahayu', authorRelation: 'Anak', content: 'Ibu hari ini makan lebih banyak, sesak berkurang', type: 'perkembangan' as const, isCompleted: false, createdAt: new Date(Date.now() - 43200000).toISOString(), updatedAt: new Date(Date.now() - 43200000).toISOString() },
-    { id: 'fcn-2', palliativePatientId: 'pp-1', authorName: 'Sari Rahayu', authorRelation: 'Anak', content: 'Beli obat Morfine di apotek', type: 'tugas' as const, isCompleted: false, dueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0], createdAt: new Date(Date.now() - 3600000).toISOString(), updatedAt: new Date(Date.now() - 3600000).toISOString() },
-    { id: 'fcn-3', palliativePatientId: 'pp-3', authorName: 'Yohanes Susanti', authorRelation: 'Suami', content: 'Jadwal kontrol dr. Sarah tanggal 15', type: 'pengingat_kontrol' as const, isCompleted: false, dueDate: new Date(Date.now() + 86400000 * 5).toISOString().split('T')[0], createdAt: new Date(Date.now() - 7200000).toISOString(), updatedAt: new Date(Date.now() - 7200000).toISOString() },
-  ] as FamilyCoordinationNote[],
+  familyCoordinationNotes: [] as FamilyCoordinationNote[],
   addFamilyCoordinationNote: (note) => set((state) => ({ familyCoordinationNotes: [...state.familyCoordinationNotes, note] })),
   updateFamilyCoordinationNote: (id, data) => set((state) => ({
     familyCoordinationNotes: state.familyCoordinationNotes.map(n => n.id === id ? { ...n, ...data, updatedAt: new Date().toISOString() } : n),
   })),
-  emergencyContacts: [
-    { id: 'ec-1', palliativePatientId: 'pp-1', name: 'dr. Sarah Wijaya', role: 'dokter' as const, phone: '081111111111', isPrimary: true, notes: 'Dokter penanggung jawab', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'ec-2', palliativePatientId: 'pp-1', name: 'Budi Rahayu', role: 'caregiver_utama' as const, phone: '081234567890', isPrimary: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'ec-3', palliativePatientId: 'pp-1', name: 'Ambulans 119', role: 'ambulans' as const, phone: '119', isPrimary: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'ec-4', palliativePatientId: 'pp-1', name: 'RS Hasan Sadikin', role: 'rumah_sakit' as const, phone: '0222034953', isPrimary: false, notes: 'RS rujukan utama', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'ec-5', palliativePatientId: 'pp-3', name: 'dr. Sarah Wijaya', role: 'dokter' as const, phone: '081111111111', isPrimary: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'ec-6', palliativePatientId: 'pp-3', name: 'Yohanes Susanti', role: 'caregiver_utama' as const, phone: '083456789012', isPrimary: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'ec-7', palliativePatientId: 'pp-3', name: 'UGD RS Dr. Soetomo', role: 'gawat_darurat' as const, phone: '0315501171', isPrimary: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  ] as EmergencyContact[],
+  emergencyContacts: [] as EmergencyContact[],
   addEmergencyContact: (contact) => set((state) => ({ emergencyContacts: [...state.emergencyContacts, contact] })),
   updateEmergencyContact: (id, data) => set((state) => ({
     emergencyContacts: state.emergencyContacts.map(c => c.id === id ? { ...c, ...data, updatedAt: new Date().toISOString() } : c),
   })),
   removeEmergencyContact: (id) => set((state) => ({ emergencyContacts: state.emergencyContacts.filter(c => c.id !== id) })),
-  financialSupportRecords: [
-    {
-      id: 'fs-1', palliativePatientId: 'pp-1', insuranceStatus: 'bpjs' as const, bpjsNumber: '0001234567890',
-      insuranceDetails: 'BPJS Kesehatan Kelas 2', socialAidStatus: 'menerima' as const, socialAidDetails: 'PKH, BPNT',
-      treatmentCostNeed: 'sedang' as const, medicalEquipmentCostNeed: 'sedang' as const, transportCostNeed: 'ringan' as const,
-      recommendedPrograms: ['BPJS Kesehatan', 'Program Keluarga Harapan', 'Bantuan Sosial DA'],
-      notes: 'Biaya transportasi masih menjadi kendala', assessedBy: 'Pekerja Sosial',
-      assessedAt: new Date(Date.now() - 172800000).toISOString(),
-      createdAt: new Date(Date.now() - 172800000).toISOString(), updatedAt: new Date(Date.now() - 172800000).toISOString(),
-    },
-    {
-      id: 'fs-2', palliativePatientId: 'pp-3', insuranceStatus: 'campuran' as const,
-      insuranceDetails: 'BPJS + Asuransi Prudential', socialAidStatus: 'belum_menerima' as const,
-      treatmentCostNeed: 'berat' as const, medicalEquipmentCostNeed: 'berat' as const, transportCostNeed: 'ringan' as const,
-      recommendedPrograms: ['JKN-KIS', 'Kartu Indonesia Pintar', 'Bantuan Medis Hospice', 'Program CSR RS'],
-      notes: 'Biaya perawatan sangat memberatkan keluarga', assessedBy: 'Pekerja Sosial',
-      assessedAt: new Date(Date.now() - 86400000).toISOString(),
-      createdAt: new Date(Date.now() - 86400000).toISOString(), updatedAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-  ] as FinancialSupportRecord[],
+  financialSupportRecords: [] as FinancialSupportRecord[],
   addFinancialSupportRecord: (record) => set((state) => ({ financialSupportRecords: [...state.financialSupportRecords, record] })),
   updateFinancialSupportRecord: (id, data) => set((state) => ({
     financialSupportRecords: state.financialSupportRecords.map(r => r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r),
   })),
-  transportRecords: [
-    { id: 'tr-1', palliativePatientId: 'pp-1', type: 'transportasi_medis' as const, status: 'selesai' as const, scheduledAt: new Date(Date.now() - 86400000 * 7).toISOString(), completedAt: new Date(Date.now() - 86400000 * 7).toISOString(), origin: 'Jl. Melati No. 12, Bandung', destination: 'RS Hasan Sadikin', notes: 'Kontrol rutin', requestedBy: 'Budi Rahayu', createdAt: new Date(Date.now() - 86400000 * 8).toISOString(), updatedAt: new Date(Date.now() - 86400000 * 7).toISOString() },
-    { id: 'tr-2', palliativePatientId: 'pp-3', type: 'ambulans_darurat' as const, status: 'selesai' as const, scheduledAt: new Date(Date.now() - 259200000).toISOString(), completedAt: new Date(Date.now() - 259200000).toISOString(), origin: 'Jl. Anggrek No. 8, Surabaya', destination: 'RS Dr. Soetomo', notes: 'Sesak napas berat', requestedBy: 'Yohanes Susanti', createdAt: new Date(Date.now() - 259200000).toISOString(), updatedAt: new Date(Date.now() - 259200000).toISOString() },
-  ] as TransportRecord[],
+  transportRecords: [] as TransportRecord[],
   addTransportRecord: (record) => set((state) => ({ transportRecords: [...state.transportRecords, record] })),
   updateTransportRecord: (id, data) => set((state) => ({
     transportRecords: state.transportRecords.map(r => r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r),
   })),
-  socialAlerts: [
-    { id: 'sal-1', patientId: 'pp-3', patientName: 'Maria Susanti', type: 'beban_caregiver' as const, severity: 'critical' as const, title: 'Beban Caregiver Berat', description: 'Skor Zarit 42/48 - Suami pasien mengalami beban caregiver berat, perlu intervensi segera', isRead: false, createdAt: new Date(Date.now() - 3600000).toISOString() },
-    { id: 'sal-2', patientId: 'pp-1', patientName: 'Siti Rahayu', type: 'kendala_ekonomi' as const, severity: 'warning' as const, title: 'Kendala Ekonomi Sedang', description: 'Pasien mengalami kendala ekonomi sedang, perlu evaluasi bantuan sosial', isRead: false, createdAt: new Date(Date.now() - 86400000).toISOString() },
-  ] as SocialMonitoringAlert[],
+  socialAlerts: [] as SocialMonitoringAlert[],
   addSocialAlert: (alert) => set((state) => ({ socialAlerts: [...state.socialAlerts, alert] })),
   markSocialAlertRead: (alertId) => set((state) => ({
     socialAlerts: state.socialAlerts.map(a => a.id === alertId ? { ...a, isRead: true } : a),
@@ -1663,124 +975,21 @@ export const useStore = create<TelemedicineStore>((set) => ({
   aiSocialPopulationStats: null,
   setAiSocialPopulationStats: (stats) => set({ aiSocialPopulationStats: stats }),
 
-  // Patient Paliatif Module
-  patientTransportRequests: [
-    {
-      id: 'ptr-1',
-      palliativePatientId: 'pp-1',
-      requestType: 'kontrol_faskes',
-      requestDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
-      requestTime: '09:00',
-      pickupLocation: 'Jl. Melati No. 12, Bandung',
-      destination: 'RS Hasan Sadikin, Bandung',
-      notes: 'Kontrol rutin dengan dr. Sarah',
-      status: 'disetujui',
-      requestedBy: 'Siti Rahayu',
-      confirmedBy: 'dr. Sarah Wijaya',
-      confirmedAt: new Date(Date.now() - 3600000).toISOString(),
-      createdAt: new Date(Date.now() - 86400000).toISOString(),
-      updatedAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-    {
-      id: 'ptr-2',
-      palliativePatientId: 'pp-1',
-      requestType: 'pengambilan_obat',
-      requestDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
-      requestTime: '14:00',
-      pickupLocation: 'Jl. Melati No. 12, Bandung',
-      destination: 'Apotek Kimia Farma, Jl. Asia Afrika',
-      status: 'menunggu_konfirmasi',
-      requestedBy: 'Siti Rahayu',
-      createdAt: new Date(Date.now() - 7200000).toISOString(),
-      updatedAt: new Date(Date.now() - 7200000).toISOString(),
-    },
-  ] as PatientTransportRequest[],
+  // Patient Paliatif Module — empty initial state; loaded from Supabase
+  patientTransportRequests: [] as PatientTransportRequest[],
   addPatientTransportRequest: (request) => set((state) => ({ patientTransportRequests: [...state.patientTransportRequests, request] })),
   updatePatientTransportRequest: (id, data) => set((state) => ({
     patientTransportRequests: state.patientTransportRequests.map(r =>
       r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r
     ),
   })),
-  patientCareUpdates: [
-    {
-      id: 'pcu-1',
-      palliativePatientId: 'pp-1',
-      conditionStatus: 'stabil',
-      newComplaints: false,
-      activityChange: false,
-      appetiteChange: true,
-      sleepQualityChange: false,
-      additionalNotes: 'Nafsu makan sedikit berkurang hari ini',
-      submittedBy: 'Siti Rahayu',
-      viewedByDoctor: true,
-      createdAt: new Date(Date.now() - 172800000).toISOString(),
-    },
-    {
-      id: 'pcu-2',
-      palliativePatientId: 'pp-1',
-      conditionStatus: 'menurun',
-      newComplaints: true,
-      activityChange: true,
-      appetiteChange: true,
-      sleepQualityChange: true,
-      additionalNotes: 'Sesak napas bertambah, sulit tidur, nafsu makan menurun',
-      submittedBy: 'Siti Rahayu',
-      viewedByDoctor: false,
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-  ] as PatientCareUpdate[],
+  patientCareUpdates: [] as PatientCareUpdate[],
   addPatientCareUpdate: (update) => set((state) => ({ patientCareUpdates: [...state.patientCareUpdates, update] })),
   markCareUpdateViewed: (id) => set((state) => ({
     patientCareUpdates: state.patientCareUpdates.map(u =>
       u.id === id ? { ...u, viewedByDoctor: true } : u
     ),
   })),
-  patientPaliatifMessages: [
-    {
-      id: 'ppm-1',
-      roomId: 'pp-1_doc-sarah',
-      senderId: 'doc-sarah',
-      senderName: 'dr. Sarah Wijaya',
-      senderRole: 'doctor',
-      content: 'Selamat pagi Ibu Siti, bagaimana kondisi Anda hari ini?',
-      type: 'text',
-      status: 'read',
-      createdAt: new Date(Date.now() - 7200000).toISOString(),
-      readAt: new Date(Date.now() - 7000000).toISOString(),
-    },
-    {
-      id: 'ppm-2',
-      roomId: 'pp-1_doc-sarah',
-      senderId: 'patient-1',
-      senderName: 'Siti Rahayu',
-      senderRole: 'patient',
-      content: 'Selamat pagi Dokter, alhamdulillah hari ini cukup baik, tapi sesak sedikit bertambah',
-      type: 'text',
-      status: 'read',
-      createdAt: new Date(Date.now() - 6800000).toISOString(),
-    },
-    {
-      id: 'ppm-3',
-      roomId: 'pp-1_doc-sarah',
-      senderId: 'doc-sarah',
-      senderName: 'dr. Sarah Wijaya',
-      senderRole: 'doctor',
-      content: 'Baik Bu Siti, tolong isi form TTV hari ini ya untuk memantau kondisi Anda',
-      type: 'form_ttv',
-      status: 'delivered',
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-    {
-      id: 'ppm-4',
-      roomId: 'pp-1_doc-sarah',
-      senderId: 'doc-sarah',
-      senderName: 'dr. Sarah Wijaya',
-      senderRole: 'doctor',
-      content: 'Juga tolong isi form ESAS-r untuk evaluasi gejala Anda',
-      type: 'form_esas',
-      status: 'delivered',
-      createdAt: new Date(Date.now() - 3500000).toISOString(),
-    },
-  ] as PatientPaliatifChatMessage[],
+  patientPaliatifMessages: [] as PatientPaliatifChatMessage[],
   addPatientPaliatifMessage: (message) => set((state) => ({ patientPaliatifMessages: [...state.patientPaliatifMessages, message] })),
 }));
