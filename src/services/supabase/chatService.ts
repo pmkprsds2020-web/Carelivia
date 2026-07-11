@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // chatService — Supabase CRUD for `chat_rooms` + `messages`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined } from './_common';
+import { supabase, safeQuery, stripUndefined, isValidUuid, validUuidOrUndefined } from './_common';
 import type { PalliativeChatMessage } from '@/lib/types';
 
 /**
@@ -79,16 +79,27 @@ export const chatService = {
   /**
    * Get-or-create a chat room for a (patientId, doctorId) pair.
    * Returns the room id, or null on failure.
+   *
+   * Both patient_id and doctor_id are uuid columns — we validate them before
+   * querying so we never send a non-UUID string to Postgres.
    */
   async getOrCreateRoom(patientId: string, doctorId: string): Promise<string | null> {
+    // patient_id is required and must be a UUID.
+    if (!isValidUuid(patientId)) {
+      console.error(
+        '[chatService.getOrCreateRoom] ABORTED — patient_id is not a valid UUID.',
+        { received: patientId }
+      );
+      return null;
+    }
+    // doctor_id is nullable — skip the filter if it's not a UUID.
+    const validDoctorId = validUuidOrUndefined(doctorId);
+
     // Try select first
+    let selectQ = supabase.from('chat_rooms').select('id').eq('patient_id', patientId);
+    if (validDoctorId) selectQ = selectQ.eq('doctor_id', validDoctorId);
     const existing = await safeQuery(
-      supabase
-        .from('chat_rooms')
-        .select('id')
-        .eq('patient_id', patientId)
-        .eq('doctor_id', doctorId)
-        .limit(1),
+      selectQ.limit(1),
       [] as any[],
       'chatService.getOrCreateRoom(select)'
     );
@@ -97,10 +108,12 @@ export const chatService = {
     }
 
     // Insert new room
+    const insertPayload: Record<string, any> = { patient_id: patientId };
+    if (validDoctorId) insertPayload.doctor_id = validDoctorId;
     const inserted = await safeQuery(
       supabase
         .from('chat_rooms')
-        .insert({ patient_id: patientId, doctor_id: doctorId })
+        .insert(insertPayload)
         .select('id')
         .single(),
       null as any,
@@ -109,13 +122,10 @@ export const chatService = {
     if (inserted && (inserted as any).id) return (inserted as any).id as string;
 
     // Race-condition fallback: someone else inserted between our select & insert
+    let retryQ = supabase.from('chat_rooms').select('id').eq('patient_id', patientId);
+    if (validDoctorId) retryQ = retryQ.eq('doctor_id', validDoctorId);
     const retry = await safeQuery(
-      supabase
-        .from('chat_rooms')
-        .select('id')
-        .eq('patient_id', patientId)
-        .eq('doctor_id', doctorId)
-        .limit(1),
+      retryQ.limit(1),
       [] as any[],
       'chatService.getOrCreateRoom(retry)'
     );

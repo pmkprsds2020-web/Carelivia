@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // complaintService — Supabase CRUD for `daily_complaints`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined } from './_common';
+import { supabase, safeQuery, stripUndefined, isValidUuid } from './_common';
 import type { DailyComplaintRecord } from '@/lib/types';
 
 function fromDb(row: any): DailyComplaintRecord {
@@ -29,7 +29,10 @@ function fromDb(row: any): DailyComplaintRecord {
 
 function toDb(data: Partial<DailyComplaintRecord>): Record<string, any> {
   const out: Record<string, any> = {};
-  if (data.palliativePatientId !== undefined) out.patient_id = data.palliativePatientId;
+  // patient_id is a NOT NULL uuid FK — only forward if it's a real UUID.
+  if (data.palliativePatientId !== undefined && isValidUuid(data.palliativePatientId)) {
+    out.patient_id = data.palliativePatientId;
+  }
   if (data.kondisiHariIni !== undefined) out.kondisi_hari_ini = data.kondisiHariIni;
   if (data.alasanKondisi !== undefined) out.alasan_kondisi = data.alasanKondisi;
   if (data.keluhanBaru !== undefined) out.keluhan_baru = data.keluhanBaru;
@@ -63,7 +66,15 @@ export const complaintService = {
   },
 
   async create(data: Partial<DailyComplaintRecord>): Promise<DailyComplaintRecord | null> {
+    if (!isValidUuid(data.palliativePatientId)) {
+      console.error(
+        '[complaintService.create] ABORTED — patient_id is not a valid UUID.',
+        { received: data.palliativePatientId }
+      );
+      return null;
+    }
     const payload = toDb(data);
+    console.log('[complaintService.create] payload:', { patient_id: data.palliativePatientId });
     const row = await safeQuery(
       supabase.from('daily_complaints').insert(payload).select().single(),
       null as any,

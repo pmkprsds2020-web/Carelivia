@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // patientService — Supabase CRUD for `patients`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined } from './_common';
+import { supabase, safeQuery, stripUndefined, validUuidOrUndefined } from './_common';
 import type { PalliativePatientInfo } from '@/lib/types';
 
 /**
@@ -47,11 +47,13 @@ function fromDb(row: any): PalliativePatientInfo {
  * like "doc-sarah" for doctors (they live in Prisma/SQLite, not Supabase).
  * We only forward `dokter_id` when it looks like a real UUID; otherwise we
  * skip it and rely on `dokter_nama` for display.
+ *
+ * IMPORTANT: We NEVER send a custom `id` (like "pp-...") — Supabase
+ * auto-generates a real UUID via `gen_random_uuid()`.
  */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 function toDb(data: Partial<PalliativePatientInfo>): Record<string, any> {
   const out: Record<string, any> = {};
+  // Never send `id` — let Supabase auto-generate the UUID.
   if (data.patientName !== undefined) out.nama = data.patientName;
   if (data.rmNumber !== undefined) out.rm = data.rmNumber;
   if (data.nik !== undefined) out.nik = data.nik;
@@ -64,12 +66,9 @@ function toDb(data: Partial<PalliativePatientInfo>): Record<string, any> {
     else if (g.startsWith('p')) out.jenis_kelamin = 'P';
   }
   if (data.primaryDiagnosis !== undefined) out.diagnosa = data.primaryDiagnosis;
-  if (data.attendingDoctorId !== undefined) {
-    // Only forward if it's a real UUID; otherwise skip (DB column is uuid).
-    if (typeof data.attendingDoctorId === 'string' && UUID_RE.test(data.attendingDoctorId)) {
-      out.dokter_id = data.attendingDoctorId;
-    }
-  }
+  // dokter_id is a UUID column — only forward if it's a real UUID.
+  const dokterId = validUuidOrUndefined(data.attendingDoctorId);
+  if (dokterId) out.dokter_id = dokterId;
   if (data.attendingDoctorName !== undefined) out.dokter_nama = data.attendingDoctorName;
   if (data.familyContactName !== undefined) out.family_contact_name = data.familyContactName;
   if (data.familyContactRelation !== undefined) out.family_contact_relation = data.familyContactRelation;
@@ -103,11 +102,15 @@ export const patientService = {
 
   async create(data: Partial<PalliativePatientInfo>): Promise<PalliativePatientInfo | null> {
     const payload = toDb(data);
+    console.log('[patientService.create] payload (no id — Supabase auto-generates UUID):', payload);
     const row = await safeQuery(
       supabase.from('patients').insert(payload).select().single(),
       null as any,
       'patientService.create'
     );
+    if (row) {
+      console.log('[patientService.create] SUCCESS — new patient UUID:', row.id);
+    }
     return row ? fromDb(row) : null;
   },
 

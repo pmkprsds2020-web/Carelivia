@@ -6,7 +6,7 @@
 // are left `undefined` on read and silently dropped on write. If you need to
 // persist notes, store them inside the `recommendations` JSON.
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined } from './_common';
+import { supabase, safeQuery, stripUndefined, isValidUuid } from './_common';
 import type { SocialAssessmentRecord } from '@/lib/types';
 
 function fromDb(row: any): SocialAssessmentRecord {
@@ -35,7 +35,10 @@ function fromDb(row: any): SocialAssessmentRecord {
 
 function toDb(data: Partial<SocialAssessmentRecord>): Record<string, any> {
   const out: Record<string, any> = {};
-  if (data.palliativePatientId !== undefined) out.patient_id = data.palliativePatientId;
+  // patient_id is a NOT NULL uuid FK — only forward if it's a real UUID.
+  if (data.palliativePatientId !== undefined && isValidUuid(data.palliativePatientId)) {
+    out.patient_id = data.palliativePatientId;
+  }
   if (data.housingCondition !== undefined) out.housing_condition = data.housingCondition;
   if (data.caregiverAvailability !== undefined) out.caregiver_availability = data.caregiverAvailability;
   if (data.familySupportLevel !== undefined) out.family_support_level = data.familySupportLevel;
@@ -69,7 +72,15 @@ export const socialService = {
   },
 
   async create(data: Partial<SocialAssessmentRecord>): Promise<SocialAssessmentRecord | null> {
+    if (!isValidUuid(data.palliativePatientId)) {
+      console.error(
+        '[socialService.create] ABORTED — patient_id is not a valid UUID.',
+        { received: data.palliativePatientId }
+      );
+      return null;
+    }
     const payload = toDb(data);
+    console.log('[socialService.create] payload:', { patient_id: data.palliativePatientId });
     const row = await safeQuery(
       supabase.from('social_assessments').insert(payload).select().single(),
       null as any,

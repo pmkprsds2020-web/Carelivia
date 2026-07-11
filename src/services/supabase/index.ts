@@ -10,7 +10,15 @@
 // gracefully fall back to local Zustand data.
 // ───────────────────────────────────────────────────────────────────────────
 
-export { supabase, safeQuery, snakeToCamelRow, camelToSnakeRow } from './_common';
+export {
+  supabase,
+  safeQuery,
+  snakeToCamelRow,
+  camelToSnakeRow,
+  UUID_RE,
+  isValidUuid,
+  validUuidOrUndefined,
+} from './_common';
 
 export { patientService } from './patientService';
 export { vitalService } from './vitalService';

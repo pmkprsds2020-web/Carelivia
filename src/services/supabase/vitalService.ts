@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // vitalService — Supabase CRUD for `vital_signs`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined, combineDateAndTime, splitIsoToTanggalJam } from './_common';
+import { supabase, safeQuery, stripUndefined, combineDateAndTime, splitIsoToTanggalJam, isValidUuid, validUuidOrUndefined } from './_common';
 import type { VitalSignRecordInfo } from '@/lib/types';
 
 /**
@@ -12,6 +12,7 @@ function fromDb(row: any): VitalSignRecordInfo {
   return {
     id: row.id,
     palliativePatientId: row.patient_id,
+    doctorId: row.doctor_id ?? undefined,
     systolicBP: row.sistol ?? undefined,
     diastolicBP: row.diastol ?? undefined,
     heartRate: row.nadi ?? undefined,
@@ -30,7 +31,13 @@ function fromDb(row: any): VitalSignRecordInfo {
 
 function toDb(data: Partial<VitalSignRecordInfo>): Record<string, any> {
   const out: Record<string, any> = {};
-  if (data.palliativePatientId !== undefined) out.patient_id = data.palliativePatientId;
+  // patient_id is a NOT NULL uuid FK — only forward if it's a real UUID.
+  if (data.palliativePatientId !== undefined && isValidUuid(data.palliativePatientId)) {
+    out.patient_id = data.palliativePatientId;
+  }
+  // doctor_id is a nullable uuid — only forward if it's a real UUID.
+  const doctorId = validUuidOrUndefined(data.doctorId);
+  if (doctorId) out.doctor_id = doctorId;
   if (data.systolicBP !== undefined) out.sistol = data.systolicBP;
   if (data.diastolicBP !== undefined) out.diastol = data.diastolicBP;
   if (data.heartRate !== undefined) out.nadi = data.heartRate;
@@ -80,7 +87,19 @@ export const vitalService = {
   },
 
   async create(data: Partial<VitalSignRecordInfo>): Promise<VitalSignRecordInfo | null> {
+    // ── UUID validation ──────────────────────────────────────────────────
+    // patient_id is a NOT NULL uuid FK. If the caller passes a custom string
+    // (e.g. "pp-1783801594909-h4i6") we must abort early with a clear error
+    // instead of letting Postgres reject it with "invalid input syntax".
+    if (!isValidUuid(data.palliativePatientId)) {
+      console.error(
+        '[vitalService.create] ABORTED — patient_id is not a valid UUID.',
+        { received: data.palliativePatientId, payload: data }
+      );
+      return null;
+    }
     const payload = toDb(data);
+    console.log('[vitalService.create] payload:', { ...payload, patient_id: data.palliativePatientId });
     const row = await safeQuery(
       supabase.from('vital_signs').insert(payload).select().single(),
       null as any,

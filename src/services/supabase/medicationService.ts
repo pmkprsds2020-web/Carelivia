@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // medicationService — Supabase CRUD for `medications`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined } from './_common';
+import { supabase, safeQuery, stripUndefined, isValidUuid } from './_common';
 import type { PalliativeMedicationInfo, MedicationAdherenceInfo } from '@/lib/types';
 
 /**
@@ -36,7 +36,10 @@ function fromDb(row: any): MedicationWithExtras {
 
 function toDb(data: Partial<MedicationWithExtras>): Record<string, any> {
   const out: Record<string, any> = {};
-  if (data.palliativePatientId !== undefined) out.patient_id = data.palliativePatientId;
+  // patient_id is a NOT NULL uuid FK — only forward if it's a real UUID.
+  if (data.palliativePatientId !== undefined && isValidUuid(data.palliativePatientId)) {
+    out.patient_id = data.palliativePatientId;
+  }
   if (data.medicineName !== undefined) out.nama_obat = data.medicineName;
   if (data.dosage !== undefined) out.dosis = data.dosage;
   if (data.frequency !== undefined) out.frekuensi = data.frequency;
@@ -67,7 +70,15 @@ export const medicationService = {
   },
 
   async create(data: Partial<MedicationWithExtras>): Promise<MedicationWithExtras | null> {
+    if (!isValidUuid(data.palliativePatientId)) {
+      console.error(
+        '[medicationService.create] ABORTED — patient_id is not a valid UUID.',
+        { received: data.palliativePatientId }
+      );
+      return null;
+    }
     const payload = toDb(data);
+    console.log('[medicationService.create] payload:', { patient_id: data.palliativePatientId, nama_obat: payload.nama_obat });
     const row = await safeQuery(
       supabase.from('medications').insert(payload).select().single(),
       null as any,

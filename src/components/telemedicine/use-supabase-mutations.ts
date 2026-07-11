@@ -34,12 +34,17 @@ export function useSupabaseMutations() {
   // ── Patients ────────────────────────────────────────────────────────────
 
   const createPatient = useCallback(
-    (data: PalliativePatientInfo): PalliativePatientInfo => {
-      store.addPalliativePatient(data);
-      svc.patientService
-        .create(data)
-        .catch((e: unknown) => console.warn('[useSupabaseMutations] createPatient skipped:', e));
-      return data;
+    async (data: PalliativePatientInfo): Promise<PalliativePatientInfo | null> => {
+      // store.addPalliativePatient now handles the Supabase create internally
+      // and returns the created patient with the real UUID. We must NOT call
+      // svc.patientService.create() separately here — that would create a
+      // duplicate row in Supabase.
+      console.log('[useSupabaseMutations.createPatient] delegating to store.addPalliativePatient:', {
+        name: data.patientName,
+        rm: data.rmNumber,
+        temporaryId: data.id,
+      });
+      return store.addPalliativePatient(data);
     },
     [store]
   );

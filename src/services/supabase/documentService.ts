@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // documentService — Supabase CRUD for `patient_documents` + Storage buckets
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined } from './_common';
+import { supabase, safeQuery, stripUndefined, isValidUuid } from './_common';
 
 /**
  * A patient document (Pemeriksaan Penunjang) — stored metadata in
@@ -37,7 +37,10 @@ function fromDb(row: any): PatientDocument {
 
 function toDb(data: Partial<PatientDocument>): Record<string, any> {
   const out: Record<string, any> = {};
-  if (data.patientId !== undefined) out.patient_id = data.patientId;
+  // patient_id is a NOT NULL uuid FK — only forward if it's a real UUID.
+  if (data.patientId !== undefined && isValidUuid(data.patientId)) {
+    out.patient_id = data.patientId;
+  }
   if (data.jenis !== undefined) out.jenis = data.jenis;
   if (data.fileName !== undefined) out.nama_file = data.fileName;
   if (data.storagePath !== undefined) out.storage_path = data.storagePath;
@@ -85,6 +88,13 @@ export const documentService = {
     uploadedBy?: string,
     keterangan?: string
   ): Promise<PatientDocument | null> {
+    if (!isValidUuid(patientId)) {
+      console.error(
+        '[documentService.upload] ABORTED — patient_id is not a valid UUID.',
+        { received: patientId }
+      );
+      return null;
+    }
     const fileName = (file as File).name ?? `upload-${Date.now()}`;
     const storagePath = buildStoragePath(patientId, jenis, fileName);
 

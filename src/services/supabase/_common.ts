@@ -10,6 +10,32 @@
 
 import { supabase } from '@/supabaseClient';
 
+// ── UUID validation ─────────────────────────────────────────────────────────
+//
+// All foreign-key columns in the Supabase schema (patient_id, doctor_id, etc.)
+// are `uuid` type. Sending a custom string like "pp-1783801594909-h4i6" or
+// "doc-sarah" causes: `invalid input syntax for type uuid`.
+//
+// Use `isValidUuid()` to check before inserting, and `validUuidOrUndefined()`
+// to optionally skip a non-UUID value (for nullable columns like doctor_id).
+//
+export const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Returns true only for a real UUID v1-v5 string. */
+export function isValidUuid(id: unknown): id is string {
+  return typeof id === 'string' && UUID_RE.test(id);
+}
+
+/**
+ * Returns the value if it's a valid UUID, otherwise `undefined`.
+ * Use this for *nullable* UUID columns (e.g. `doctor_id`) so we silently
+ * skip non-UUID values instead of triggering a syntax error.
+ */
+export function validUuidOrUndefined(id: unknown): string | undefined {
+  return isValidUuid(id) ? (id as string) : undefined;
+}
+
 /**
  * Wrap any Supabase call so it never throws.
  *

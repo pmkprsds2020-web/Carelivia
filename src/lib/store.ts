@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabaseSync as firestoreSync } from '@/lib/supabase-sync';
+import { patientService, isValidUuid } from '@/services/supabase';
 import type { 
   User, Consultation, Message, Medicine, CartItem, 
   HomeCareService, HomeCareBooking, Notification, Article,
@@ -135,7 +136,7 @@ interface TelemedicineStore {
   // Palliative Monitoring
   palliativePatients: PalliativePatientInfo[];
   setPalliativePatients: (patients: PalliativePatientInfo[]) => void;
-  addPalliativePatient: (patient: PalliativePatientInfo) => void;
+  addPalliativePatient: (patient: PalliativePatientInfo) => Promise<PalliativePatientInfo | null>;
   updatePalliativePatient: (patientId: string, data: Partial<PalliativePatientInfo>) => void;
   removePalliativePatient: (patientId: string) => void;
   selectedPalliativePatientId: string | null;
@@ -179,7 +180,7 @@ interface TelemedicineStore {
   palliativeMonitoringNotifications: PalliativeMonitoringNotification[];
   addPalliativeMonitoringNotification: (notification: PalliativeMonitoringNotification) => void;
   markPalliativeNotificationRead: (notificationId: string) => void;
-  markPatientAsPalliative: (consultationId: string, doctorId: string, patientId: string, patientName: string, markingData: PalliativeMarkingData) => void;
+  markPatientAsPalliative: (consultationId: string, doctorId: string, patientId: string, patientName: string, markingData: PalliativeMarkingData) => Promise<PalliativePatientInfo | null>;
   updatePalliativeMonitoringStatus: (patientId: string, status: PalliativeMonitoringStatus) => void;
   activeInlineScreeningFormId: string | null;
   setActiveInlineScreeningFormId: (id: string | null) => void;
@@ -578,10 +579,45 @@ export const useStore = create<TelemedicineStore>((set) => ({
   // Realtime subscriptions. Dummy/demo data has been removed.
   palliativePatients: [] as PalliativePatientInfo[],
   setPalliativePatients: (patients) => set({ palliativePatients: patients }),
-  addPalliativePatient: (patient) => {
-    set((state) => ({ palliativePatients: [...state.palliativePatients, patient] }));
-    // Persist to Firestore (fire-and-forget)
-    firestoreSync.addPatient({ ...patient }).catch(err => console.error('[Store] Firestore sync error (addPatient):', err));
+  addPalliativePatient: async (patient) => {
+    // ── If the patient already has a real UUID (e.g. from a Supabase
+    //    Realtime event), just add it to local state — don't re-create.
+    if (isValidUuid(patient.id)) {
+      set((state) => {
+        // Avoid duplicates
+        if (state.palliativePatients.some((p) => p.id === patient.id)) return state;
+        return { palliativePatients: [...state.palliativePatients, patient] };
+      });
+      return patient;
+    }
+
+    // ── Otherwise, this is a NEW patient from the form. The `id` field
+    //    (if present) is a custom temporary string like "pp-..." which is
+    //    NOT a valid UUID. We MUST call Supabase to create the patient and
+    //    get the real auto-generated UUID, then store that.
+    console.log('[Store.addPalliativePatient] creating patient in Supabase (patient has no valid UUID yet):', {
+      name: patient.patientName,
+      rm: patient.rmNumber,
+      temporaryId: patient.id,
+    });
+
+    try {
+      const created = await patientService.create(patient);
+      if (created) {
+        console.log('[Store.addPalliativePatient] SUCCESS — real UUID from Supabase:', created.id);
+        set((state) => {
+          // Avoid duplicates
+          if (state.palliativePatients.some((p) => p.id === created.id)) return state;
+          return { palliativePatients: [...state.palliativePatients, created] };
+        });
+        return created;
+      }
+      console.error('[Store.addPalliativePatient] patientService.create returned null — patient NOT saved to Supabase');
+      return null;
+    } catch (err) {
+      console.error('[Store.addPalliativePatient] error creating patient in Supabase:', err);
+      return null;
+    }
   },
   updatePalliativePatient: (patientId, data) => {
     set((state) => ({
@@ -724,19 +760,24 @@ export const useStore = create<TelemedicineStore>((set) => ({
       n.id === notificationId ? { ...n, isRead: true } : n
     ),
   })),
-  markPatientAsPalliative: (consultationId, doctorId, patientId, patientName, markingData) => set((state) => {
+  markPatientAsPalliative: async (consultationId, doctorId, patientId, patientName, markingData) => {
     // Check if patient already exists in palliative patients
-    const exists = state.palliativePatients.some(p => p.patientId === patientId);
-    if (exists) return state;
+    const existing = useStore.getState().palliativePatients.some(p => p.patientId === patientId || p.id === patientId);
+    if (existing) {
+      console.log('[Store.markPatientAsPalliative] patient already exists, skipping');
+      return null;
+    }
 
-    const newPatient: PalliativePatientInfo = {
-      id: `pp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    // Build the patient object WITHOUT a custom id — let Supabase generate
+    // the real UUID. We never use "pp-..." style ids anymore.
+    const newPatientData: PalliativePatientInfo = {
+      id: '', // will be replaced by Supabase-generated UUID
       patientId,
       patientName,
       primaryDiagnosis: markingData.primaryDiagnosis,
       secondaryDiagnosis: markingData.secondaryDiagnosis,
       attendingDoctorId: doctorId,
-      attendingDoctorName: state.doctors.find(d => d.id === doctorId)?.name,
+      attendingDoctorName: useStore.getState().doctors.find(d => d.id === doctorId)?.name,
       careStatus: 'rawat_jalan',
       patientStatus: 'aktif',
       monitoringStatus: 'monitoring_aktif',
@@ -747,24 +788,47 @@ export const useStore = create<TelemedicineStore>((set) => ({
       updatedAt: new Date().toISOString(),
     };
 
-    // Create notification
-    const notification: PalliativeMonitoringNotification = {
-      id: `pn-${Date.now()}`,
-      patientId,
-      patientName,
-      type: 'status_change',
-      title: 'Pasien Baru Monitoring Paliatif',
-      description: `${patientName} telah ditambahkan ke program monitoring paliatif`,
-      severity: 'info',
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    };
+    console.log('[Store.markPatientAsPalliative] creating patient in Supabase:', {
+      name: patientName,
+      doctorId,
+      doctorIdIsUuid: isValidUuid(doctorId),
+    });
 
-    return {
-      palliativePatients: [...state.palliativePatients, newPatient],
-      palliativeMonitoringNotifications: [notification, ...state.palliativeMonitoringNotifications],
-    };
-  }),
+    try {
+      const created = await patientService.create(newPatientData);
+      if (!created) {
+        console.error('[Store.markPatientAsPalliative] patientService.create returned null');
+        return null;
+      }
+      console.log('[Store.markPatientAsPalliative] SUCCESS — real UUID:', created.id);
+
+      // Add to local state with the real UUID
+      set((state) => ({
+        palliativePatients: [...state.palliativePatients, created],
+      }));
+
+      // Create notification (local-only — uses the real UUID as patientId)
+      const notification: PalliativeMonitoringNotification = {
+        id: `pn-${Date.now()}`,
+        patientId: created.id,
+        patientName,
+        type: 'status_change',
+        title: 'Pasien Baru Monitoring Paliatif',
+        description: `${patientName} telah ditambahkan ke program monitoring paliatif`,
+        severity: 'info',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
+      set((state) => ({
+        palliativeMonitoringNotifications: [notification, ...state.palliativeMonitoringNotifications],
+      }));
+
+      return created;
+    } catch (err) {
+      console.error('[Store.markPatientAsPalliative] error:', err);
+      return null;
+    }
+  },
   updatePalliativeMonitoringStatus: (patientId, status) => set((state) => ({
     palliativePatients: state.palliativePatients.map(p =>
       p.id === patientId ? { ...p, monitoringStatus: status, updatedAt: new Date().toISOString() } : p

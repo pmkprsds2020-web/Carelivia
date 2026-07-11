@@ -502,6 +502,7 @@ export interface VitalSignRecordInfo {
   id: string;
   palliativePatientId: string;
   recordedBy?: string;
+  doctorId?: string;
   systolicBP?: number;
   diastolicBP?: number;
   heartRate?: number;
@@ -585,6 +586,7 @@ export interface ACPRevisionInfo {
 export interface PalliativeScreeningRecordInfo {
   id: string;
   palliativePatientId: string;
+  doctorId?: string;
   screeningType: PalliativeToolType;
   score?: number;
   scoreLabel?: string;

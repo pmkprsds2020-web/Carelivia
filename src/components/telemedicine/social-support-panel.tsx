@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useStore } from '@/lib/store';
 import { useToast } from '@/hooks/use-toast';
+import { isValidUuid } from '@/services/supabase';
 import type {
   SocialAssessmentRecord,
   CaregiverInfo,
@@ -735,6 +736,15 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
     const handleSave = () => {
       if (!allFilled) {
         toast({ title: 'Lengkapi semua item skrining', description: 'Semua item harus diisi', variant: 'destructive' });
+        return;
+      }
+      if (!isValidUuid(palliativePatientId)) {
+        console.error('[social-support] ABORTED — patient_id is not a valid UUID:', palliativePatientId);
+        toast({
+          title: 'Patient UUID tidak ditemukan',
+          description: 'Pilih pasien yang valid sebelum menyimpan assessment sosial.',
+          variant: 'destructive',
+        });
         return;
       }
       const now = new Date().toISOString();

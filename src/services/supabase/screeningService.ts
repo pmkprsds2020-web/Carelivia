@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // screeningService — Supabase CRUD for `screenings`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined, safeJsonParse } from './_common';
+import { supabase, safeQuery, stripUndefined, safeJsonParse, isValidUuid, validUuidOrUndefined } from './_common';
 import type { PalliativeScreeningRecordInfo } from '@/lib/types';
 
 /**
@@ -14,6 +14,7 @@ function fromDb(row: any): PalliativeScreeningRecordInfo {
   return {
     id: row.id,
     palliativePatientId: row.patient_id,
+    doctorId: row.doctor_id ?? undefined,
     screeningType: row.jenis_skrining,
     score: row.score != null ? Number(row.score) : undefined,
     scoreLabel: jawaban?.scoreLabel ?? undefined,
@@ -27,7 +28,13 @@ function fromDb(row: any): PalliativeScreeningRecordInfo {
 
 function toDb(data: Partial<PalliativeScreeningRecordInfo>): Record<string, any> {
   const out: Record<string, any> = {};
-  if (data.palliativePatientId !== undefined) out.patient_id = data.palliativePatientId;
+  // patient_id is a NOT NULL uuid FK — only forward if it's a real UUID.
+  if (data.palliativePatientId !== undefined && isValidUuid(data.palliativePatientId)) {
+    out.patient_id = data.palliativePatientId;
+  }
+  // doctor_id is a nullable uuid — only forward if it's a real UUID.
+  const doctorId = validUuidOrUndefined(data.doctorId);
+  if (doctorId) out.doctor_id = doctorId;
   if (data.screeningType !== undefined) out.jenis_skrining = data.screeningType;
   if (data.score !== undefined) out.score = data.score;
   if (data.interpretation !== undefined) out.interpretasi = data.interpretation;
@@ -59,7 +66,23 @@ export const screeningService = {
   },
 
   async create(data: Partial<PalliativeScreeningRecordInfo>): Promise<PalliativeScreeningRecordInfo | null> {
+    // ── UUID validation ──────────────────────────────────────────────────
+    // patient_id is a NOT NULL uuid FK. Abort early with a clear error if
+    // the caller passes a custom string instead of a real UUID.
+    if (!isValidUuid(data.palliativePatientId)) {
+      console.error(
+        '[screeningService.create] ABORTED — patient_id is not a valid UUID.',
+        { received: data.palliativePatientId, payload: data }
+      );
+      return null;
+    }
     const payload = toDb(data);
+    console.log('[screeningService.create] payload:', {
+      patient_id: data.palliativePatientId,
+      doctor_id: validUuidOrUndefined(data.doctorId) ?? '(skipped — not a UUID)',
+      jenis_skrining: payload.jenis_skrining,
+      score: payload.score,
+    });
     const row = await safeQuery(
       supabase.from('screenings').insert(payload).select().single(),
       null as any,

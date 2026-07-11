@@ -177,3 +177,89 @@ Stage Summary:
 - Realtime: SupabaseSyncProvider subscribes to 13 tables; INSERT/UPDATE/DELETE events update store
 - UUID validation: `dokter_id` only sent when valid UUID format (avoids `invalid input syntax for type uuid` error)
 - Verified end-to-end: add patient → saved to Supabase → reload → patient reappears from Supabase → delete from Supabase → reload → patient disappears
+
+---
+Task ID: UUID-RELATIONSHIP-FIX
+Agent: Z.ai Code (main)
+Task: Fix all UUID relationship issues in CareLivia — INSERT operations were failing with "invalid input syntax for type uuid: PP-1783801594909-h4i6" because the frontend was sending custom string IDs as patient_id instead of real UUIDs from the patients table.
+
+Work Log:
+- Read worklog.md and all 13 Supabase service files, store.ts, supabase-sync.ts, use-supabase-mutations.ts, palliative-monitoring-panel.tsx, palliative-screening-panel.tsx, daily-complaint-panel.tsx, social-support-panel.tsx, and supabase/schema.sql to understand the full data flow
+- Identified root cause: `genId('pp')` in palliative-monitoring-panel.tsx generated custom IDs like `pp-1783801594909-h4i6`. The store's `addPalliativePatient` was synchronous — it saved the custom ID locally, then fire-and-forgeted to Supabase (which generated a real UUID), but the local state never got updated with the real UUID. All subsequent inserts (vitals, screenings, etc.) used `selectedPalliativePatientId` which was still the custom `pp-...` ID → sent as `patient_id` → UUID syntax error.
+- Created UUID validation helpers in `src/services/supabase/_common.ts`:
+  • `UUID_RE` regex constant
+  • `isValidUuid(id)` type guard
+  • `validUuidOrUndefined(id)` — returns the value if valid UUID, otherwise undefined (for nullable columns like doctor_id)
+- Exported new helpers from `src/services/supabase/index.ts` barrel
+- Added optional `doctorId?: string` field to `VitalSignRecordInfo` and `PalliativeScreeningRecordInfo` types in `src/lib/types.ts` so they can carry the doctor UUID to the service layer
+- Updated ALL 9 service files with UUID validation:
+  • `patientService.ts` — uses `validUuidOrUndefined` for `dokter_id` (nullable uuid); NEVER sends custom `id` (Supabase auto-generates); added logging
+  • `vitalService.ts` — validates `patient_id` is UUID before insert; maps `doctorId` → `doctor_id` (only if valid UUID); added logging
+  • `screeningService.ts` — validates `patient_id` is UUID; maps `doctorId` → `doctor_id`; added logging
+  • `medicationService.ts` — validates `patient_id` is UUID; added logging
+  • `nutritionService.ts` — validates `patient_id` is UUID; added logging
+  • `complaintService.ts` — validates `patient_id` is UUID; added logging
+  • `socialService.ts` — validates `patient_id` is UUID; added logging
+  • `acpService.ts` — validates `patient_id` is UUID; added logging
+  • `aiService.ts` — validates `patient_id` is UUID; added logging
+  • `chatService.ts` — validates `patient_id` is UUID in `getOrCreateRoom`; `doctor_id` only forwarded if valid UUID
+  • `documentService.ts` — validates `patient_id` is UUID in `upload`
+- Updated `src/lib/supabase-sync.ts`:
+  • `addPatient` now returns the created patient object (with real UUID) instead of just a string
+- Updated `src/lib/store.ts`:
+  • Imported `patientService` and `isValidUuid` from `@/services/supabase`
+  • Made `addPalliativePatient` ASYNC — if patient has a valid UUID (realtime event), just adds to local state; if not (new from form), calls `patientService.create()` and waits for the real UUID, then adds the created patient to local state
+  • Made `markPatientAsPalliative` ASYNC — removed `pp-...` ID generation; creates patient in Supabase first, then adds to local state with real UUID; `doctorId` only forwarded if valid UUID
+  • Both functions return `Promise<PalliativePatientInfo | null>` so callers can use the real UUID
+- Updated `src/components/telemedicine/use-supabase-mutations.ts`:
+  • `createPatient` now ASYNC — delegates to `store.addPalliativePatient` (which handles Supabase create internally); removed duplicate `svc.patientService.create()` call that would have created a duplicate row
+- Updated `src/components/telemedicine/palliative-monitoring-panel.tsx`:
+  • Added `savingPatient` loading state
+  • `handleAddPatient` now ASYNC — removed `genId('pp')` and `genId('pat')`; sets `id: ''` placeholder; calls `addPalliativePatient(patient)` and awaits; auto-selects created patient with real UUID; shows toast on success/failure; "Simpan" button shows "Menyimpan..." while saving
+  • `handleAddVital` — added UUID validation (aborts with toast if `selectedPalliativePatientId` is not a UUID); passes `doctorId` (only if `currentUser.id` is a UUID); added console.log for patient_id, doctor_id, payload; toast on success
+  • `handleAddMedication` — added UUID validation, logging, toast
+  • `handleAddACP` — added UUID validation, logging, toast
+  • `handleSaveNutrition` — added UUID validation, logging
+- Updated `src/components/telemedicine/palliative-screening-panel.tsx`:
+  • Added UUID validation before saving screening record; passes `doctorId`; added console.log for Selected Patient, patient_id, doctor_id, Payload
+- Updated `src/components/telemedicine/daily-complaint-panel.tsx`:
+  • Added UUID validation in `handleSubmit` before submitting to API
+- Updated `src/components/telemedicine/social-support-panel.tsx`:
+  • Added UUID validation in `handleSave` before saving social assessment
+- Updated `src/app/api/daily-complaints/route.ts`:
+  • Added `isValidUuid` helper; `mirrorToSupabase` now aborts if `palliativePatientId` is not a valid UUID (prevents the insert from failing)
+- Audited entire `src/` directory: zero remaining `id: \`pp-\`` or `id: \`pat-\`` patterns; zero `patient_id: genId(...)` patterns
+
+Verification (agent-browser):
+- Opened http://localhost:3000/ → logged in as Dr. Sarah Wijaya → navigated to Monitoring Paliatif
+- Console showed `[SupabaseSync] initial load complete — patients: 1` (Juniarti from previous test) with NO UUID errors
+- Clicked "Tambah Pasien", filled form (name=Test UUID Patient, RM=RM-TEST-001, gender=L, diagnosis=Test Diagnosis, doctor=dr. Sarah, status=Aktif, risk=Hijau), clicked Simpan
+- Console showed the full flow:
+  • `[handleAddPatient] Selected Patient (before save): {id: "", ...}` — no custom pp- ID
+  • `[handleAddPatient] attendingDoctorId: doc-sarah isUuid: false` — doctor ID correctly identified as non-UUID
+  • `[patientService.create] payload (no id — Supabase auto-generates UUID): {nama: "Test UUID Patient", ...}` — no custom id sent
+  • `[patientService.create] SUCCESS — new patient UUID: 9501a17a-0a8f-46ef-bad8-754621820833` — real UUID generated
+  • `[handleAddPatient] SUCCESS — patient saved with real UUID: 9501a17a...`
+- Navigated to TTV Serial tab → patient auto-selected → clicked "Tambah TTV" → filled vital signs (120/80, 75, 16, 36.5, 98, 70kg, 170cm) → clicked Simpan TTV
+- Console showed:
+  • `[handleAddVital] patient_id: 9501a17a-0a8f-46ef-bad8-754621820833` — REAL UUID (not pp-...)
+  • `[handleAddVital] doctor_id: (skipped — not a UUID)` — correctly skipped
+  • `[vitalService.create] payload: {patient_id: "9501a17a-...", sistol: 120, ...}` — correct UUID sent to Supabase
+- NO errors, NO warnings, NO "invalid input syntax for type uuid" in console
+- TTV data visible in UI table (120/80, 75, 16, 36.5°C, 98%, 70)
+- Navigated to Obat tab → clicked "Tambah Obat" → filled medication (Paracetamol 500mg, 3x1) → clicked Simpan Obat
+- Console showed: `[handleAddMedication] patient_id: 9501a17a-...` and `[medicationService.create] payload: {patient_id: "9501a17a-...", nama_obat: "Paracetamol 500mg"}` — NO errors
+- Reloaded page → logged in again → navigated to Monitoring Paliatif
+- Console showed `[SupabaseSync] initial load complete — patients: 2` — both patients persisted from Supabase
+- Selected Test UUID Patient in TTV tab → TTV data (120/80, 75, 16, 36.5°C, 98%, 70) was still there — confirmed data persisted in Supabase
+- Final audit: `grep` for `pp-`, `pat-`, `patient_id: genId` in src/ → ZERO matches
+
+Stage Summary:
+- Root cause fixed: `genId('pp')` custom ID generation removed from patient creation flow
+- All patient creation now goes through Supabase → real UUID generated → local state updated with real UUID
+- All 11 service files validate `patient_id` is a real UUID before insert (abort with clear error log if not)
+- `doctor_id` only forwarded when it's a valid UUID (doctors in Prisma/SQLite use "doc-sarah" style IDs, not UUIDs)
+- Console logging added per user's requirement #8: Selected Patient, patient_id, doctor_id, Payload
+- UUID validation with toast error messages added before all sub-record inserts (TTV, Obat, ACP, Nutrisi, Skrining, Keluhan, Sosial)
+- Verified end-to-end: create patient → real UUID → add TTV with real UUID → add Obat with real UUID → reload → data persists from Supabase → NO UUID errors anywhere
+- Lint clean (only pre-existing seed-palliative.js error); zero new TypeScript errors

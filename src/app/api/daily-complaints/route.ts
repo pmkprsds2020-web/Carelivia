@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { supabase } from '@/supabaseClient';
 
+// UUID validation — patient_id is a uuid FK in Supabase.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidUuid(id: unknown): id is string {
+  return typeof id === 'string' && UUID_RE.test(id);
+}
+
 // GET /api/daily-complaints?palliativePatientId=xxx
 export async function GET(req: NextRequest) {
   try {
@@ -174,6 +180,14 @@ export async function POST(req: NextRequest) {
 // ── Mirror an inserted complaint to Supabase (best-effort, never throws) ────
 async function mirrorToSupabase(body: Record<string, string>, severityLevel: string) {
   try {
+    // patient_id is a NOT NULL uuid FK — abort if it's not a valid UUID.
+    if (!isValidUuid(body.palliativePatientId)) {
+      console.warn(
+        '[daily-complaints] Supabase mirror SKIPPED — patient_id is not a valid UUID:',
+        body.palliativePatientId
+      );
+      return;
+    }
     const row = {
       patient_id: body.palliativePatientId,
       kondisi_hari_ini: body.kondisiHariIni,
@@ -191,6 +205,7 @@ async function mirrorToSupabase(body: Record<string, string>, severityLevel: str
       severity_level: severityLevel,
       sumber_pengisian: body.sumberPengisian || 'monitoring',
     };
+    console.log('[daily-complaints] Supabase insert payload patient_id:', row.patient_id);
     const { error } = await supabase.from('daily_complaints').insert(row);
     if (error) console.warn('[daily-complaints] Supabase insert failed:', error.message);
   } catch (e) {

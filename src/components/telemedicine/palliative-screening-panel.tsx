@@ -5,6 +5,7 @@ import { useStore } from '@/lib/store';
 import type { PalliativeScreeningForm, PalliativeToolType, ScreeningStatus, PalliativePatientInfo } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { isValidUuid, validUuidOrUndefined } from '@/services/supabase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -872,9 +873,22 @@ export function PalliativeScreeningPanel() {
 
     // Also save to PalliativeScreeningRecords for integration with Monitoring Paliatif
     if (navigatedPalliativePatient) {
+      // ── UUID validation ──
+      // navigatedPalliativePatient.id MUST be a real UUID from the patients table.
+      if (!isValidUuid(navigatedPalliativePatient.id)) {
+        console.error('[palliative-screening] ABORTED — patient_id is not a valid UUID:', navigatedPalliativePatient.id);
+        toast({
+          title: 'Patient UUID tidak ditemukan',
+          description: 'Pasien tidak memiliki UUID yang valid. Data skrining tidak dapat disimpan ke Supabase.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      const doctorId = validUuidOrUndefined(currentUser?.id); // only use if it's a real UUID
       const record = {
         id: `psr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        palliativePatientId: navigatedPalliativePatient.id,
+        palliativePatientId: navigatedPalliativePatient.id, // real UUID
+        doctorId,
         screeningType: activeTool,
         score,
         scoreLabel,
@@ -884,6 +898,11 @@ export function PalliativeScreeningPanel() {
         performedAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       };
+      // Log what we're sending (per user's requirement #8)
+      console.log('[palliative-screening] Selected Patient:', navigatedPalliativePatient);
+      console.log('[palliative-screening] patient_id:', record.palliativePatientId);
+      console.log('[palliative-screening] doctor_id:', doctorId ?? '(skipped — not a UUID)');
+      console.log('[palliative-screening] Payload:', record);
       addPalliativeScreeningRecord(record);
 
       // Add audit entry

@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // acpService — Supabase CRUD for `acp` (Advance Care Planning)
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined } from './_common';
+import { supabase, safeQuery, stripUndefined, isValidUuid } from './_common';
 import type { AdvanceCarePlanInfo, ACPRevisionInfo } from '@/lib/types';
 
 function fromDb(row: any): AdvanceCarePlanInfo {
@@ -36,7 +36,10 @@ function fromDb(row: any): AdvanceCarePlanInfo {
 
 function toDb(data: Partial<AdvanceCarePlanInfo>): Record<string, any> {
   const out: Record<string, any> = {};
-  if (data.palliativePatientId !== undefined) out.patient_id = data.palliativePatientId;
+  // patient_id is a NOT NULL uuid FK — only forward if it's a real UUID.
+  if (data.palliativePatientId !== undefined && isValidUuid(data.palliativePatientId)) {
+    out.patient_id = data.palliativePatientId;
+  }
   if (data.decisionMakerName !== undefined) out.decision_maker_name = data.decisionMakerName;
   if (data.decisionMakerRelation !== undefined) out.decision_maker_relation = data.decisionMakerRelation;
   if (data.decisionMakerPhone !== undefined) out.decision_maker_phone = data.decisionMakerPhone;
@@ -92,7 +95,15 @@ export const acpService = {
   },
 
   async create(data: Partial<AdvanceCarePlanInfo>): Promise<AdvanceCarePlanInfo | null> {
+    if (!isValidUuid(data.palliativePatientId)) {
+      console.error(
+        '[acpService.create] ABORTED — patient_id is not a valid UUID.',
+        { received: data.palliativePatientId }
+      );
+      return null;
+    }
     const payload = toDb(data);
+    console.log('[acpService.create] payload:', { patient_id: data.palliativePatientId });
     const row = await safeQuery(
       supabase.from('acp').insert(payload).select().single(),
       null as any,

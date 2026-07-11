@@ -11,7 +11,7 @@
 // sensible defaults (0 / 'L') on read. Callers can re-derive them from the
 // patient record if needed.
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined } from './_common';
+import { supabase, safeQuery, stripUndefined, isValidUuid } from './_common';
 import type { NutritionRecordInfo, NutritionCalculationResult } from '@/lib/types';
 
 function fromDb(row: any): NutritionRecordInfo {
@@ -66,7 +66,10 @@ function fromDb(row: any): NutritionRecordInfo {
 
 function toDb(data: Partial<NutritionRecordInfo>): Record<string, any> {
   const out: Record<string, any> = {};
-  if (data.palliativePatientId !== undefined) out.patient_id = data.palliativePatientId;
+  // patient_id is a NOT NULL uuid FK — only forward if it's a real UUID.
+  if (data.palliativePatientId !== undefined && isValidUuid(data.palliativePatientId)) {
+    out.patient_id = data.palliativePatientId;
+  }
   if (data.weight !== undefined) out.bb = data.weight;
   if (data.height !== undefined) out.tb = data.height;
   if (data.activityLevel !== undefined) out.activity_level = data.activityLevel;
@@ -119,7 +122,15 @@ export const nutritionService = {
   },
 
   async create(data: Partial<NutritionRecordInfo>): Promise<NutritionRecordInfo | null> {
+    if (!isValidUuid(data.palliativePatientId)) {
+      console.error(
+        '[nutritionService.create] ABORTED — patient_id is not a valid UUID.',
+        { received: data.palliativePatientId }
+      );
+      return null;
+    }
     const payload = toDb(data);
+    console.log('[nutritionService.create] payload:', { patient_id: data.palliativePatientId });
     const row = await safeQuery(
       supabase.from('nutrition').insert(payload).select().single(),
       null as any,

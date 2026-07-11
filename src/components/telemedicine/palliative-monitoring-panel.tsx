@@ -149,6 +149,7 @@ import { PalliativeResumeReferralPanel } from './palliative-resume-referral-pane
 import SocialSupportPanel from './social-support-panel';
 import DailyComplaintPanel from './daily-complaint-panel';
 import { useToast } from '@/hooks/use-toast';
+import { isValidUuid, validUuidOrUndefined } from '@/services/supabase';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -322,6 +323,7 @@ export function PalliativeMonitoringPanel() {
 
   // Form states for new patient
   const [newPatient, setNewPatient] = useState<Partial<PalliativePatientInfo> & { weight?: number; height?: number }>({});
+  const [savingPatient, setSavingPatient] = useState(false);
   // Form states for new vital sign
   const [newVital, setNewVital] = useState<Partial<VitalSignRecordInfo>>({});
   // Form states for new medication
@@ -806,12 +808,17 @@ export function PalliativeMonitoringPanel() {
     [setSelectedPalliativePatientId]
   );
 
-  const handleAddPatient = useCallback(() => {
+  const handleAddPatient = useCallback(async () => {
     if (!newPatient.patientName) return;
-    const bmiVal = calcBmi(newPatient.weight, newPatient.height);
+    setSavingPatient(true);
+
+    // ── Build the patient object WITHOUT a custom id ──
+    // We do NOT set `id` to `genId('pp')` or `genId('pat')` anymore.
+    // The store.addPalliativePatient() will call Supabase to create the
+    // patient and get back the real auto-generated UUID.
     const patient: PalliativePatientInfo = {
-      id: genId('pp'),
-      patientId: genId('pat'),
+      id: '', // placeholder — replaced by Supabase-generated UUID
+      patientId: '', // placeholder — set equal to id by patientService.fromDb
       patientName: newPatient.patientName,
       rmNumber: newPatient.rmNumber,
       bpjsNumber: newPatient.bpjsNumber,
@@ -834,10 +841,42 @@ export function PalliativeMonitoringPanel() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    addPalliativePatient(patient);
-    setNewPatient({});
-    setShowAddPatient(false);
-  }, [newPatient, addPalliativePatient]);
+
+    // Log what we're about to send (per user's requirement #8)
+    console.log('[handleAddPatient] Selected Patient (before save):', patient);
+    console.log('[handleAddPatient] attendingDoctorId:', patient.attendingDoctorId, 'isUuid:', isValidUuid(patient.attendingDoctorId));
+
+    try {
+      const created = await addPalliativePatient(patient);
+      if (created) {
+        console.log('[handleAddPatient] SUCCESS — patient saved with real UUID:', created.id);
+        toast({
+          title: 'Pasien Tersimpan',
+          description: `${created.patientName} telah ditambahkan ke database Supabase.`,
+        });
+        // Auto-select the newly created patient
+        setSelectedPalliativePatientId(created.id);
+      } else {
+        console.error('[handleAddPatient] addPalliativePatient returned null — patient NOT saved');
+        toast({
+          title: 'Gagal Menyimpan Pasien',
+          description: 'Terjadi kesalahan saat menyimpan pasien ke Supabase. Periksa koneksi dan coba lagi.',
+          variant: 'destructive',
+        });
+      }
+    } catch (err) {
+      console.error('[handleAddPatient] error:', err);
+      toast({
+        title: 'Gagal Menyimpan Pasien',
+        description: 'Terjadi kesalahan tak terduga saat menyimpan pasien.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingPatient(false);
+      setNewPatient({});
+      setShowAddPatient(false);
+    }
+  }, [newPatient, addPalliativePatient, toast, setSelectedPalliativePatientId]);
 
   const handleUpdatePatient = useCallback(() => {
     if (!editingPatient) return;
@@ -938,12 +977,25 @@ export function PalliativeMonitoringPanel() {
   );
 
   const handleAddVital = useCallback(() => {
-    if (!selectedPalliativePatientId) return;
+    // ── UUID validation (per user's requirement #4) ──
+    // selectedPalliativePatientId MUST be a real UUID from the patients table.
+    // If it's still a custom string like "pp-...", we abort with a toast.
+    if (!isValidUuid(selectedPalliativePatientId)) {
+      console.error('[handleAddVital] ABORTED — patient_id is not a valid UUID:', selectedPalliativePatientId);
+      toast({
+        title: 'Patient UUID tidak ditemukan',
+        description: 'Pilih pasien yang valid sebelum menambahkan TTV. ID pasien harus berupa UUID.',
+        variant: 'destructive',
+      });
+      return;
+    }
     const bmiVal = calcBmi(newVital.weight, newVital.height);
+    const doctorId = validUuidOrUndefined(currentUser?.id); // only use if it's a real UUID
     const record: VitalSignRecordInfo = {
       id: genId('vs'),
-      palliativePatientId: selectedPalliativePatientId,
-      recordedBy: newVital.recordedBy,
+      palliativePatientId: selectedPalliativePatientId, // real UUID
+      doctorId,
+      recordedBy: newVital.recordedBy || currentUser?.name,
       systolicBP: newVital.systolicBP,
       diastolicBP: newVital.diastolicBP,
       heartRate: newVital.heartRate,
@@ -957,16 +1009,30 @@ export function PalliativeMonitoringPanel() {
       recordedAt: newVital.recordedAt || new Date().toISOString(),
       createdAt: new Date().toISOString(),
     };
+    // Log what we're sending (per user's requirement #8)
+    console.log('[handleAddVital] patient_id:', record.palliativePatientId);
+    console.log('[handleAddVital] doctor_id:', doctorId ?? '(skipped — not a UUID)');
+    console.log('[handleAddVital] payload:', record);
     addVitalSignRecord(record);
     setNewVital({});
     setShowAddVital(false);
-  }, [selectedPalliativePatientId, newVital, addVitalSignRecord]);
+    toast({ title: 'TTV Tersimpan', description: 'Data TTV telah ditambahkan dan disinkronisasi ke Supabase.' });
+  }, [selectedPalliativePatientId, newVital, addVitalSignRecord, currentUser, toast]);
 
   const handleAddMedication = useCallback(() => {
-    if (!selectedPalliativePatientId || !newMedication.medicineName) return;
+    if (!isValidUuid(selectedPalliativePatientId)) {
+      console.error('[handleAddMedication] ABORTED — patient_id is not a valid UUID:', selectedPalliativePatientId);
+      toast({
+        title: 'Patient UUID tidak ditemukan',
+        description: 'Pilih pasien yang valid sebelum menambahkan obat.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (!newMedication.medicineName) return;
     const med: PalliativeMedicationInfo = {
       id: genId('pm'),
-      palliativePatientId: selectedPalliativePatientId,
+      palliativePatientId: selectedPalliativePatientId, // real UUID
       medicineName: newMedication.medicineName,
       dosage: newMedication.dosage || '',
       frequency: newMedication.frequency || '',
@@ -979,16 +1045,27 @@ export function PalliativeMonitoringPanel() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    console.log('[handleAddMedication] patient_id:', med.palliativePatientId);
+    console.log('[handleAddMedication] payload:', med);
     addPalliativeMedication(med);
     setNewMedication({});
     setShowAddMedication(false);
-  }, [selectedPalliativePatientId, newMedication, addPalliativeMedication]);
+    toast({ title: 'Obat Tersimpan', description: 'Data obat telah ditambahkan dan disinkronisasi ke Supabase.' });
+  }, [selectedPalliativePatientId, newMedication, addPalliativeMedication, toast]);
 
   const handleAddACP = useCallback(() => {
-    if (!selectedPalliativePatientId) return;
+    if (!isValidUuid(selectedPalliativePatientId)) {
+      console.error('[handleAddACP] ABORTED — patient_id is not a valid UUID:', selectedPalliativePatientId);
+      toast({
+        title: 'Patient UUID tidak ditemukan',
+        description: 'Pilih pasien yang valid sebelum menambahkan ACP.',
+        variant: 'destructive',
+      });
+      return;
+    }
     const plan: AdvanceCarePlanInfo = {
       id: genId('acp'),
-      palliativePatientId: selectedPalliativePatientId,
+      palliativePatientId: selectedPalliativePatientId, // real UUID
       decisionMakerName: newACP.decisionMakerName,
       decisionMakerRelation: newACP.decisionMakerRelation,
       decisionMakerPhone: newACP.decisionMakerPhone,
@@ -1015,11 +1092,14 @@ export function PalliativeMonitoringPanel() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    console.log('[handleAddACP] patient_id:', plan.palliativePatientId);
+    console.log('[handleAddACP] payload:', plan);
     addAdvanceCarePlan(plan);
     setNewACP({});
     setAcpStep(0);
     setShowAddACP(false);
-  }, [selectedPalliativePatientId, newACP, addAdvanceCarePlan]);
+    toast({ title: 'ACP Tersimpan', description: 'Advance Care Planning telah ditambahkan dan disinkronisasi ke Supabase.' });
+  }, [selectedPalliativePatientId, newACP, addAdvanceCarePlan, toast]);
 
   const handleAddAdherence = useCallback(
     (medId: string) => {
@@ -3129,10 +3209,19 @@ export function PalliativeMonitoringPanel() {
     };
 
     const handleSaveNutrition = () => {
-      if (!nutResult || !selectedPalliativePatientId) return;
+      if (!nutResult) return;
+      if (!isValidUuid(selectedPalliativePatientId)) {
+        console.error('[handleSaveNutrition] ABORTED — patient_id is not a valid UUID:', selectedPalliativePatientId);
+        toast({
+          title: 'Patient UUID tidak ditemukan',
+          description: 'Pilih pasien yang valid sebelum menyimpan nutrisi.',
+          variant: 'destructive',
+        });
+        return;
+      }
       const record: NutritionRecordInfo = {
         id: `nr-${Date.now()}`,
-        palliativePatientId: selectedPalliativePatientId,
+        palliativePatientId: selectedPalliativePatientId, // real UUID
         age: parseFloat(nutAge),
         gender: nutGender,
         weight: parseFloat(nutWeight),
@@ -3147,8 +3236,10 @@ export function PalliativeMonitoringPanel() {
         recordedAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       };
+      console.log('[handleSaveNutrition] patient_id:', record.palliativePatientId);
+      console.log('[handleSaveNutrition] payload:', record);
       addNutritionRecord(record);
-      toast({ title: 'Berhasil Disimpan', description: 'Data nutrisi pasien telah disimpan' });
+      toast({ title: 'Berhasil Disimpan', description: 'Data nutrisi pasien telah disimpan ke Supabase' });
     };
 
     const handleGenerateAI = async () => {
@@ -4060,14 +4151,14 @@ export function PalliativeMonitoringPanel() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddPatient(false)}>
+            <Button variant="outline" onClick={() => setShowAddPatient(false)} disabled={savingPatient}>
               Batal
             </Button>
             <Button
               onClick={handleAddPatient}
-              disabled={!newPatient.patientName}
+              disabled={!newPatient.patientName || savingPatient}
             >
-              Simpan
+              {savingPatient ? 'Menyimpan...' : 'Simpan'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // aiService — Supabase CRUD for `ai_reports`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined } from './_common';
+import { supabase, safeQuery, stripUndefined, isValidUuid } from './_common';
 
 /**
  * A stored AI report — one row per AI generation (analysis, summary, etc.).
@@ -32,7 +32,10 @@ function fromDb(row: any): AIReport {
 
 function toDb(data: Partial<AIReport>): Record<string, any> {
   const out: Record<string, any> = {};
-  if (data.patientId !== undefined) out.patient_id = data.patientId;
+  // patient_id is a NOT NULL uuid FK — only forward if it's a real UUID.
+  if (data.patientId !== undefined && isValidUuid(data.patientId)) {
+    out.patient_id = data.patientId;
+  }
   if (data.reportType !== undefined) out.report_type = data.reportType;
   if (data.prompt !== undefined) out.prompt = data.prompt;
   if (data.response !== undefined) out.response = data.response;
@@ -53,7 +56,15 @@ export const aiService = {
     metadata?: any,
     generatedBy: string = 'ai'
   ): Promise<AIReport | null> {
+    if (!isValidUuid(patientId)) {
+      console.error(
+        '[aiService.save] ABORTED — patient_id is not a valid UUID.',
+        { received: patientId }
+      );
+      return null;
+    }
     const payload = toDb({ patientId, reportType, prompt, response, metadata, generatedBy });
+    console.log('[aiService.save] payload:', { patient_id: patientId, report_type: reportType });
     const row = await safeQuery(
       supabase.from('ai_reports').insert(payload).select().single(),
       null as any,

@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import { useToast } from '@/hooks/use-toast';
+import { isValidUuid } from '@/services/supabase';
 import type {
   DailyCondition,
   DailyComplaintYesNo,
@@ -214,6 +215,16 @@ export function DailyComplaintForm({ palliativePatientId, source = 'monitoring',
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
+    // ── UUID validation ──
+    if (!isValidUuid(palliativePatientId)) {
+      console.error('[daily-complaint] ABORTED — patient_id is not a valid UUID:', palliativePatientId);
+      toast({
+        title: 'Patient UUID tidak ditemukan',
+        description: 'Pilih pasien yang valid sebelum mengisi keluhan harian.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setSubmitting(true);
 
     try {
