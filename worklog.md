@@ -957,3 +957,42 @@ Stage Summary:
 - BONUS FIX: deleteLab/deletePhotoExam had a latent bug where safeQuery() returned null for successful DELETEs (data is null without .select()), making every delete appear to fail. Now checks `error` directly.
 - VERIFICATION: Upload → Storage ✓, Signed URL → DB ✓, Image displays in card ✓, Detail modal + Zoom ✓, Delete ✓. No errors. No service-role key needed.
 - NOTE: The patient-files bucket on this Supabase project already has INSERT + SELECT policies for anon (Path A works). For projects where the bucket has NO policies, the user runs STORAGE_SETUP_SQL once (provided in the setup dialog + schema.sql + /api/supporting-exams/setup) to enable client-side uploads.
+
+---
+Task ID: 3
+Agent: main
+Task: Perbaiki tampilan Riwayat Clinical Alert pada modul Monitoring Paliatif — layout master-detail, scrollbar internal, sticky filter, kartu konsisten, infinite scroll, indikator realtime, empty state, responsif.
+
+Work Log:
+- Membaca `src/components/telemedicine/clinical-alert-panel.tsx` (861 baris) untuk memahami struktur: header + stats + charts + filter card + ScrollArea max-h-[60vh] + Dialog modal detail. Identifikasi masalah: daftar alert memanjang ke bawah keluar dashboard, modal detail kurang nyaman.
+- Menambahkan CSS scrollbar modern bertema CareLivia di `src/app/globals.css` (class `.alert-list-scroll`): lebar 8px, warna hijau oklch(0.65 0.1 170), rounded 8px, smooth scrolling, hover/active state, dark mode support.
+- Rewrite total `clinical-alert-panel.tsx` menjadi layout master-detail (rekomendasi UX dari user):
+  * Grid `lg:grid-cols-5`: panel kiri `lg:col-span-2` (40%) = daftar alert, panel kanan `lg:col-span-3` (60%) = detail alert.
+  * Mobile/tablet: stacked (list di atas, detail di bawah).
+  * Filter header sticky (flex shrink-0, tidak ikut scroll) berisi: search, dropdown Pasien/Severity/Status/Kategori, toggle Tampilkan Selesai.
+  * Scroll area daftar alert: tinggi responsif `h-[300px] sm:h-[400px] lg:h-[540px]` dengan class `alert-list-scroll`.
+  * Panel kanan detail: `lg:h-full` + `lg:self-stretch` agar tinggi sama dengan panel kiri di desktop; `flex-1 overflow-y-auto`.
+- Implementasi kartu alert konsisten (`AlertCard`): `min-h-[120px]`, icon severity + lingkaran berwarna, title (line-clamp-1), status badge, deskripsi (line-clamp-2), baris meta (pasien + waktu relatif), baris badge (sumber + kategori), tombol "Lihat Detail" muncul saat hover. Hover effect: shadow + border highlight + scale-[1.01] + translate-y.
+- Implementasi infinite scroll: state `visibleCount` (default 20, PAGE_SIZE=20), `IntersectionObserver` dengan root=listScrollRef, rootMargin 80px; tombol "Muat X lagi" manual; reset visibleCount saat filter berubah. Sentinel ref di bottom list.
+- Implementasi indikator realtime "X Alert Baru": ref `lastSeenCreatedAtRef` melacak timestamp terbaru yang sudah dilihat user; `newAlertCount` = jumlah alert dengan createdAt > lastSeen; banner sticky top-0 di dalam scroll area; klik banner → scroll ke atas + update lastSeen; tidak auto-scroll jika user sedang membaca alert lama; clear otomatis saat user scroll ke atas (<24px).
+- Implementasi empty state: `EmptyAlertList` (ilustrasi checkmark hijau + "Belum ada Clinical Alert / Semua kondisi pasien dalam batas aman.") dan `EmptyDetail` (ilustrasi inbox + "Pilih Alert untuk Melihat Detail").
+- Mengganti Dialog modal lama dengan panel detail inline (master-detail). State `selectedAlertId` (bukan object) agar detail selalu fresh saat store update. Scroll position list terjaga otomatis karena list tidak di-unmount.
+- Mobile: klik alert → `detailRef.scrollIntoView` agar detail terlihat (tombol "Kembali" muncul di header detail pada mobile).
+- Mempertahankan SEMUA logika yang ada: stats, charts (pie + bar), handler (acknowledge/resolve/addNote/scan/cleanupDuplicates/aiAnalysis/openChat), filter logic, sorting. Hanya mengubah tampilan sesuai spec point #15.
+- Perbaikan `w-4.5/h-4.5` (non-standard Tailwind) → `w-5 h-5`.
+- Verifikasi via Agent Browser: login dokter → Monitoring Paliatif → tab Clinical Alert. Konfirmasi: 26 alert, 20 ditampilkan + "Muat 6 lagi", filter Severity=Critical → 12 alert (tanpa reload), filter search "zzz" → empty state, clear → list kembali. Internal scroll verified (scrollHeight 1980 > clientHeight). Tinggi responsif terverifikasi: mobile 300px, tablet 400px, desktop 540px (list) + 759px (detail stretch). Tidak ada error console dari komponen. Dev server compile bersih.
+- Verifikasi visual via VLM (glm-4.6v): master-detail side-by-side YES, kartu konsisten dengan icon/border/badge/Lihat Detail YES, filter di atas panel kiri YES, tidak ada horizontal overflow YES, desain profesional seperti dashboard rumah sakit YES.
+- ESLint: 0 error pada `clinical-alert-panel.tsx` (hanya 1 error pre-existing di `seed-palliative.js` yang tidak terkait).
+
+Stage Summary:
+- Layout Riwayat Clinical Alert sekarang menggunakan pola master-detail (40% list + 60% detail) yang lebih profesional dan nyaman untuk monitoring.
+- Daftar alert berada dalam container dengan scrollbar internal (tidak lagi memanjang keluar dashboard).
+- Filter sticky di atas panel kiri, tidak ikut scroll.
+- Kartu alert konsisten (min-h 120px) dengan hover effect dan tombol Lihat Detail.
+- Infinite scroll 20 per halaman + IntersectionObserver auto-load.
+- Indikator realtime "X Alert Baru" tanpa auto-scroll gangguan.
+- Empty state untuk list kosong dan detail belum dipilih.
+- Responsif: mobile 300px / tablet 400px / desktop 540px (scroll area).
+- Scroll position terjaga saat beralih antar alert (natural dari master-detail, tanpa modal).
+- Tidak mengubah statistik, status, rule engine, realtime, atau database (hanya tampilan).
+- File diubah: `src/app/globals.css` (CSS scrollbar), `src/components/telemedicine/clinical-alert-panel.tsx` (rewrite UI).

@@ -159,6 +159,50 @@
   background: oklch(0.55 0.1 170);
 }
 
+/* ── Clinical Alert List Scrollbar ── */
+/* Modern, 8px wide, CareLivia green theme, rounded, smooth */
+.alert-list-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.65 0.1 170) transparent;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.alert-list-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.alert-list-scroll::-webkit-scrollbar-track {
+  background: oklch(0.96 0.01 155);
+  border-radius: 8px;
+  margin: 4px 0;
+}
+.alert-list-scroll::-webkit-scrollbar-thumb {
+  background: oklch(0.65 0.1 170);
+  border-radius: 8px;
+  border: 1px solid oklch(0.96 0.01 155);
+  transition: background 0.2s ease;
+}
+.alert-list-scroll::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.56 0.1 170);
+}
+.alert-list-scroll::-webkit-scrollbar-thumb:active {
+  background: oklch(0.45 0.1 170);
+}
+.dark .alert-list-scroll {
+  scrollbar-color: oklch(0.55 0.1 170) transparent;
+}
+.dark .alert-list-scroll::-webkit-scrollbar-track {
+  background: oklch(0.22 0.02 170);
+}
+.dark .alert-list-scroll::-webkit-scrollbar-thumb {
+  background: oklch(0.55 0.1 170);
+  border-color: oklch(0.22 0.02 170);
+}
+.dark .alert-list-scroll::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.65 0.12 170);
+}
+
 /* Horizontal scrollbar for tab navigation */
 .h-scroll-tabs {
   overflow-x: auto;

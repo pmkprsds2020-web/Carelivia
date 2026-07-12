@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import type {
@@ -24,14 +24,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import {
   Activity,
   AlertTriangle,
   ShieldCheck,
@@ -51,6 +43,9 @@ import {
   Zap,
   Eye,
   EyeOff,
+  ChevronDown,
+  ArrowUp,
+  Inbox,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -70,13 +65,14 @@ import {
 
 const SEVERITY_CONFIG: Record<
   ClinicalAlertSeverity,
-  { label: string; color: string; bg: string; border: string; icon: typeof Flame }
+  { label: string; color: string; bg: string; border: string; icon: typeof Flame; ring: string }
 > = {
   CRITICAL: {
     label: 'Critical',
     color: 'text-red-700',
     bg: 'bg-red-50',
     border: 'border-red-500',
+    ring: 'hover:border-red-400 hover:shadow-red-100',
     icon: Flame,
   },
   HIGH: {
@@ -84,6 +80,7 @@ const SEVERITY_CONFIG: Record<
     color: 'text-orange-700',
     bg: 'bg-orange-50',
     border: 'border-orange-500',
+    ring: 'hover:border-orange-400 hover:shadow-orange-100',
     icon: AlertTriangle,
   },
   MEDIUM: {
@@ -91,6 +88,7 @@ const SEVERITY_CONFIG: Record<
     color: 'text-yellow-700',
     bg: 'bg-yellow-50',
     border: 'border-yellow-500',
+    ring: 'hover:border-yellow-400 hover:shadow-yellow-100',
     icon: AlertCircle,
   },
   LOW: {
@@ -98,6 +96,7 @@ const SEVERITY_CONFIG: Record<
     color: 'text-green-700',
     bg: 'bg-green-50',
     border: 'border-green-500',
+    ring: 'hover:border-green-400 hover:shadow-green-100',
     icon: Bell,
   },
 };
@@ -117,6 +116,8 @@ const SEVERITY_ORDER: Record<ClinicalAlertSeverity, number> = {
 
 const PIE_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#9ca3af'];
 
+const PAGE_SIZE = 20;
+
 function formatDate(iso: string): string {
   try {
     return new Date(iso).toLocaleString('id-ID', {
@@ -126,6 +127,22 @@ function formatDate(iso: string): string {
       hour: '2-digit',
       minute: '2-digit',
     });
+  } catch {
+    return iso;
+  }
+}
+
+function formatRelative(iso: string): string {
+  try {
+    const diff = Date.now() - new Date(iso).getTime();
+    const min = Math.floor(diff / 60000);
+    if (min < 1) return 'Baru saja';
+    if (min < 60) return `${min} mnt lalu`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr} jam lalu`;
+    const day = Math.floor(hr / 24);
+    if (day < 7) return `${day} hari lalu`;
+    return formatDate(iso);
   } catch {
     return iso;
   }
@@ -170,12 +187,20 @@ export function ClinicalAlertPanel({ palliativePatientId }: ClinicalAlertPanelPr
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedAlert, setSelectedAlert] = useState<PalliativeClinicalAlert | null>(null);
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [showResolved, setShowResolved] = useState(false);
+
+  // ── Infinite scroll & realtime indicator state ─────────────────────────
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [newAlertCount, setNewAlertCount] = useState(0);
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const lastSeenCreatedAtRef = useRef<string | null>(null);
+  const detailRef = useRef<HTMLDivElement | null>(null);
 
   // ── Derived data ───────────────────────────────────────────────────────
   const allAlerts = useMemo(() => {
@@ -239,6 +264,65 @@ export function ClinicalAlertPanel({ palliativePatientId }: ClinicalAlertPanelPr
     return result;
   }, [allAlerts, filterPatient, filterSeverity, filterStatus, filterCategory, searchQuery, palliativePatientId, showResolved]);
 
+  // Visible slice (infinite scroll)
+  const visibleAlerts = useMemo(
+    () => filteredAlerts.slice(0, visibleCount),
+    [filteredAlerts, visibleCount]
+  );
+  const hasMore = visibleCount < filteredAlerts.length;
+
+  // Initialize the "last seen" timestamp on first load (so we don't count existing as new)
+  useEffect(() => {
+    if (lastSeenCreatedAtRef.current === null && allAlerts.length > 0) {
+      const maxTs = allAlerts.reduce((mx, a) => {
+        return new Date(a.createdAt).getTime() > new Date(mx).getTime() ? a.createdAt : mx;
+      }, allAlerts[0].createdAt);
+      lastSeenCreatedAtRef.current = maxTs;
+    }
+  }, [allAlerts]);
+
+  // Detect new alerts arriving in realtime (createdAt newer than last seen)
+  useEffect(() => {
+    if (lastSeenCreatedAtRef.current === null) return;
+    const lastSeen = new Date(lastSeenCreatedAtRef.current).getTime();
+    const fresh = allAlerts.filter(
+      (a) => new Date(a.createdAt).getTime() > lastSeen
+    );
+    setNewAlertCount(fresh.length);
+  }, [allAlerts]);
+
+  // Reset visible count when filters change (avoid showing stale page state)
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filterPatient, filterSeverity, filterStatus, filterCategory, searchQuery, showResolved]);
+
+  // IntersectionObserver for infinite scroll auto-load
+  useEffect(() => {
+    const node = sentinelRef.current;
+    const root = listScrollRef.current;
+    if (!node || !hasMore) return;
+    const ob = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((c) => c + PAGE_SIZE);
+        }
+      },
+      { root, rootMargin: '80px', threshold: 0.01 }
+    );
+    ob.observe(node);
+    return () => ob.disconnect();
+  }, [hasMore, visibleAlerts.length]);
+
+  // The currently selected alert (derived from the live list so it stays fresh)
+  const selectedAlert = useMemo(() => {
+    if (!selectedAlertId) return null;
+    return (
+      allAlerts.find(
+        (a) => a.id === selectedAlertId
+      ) ?? null
+    );
+  }, [selectedAlertId, allAlerts]);
+
   // ── Stats ──────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
     const active = allAlerts.filter((a) => a.status !== 'RESOLVED');
@@ -286,12 +370,10 @@ export function ClinicalAlertPanel({ palliativePatientId }: ClinicalAlertPanelPr
   // ── Actions ────────────────────────────────────────────────────────────
   const handleAcknowledge = useCallback(async () => {
     if (!selectedAlert) return;
-    const doctorId = currentUser?.id ?? 'doctor';
     const doctorName = currentUser?.name ?? 'Dokter';
     try {
       acknowledgePalliativeAlert(selectedAlert.id, doctorName);
       toast({ title: 'Alert Diakui', description: `Alert "${selectedAlert.title}" telah di-acknowledge.` });
-      setSelectedAlert(null);
       setNoteText('');
     } catch (err) {
       toast({ title: 'Gagal', description: 'Gagal acknowledge alert.', variant: 'destructive' });
@@ -304,7 +386,6 @@ export function ClinicalAlertPanel({ palliativePatientId }: ClinicalAlertPanelPr
     try {
       resolvePalliativeAlert(selectedAlert.id, doctorName, noteText || undefined);
       toast({ title: 'Alert Selesai', description: `Alert "${selectedAlert.title}" telah diselesaikan.` });
-      setSelectedAlert(null);
       setNoteText('');
     } catch (err) {
       toast({ title: 'Gagal', description: 'Gagal resolve alert.', variant: 'destructive' });
@@ -390,8 +471,48 @@ export function ClinicalAlertPanel({ palliativePatientId }: ClinicalAlertPanelPr
       setSelectedPalliativePatientId(pid);
     }
     toast({ title: 'Chat Dibuka', description: 'Pasien telah dipilih. Buka tab Chat untuk berkonsultasi.' });
-    setSelectedAlert(null);
   }, [selectedAlert, setSelectedPalliativePatientId, toast]);
+
+  // Select an alert (replaces modal open). On mobile, scroll to detail panel.
+  const handleSelectAlert = useCallback((alert: PalliativeClinicalAlert) => {
+    setSelectedAlertId(alert.id);
+    setNoteText('');
+    // On small screens, scroll the detail into view
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      requestAnimationFrame(() => {
+        detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  }, []);
+
+  // Click "X Alert Baru" → jump to top & mark seen
+  const handleViewNewAlerts = useCallback(() => {
+    const el = listScrollRef.current;
+    if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+    // Update last seen to the newest alert's createdAt
+    if (allAlerts.length > 0) {
+      const maxTs = allAlerts.reduce((mx, a) => {
+        return new Date(a.createdAt).getTime() > new Date(mx).getTime() ? a.createdAt : mx;
+      }, allAlerts[0].createdAt);
+      lastSeenCreatedAtRef.current = maxTs;
+    }
+    setNewAlertCount(0);
+  }, [allAlerts]);
+
+  // When user scrolls back to top manually, clear the new-alert indicator
+  const handleListScroll = useCallback(() => {
+    const el = listScrollRef.current;
+    if (!el) return;
+    if (el.scrollTop < 24 && newAlertCount > 0) {
+      if (allAlerts.length > 0) {
+        const maxTs = allAlerts.reduce((mx, a) => {
+          return new Date(a.createdAt).getTime() > new Date(mx).getTime() ? a.createdAt : mx;
+        }, allAlerts[0].createdAt);
+        lastSeenCreatedAtRef.current = maxTs;
+      }
+      setNewAlertCount(0);
+    }
+  }, [newAlertCount, allAlerts]);
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
@@ -485,92 +606,6 @@ export function ClinicalAlertPanel({ palliativePatientId }: ClinicalAlertPanelPr
         </div>
       )}
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-2 top-2.5 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Cari alert..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8"
-              />
-            </div>
-            {/* Patient filter (cross-patient view only) */}
-            {!palliativePatientId && (
-              <Select value={filterPatient} onValueChange={setFilterPatient}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Semua Pasien" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Pasien</SelectItem>
-                  {palliativePatients.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.patientName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            {/* Severity filter */}
-            <Select value={filterSeverity} onValueChange={setFilterSeverity}>
-              <SelectTrigger>
-                <SelectValue placeholder="Semua Severity" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Semua Severity</SelectItem>
-                <SelectItem value="CRITICAL">Critical</SelectItem>
-                <SelectItem value="HIGH">High</SelectItem>
-                <SelectItem value="MEDIUM">Medium</SelectItem>
-                <SelectItem value="LOW">Low</SelectItem>
-              </SelectContent>
-            </Select>
-            {/* Status filter */}
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger>
-                <SelectValue placeholder="Semua Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Semua Status</SelectItem>
-                <SelectItem value="ACTIVE">Aktif</SelectItem>
-                <SelectItem value="ACKNOWLEDGED">Diakui</SelectItem>
-                <SelectItem value="RESOLVED">Selesai</SelectItem>
-              </SelectContent>
-            </Select>
-            {/* Category filter */}
-            {categories.length > 0 && (
-              <Select value={filterCategory} onValueChange={setFilterCategory}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Semua Kategori" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Kategori</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-          <div className="flex items-center gap-2 mt-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowResolved(!showResolved)}
-            >
-              {showResolved ? <EyeOff className="w-4 h-4 mr-1" /> : <Eye className="w-4 h-4 mr-1" />}
-              {showResolved ? 'Sembunyikan Resolved' : 'Tampilkan Resolved'}
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              {filteredAlerts.length} dari {allAlerts.length} alert
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* AI Analysis Panel */}
       {aiAnalysis && (
         <Card className="border-primary">
@@ -591,238 +626,185 @@ export function ClinicalAlertPanel({ palliativePatientId }: ClinicalAlertPanelPr
         </Card>
       )}
 
-      {/* Alert List */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Daftar Alert</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {filteredAlerts.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-green-500" />
-              <p>Tidak ada alert aktif. Semua parameter klinis dalam batas normal.</p>
+      {/* ── Master–Detail Layout ─────────────────────────────────────────── */}
+      {/* Left (40%): sticky filter + scrollable alert list                */}
+      {/* Right (60%): detail of the selected alert                        */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        {/* ── LEFT: Alert List Panel ── */}
+        <Card className="lg:col-span-2 flex flex-col gap-0 overflow-hidden p-0">
+          {/* Sticky filter header (never scrolls away) */}
+          <div className="shrink-0 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-1.5">
+                <Bell className="w-4 h-4 text-primary" />
+                Daftar Alert
+              </CardTitle>
+              <span className="text-xs text-muted-foreground">
+                {filteredAlerts.length} alert
+              </span>
             </div>
-          ) : (
-            <ScrollArea className="max-h-[60vh]">
-              <div className="space-y-2">
-                {filteredAlerts.map((alert) => {
-                  const sev = SEVERITY_CONFIG[alert.severityLevel ?? 'LOW'];
-                  const status = STATUS_CONFIG[alert.status ?? 'ACTIVE'];
-                  const Icon = sev.icon;
-                  const patient = palliativePatients.find(
-                    (p) => p.id === (alert.palliativePatientId ?? alert.patientId)
-                  );
-                  return (
-                    <div
-                      key={alert.id}
-                      className={cn(
-                        'flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow',
-                        sev.bg,
-                        sev.border
-                      )}
-                      onClick={() => setSelectedAlert(alert)}
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Cari alert..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 h-9"
+              />
+            </div>
+            {/* Filter row */}
+            <div className="grid grid-cols-2 gap-2">
+              {!palliativePatientId && (
+                <Select value={filterPatient} onValueChange={setFilterPatient}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Pasien" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Pasien</SelectItem>
+                    {palliativePatients.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.patientName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <Select value={filterSeverity} onValueChange={setFilterSeverity}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Severity" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Severity</SelectItem>
+                  <SelectItem value="CRITICAL">Critical</SelectItem>
+                  <SelectItem value="HIGH">High</SelectItem>
+                  <SelectItem value="MEDIUM">Medium</SelectItem>
+                  <SelectItem value="LOW">Low</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Status</SelectItem>
+                  <SelectItem value="ACTIVE">Aktif</SelectItem>
+                  <SelectItem value="ACKNOWLEDGED">Diakui</SelectItem>
+                  <SelectItem value="RESOLVED">Selesai</SelectItem>
+                </SelectContent>
+              </Select>
+              {categories.length > 0 && (
+                <Select value={filterCategory} onValueChange={setFilterCategory}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Kategori" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Kategori</SelectItem>
+                    {categories.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="flex items-center justify-between">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs px-2"
+                onClick={() => setShowResolved(!showResolved)}
+              >
+                {showResolved ? <EyeOff className="w-3.5 h-3.5 mr-1" /> : <Eye className="w-3.5 h-3.5 mr-1" />}
+                {showResolved ? 'Sembunyikan Selesai' : 'Tampilkan Selesai'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Scrollable alert list — responsive heights per spec:
+              mobile 300px / tablet 400px / desktop 540px */}
+          <div
+            ref={listScrollRef}
+            onScroll={handleListScroll}
+            className="alert-list-scroll relative overflow-y-auto overflow-x-hidden p-2.5 h-[300px] sm:h-[400px] lg:h-[540px]"
+          >
+            {/* Realtime "new alerts" indicator */}
+            {newAlertCount > 0 && (
+              <button
+                type="button"
+                onClick={handleViewNewAlerts}
+                className="sticky top-0 left-1/2 -translate-x-1/2 z-20 mb-2 flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-lg shadow-primary/30 transition hover:scale-105 animate-in fade-in slide-in-from-top-2"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                {newAlertCount} Alert Baru
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            {filteredAlerts.length === 0 ? (
+              <EmptyAlertList showResolved={showResolved} />
+            ) : (
+              <div className="space-y-2.5">
+                {visibleAlerts.map((alert) => (
+                  <AlertCard
+                    key={alert.id}
+                    alert={alert}
+                    patient={palliativePatients.find(
+                      (p) => p.id === (alert.palliativePatientId ?? alert.patientId)
+                    )}
+                    selected={alert.id === selectedAlertId}
+                    onSelect={handleSelectAlert}
+                  />
+                ))}
+
+                {/* Infinite scroll sentinel + manual load more */}
+                {hasMore ? (
+                  <div ref={sentinelRef} className="flex justify-center py-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
                     >
-                      <div className={cn('p-2 rounded-full', sev.bg, sev.color)}>
-                        <Icon className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={cn('font-semibold text-sm', sev.color)}>
-                            {alert.title}
-                          </span>
-                          <Badge variant="outline" className={cn('text-xs', status.color)}>
-                            {status.label}
-                          </Badge>
-                          <Badge variant="outline" className="text-xs">
-                            {getSourceLabel(alert.sourceModule)}
-                          </Badge>
-                          {alert.kategori && (
-                            <Badge variant="outline" className="text-xs">
-                              {alert.kategori}
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                          {alert.description}
-                        </p>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                          {patient && (
-                            <span className="flex items-center gap-1">
-                              <User className="w-3 h-3" />
-                              {patient.patientName}
-                            </span>
-                          )}
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {formatDate(alert.createdAt)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      <ChevronDown className="w-4 h-4 mr-1" />
+                      Muat {Math.min(PAGE_SIZE, filteredAlerts.length - visibleCount)} lagi
+                    </Button>
+                  </div>
+                ) : (
+                  filteredAlerts.length > PAGE_SIZE && (
+                    <p className="text-center text-xs text-muted-foreground py-2">
+                      Semua {filteredAlerts.length} alert telah ditampilkan
+                    </p>
+                  )
+                )}
               </div>
-            </ScrollArea>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </div>
+        </Card>
 
-      {/* Detail Dialog */}
-      <Dialog open={!!selectedAlert} onOpenChange={(open) => !open && setSelectedAlert(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          {selectedAlert && (() => {
-            const sev = SEVERITY_CONFIG[selectedAlert.severityLevel ?? 'LOW'];
-            const status = STATUS_CONFIG[selectedAlert.status ?? 'ACTIVE'];
-            const Icon = sev.icon;
-            const patient = palliativePatients.find(
-              (p) => p.id === (selectedAlert.palliativePatientId ?? selectedAlert.patientId)
-            );
-            return (
-              <>
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <div className={cn('p-2 rounded-full', sev.bg, sev.color)}>
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    {selectedAlert.title}
-                  </DialogTitle>
-                  <DialogDescription>
-                    Detail alert dan tindakan yang dapat dilakukan
-                  </DialogDescription>
-                </DialogHeader>
-
-                <div className="space-y-4">
-                  {/* Badges */}
-                  <div className="flex flex-wrap gap-2">
-                    <Badge className={sev.color + ' ' + sev.bg + ' border ' + sev.border}>
-                      {sev.label}
-                    </Badge>
-                    <Badge variant="outline" className={status.color}>
-                      {status.label}
-                    </Badge>
-                    <Badge variant="outline">{getSourceLabel(selectedAlert.sourceModule)}</Badge>
-                    {selectedAlert.kategori && (
-                      <Badge variant="outline">{selectedAlert.kategori}</Badge>
-                    )}
-                  </div>
-
-                  {/* Patient */}
-                  {patient && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <User className="w-4 h-4 text-muted-foreground" />
-                      <span className="font-medium">{patient.patientName}</span>
-                      {patient.rmNumber && (
-                        <span className="text-muted-foreground">({patient.rmNumber})</span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Description */}
-                  <div>
-                    <Label className="text-xs font-semibold text-muted-foreground">Deskripsi</Label>
-                    <p className="text-sm mt-1">{selectedAlert.description}</p>
-                  </div>
-
-                  {/* Recommendation */}
-                  {selectedAlert.recommendation && (
-                    <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
-                      <Label className="text-xs font-semibold text-primary flex items-center gap-1">
-                        <Stethoscope className="w-3 h-3" />
-                        Rekomendasi Klinis
-                      </Label>
-                      <p className="text-sm mt-1">{selectedAlert.recommendation}</p>
-                    </div>
-                  )}
-
-                  {/* Metadata */}
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div>
-                      <span className="font-semibold text-muted-foreground">Dibuat:</span>
-                      <br />
-                      {formatDate(selectedAlert.createdAt)}
-                    </div>
-                    {selectedAlert.acknowledgedAt && (
-                      <div>
-                        <span className="font-semibold text-muted-foreground">Acknowledged:</span>
-                        <br />
-                        {formatDate(selectedAlert.acknowledgedAt)}
-                        {selectedAlert.acknowledgedBy && ` oleh ${selectedAlert.acknowledgedBy}`}
-                      </div>
-                    )}
-                    {selectedAlert.resolvedAt && (
-                      <div>
-                        <span className="font-semibold text-muted-foreground">Resolved:</span>
-                        <br />
-                        {formatDate(selectedAlert.resolvedAt)}
-                        {selectedAlert.resolvedBy && ` oleh ${selectedAlert.resolvedBy}`}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Existing Notes */}
-                  {selectedAlert.notes && (
-                    <div>
-                      <Label className="text-xs font-semibold text-muted-foreground">Catatan</Label>
-                      <div className="mt-1 p-2 rounded bg-muted text-xs whitespace-pre-wrap max-h-32 overflow-y-auto">
-                        {selectedAlert.notes}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Add Note */}
-                  <div>
-                    <Label className="text-xs font-semibold text-muted-foreground">Tambah Catatan</Label>
-                    <Textarea
-                      value={noteText}
-                      onChange={(e) => setNoteText(e.target.value)}
-                      placeholder="Tulis catatan klinis..."
-                      className="mt-1"
-                      rows={2}
-                    />
-                    <Button variant="outline" size="sm" className="mt-1" onClick={handleAddNote}>
-                      Tambah Catatan
-                    </Button>
-                  </div>
-
-                  <Separator />
-
-                  {/* Actions */}
-                  <div className="flex flex-wrap gap-2">
-                    {selectedAlert.status === 'ACTIVE' && (
-                      <Button variant="outline" size="sm" onClick={handleAcknowledge}>
-                        <ShieldCheck className="w-4 h-4 mr-1" />
-                        Acknowledge
-                      </Button>
-                    )}
-                    {selectedAlert.status !== 'RESOLVED' && (
-                      <Button variant="default" size="sm" onClick={handleResolve}>
-                        <CheckCircle2 className="w-4 h-4 mr-1" />
-                        Resolve
-                      </Button>
-                    )}
-                    <Button variant="outline" size="sm" onClick={handleOpenChat}>
-                      <MessageCircle className="w-4 h-4 mr-1" />
-                      Kirim Chat
-                    </Button>
-                    <Button variant="outline" size="sm" disabled>
-                      <FileText className="w-4 h-4 mr-1" />
-                      Surat Rujukan
-                    </Button>
-                    <Button variant="outline" size="sm" disabled>
-                      <Home className="w-4 h-4 mr-1" />
-                      Home Visit
-                    </Button>
-                    <Button variant="outline" size="sm" disabled>
-                      <FileText className="w-4 h-4 mr-1" />
-                      Cetak PDF
-                    </Button>
-                  </div>
-                </div>
-              </>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
+        {/* ── RIGHT: Alert Detail Panel ── */}
+        <div ref={detailRef} className="lg:col-span-3 lg:self-stretch">
+        <Card className="flex flex-col gap-0 overflow-hidden p-0 min-h-[300px] lg:h-full">
+          <div className="alert-list-scroll flex-1 overflow-y-auto">
+            {!selectedAlert ? (
+              <EmptyDetail />
+            ) : (
+              <AlertDetail
+                alert={selectedAlert}
+                patient={palliativePatients.find(
+                  (p) => p.id === (selectedAlert.palliativePatientId ?? selectedAlert.patientId)
+                )}
+                noteText={noteText}
+                setNoteText={setNoteText}
+                onAcknowledge={handleAcknowledge}
+                onResolve={handleResolve}
+                onAddNote={handleAddNote}
+                onOpenChat={handleOpenChat}
+                onClose={() => setSelectedAlertId(null)}
+              />
+            )}
+          </div>
+        </Card>
+        </div>
+      </div>
     </div>
   );
 }
@@ -856,5 +838,317 @@ function StatCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ── Alert Card (list item) ──────────────────────────────────────────────────
+
+interface AlertCardProps {
+  alert: PalliativeClinicalAlert;
+  patient?: { patientName: string; rmNumber?: string };
+  selected: boolean;
+  onSelect: (alert: PalliativeClinicalAlert) => void;
+}
+
+function AlertCard({ alert, patient, selected, onSelect }: AlertCardProps) {
+  const sev = SEVERITY_CONFIG[alert.severityLevel ?? 'LOW'];
+  const status = STATUS_CONFIG[alert.status ?? 'ACTIVE'];
+  const Icon = sev.icon;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(alert)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(alert);
+        }
+      }}
+      className={cn(
+        'group relative flex flex-col gap-2 rounded-xl border bg-card p-3.5 cursor-pointer',
+        'min-h-[120px] transition-all duration-200 ease-out',
+        'hover:shadow-md hover:-translate-y-0.5 hover:scale-[1.01]',
+        sev.border,
+        selected
+          ? 'ring-2 ring-primary shadow-md border-primary'
+          : sev.ring
+      )}
+    >
+      {/* Top row: icon + title + status */}
+      <div className="flex items-start gap-2.5">
+        <div className={cn('shrink-0 p-2 rounded-full', sev.bg, sev.color)}>
+          <Icon className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <h4 className={cn('font-semibold text-sm leading-snug', sev.color, 'line-clamp-1')}>
+              {alert.title}
+            </h4>
+            <Badge variant="outline" className={cn('shrink-0 text-[10px] px-1.5 py-0', status.color)}>
+              {status.label}
+            </Badge>
+          </div>
+        </div>
+      </div>
+
+      {/* Description (clamped) */}
+      <p className="text-xs text-muted-foreground line-clamp-2 pl-9">
+        {alert.description}
+      </p>
+
+      {/* Meta row: patient + time */}
+      <div className="flex items-center gap-3 mt-auto pl-9 text-[11px] text-muted-foreground flex-wrap">
+        {patient && (
+          <span className="flex items-center gap-1 min-w-0">
+            <User className="w-3 h-3 shrink-0" />
+            <span className="truncate max-w-[120px]">{patient.patientName}</span>
+          </span>
+        )}
+        <span className="flex items-center gap-1">
+          <Clock className="w-3 h-3 shrink-0" />
+          {formatRelative(alert.createdAt)}
+        </span>
+      </div>
+
+      {/* Badges row: source + category */}
+      <div className="flex items-center gap-1.5 pl-9 flex-wrap">
+        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+          {getSourceLabel(alert.sourceModule)}
+        </Badge>
+        {alert.kategori && (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+            {alert.kategori}
+          </Badge>
+        )}
+      </div>
+
+      {/* Lihat Detail action (appears on hover) */}
+      <div className="absolute bottom-2 right-2.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <span className="flex items-center gap-0.5 text-[10px] font-semibold text-primary">
+          Lihat Detail
+          <ChevronDown className="w-3 h-3 -rotate-90" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Alert Detail (right panel) ──────────────────────────────────────────────
+
+interface AlertDetailProps {
+  alert: PalliativeClinicalAlert;
+  patient?: { patientName: string; rmNumber?: string };
+  noteText: string;
+  setNoteText: (v: string) => void;
+  onAcknowledge: () => void;
+  onResolve: () => void;
+  onAddNote: () => void;
+  onOpenChat: () => void;
+  onClose: () => void;
+}
+
+function AlertDetail({
+  alert,
+  patient,
+  noteText,
+  setNoteText,
+  onAcknowledge,
+  onResolve,
+  onAddNote,
+  onOpenChat,
+  onClose,
+}: AlertDetailProps) {
+  const sev = SEVERITY_CONFIG[alert.severityLevel ?? 'LOW'];
+  const status = STATUS_CONFIG[alert.status ?? 'ACTIVE'];
+  const Icon = sev.icon;
+
+  return (
+    <div className="space-y-4 p-4 sm:p-5">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className={cn('shrink-0 p-2.5 rounded-full', sev.bg, sev.color)}>
+            <Icon className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="font-bold text-base leading-snug">{alert.title}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Detail alert dan tindakan yang dapat dilakukan
+            </p>
+          </div>
+        </div>
+        <Button variant="ghost" size="sm" className="shrink-0 lg:hidden" onClick={onClose}>
+          <ArrowUp className="w-4 h-4 mr-1" />
+          Kembali
+        </Button>
+      </div>
+
+      {/* Badges */}
+      <div className="flex flex-wrap gap-2">
+        <Badge className={cn(sev.color, sev.bg, 'border', sev.border)}>
+          {sev.label}
+        </Badge>
+        <Badge variant="outline" className={status.color}>
+          {status.label}
+        </Badge>
+        <Badge variant="outline">{getSourceLabel(alert.sourceModule)}</Badge>
+        {alert.kategori && (
+          <Badge variant="outline">{alert.kategori}</Badge>
+        )}
+      </div>
+
+      {/* Patient */}
+      {patient && (
+        <div className="flex items-center gap-2 text-sm p-2.5 rounded-lg bg-muted/50">
+          <User className="w-4 h-4 text-muted-foreground" />
+          <span className="font-medium">{patient.patientName}</span>
+          {patient.rmNumber && (
+            <span className="text-muted-foreground">({patient.rmNumber})</span>
+          )}
+        </div>
+      )}
+
+      {/* Description */}
+      <div>
+        <Label className="text-xs font-semibold text-muted-foreground">Deskripsi</Label>
+        <p className="text-sm mt-1 leading-relaxed">{alert.description}</p>
+      </div>
+
+      {/* Recommendation */}
+      {alert.recommendation && (
+        <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+          <Label className="text-xs font-semibold text-primary flex items-center gap-1">
+            <Stethoscope className="w-3 h-3" />
+            Rekomendasi Klinis
+          </Label>
+          <p className="text-sm mt-1 leading-relaxed">{alert.recommendation}</p>
+        </div>
+      )}
+
+      {/* Metadata */}
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div className="p-2.5 rounded-lg bg-muted/40">
+          <span className="font-semibold text-muted-foreground">Dibuat:</span>
+          <br />
+          {formatDate(alert.createdAt)}
+        </div>
+        {alert.acknowledgedAt && (
+          <div className="p-2.5 rounded-lg bg-muted/40">
+            <span className="font-semibold text-muted-foreground">Acknowledged:</span>
+            <br />
+            {formatDate(alert.acknowledgedAt)}
+            {alert.acknowledgedBy && ` oleh ${alert.acknowledgedBy}`}
+          </div>
+        )}
+        {alert.resolvedAt && (
+          <div className="p-2.5 rounded-lg bg-muted/40">
+            <span className="font-semibold text-muted-foreground">Resolved:</span>
+            <br />
+            {formatDate(alert.resolvedAt)}
+            {alert.resolvedBy && ` oleh ${alert.resolvedBy}`}
+          </div>
+        )}
+      </div>
+
+      {/* Existing Notes */}
+      {alert.notes && (
+        <div>
+          <Label className="text-xs font-semibold text-muted-foreground">Catatan</Label>
+          <div className="mt-1 p-2.5 rounded bg-muted text-xs whitespace-pre-wrap max-h-32 overflow-y-auto alert-list-scroll">
+            {alert.notes}
+          </div>
+        </div>
+      )}
+
+      {/* Add Note */}
+      <div>
+        <Label className="text-xs font-semibold text-muted-foreground">Tambah Catatan</Label>
+        <Textarea
+          value={noteText}
+          onChange={(e) => setNoteText(e.target.value)}
+          placeholder="Tulis catatan klinis..."
+          className="mt-1"
+          rows={2}
+        />
+        <Button variant="outline" size="sm" className="mt-1.5" onClick={onAddNote}>
+          Tambah Catatan
+        </Button>
+      </div>
+
+      <Separator />
+
+      {/* Actions */}
+      <div className="flex flex-wrap gap-2">
+        {alert.status === 'ACTIVE' && (
+          <Button variant="outline" size="sm" onClick={onAcknowledge}>
+            <ShieldCheck className="w-4 h-4 mr-1" />
+            Acknowledge
+          </Button>
+        )}
+        {alert.status !== 'RESOLVED' && (
+          <Button variant="default" size="sm" onClick={onResolve}>
+            <CheckCircle2 className="w-4 h-4 mr-1" />
+            Resolve
+          </Button>
+        )}
+        <Button variant="outline" size="sm" onClick={onOpenChat}>
+          <MessageCircle className="w-4 h-4 mr-1" />
+          Kirim Chat
+        </Button>
+        <Button variant="outline" size="sm" disabled>
+          <FileText className="w-4 h-4 mr-1" />
+          Surat Rujukan
+        </Button>
+        <Button variant="outline" size="sm" disabled>
+          <Home className="w-4 h-4 mr-1" />
+          Home Visit
+        </Button>
+        <Button variant="outline" size="sm" disabled>
+          <FileText className="w-4 h-4 mr-1" />
+          Cetak PDF
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Empty States ────────────────────────────────────────────────────────────
+
+function EmptyAlertList({ showResolved }: { showResolved: boolean }) {
+  return (
+    <div className="flex flex-col items-center justify-center text-center py-12 px-4 h-full">
+      <div className="relative mb-4">
+        <div className="absolute inset-0 blur-2xl bg-green-200/40 rounded-full" />
+        <div className="relative w-20 h-20 rounded-full bg-green-50 flex items-center justify-center border-2 border-green-200">
+          <CheckCircle2 className="w-10 h-10 text-green-500" />
+        </div>
+      </div>
+      <h3 className="font-semibold text-sm">Belum ada Clinical Alert</h3>
+      <p className="text-xs text-muted-foreground mt-1 max-w-[240px]">
+        {showResolved
+          ? 'Tidak ada alert yang cocok dengan filter saat ini.'
+          : 'Semua kondisi pasien dalam batas aman.'}
+      </p>
+    </div>
+  );
+}
+
+function EmptyDetail() {
+  return (
+    <div className="flex flex-col items-center justify-center text-center h-full min-h-[300px] px-6 py-10">
+      <div className="relative mb-4">
+        <div className="absolute inset-0 blur-2xl bg-primary/10 rounded-full" />
+        <div className="relative w-20 h-20 rounded-full bg-primary/5 flex items-center justify-center border-2 border-primary/20">
+          <Inbox className="w-10 h-10 text-primary/60" />
+        </div>
+      </div>
+      <h3 className="font-semibold text-base">Pilih Alert untuk Melihat Detail</h3>
+      <p className="text-sm text-muted-foreground mt-1.5 max-w-[320px]">
+        Klik salah satu alert di daftar sebelah kiri untuk melihat informasi pasien,
+        rekomendasi klinis, dan tindakan yang dapat dilakukan.
+      </p>
+    </div>
   );
 }

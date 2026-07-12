@@ -1,0 +1,861 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useCallback } from 'react';
+     4→import { useStore } from '@/lib/store';
+     5→import { cn } from '@/lib/utils';
+     6→import type {
+     7→  PalliativeClinicalAlert,
+     8→  ClinicalAlertSeverity,
+     9→  ClinicalAlertStatus,
+    10→} from '@/lib/types';
+    11→import { Button } from '@/components/ui/button';
+    12→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    13→import { Input } from '@/components/ui/input';
+    14→import { Label } from '@/components/ui/label';
+    15→import { Textarea } from '@/components/ui/textarea';
+    16→import { Badge } from '@/components/ui/badge';
+    17→import { Separator } from '@/components/ui/separator';
+    18→import { ScrollArea } from '@/components/ui/scroll-area';
+    19→import {
+    20→  Select,
+    21→  SelectContent,
+    22→  SelectItem,
+    23→  SelectTrigger,
+    24→  SelectValue,
+    25→} from '@/components/ui/select';
+    26→import {
+    27→  Dialog,
+    28→  DialogContent,
+    29→  DialogHeader,
+    30→  DialogTitle,
+    31→  DialogDescription,
+    32→  DialogFooter,
+    33→} from '@/components/ui/dialog';
+    34→import {
+    35→  Activity,
+    36→  AlertTriangle,
+    37→  ShieldCheck,
+    38→  CheckCircle2,
+    39→  Bell,
+    40→  Search,
+    41→  RefreshCw,
+    42→  Sparkles,
+    43→  MessageCircle,
+    44→  FileText,
+    45→  Stethoscope,
+    46→  Home,
+    47→  Clock,
+    48→  User,
+    49→  AlertCircle,
+    50→  Flame,
+    51→  Zap,
+    52→  Eye,
+    53→  EyeOff,
+    54→} from 'lucide-react';
+    55→import { useToast } from '@/hooks/use-toast';
+    56→import {
+    57→  BarChart,
+    58→  Bar,
+    59→  XAxis,
+    60→  YAxis,
+    61→  CartesianGrid,
+    62→  Tooltip,
+    63→  ResponsiveContainer,
+    64→  PieChart,
+    65→  Pie,
+    66→  Cell,
+    67→} from 'recharts';
+    68→
+    69→// ── Helpers ─────────────────────────────────────────────────────────────────
+    70→
+    71→const SEVERITY_CONFIG: Record<
+    72→  ClinicalAlertSeverity,
+    73→  { label: string; color: string; bg: string; border: string; icon: typeof Flame }
+    74→> = {
+    75→  CRITICAL: {
+    76→    label: 'Critical',
+    77→    color: 'text-red-700',
+    78→    bg: 'bg-red-50',
+    79→    border: 'border-red-500',
+    80→    icon: Flame,
+    81→  },
+    82→  HIGH: {
+    83→    label: 'High',
+    84→    color: 'text-orange-700',
+    85→    bg: 'bg-orange-50',
+    86→    border: 'border-orange-500',
+    87→    icon: AlertTriangle,
+    88→  },
+    89→  MEDIUM: {
+    90→    label: 'Medium',
+    91→    color: 'text-yellow-700',
+    92→    bg: 'bg-yellow-50',
+    93→    border: 'border-yellow-500',
+    94→    icon: AlertCircle,
+    95→  },
+    96→  LOW: {
+    97→    label: 'Low',
+    98→    color: 'text-green-700',
+    99→    bg: 'bg-green-50',
+   100→    border: 'border-green-500',
+   101→    icon: Bell,
+   102→  },
+   103→};
+   104→
+   105→const STATUS_CONFIG: Record<ClinicalAlertStatus, { label: string; color: string }> = {
+   106→  ACTIVE: { label: 'Aktif', color: 'bg-red-100 text-red-800' },
+   107→  ACKNOWLEDGED: { label: 'Diakui', color: 'bg-blue-100 text-blue-800' },
+   108→  RESOLVED: { label: 'Selesai', color: 'bg-gray-100 text-gray-800' },
+   109→};
+   110→
+   111→const SEVERITY_ORDER: Record<ClinicalAlertSeverity, number> = {
+   112→  CRITICAL: 0,
+   113→  HIGH: 1,
+   114→  MEDIUM: 2,
+   115→  LOW: 3,
+   116→};
+   117→
+   118→const PIE_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#9ca3af'];
+   119→
+   120→function formatDate(iso: string): string {
+   121→  try {
+   122→    return new Date(iso).toLocaleString('id-ID', {
+   123→      day: '2-digit',
+   124→      month: 'short',
+   125→      year: 'numeric',
+   126→      hour: '2-digit',
+   127→      minute: '2-digit',
+   128→    });
+   129→  } catch {
+   130→    return iso;
+   131→  }
+   132→}
+   133→
+   134→function getSourceLabel(source?: string): string {
+   135→  const map: Record<string, string> = {
+   136→    vital_signs: 'TTV',
+   137→    screenings: 'Skrining',
+   138→    medications: 'Obat',
+   139→    nutrition: 'Nutrisi',
+   140→    daily_complaints: 'Keluhan Harian',
+   141→    social_assessments: 'Sosial',
+   142→    ai: 'AI',
+   143→    manual: 'Manual',
+   144→  };
+   145→  return map[source ?? ''] ?? source ?? '-';
+   146→}
+   147→
+   148→// ── Main Component ──────────────────────────────────────────────────────────
+   149→
+   150→interface ClinicalAlertPanelProps {
+   151→  palliativePatientId?: string;
+   152→}
+   153→
+   154→export function ClinicalAlertPanel({ palliativePatientId }: ClinicalAlertPanelProps) {
+   155→  const { toast } = useToast();
+   156→  const {
+   157→    palliativeClinicalAlerts,
+   158→    palliativePatients,
+   159→    currentUser,
+   160→    acknowledgePalliativeAlert,
+   161→    resolvePalliativeAlert,
+   162→    addPalliativeAlertNote,
+   163→    forceRunClinicalAlertEngine,
+   164→    setSelectedPalliativePatientId,
+   165→  } = useStore();
+   166→
+   167→  // ── State ──────────────────────────────────────────────────────────────
+   168→  const [filterPatient, setFilterPatient] = useState<string>('all');
+   169→  const [filterSeverity, setFilterSeverity] = useState<string>('all');
+   170→  const [filterStatus, setFilterStatus] = useState<string>('all');
+   171→  const [filterCategory, setFilterCategory] = useState<string>('all');
+   172→  const [searchQuery, setSearchQuery] = useState('');
+   173→  const [selectedAlert, setSelectedAlert] = useState<PalliativeClinicalAlert | null>(null);
+   174→  const [noteText, setNoteText] = useState('');
+   175→  const [isScanning, setIsScanning] = useState(false);
+   176→  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+   177→  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+   178→  const [showResolved, setShowResolved] = useState(false);
+   179→
+   180→  // ── Derived data ───────────────────────────────────────────────────────
+   181→  const allAlerts = useMemo(() => {
+   182→    // If a specific patient is selected, show only their alerts.
+   183→    // Otherwise show all alerts across all patients.
+   184→    if (palliativePatientId) {
+   185→      return palliativeClinicalAlerts.filter(
+   186→        (a) => a.palliativePatientId === palliativePatientId || a.patientId === palliativePatientId
+   187→      );
+   188→    }
+   189→    return palliativeClinicalAlerts;
+   190→  }, [palliativeClinicalAlerts, palliativePatientId]);
+   191→
+   192→  const filteredAlerts = useMemo(() => {
+   193→    let result = [...allAlerts];
+   194→
+   195→    // Filter by patient (cross-patient view only)
+   196→    if (!palliativePatientId && filterPatient !== 'all') {
+   197→      result = result.filter(
+   198→        (a) => a.palliativePatientId === filterPatient || a.patientId === filterPatient
+   199→      );
+   200→    }
+   201→
+   202→    // Filter by severity
+   203→    if (filterSeverity !== 'all') {
+   204→      result = result.filter((a) => a.severityLevel === filterSeverity);
+   205→    }
+   206→
+   207→    // Filter by status
+   208→    if (filterStatus !== 'all') {
+   209→      result = result.filter((a) => a.status === filterStatus);
+   210→    } else if (!showResolved) {
+   211→      // By default, hide resolved alerts
+   212→      result = result.filter((a) => a.status !== 'RESOLVED');
+   213→    }
+   214→
+   215→    // Filter by category
+   216→    if (filterCategory !== 'all') {
+   217→      result = result.filter((a) => a.kategori === filterCategory);
+   218→    }
+   219→
+   220→    // Search
+   221→    if (searchQuery.trim()) {
+   222→      const q = searchQuery.toLowerCase();
+   223→      result = result.filter(
+   224→        (a) =>
+   225→          a.title.toLowerCase().includes(q) ||
+   226→          a.description.toLowerCase().includes(q) ||
+   227→          (a.kategori ?? '').toLowerCase().includes(q)
+   228→      );
+   229→    }
+   230→
+   231→    // Sort: severity first (CRITICAL > HIGH > MEDIUM > LOW), then newest
+   232→    result.sort((a, b) => {
+   233→      const sa = SEVERITY_ORDER[a.severityLevel ?? 'LOW'] ?? 99;
+   234→      const sb = SEVERITY_ORDER[b.severityLevel ?? 'LOW'] ?? 99;
+   235→      if (sa !== sb) return sa - sb;
+   236→      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+   237→    });
+   238→
+   239→    return result;
+   240→  }, [allAlerts, filterPatient, filterSeverity, filterStatus, filterCategory, searchQuery, palliativePatientId, showResolved]);
+   241→
+   242→  // ── Stats ──────────────────────────────────────────────────────────────
+   243→  const stats = useMemo(() => {
+   244→    const active = allAlerts.filter((a) => a.status !== 'RESOLVED');
+   245→    return {
+   246→      critical: active.filter((a) => a.severityLevel === 'CRITICAL').length,
+   247→      high: active.filter((a) => a.severityLevel === 'HIGH').length,
+   248→      medium: active.filter((a) => a.severityLevel === 'MEDIUM').length,
+   249→      low: active.filter((a) => a.severityLevel === 'LOW').length,
+   250→      resolved: allAlerts.filter((a) => a.status === 'RESOLVED').length,
+   251→      total: allAlerts.length,
+   252→    };
+   253→  }, [allAlerts]);
+   254→
+   255→  // Chart data: alerts by category
+   256→  const categoryChartData = useMemo(() => {
+   257→    const map: Record<string, number> = {};
+   258→    allAlerts.forEach((a) => {
+   259→      const cat = a.kategori ?? 'Lainnya';
+   260→      map[cat] = (map[cat] || 0) + 1;
+   261→    });
+   262→    return Object.entries(map).map(([name, value]) => ({ name, value }));
+   263→  }, [allAlerts]);
+   264→
+   265→  // Chart data: alerts by severity (pie)
+   266→  const severityChartData = useMemo(() => {
+   267→    return [
+   268→      { name: 'Critical', value: stats.critical },
+   269→      { name: 'High', value: stats.high },
+   270→      { name: 'Medium', value: stats.medium },
+   271→      { name: 'Low', value: stats.low },
+   272→      { name: 'Resolved', value: stats.resolved },
+   273→    ].filter((d) => d.value > 0);
+   274→  }, [stats]);
+   275→
+   276→  // Unique categories for filter
+   277→  const categories = useMemo(() => {
+   278→    const set = new Set<string>();
+   279→    allAlerts.forEach((a) => { if (a.kategori) set.add(a.kategori); });
+   280→    return Array.from(set).sort();
+   281→  }, [allAlerts]);
+   282→
+   283→  // Active alert count for the badge
+   284→  const activeCount = stats.critical + stats.high + stats.medium + stats.low;
+   285→
+   286→  // ── Actions ────────────────────────────────────────────────────────────
+   287→  const handleAcknowledge = useCallback(async () => {
+   288→    if (!selectedAlert) return;
+   289→    const doctorId = currentUser?.id ?? 'doctor';
+   290→    const doctorName = currentUser?.name ?? 'Dokter';
+   291→    try {
+   292→      acknowledgePalliativeAlert(selectedAlert.id, doctorName);
+   293→      toast({ title: 'Alert Diakui', description: `Alert "${selectedAlert.title}" telah di-acknowledge.` });
+   294→      setSelectedAlert(null);
+   295→      setNoteText('');
+   296→    } catch (err) {
+   297→      toast({ title: 'Gagal', description: 'Gagal acknowledge alert.', variant: 'destructive' });
+   298→    }
+   299→  }, [selectedAlert, currentUser, acknowledgePalliativeAlert, toast]);
+   300→
+   301→  const handleResolve = useCallback(async () => {
+   302→    if (!selectedAlert) return;
+   303→    const doctorName = currentUser?.name ?? 'Dokter';
+   304→    try {
+   305→      resolvePalliativeAlert(selectedAlert.id, doctorName, noteText || undefined);
+   306→      toast({ title: 'Alert Selesai', description: `Alert "${selectedAlert.title}" telah diselesaikan.` });
+   307→      setSelectedAlert(null);
+   308→      setNoteText('');
+   309→    } catch (err) {
+   310→      toast({ title: 'Gagal', description: 'Gagal resolve alert.', variant: 'destructive' });
+   311→    }
+   312→  }, [selectedAlert, currentUser, resolvePalliativeAlert, noteText, toast]);
+   313→
+   314→  const handleAddNote = useCallback(() => {
+   315→    if (!selectedAlert || !noteText.trim()) return;
+   316→    addPalliativeAlertNote(selectedAlert.id, noteText.trim());
+   317→    toast({ title: 'Catatan Ditambahkan', description: 'Catatan telah ditambahkan ke alert.' });
+   318→    setNoteText('');
+   319→  }, [selectedAlert, noteText, addPalliativeAlertNote, toast]);
+   320→
+   321→  const handleScan = useCallback(async () => {
+   322→    const patientId = palliativePatientId ?? filterPatient;
+   323→    if (!patientId || patientId === 'all') {
+   324→      toast({ title: 'Pilih Pasien', description: 'Pilih pasien terlebih dahulu untuk menjalankan scan.', variant: 'destructive' });
+   325→      return;
+   326→    }
+   327→    setIsScanning(true);
+   328→    try {
+   329→      // Use the FORCE version (bypasses throttle) for the manual Scan button.
+   330→      const created = await forceRunClinicalAlertEngine(patientId);
+   331→      toast({
+   332→        title: created > 0 ? `${created} Alert Baru` : 'Scan Selesai',
+   333→        description: created > 0 ? `${created} alert baru terdeteksi dan tersimpan ke Supabase.` : 'Tidak ada alert baru terdeteksi. Alert lama yang kondisinya sudah normal akan otomatis di-resolve.',
+   334→      });
+   335→    } catch (err) {
+   336→      toast({ title: 'Gagal', description: 'Gagal menjalankan scan alert.', variant: 'destructive' });
+   337→    } finally {
+   338→      setIsScanning(false);
+   339→    }
+   340→  }, [palliativePatientId, filterPatient, forceRunClinicalAlertEngine, toast]);
+   341→
+   342→  const handleCleanupDuplicates = useCallback(async () => {
+   343→    setIsScanning(true);
+   344→    try {
+   345→      const { clinicalAlertService } = await import('@/services/supabase/clinicalAlertService');
+   346→      const deleted = await clinicalAlertService.cleanupDuplicates();
+   347→      toast({
+   348→        title: deleted > 0 ? `${deleted} Duplikat Dihapus` : 'Tidak Ada Duplikat',
+   349→        description: deleted > 0
+   350→          ? `${deleted} alert duplikat berhasil dihapus. Hanya alert terlama per kategori yang dipertahankan.`
+   351→          : 'Tidak ditemukan alert duplikat aktif. Database sudah bersih.',
+   352→      });
+   353→    } catch (err) {
+   354→      toast({ title: 'Gagal', description: 'Gagal membersihkan duplikat.', variant: 'destructive' });
+   355→    } finally {
+   356→      setIsScanning(false);
+   357→    }
+   358→  }, [toast]);
+   359→
+   360→  const handleAIAnalysis = useCallback(async () => {
+   361→    const patientId = palliativePatientId ?? filterPatient;
+   362→    if (!patientId || patientId === 'all') {
+   363→      toast({ title: 'Pilih Pasien', description: 'Pilih pasien untuk analisis AI.', variant: 'destructive' });
+   364→      return;
+   365→    }
+   366→    const patient = palliativePatients.find((p) => p.id === patientId);
+   367→    setIsGeneratingAI(true);
+   368→    setAiAnalysis(null);
+   369→    try {
+   370→      const res = await fetch('/api/clinical-alerts/ai', {
+   371→        method: 'POST',
+   372→        headers: { 'Content-Type': 'application/json' },
+   373→        body: JSON.stringify({ patientId, patientName: patient?.patientName ?? 'Pasien' }),
+   374→      });
+   375→      if (!res.ok) throw new Error('AI analysis failed');
+   376→      const data = await res.json();
+   377→      setAiAnalysis(data.analysis);
+   378→      toast({ title: 'Analisis AI Selesai', description: `Analisis ${data.alertCount ?? ''} alert berhasil dibuat.` });
+   379→    } catch (err) {
+   380→      toast({ title: 'Gagal', description: 'Gagal membuat analisis AI.', variant: 'destructive' });
+   381→    } finally {
+   382→      setIsGeneratingAI(false);
+   383→    }
+   384→  }, [palliativePatientId, filterPatient, palliativePatients, toast]);
+   385→
+   386→  const handleOpenChat = useCallback(() => {
+   387→    if (!selectedAlert) return;
+   388→    const pid = selectedAlert.palliativePatientId ?? selectedAlert.patientId;
+   389→    if (pid) {
+   390→      setSelectedPalliativePatientId(pid);
+   391→    }
+   392→    toast({ title: 'Chat Dibuka', description: 'Pasien telah dipilih. Buka tab Chat untuk berkonsultasi.' });
+   393→    setSelectedAlert(null);
+   394→  }, [selectedAlert, setSelectedPalliativePatientId, toast]);
+   395→
+   396→  // ── Render ─────────────────────────────────────────────────────────────
+   397→  return (
+   398→    <div className="space-y-4">
+   399→      {/* Header */}
+   400→      <div className="flex items-center justify-between flex-wrap gap-2">
+   401→        <div className="flex items-center gap-2">
+   402→          <Activity className="w-6 h-6 text-primary" />
+   403→          <h2 className="text-xl font-bold">Clinical Alert — Early Warning System</h2>
+   404→          {activeCount > 0 && (
+   405→            <Badge variant="destructive" className="ml-2">
+   406→              {activeCount} Aktif
+   407→            </Badge>
+   408→          )}
+   409→        </div>
+   410→        <div className="flex gap-2 flex-wrap">
+   411→          <Button variant="outline" size="sm" onClick={handleScan} disabled={isScanning}>
+   412→            <RefreshCw className={cn('w-4 h-4 mr-1', isScanning && 'animate-spin')} />
+   413→            Scan Alert
+   414→          </Button>
+   415→          <Button
+   416→            variant="outline"
+   417→            size="sm"
+   418→            onClick={handleCleanupDuplicates}
+   419→            disabled={isScanning}
+   420→            title="Hapus alert duplikat — hanya simpan satu alert aktif per kategori per pasien"
+   421→          >
+   422→            <ShieldCheck className="w-4 h-4 mr-1" />
+   423→            Bersihkan Duplikat
+   424→          </Button>
+   425→          <Button variant="default" size="sm" onClick={handleAIAnalysis} disabled={isGeneratingAI}>
+   426→            <Sparkles className="w-4 h-4 mr-1" />
+   427→            Analisis AI
+   428→          </Button>
+   429→        </div>
+   430→      </div>
+   431→
+   432→      {/* Stats Cards */}
+   433→      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+   434→        <StatCard label="Critical" value={stats.critical} icon={Flame} color="text-red-600" bg="bg-red-50" border="border-red-200" />
+   435→        <StatCard label="High" value={stats.high} icon={AlertTriangle} color="text-orange-600" bg="bg-orange-50" border="border-orange-200" />
+   436→        <StatCard label="Medium" value={stats.medium} icon={AlertCircle} color="text-yellow-600" bg="bg-yellow-50" border="border-yellow-200" />
+   437→        <StatCard label="Low" value={stats.low} icon={Bell} color="text-green-600" bg="bg-green-50" border="border-green-200" />
+   438→        <StatCard label="Resolved" value={stats.resolved} icon={CheckCircle2} color="text-gray-600" bg="bg-gray-50" border="border-gray-200" />
+   439→      </div>
+   440→
+   441→      {/* Charts */}
+   442→      {allAlerts.length > 0 && (
+   443→        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   444→          <Card>
+   445→            <CardHeader className="pb-2">
+   446→              <CardTitle className="text-sm">Distribusi Severity</CardTitle>
+   447→            </CardHeader>
+   448→            <CardContent>
+   449→              <ResponsiveContainer width="100%" height={200}>
+   450→                <PieChart>
+   451→                  <Pie
+   452→                    data={severityChartData}
+   453→                    cx="50%"
+   454→                    cy="50%"
+   455→                    labelLine={false}
+   456→                    label={({ name, value }) => `${name}: ${value}`}
+   457→                    outerRadius={70}
+   458→                    dataKey="value"
+   459→                  >
+   460→                    {severityChartData.map((_, index) => (
+   461→                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+   462→                    ))}
+   463→                  </Pie>
+   464→                  <Tooltip />
+   465→                </PieChart>
+   466→              </ResponsiveContainer>
+   467→            </CardContent>
+   468→          </Card>
+   469→          <Card>
+   470→            <CardHeader className="pb-2">
+   471→              <CardTitle className="text-sm">Alert per Kategori</CardTitle>
+   472→            </CardHeader>
+   473→            <CardContent>
+   474→              <ResponsiveContainer width="100%" height={200}>
+   475→                <BarChart data={categoryChartData}>
+   476→                  <CartesianGrid strokeDasharray="3 3" />
+   477→                  <XAxis dataKey="name" fontSize={10} angle={-20} textAnchor="end" height={50} />
+   478→                  <YAxis fontSize={10} allowDecimals={false} />
+   479→                  <Tooltip />
+   480→                  <Bar dataKey="value" fill="#8884d8" />
+   481→                </BarChart>
+   482→              </ResponsiveContainer>
+   483→            </CardContent>
+   484→          </Card>
+   485→        </div>
+   486→      )}
+   487→
+   488→      {/* Filters */}
+   489→      <Card>
+   490→        <CardContent className="pt-4">
+   491→          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+   492→            {/* Search */}
+   493→            <div className="relative">
+   494→              <Search className="absolute left-2 top-2.5 w-4 h-4 text-muted-foreground" />
+   495→              <Input
+   496→                placeholder="Cari alert..."
+   497→                value={searchQuery}
+   498→                onChange={(e) => setSearchQuery(e.target.value)}
+   499→                className="pl-8"
+   500→              />
+   501→            </div>
+   502→            {/* Patient filter (cross-patient view only) */}
+   503→            {!palliativePatientId && (
+   504→              <Select value={filterPatient} onValueChange={setFilterPatient}>
+   505→                <SelectTrigger>
+   506→                  <SelectValue placeholder="Semua Pasien" />
+   507→                </SelectTrigger>
+   508→                <SelectContent>
+   509→                  <SelectItem value="all">Semua Pasien</SelectItem>
+   510→                  {palliativePatients.map((p) => (
+   511→                    <SelectItem key={p.id} value={p.id}>
+   512→                      {p.patientName}
+   513→                    </SelectItem>
+   514→                  ))}
+   515→                </SelectContent>
+   516→              </Select>
+   517→            )}
+   518→            {/* Severity filter */}
+   519→            <Select value={filterSeverity} onValueChange={setFilterSeverity}>
+   520→              <SelectTrigger>
+   521→                <SelectValue placeholder="Semua Severity" />
+   522→              </SelectTrigger>
+   523→              <SelectContent>
+   524→                <SelectItem value="all">Semua Severity</SelectItem>
+   525→                <SelectItem value="CRITICAL">Critical</SelectItem>
+   526→                <SelectItem value="HIGH">High</SelectItem>
+   527→                <SelectItem value="MEDIUM">Medium</SelectItem>
+   528→                <SelectItem value="LOW">Low</SelectItem>
+   529→              </SelectContent>
+   530→            </Select>
+   531→            {/* Status filter */}
+   532→            <Select value={filterStatus} onValueChange={setFilterStatus}>
+   533→              <SelectTrigger>
+   534→                <SelectValue placeholder="Semua Status" />
+   535→              </SelectTrigger>
+   536→              <SelectContent>
+   537→                <SelectItem value="all">Semua Status</SelectItem>
+   538→                <SelectItem value="ACTIVE">Aktif</SelectItem>
+   539→                <SelectItem value="ACKNOWLEDGED">Diakui</SelectItem>
+   540→                <SelectItem value="RESOLVED">Selesai</SelectItem>
+   541→              </SelectContent>
+   542→            </Select>
+   543→            {/* Category filter */}
+   544→            {categories.length > 0 && (
+   545→              <Select value={filterCategory} onValueChange={setFilterCategory}>
+   546→                <SelectTrigger>
+   547→                  <SelectValue placeholder="Semua Kategori" />
+   548→                </SelectTrigger>
+   549→                <SelectContent>
+   550→                  <SelectItem value="all">Semua Kategori</SelectItem>
+   551→                  {categories.map((c) => (
+   552→                    <SelectItem key={c} value={c}>{c}</SelectItem>
+   553→                  ))}
+   554→                </SelectContent>
+   555→              </Select>
+   556→            )}
+   557→          </div>
+   558→          <div className="flex items-center gap-2 mt-3">
+   559→            <Button
+   560→              variant="ghost"
+   561→              size="sm"
+   562→              onClick={() => setShowResolved(!showResolved)}
+   563→            >
+   564→              {showResolved ? <EyeOff className="w-4 h-4 mr-1" /> : <Eye className="w-4 h-4 mr-1" />}
+   565→              {showResolved ? 'Sembunyikan Resolved' : 'Tampilkan Resolved'}
+   566→            </Button>
+   567→            <span className="text-xs text-muted-foreground">
+   568→              {filteredAlerts.length} dari {allAlerts.length} alert
+   569→            </span>
+   570→          </div>
+   571→        </CardContent>
+   572→      </Card>
+   573→
+   574→      {/* AI Analysis Panel */}
+   575→      {aiAnalysis && (
+   576→        <Card className="border-primary">
+   577→          <CardHeader className="pb-2">
+   578→            <div className="flex items-center justify-between">
+   579→              <CardTitle className="text-sm flex items-center gap-2">
+   580→                <Sparkles className="w-4 h-4 text-primary" />
+   581→                Analisis AI Clinical Alert
+   582→              </CardTitle>
+   583→              <Button variant="ghost" size="sm" onClick={() => setAiAnalysis(null)}>Tutup</Button>
+   584→            </div>
+   585→          </CardHeader>
+   586→          <CardContent>
+   587→            <ScrollArea className="max-h-96">
+   588→              <pre className="text-xs whitespace-pre-wrap font-sans">{aiAnalysis}</pre>
+   589→            </ScrollArea>
+   590→          </CardContent>
+   591→        </Card>
+   592→      )}
+   593→
+   594→      {/* Alert List */}
+   595→      <Card>
+   596→        <CardHeader className="pb-2">
+   597→          <CardTitle className="text-sm">Daftar Alert</CardTitle>
+   598→        </CardHeader>
+   599→        <CardContent>
+   600→          {filteredAlerts.length === 0 ? (
+   601→            <div className="text-center py-12 text-muted-foreground">
+   602→              <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-green-500" />
+   603→              <p>Tidak ada alert aktif. Semua parameter klinis dalam batas normal.</p>
+   604→            </div>
+   605→          ) : (
+   606→            <ScrollArea className="max-h-[60vh]">
+   607→              <div className="space-y-2">
+   608→                {filteredAlerts.map((alert) => {
+   609→                  const sev = SEVERITY_CONFIG[alert.severityLevel ?? 'LOW'];
+   610→                  const status = STATUS_CONFIG[alert.status ?? 'ACTIVE'];
+   611→                  const Icon = sev.icon;
+   612→                  const patient = palliativePatients.find(
+   613→                    (p) => p.id === (alert.palliativePatientId ?? alert.patientId)
+   614→                  );
+   615→                  return (
+   616→                    <div
+   617→                      key={alert.id}
+   618→                      className={cn(
+   619→                        'flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:shadow-md transition-shadow',
+   620→                        sev.bg,
+   621→                        sev.border
+   622→                      )}
+   623→                      onClick={() => setSelectedAlert(alert)}
+   624→                    >
+   625→                      <div className={cn('p-2 rounded-full', sev.bg, sev.color)}>
+   626→                        <Icon className="w-5 h-5" />
+   627→                      </div>
+   628→                      <div className="flex-1 min-w-0">
+   629→                        <div className="flex items-center gap-2 flex-wrap">
+   630→                          <span className={cn('font-semibold text-sm', sev.color)}>
+   631→                            {alert.title}
+   632→                          </span>
+   633→                          <Badge variant="outline" className={cn('text-xs', status.color)}>
+   634→                            {status.label}
+   635→                          </Badge>
+   636→                          <Badge variant="outline" className="text-xs">
+   637→                            {getSourceLabel(alert.sourceModule)}
+   638→                          </Badge>
+   639→                          {alert.kategori && (
+   640→                            <Badge variant="outline" className="text-xs">
+   641→                              {alert.kategori}
+   642→                            </Badge>
+   643→                          )}
+   644→                        </div>
+   645→                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+   646→                          {alert.description}
+   647→                        </p>
+   648→                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+   649→                          {patient && (
+   650→                            <span className="flex items-center gap-1">
+   651→                              <User className="w-3 h-3" />
+   652→                              {patient.patientName}
+   653→                            </span>
+   654→                          )}
+   655→                          <span className="flex items-center gap-1">
+   656→                            <Clock className="w-3 h-3" />
+   657→                            {formatDate(alert.createdAt)}
+   658→                          </span>
+   659→                        </div>
+   660→                      </div>
+   661→                    </div>
+   662→                  );
+   663→                })}
+   664→              </div>
+   665→            </ScrollArea>
+   666→          )}
+   667→        </CardContent>
+   668→      </Card>
+   669→
+   670→      {/* Detail Dialog */}
+   671→      <Dialog open={!!selectedAlert} onOpenChange={(open) => !open && setSelectedAlert(null)}>
+   672→        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   673→          {selectedAlert && (() => {
+   674→            const sev = SEVERITY_CONFIG[selectedAlert.severityLevel ?? 'LOW'];
+   675→            const status = STATUS_CONFIG[selectedAlert.status ?? 'ACTIVE'];
+   676→            const Icon = sev.icon;
+   677→            const patient = palliativePatients.find(
+   678→              (p) => p.id === (selectedAlert.palliativePatientId ?? selectedAlert.patientId)
+   679→            );
+   680→            return (
+   681→              <>
+   682→                <DialogHeader>
+   683→                  <DialogTitle className="flex items-center gap-2">
+   684→                    <div className={cn('p-2 rounded-full', sev.bg, sev.color)}>
+   685→                      <Icon className="w-5 h-5" />
+   686→                    </div>
+   687→                    {selectedAlert.title}
+   688→                  </DialogTitle>
+   689→                  <DialogDescription>
+   690→                    Detail alert dan tindakan yang dapat dilakukan
+   691→                  </DialogDescription>
+   692→                </DialogHeader>
+   693→
+   694→                <div className="space-y-4">
+   695→                  {/* Badges */}
+   696→                  <div className="flex flex-wrap gap-2">
+   697→                    <Badge className={sev.color + ' ' + sev.bg + ' border ' + sev.border}>
+   698→                      {sev.label}
+   699→                    </Badge>
+   700→                    <Badge variant="outline" className={status.color}>
+   701→                      {status.label}
+   702→                    </Badge>
+   703→                    <Badge variant="outline">{getSourceLabel(selectedAlert.sourceModule)}</Badge>
+   704→                    {selectedAlert.kategori && (
+   705→                      <Badge variant="outline">{selectedAlert.kategori}</Badge>
+   706→                    )}
+   707→                  </div>
+   708→
+   709→                  {/* Patient */}
+   710→                  {patient && (
+   711→                    <div className="flex items-center gap-2 text-sm">
+   712→                      <User className="w-4 h-4 text-muted-foreground" />
+   713→                      <span className="font-medium">{patient.patientName}</span>
+   714→                      {patient.rmNumber && (
+   715→                        <span className="text-muted-foreground">({patient.rmNumber})</span>
+   716→                      )}
+   717→                    </div>
+   718→                  )}
+   719→
+   720→                  {/* Description */}
+   721→                  <div>
+   722→                    <Label className="text-xs font-semibold text-muted-foreground">Deskripsi</Label>
+   723→                    <p className="text-sm mt-1">{selectedAlert.description}</p>
+   724→                  </div>
+   725→
+   726→                  {/* Recommendation */}
+   727→                  {selectedAlert.recommendation && (
+   728→                    <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+   729→                      <Label className="text-xs font-semibold text-primary flex items-center gap-1">
+   730→                        <Stethoscope className="w-3 h-3" />
+   731→                        Rekomendasi Klinis
+   732→                      </Label>
+   733→                      <p className="text-sm mt-1">{selectedAlert.recommendation}</p>
+   734→                    </div>
+   735→                  )}
+   736→
+   737→                  {/* Metadata */}
+   738→                  <div className="grid grid-cols-2 gap-3 text-xs">
+   739→                    <div>
+   740→                      <span className="font-semibold text-muted-foreground">Dibuat:</span>
+   741→                      <br />
+   742→                      {formatDate(selectedAlert.createdAt)}
+   743→                    </div>
+   744→                    {selectedAlert.acknowledgedAt && (
+   745→                      <div>
+   746→                        <span className="font-semibold text-muted-foreground">Acknowledged:</span>
+   747→                        <br />
+   748→                        {formatDate(selectedAlert.acknowledgedAt)}
+   749→                        {selectedAlert.acknowledgedBy && ` oleh ${selectedAlert.acknowledgedBy}`}
+   750→                      </div>
+   751→                    )}
+   752→                    {selectedAlert.resolvedAt && (
+   753→                      <div>
+   754→                        <span className="font-semibold text-muted-foreground">Resolved:</span>
+   755→                        <br />
+   756→                        {formatDate(selectedAlert.resolvedAt)}
+   757→                        {selectedAlert.resolvedBy && ` oleh ${selectedAlert.resolvedBy}`}
+   758→                      </div>
+   759→                    )}
+   760→                  </div>
+   761→
+   762→                  {/* Existing Notes */}
+   763→                  {selectedAlert.notes && (
+   764→                    <div>
+   765→                      <Label className="text-xs font-semibold text-muted-foreground">Catatan</Label>
+   766→                      <div className="mt-1 p-2 rounded bg-muted text-xs whitespace-pre-wrap max-h-32 overflow-y-auto">
+   767→                        {selectedAlert.notes}
+   768→                      </div>
+   769→                    </div>
+   770→                  )}
+   771→
+   772→                  {/* Add Note */}
+   773→                  <div>
+   774→                    <Label className="text-xs font-semibold text-muted-foreground">Tambah Catatan</Label>
+   775→                    <Textarea
+   776→                      value={noteText}
+   777→                      onChange={(e) => setNoteText(e.target.value)}
+   778→                      placeholder="Tulis catatan klinis..."
+   779→                      className="mt-1"
+   780→                      rows={2}
+   781→                    />
+   782→                    <Button variant="outline" size="sm" className="mt-1" onClick={handleAddNote}>
+   783→                      Tambah Catatan
+   784→                    </Button>
+   785→                  </div>
+   786→
+   787→                  <Separator />
+   788→
+   789→                  {/* Actions */}
+   790→                  <div className="flex flex-wrap gap-2">
+   791→                    {selectedAlert.status === 'ACTIVE' && (
+   792→                      <Button variant="outline" size="sm" onClick={handleAcknowledge}>
+   793→                        <ShieldCheck className="w-4 h-4 mr-1" />
+   794→                        Acknowledge
+   795→                      </Button>
+   796→                    )}
+   797→                    {selectedAlert.status !== 'RESOLVED' && (
+   798→                      <Button variant="default" size="sm" onClick={handleResolve}>
+   799→                        <CheckCircle2 className="w-4 h-4 mr-1" />
+   800→                        Resolve
+   801→                      </Button>
+   802→                    )}
+   803→                    <Button variant="outline" size="sm" onClick={handleOpenChat}>
+   804→                      <MessageCircle className="w-4 h-4 mr-1" />
+   805→                      Kirim Chat
+   806→                    </Button>
+   807→                    <Button variant="outline" size="sm" disabled>
+   808→                      <FileText className="w-4 h-4 mr-1" />
+   809→                      Surat Rujukan
+   810→                    </Button>
+   811→                    <Button variant="outline" size="sm" disabled>
+   812→                      <Home className="w-4 h-4 mr-1" />
+   813→                      Home Visit
+   814→                    </Button>
+   815→                    <Button variant="outline" size="sm" disabled>
+   816→                      <FileText className="w-4 h-4 mr-1" />
+   817→                      Cetak PDF
+   818→                    </Button>
+   819→                  </div>
+   820→                </div>
+   821→              </>
+   822→            );
+   823→          })()}
+   824→        </DialogContent>
+   825→      </Dialog>
+   826→    </div>
+   827→  );
+   828→}
+   829→
+   830→// ── Stat Card sub-component ─────────────────────────────────────────────────
+   831→
+   832→function StatCard({
+   833→  label,
+   834→  value,
+   835→  icon: Icon,
+   836→  color,
+   837→  bg,
+   838→  border,
+   839→}: {
+   840→  label: string;
+   841→  value: number;
+   842→  icon: typeof Flame;
+   843→  color: string;
+   844→  bg: string;
+   845→  border: string;
+   846→}) {
+   847→  return (
+   848→    <Card className={cn(bg, border)}>
+   849→      <CardContent className="pt-4 pb-3 px-4">
+   850→        <div className="flex items-center justify-between">
+   851→          <div>
+   852→            <p className="text-xs text-muted-foreground">{label}</p>
+   853→            <p className={cn('text-2xl font-bold', color)}>{value}</p>
+   854→          </div>
+   855→          <Icon className={cn('w-8 h-8', color)} />
+   856→        </div>
+   857→      </CardContent>
+   858→    </Card>
+   859→  );
+   860→}
+   861→
