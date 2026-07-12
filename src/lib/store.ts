@@ -240,9 +240,11 @@ interface TelemedicineStore {
 
   // Palliative Resume Medis & Surat Rujukan
   palliativeResumes: PalliativeResumeMedis[];
+  setPalliativeResumes: (resumes: PalliativeResumeMedis[]) => void;
   addPalliativeResume: (resume: PalliativeResumeMedis) => void;
   updatePalliativeResume: (resumeId: string, data: Partial<PalliativeResumeMedis>) => void;
   palliativeReferralLetters: PalliativeReferralLetter[];
+  setPalliativeReferralLetters: (letters: PalliativeReferralLetter[]) => void;
   addPalliativeReferralLetter: (letter: PalliativeReferralLetter) => void;
   updatePalliativeReferralLetter: (letterId: string, data: Partial<PalliativeReferralLetter>) => void;
   palliativeDocumentAuditLog: PalliativeDocumentAuditEntry[];
@@ -250,13 +252,16 @@ interface TelemedicineStore {
 
   // Social Support Management
   socialAssessments: SocialAssessmentRecord[];
+  setSocialAssessments: (records: SocialAssessmentRecord[]) => void;
   addSocialAssessment: (record: SocialAssessmentRecord) => void;
   updateSocialAssessment: (id: string, data: Partial<SocialAssessmentRecord>) => void;
   caregivers: CaregiverInfo[];
+  setCaregivers: (caregivers: CaregiverInfo[]) => void;
   addCaregiver: (caregiver: CaregiverInfo) => void;
   updateCaregiver: (id: string, data: Partial<CaregiverInfo>) => void;
   removeCaregiver: (id: string) => void;
   familyMeetings: FamilyMeetingRecord[];
+  setFamilyMeetings: (meetings: FamilyMeetingRecord[]) => void;
   addFamilyMeeting: (meeting: FamilyMeetingRecord) => void;
   updateFamilyMeeting: (id: string, data: Partial<FamilyMeetingRecord>) => void;
   eduMaterials: EduMaterial[];
@@ -264,16 +269,20 @@ interface TelemedicineStore {
   updateEduMaterial: (id: string, data: Partial<EduMaterial>) => void;
   logEduMaterialAccess: (materialId: string, accessedBy: string) => void;
   familyCoordinationNotes: FamilyCoordinationNote[];
+  setFamilyCoordinationNotes: (notes: FamilyCoordinationNote[]) => void;
   addFamilyCoordinationNote: (note: FamilyCoordinationNote) => void;
   updateFamilyCoordinationNote: (id: string, data: Partial<FamilyCoordinationNote>) => void;
   emergencyContacts: EmergencyContact[];
+  setEmergencyContacts: (contacts: EmergencyContact[]) => void;
   addEmergencyContact: (contact: EmergencyContact) => void;
   updateEmergencyContact: (id: string, data: Partial<EmergencyContact>) => void;
   removeEmergencyContact: (id: string) => void;
   financialSupportRecords: FinancialSupportRecord[];
+  setFinancialSupportRecords: (records: FinancialSupportRecord[]) => void;
   addFinancialSupportRecord: (record: FinancialSupportRecord) => void;
   updateFinancialSupportRecord: (id: string, data: Partial<FinancialSupportRecord>) => void;
   transportRecords: TransportRecord[];
+  setTransportRecords: (records: TransportRecord[]) => void;
   addTransportRecord: (record: TransportRecord) => void;
   updateTransportRecord: (id: string, data: Partial<TransportRecord>) => void;
   socialAlerts: SocialMonitoringAlert[];
@@ -958,6 +967,7 @@ export const useStore = create<TelemedicineStore>((set) => ({
 
   // Palliative Resume Medis & Surat Rujukan
   palliativeResumes: [] as PalliativeResumeMedis[],
+  setPalliativeResumes: (resumes) => set({ palliativeResumes: resumes }),
   addPalliativeResume: (resume) => {
     set((state) => ({ palliativeResumes: [...state.palliativeResumes, resume] }));
     // Persist to Firestore
@@ -977,36 +987,87 @@ export const useStore = create<TelemedicineStore>((set) => ({
     }
   },
   palliativeReferralLetters: [] as PalliativeReferralLetter[],
-  addPalliativeReferralLetter: (letter) => set((state) => ({ palliativeReferralLetters: [...state.palliativeReferralLetters, letter] })),
-  updatePalliativeReferralLetter: (letterId, data) => set((state) => ({
-    palliativeReferralLetters: state.palliativeReferralLetters.map(l =>
-      l.id === letterId ? { ...l, ...data, updatedAt: new Date().toISOString() } : l
-    ),
-  })),
+  setPalliativeReferralLetters: (letters) => set({ palliativeReferralLetters: letters }),
+  addPalliativeReferralLetter: (letter) => {
+    set((state) => ({ palliativeReferralLetters: [...state.palliativeReferralLetters, letter] }));
+    // Persist to Supabase
+    firestoreSync.addReferralLetter(letter.palliativePatientId, { ...letter }).catch(err => console.error('[Store] Firestore sync error (addReferralLetter):', err));
+  },
+  updatePalliativeReferralLetter: (letterId, data) => {
+    const existing = useStore.getState().palliativeReferralLetters.find(l => l.id === letterId);
+    set((state) => ({
+      palliativeReferralLetters: state.palliativeReferralLetters.map(l =>
+        l.id === letterId ? { ...l, ...data, updatedAt: new Date().toISOString() } : l
+      ),
+    }));
+    // Persist to Supabase
+    if (existing) {
+      firestoreSync.updateReferralLetter(existing.palliativePatientId, letterId, data).catch(err => console.error('[Store] Firestore sync error (updateReferralLetter):', err));
+    }
+  },
   palliativeDocumentAuditLog: [] as PalliativeDocumentAuditEntry[],
   addPalliativeDocumentAuditEntry: (entry) => set((state) => ({ palliativeDocumentAuditLog: [...state.palliativeDocumentAuditLog, entry] })),
 
   // Social Support Management — empty initial state; loaded from Supabase
   socialAssessments: [] as SocialAssessmentRecord[],
+  setSocialAssessments: (records) => set({ socialAssessments: records }),
   addSocialAssessment: (record) => {
     set((state) => ({ socialAssessments: [...state.socialAssessments, record] }));
     // Persist to Firestore
     firestoreSync.addSosial(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addSosial):', err));
   },
-  updateSocialAssessment: (id, data) => set((state) => ({
-    socialAssessments: state.socialAssessments.map(a => a.id === id ? { ...a, ...data, updatedAt: new Date().toISOString() } : a),
-  })),
+  updateSocialAssessment: (id, data) => {
+    set((state) => ({
+      socialAssessments: state.socialAssessments.map(a => a.id === id ? { ...a, ...data, updatedAt: new Date().toISOString() } : a),
+    }));
+    // Persist to Supabase
+    const existing = useStore.getState().socialAssessments.find(a => a.id === id);
+    if (existing) {
+      firestoreSync.updateSosial(existing.palliativePatientId, id, data).catch(err => console.error('[Store] Firestore sync error (updateSosial):', err));
+    }
+  },
   caregivers: [] as CaregiverInfo[],
-  addCaregiver: (caregiver) => set((state) => ({ caregivers: [...state.caregivers, caregiver] })),
-  updateCaregiver: (id, data) => set((state) => ({
-    caregivers: state.caregivers.map(c => c.id === id ? { ...c, ...data, updatedAt: new Date().toISOString() } : c),
-  })),
-  removeCaregiver: (id) => set((state) => ({ caregivers: state.caregivers.filter(c => c.id !== id) })),
+  setCaregivers: (caregivers) => set({ caregivers }),
+  addCaregiver: (caregiver) => {
+    set((state) => ({ caregivers: [...state.caregivers, caregiver] }));
+    // Persist to Supabase
+    firestoreSync.addCaregiver(caregiver.palliativePatientId, { ...caregiver }).catch(err => console.error('[Store] Firestore sync error (addCaregiver):', err));
+  },
+  updateCaregiver: (id, data) => {
+    const existing = useStore.getState().caregivers.find(c => c.id === id);
+    set((state) => ({
+      caregivers: state.caregivers.map(c => c.id === id ? { ...c, ...data, updatedAt: new Date().toISOString() } : c),
+    }));
+    // Persist to Supabase
+    if (existing) {
+      firestoreSync.updateCaregiver(existing.palliativePatientId, id, data).catch(err => console.error('[Store] Firestore sync error (updateCaregiver):', err));
+    }
+  },
+  removeCaregiver: (id) => {
+    const existing = useStore.getState().caregivers.find(c => c.id === id);
+    set((state) => ({ caregivers: state.caregivers.filter(c => c.id !== id) }));
+    // Persist to Supabase
+    if (existing) {
+      firestoreSync.removeCaregiver(existing.palliativePatientId, id).catch(err => console.error('[Store] Firestore sync error (removeCaregiver):', err));
+    }
+  },
   familyMeetings: [] as FamilyMeetingRecord[],
-  addFamilyMeeting: (meeting) => set((state) => ({ familyMeetings: [...state.familyMeetings, meeting] })),
-  updateFamilyMeeting: (id, data) => set((state) => ({
-    familyMeetings: state.familyMeetings.map(m => m.id === id ? { ...m, ...data, updatedAt: new Date().toISOString() } : m),
-  })),
+  setFamilyMeetings: (meetings) => set({ familyMeetings: meetings }),
+  addFamilyMeeting: (meeting) => {
+    set((state) => ({ familyMeetings: [...state.familyMeetings, meeting] }));
+    // Persist to Supabase
+    firestoreSync.addFamilyMeeting(meeting.palliativePatientId, { ...meeting }).catch(err => console.error('[Store] Firestore sync error (addFamilyMeeting):', err));
+  },
+  updateFamilyMeeting: (id, data) => {
+    const existing = useStore.getState().familyMeetings.find(m => m.id === id);
+    set((state) => ({
+      familyMeetings: state.familyMeetings.map(m => m.id === id ? { ...m, ...data, updatedAt: new Date().toISOString() } : m),
+    }));
+    // Persist to Supabase
+    if (existing) {
+      firestoreSync.updateFamilyMeeting(existing.palliativePatientId, id, data).catch(err => console.error('[Store] Firestore sync error (updateFamilyMeeting):', err));
+    }
+  },
   // Edu materials are general (not patient-specific) — kept as default catalog
   eduMaterials: [
     { id: 'edu-1', title: 'Panduan Perawatan Pasien Paliatif di Rumah', category: 'perawatan_rumah' as const, description: 'Panduan lengkap perawatan harian pasien paliatif di rumah', type: 'pdf' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
@@ -1029,26 +1090,81 @@ export const useStore = create<TelemedicineStore>((set) => ({
     } : m),
   })),
   familyCoordinationNotes: [] as FamilyCoordinationNote[],
-  addFamilyCoordinationNote: (note) => set((state) => ({ familyCoordinationNotes: [...state.familyCoordinationNotes, note] })),
-  updateFamilyCoordinationNote: (id, data) => set((state) => ({
-    familyCoordinationNotes: state.familyCoordinationNotes.map(n => n.id === id ? { ...n, ...data, updatedAt: new Date().toISOString() } : n),
-  })),
+  setFamilyCoordinationNotes: (notes) => set({ familyCoordinationNotes: notes }),
+  addFamilyCoordinationNote: (note) => {
+    set((state) => ({ familyCoordinationNotes: [...state.familyCoordinationNotes, note] }));
+    // Persist to Supabase
+    firestoreSync.addFamilyCoordinationNote(note.palliativePatientId, { ...note }).catch(err => console.error('[Store] Firestore sync error (addFamilyCoordinationNote):', err));
+  },
+  updateFamilyCoordinationNote: (id, data) => {
+    const existing = useStore.getState().familyCoordinationNotes.find(n => n.id === id);
+    set((state) => ({
+      familyCoordinationNotes: state.familyCoordinationNotes.map(n => n.id === id ? { ...n, ...data, updatedAt: new Date().toISOString() } : n),
+    }));
+    // Persist to Supabase
+    if (existing) {
+      firestoreSync.updateFamilyCoordinationNote(existing.palliativePatientId, id, data).catch(err => console.error('[Store] Firestore sync error (updateFamilyCoordinationNote):', err));
+    }
+  },
   emergencyContacts: [] as EmergencyContact[],
-  addEmergencyContact: (contact) => set((state) => ({ emergencyContacts: [...state.emergencyContacts, contact] })),
-  updateEmergencyContact: (id, data) => set((state) => ({
-    emergencyContacts: state.emergencyContacts.map(c => c.id === id ? { ...c, ...data, updatedAt: new Date().toISOString() } : c),
-  })),
-  removeEmergencyContact: (id) => set((state) => ({ emergencyContacts: state.emergencyContacts.filter(c => c.id !== id) })),
+  setEmergencyContacts: (contacts) => set({ emergencyContacts: contacts }),
+  addEmergencyContact: (contact) => {
+    set((state) => ({ emergencyContacts: [...state.emergencyContacts, contact] }));
+    // Persist to Supabase
+    firestoreSync.addEmergencyContact(contact.palliativePatientId, { ...contact }).catch(err => console.error('[Store] Firestore sync error (addEmergencyContact):', err));
+  },
+  updateEmergencyContact: (id, data) => {
+    const existing = useStore.getState().emergencyContacts.find(c => c.id === id);
+    set((state) => ({
+      emergencyContacts: state.emergencyContacts.map(c => c.id === id ? { ...c, ...data, updatedAt: new Date().toISOString() } : c),
+    }));
+    // Persist to Supabase
+    if (existing) {
+      firestoreSync.updateEmergencyContact(existing.palliativePatientId, id, data).catch(err => console.error('[Store] Firestore sync error (updateEmergencyContact):', err));
+    }
+  },
+  removeEmergencyContact: (id) => {
+    const existing = useStore.getState().emergencyContacts.find(c => c.id === id);
+    set((state) => ({ emergencyContacts: state.emergencyContacts.filter(c => c.id !== id) }));
+    // Persist to Supabase
+    if (existing) {
+      firestoreSync.removeEmergencyContact(existing.palliativePatientId, id).catch(err => console.error('[Store] Firestore sync error (removeEmergencyContact):', err));
+    }
+  },
   financialSupportRecords: [] as FinancialSupportRecord[],
-  addFinancialSupportRecord: (record) => set((state) => ({ financialSupportRecords: [...state.financialSupportRecords, record] })),
-  updateFinancialSupportRecord: (id, data) => set((state) => ({
-    financialSupportRecords: state.financialSupportRecords.map(r => r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r),
-  })),
+  setFinancialSupportRecords: (records) => set({ financialSupportRecords: records }),
+  addFinancialSupportRecord: (record) => {
+    set((state) => ({ financialSupportRecords: [...state.financialSupportRecords, record] }));
+    // Persist to Supabase
+    firestoreSync.addFinancialSupport(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addFinancialSupport):', err));
+  },
+  updateFinancialSupportRecord: (id, data) => {
+    const existing = useStore.getState().financialSupportRecords.find(r => r.id === id);
+    set((state) => ({
+      financialSupportRecords: state.financialSupportRecords.map(r => r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r),
+    }));
+    // Persist to Supabase
+    if (existing) {
+      firestoreSync.updateFinancialSupport(existing.palliativePatientId, id, data).catch(err => console.error('[Store] Firestore sync error (updateFinancialSupport):', err));
+    }
+  },
   transportRecords: [] as TransportRecord[],
-  addTransportRecord: (record) => set((state) => ({ transportRecords: [...state.transportRecords, record] })),
-  updateTransportRecord: (id, data) => set((state) => ({
-    transportRecords: state.transportRecords.map(r => r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r),
-  })),
+  setTransportRecords: (records) => set({ transportRecords: records }),
+  addTransportRecord: (record) => {
+    set((state) => ({ transportRecords: [...state.transportRecords, record] }));
+    // Persist to Supabase
+    firestoreSync.addTransportRecord(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addTransportRecord):', err));
+  },
+  updateTransportRecord: (id, data) => {
+    const existing = useStore.getState().transportRecords.find(r => r.id === id);
+    set((state) => ({
+      transportRecords: state.transportRecords.map(r => r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r),
+    }));
+    // Persist to Supabase
+    if (existing) {
+      firestoreSync.updateTransportRecord(existing.palliativePatientId, id, data).catch(err => console.error('[Store] Firestore sync error (updateTransportRecord):', err));
+    }
+  },
   socialAlerts: [] as SocialMonitoringAlert[],
   addSocialAlert: (alert) => set((state) => ({ socialAlerts: [...state.socialAlerts, alert] })),
   markSocialAlertRead: (alertId) => set((state) => ({

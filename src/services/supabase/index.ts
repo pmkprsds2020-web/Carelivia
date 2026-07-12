@@ -40,3 +40,12 @@ export { dashboardService } from './dashboardService';
 export type { DashboardStats } from './dashboardService';
 export { aiService } from './aiService';
 export type { AIReport } from './aiService';
+// ── New services for previously local-only modules ─────────────────────────
+export { caregiverService } from './caregiverService';
+export { familyMeetingService } from './familyMeetingService';
+export { familyCoordinationNoteService } from './familyCoordinationNoteService';
+export { emergencyContactService } from './emergencyContactService';
+export { financialSupportService } from './financialSupportService';
+export { transportRecordService } from './transportRecordService';
+export { referralLetterService } from './referralLetterService';
+export { palliativeResumeService } from './palliativeResumeService';

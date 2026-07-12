@@ -1,0 +1,1086 @@
+     1→import { create } from 'zustand';
+     2→import { supabaseSync as firestoreSync } from '@/lib/supabase-sync';
+     3→import { patientService, isValidUuid } from '@/services/supabase';
+     4→import { toast } from '@/hooks/use-toast';
+     5→import type { 
+     6→  User, Consultation, Message, Medicine, CartItem, 
+     7→  HomeCareService, HomeCareBooking, Notification, Article,
+     8→  ActivePanel, DashboardStats, MedicalRecord, Payment,
+     9→  MedicineCategory, Prescription, MedicalRecordStatus,
+    10→  ScreeningForm, ScreeningAuditLog, ScreeningModuleId,
+    11→  PalliativeScreeningForm, PalliativeToolType,
+    12→  PalliativePatientInfo, VitalSignRecordInfo, PalliativeMedicationInfo,
+    13→  AdvanceCarePlanInfo, PalliativeScreeningRecordInfo,
+    14→  PalliativeChatMessage, PalliativeClinicalAlert, PalliativeAuditEntry,
+    15→  PalliativeMonitoringStatus, PalliativeMarkingData, PalliativeMonitoringNotification,
+    16→  PalliativeProgramCompletion, PalliativeProgramCompletionReason,
+    17→  PalliativeClinicalSummary, PalliativeCommunicationPatient, PalliativeMonitoringFormType,
+    18→  WearableDevice, WearableVitalData, RVSMAlert, RVSMDailyReport,
+    19→  RVSMFamilyAccess, RVSMAuditEntry, RVSMPalliativeScoreEstimate,
+    20→  MedicationMonitoringFormInfo, MedicationMonitoringAlert, MedicationMonitoringAuditEntry,
+    21→  MedicationComplianceSummary,
+    22→  PalliativeResumeMedis, PalliativeReferralLetter, PalliativeDocumentAuditEntry,
+    23→  ReferralTargetDepartment, ReferralStatus,
+    24→  NutritionRecordInfo, NutritionAIRecommendation, NutritionActivityLevel,
+    25→  NutritionWeightStatus, NutritionMetabolicStress, NutritionSpecialCondition,
+    26→  NutritionCalculationResult,
+    27→  SocialAssessmentRecord, CaregiverInfo, FamilyMeetingRecord,
+    28→  EduMaterial, FamilyCoordinationNote, EmergencyContact,
+    29→  FinancialSupportRecord, TransportRecord, SocialMonitoringAlert,
+    30→  AISocialAnalysisResult, AISocialAnalysisRecord, AISocialPopulationStats,
+    31→  PatientTransportRequest, PatientCareUpdate, PatientPaliatifChatMessage,
+    32→  DailyComplaintRecord
+    33→} from './types';
+    34→
+    35→interface TelemedicineStore {
+    36→  // Navigation
+    37→  activePanel: ActivePanel;
+    38→  setActivePanel: (panel: ActivePanel) => void;
+    39→  
+    40→  // User
+    41→  currentUser: User | null;
+    42→  setCurrentUser: (user: User | null) => void;
+    43→  
+    44→  // Dashboard
+    45→  dashboardStats: DashboardStats | null;
+    46→  setDashboardStats: (stats: DashboardStats | null) => void;
+    47→  
+    48→  // Doctors
+    49→  doctors: User[];
+    50→  setDoctors: (doctors: User[]) => void;
+    51→  onlineDoctors: string[];
+    52→  setOnlineDoctors: (ids: string[]) => void;
+    53→  
+    54→  // Consultations
+    55→  consultations: Consultation[];
+    56→  setConsultations: (consultations: Consultation[]) => void;
+    57→  updateConsultation: (consultationId: string, data: Partial<Consultation>) => void;
+    58→  activeConsultation: Consultation | null;
+    59→  setActiveConsultation: (consultation: Consultation | null) => void;
+    60→  messages: Message[];
+    61→  setMessages: (messages: Message[]) => void;
+    62→  addMessage: (message: Message) => void;
+    63→  typingUsers: Map<string, string[]>;
+    64→  setTypingUsers: (map: Map<string, string[]>) => void;
+    65→  
+    66→  // Pharmacy
+    67→  medicines: Medicine[];
+    68→  setMedicines: (medicines: Medicine[]) => void;
+    69→  cart: CartItem[];
+    70→  addToCart: (item: CartItem) => void;
+    71→  removeFromCart: (medicineId: string) => void;
+    72→  updateCartQuantity: (medicineId: string, quantity: number) => void;
+    73→  clearCart: () => void;
+    74→  
+    75→  // Home Care
+    76→  homeCareServices: HomeCareService[];
+    77→  setHomeCareServices: (services: HomeCareService[]) => void;
+    78→  homeCareBookings: HomeCareBooking[];
+    79→  setHomeCareBookings: (bookings: HomeCareBooking[]) => void;
+    80→  
+    81→  // Medical Records
+    82→  medicalRecords: MedicalRecord[];
+    83→  setMedicalRecords: (records: MedicalRecord[]) => void;
+    84→  addMedicalRecord: (record: MedicalRecord) => void;
+    85→  updateMedicalRecord: (recordId: string, data: Partial<MedicalRecord>) => void;
+    86→  
+    87→  // Notifications
+    88→  notifications: Notification[];
+    89→  setNotifications: (notifications: Notification[]) => void;
+    90→  unreadCount: number;
+    91→  setUnreadCount: (count: number) => void;
+    92→  
+    93→  // Payments
+    94→  payments: Payment[];
+    95→  setPayments: (payments: Payment[]) => void;
+    96→  
+    97→  // Prescriptions
+    98→  prescriptions: Prescription[];
+    99→  setPrescriptions: (prescriptions: Prescription[]) => void;
+   100→  addPrescription: (prescription: Prescription) => void;
+   101→  updatePrescriptionStatus: (prescriptionId: string, status: string) => void;
+   102→  
+   103→  // Articles
+   104→  articles: Article[];
+   105→  setArticles: (articles: Article[]) => void;
+   106→  
+   107→  // UI
+   108→  sidebarOpen: boolean;
+   109→  setSidebarOpen: (open: boolean) => void;
+   110→  isLoading: boolean;
+   111→  setIsLoading: (loading: boolean) => void;
+   112→  selectedChatDoctor: User | null;
+   113→  setSelectedChatDoctor: (doctor: User | null) => void;
+   114→
+   115→  // Prescription Checkout
+   116→  pendingPrescriptionCheckout: Prescription | null;
+   117→  setPendingPrescriptionCheckout: (prescription: Prescription | null) => void;
+   118→
+   119→  // Screening
+   120→  screeningForms: ScreeningForm[];
+   121→  setScreeningForms: (forms: ScreeningForm[]) => void;
+   122→  addScreeningForm: (form: ScreeningForm) => void;
+   123→  updateScreeningForm: (formId: string, data: Partial<ScreeningForm>) => void;
+   124→  screeningAuditLog: ScreeningAuditLog[];
+   125→  addAuditLog: (log: ScreeningAuditLog) => void;
+   126→  clinicalAlerts: Notification[];
+   127→  addClinicalAlert: (alert: Notification) => void;
+   128→
+   129→  // Palliative Screening
+   130→  palliativeScreeningForms: PalliativeScreeningForm[];
+   131→  setPalliativeScreeningForms: (forms: PalliativeScreeningForm[]) => void;
+   132→  addPalliativeScreeningForm: (form: PalliativeScreeningForm) => void;
+   133→  updatePalliativeScreeningForm: (formId: string, data: Partial<PalliativeScreeningForm>) => void;
+   134→  activePalliativeFormId: string | null;
+   135→  setActivePalliativeFormId: (id: string | null) => void;
+   136→
+   137→  // Palliative Monitoring
+   138→  palliativePatients: PalliativePatientInfo[];
+   139→  setPalliativePatients: (patients: PalliativePatientInfo[]) => void;
+   140→  addPalliativePatient: (patient: PalliativePatientInfo) => Promise<PalliativePatientInfo | null>;
+   141→  updatePalliativePatient: (patientId: string, data: Partial<PalliativePatientInfo>) => void;
+   142→  removePalliativePatient: (patientId: string) => void;
+   143→  selectedPalliativePatientId: string | null;
+   144→  setSelectedPalliativePatientId: (id: string | null) => void;
+   145→  vitalSignRecords: VitalSignRecordInfo[];
+   146→  setVitalSignRecords: (records: VitalSignRecordInfo[]) => void;
+   147→  addVitalSignRecord: (record: VitalSignRecordInfo) => void;
+   148→  palliativeMedications: PalliativeMedicationInfo[];
+   149→  setPalliativeMedications: (meds: PalliativeMedicationInfo[]) => void;
+   150→  addPalliativeMedication: (med: PalliativeMedicationInfo) => void;
+   151→  updatePalliativeMedication: (medId: string, data: Partial<PalliativeMedicationInfo>) => void;
+   152→  advanceCarePlans: AdvanceCarePlanInfo[];
+   153→  setAdvanceCarePlans: (plans: AdvanceCarePlanInfo[]) => void;
+   154→  addAdvanceCarePlan: (plan: AdvanceCarePlanInfo) => void;
+   155→  updateAdvanceCarePlan: (planId: string, data: Partial<AdvanceCarePlanInfo>) => void;
+   156→  palliativeScreeningRecords: PalliativeScreeningRecordInfo[];
+   157→  setPalliativeScreeningRecords: (records: PalliativeScreeningRecordInfo[]) => void;
+   158→  addPalliativeScreeningRecord: (record: PalliativeScreeningRecordInfo) => void;
+   159→  palliativeAiSummary: string;
+   160→  setPalliativeAiSummary: (summary: string) => void;
+   161→
+   162→  // Nutrition Records
+   163→  nutritionRecords: NutritionRecordInfo[];
+   164→  setNutritionRecords: (records: NutritionRecordInfo[]) => void;
+   165→  addNutritionRecord: (record: NutritionRecordInfo) => void;
+   166→  nutritionAiRecommendation: NutritionAIRecommendation | null;
+   167→  setNutritionAiRecommendation: (rec: NutritionAIRecommendation | null) => void;
+   168→
+   169→  // Palliative Chat
+   170→  palliativeChatMessages: PalliativeChatMessage[];
+   171→  setPalliativeChatMessages: (messages: PalliativeChatMessage[]) => void;
+   172→  addPalliativeChatMessage: (message: PalliativeChatMessage) => void;
+   173→  updatePalliativeChatMessage: (msgId: string, data: Partial<PalliativeChatMessage>) => void;
+   174→  palliativeClinicalAlerts: PalliativeClinicalAlert[];
+   175→  addPalliativeClinicalAlert: (alert: PalliativeClinicalAlert) => void;
+   176→  markPalliativeAlertRead: (alertId: string) => void;
+   177→  palliativeAuditLog: PalliativeAuditEntry[];
+   178→  addPalliativeAuditEntry: (entry: PalliativeAuditEntry) => void;
+   179→
+   180→  // Palliative Monitoring Integration
+   181→  palliativeMonitoringNotifications: PalliativeMonitoringNotification[];
+   182→  addPalliativeMonitoringNotification: (notification: PalliativeMonitoringNotification) => void;
+   183→  markPalliativeNotificationRead: (notificationId: string) => void;
+   184→  markPatientAsPalliative: (consultationId: string, doctorId: string, patientId: string, patientName: string, markingData: PalliativeMarkingData) => Promise<PalliativePatientInfo | null>;
+   185→  updatePalliativeMonitoringStatus: (patientId: string, status: PalliativeMonitoringStatus) => void;
+   186→  activeInlineScreeningFormId: string | null;
+   187→  setActiveInlineScreeningFormId: (id: string | null) => void;
+   188→  activeInlineScreeningType: PalliativeMonitoringFormType | null;
+   189→  setActiveInlineScreeningType: (type: PalliativeMonitoringFormType | null) => void;
+   190→
+   191→  // Screening Navigation (from Monitoring Paliatif to Skrining Paliatif)
+   192→  screeningNavigationFrom: 'monitoring' | null;
+   193→  setScreeningNavigationFrom: (from: 'monitoring' | null) => void;
+   194→  screeningPreselectedPatientId: string | null;
+   195→  setScreeningPreselectedPatientId: (id: string | null) => void;
+   196→
+   197→  // Palliative Program Completion
+   198→  palliativeProgramCompletions: PalliativeProgramCompletion[];
+   199→  completePalliativeProgram: (patientId: string, completionData: Omit<PalliativeProgramCompletion, 'id' | 'createdAt'>) => void;
+   200→
+   201→  // Daily Complaint (Keluhan Harian)
+   202→  dailyComplaints: DailyComplaintRecord[];
+   203→  setDailyComplaints: (complaints: DailyComplaintRecord[]) => void;
+   204→  addDailyComplaint: (complaint: DailyComplaintRecord) => void;
+   205→
+   206→  // RVSM (Remote Vital Sign Monitoring)
+   207→  rvsmDevices: WearableDevice[];
+   208→  addRvsmDevice: (device: WearableDevice) => void;
+   209→  updateRvsmDevice: (deviceId: string, data: Partial<WearableDevice>) => void;
+   210→  removeRvsmDevice: (deviceId: string) => void;
+   211→  rvsmVitalData: WearableVitalData[];
+   212→  addRvsmVitalData: (data: WearableVitalData) => void;
+   213→  rvsmAlerts: RVSMAlert[];
+   214→  addRvsmAlert: (alert: RVSMAlert) => void;
+   215→  markRvsmAlertRead: (alertId: string) => void;
+   216→  acknowledgeRvsmAlert: (alertId: string, acknowledgedBy: string) => void;
+   217→  rvsmDailyReports: RVSMDailyReport[];
+   218→  addRvsmDailyReport: (report: RVSMDailyReport) => void;
+   219→  rvsmFamilyAccess: RVSMFamilyAccess[];
+   220→  addRvsmFamilyAccess: (access: RVSMFamilyAccess) => void;
+   221→  removeRvsmFamilyAccess: (accessId: string) => void;
+   222→  rvsmAuditLog: RVSMAuditEntry[];
+   223→  addRvsmAuditEntry: (entry: RVSMAuditEntry) => void;
+   224→  rvsmPalliativeEstimates: RVSMPalliativeScoreEstimate[];
+   225→  addRvsmPalliativeEstimate: (estimate: RVSMPalliativeScoreEstimate) => void;
+   226→  rvsmAiSummary: string;
+   227→  setRvsmAiSummary: (summary: string) => void;
+   228→
+   229→  // Medication Monitoring
+   230→  medicationMonitoringForms: MedicationMonitoringFormInfo[];
+   231→  addMedicationMonitoringForm: (form: MedicationMonitoringFormInfo) => void;
+   232→  updateMedicationMonitoringForm: (formId: string, data: Partial<MedicationMonitoringFormInfo>) => void;
+   233→  medicationMonitoringAlerts: MedicationMonitoringAlert[];
+   234→  addMedicationMonitoringAlert: (alert: MedicationMonitoringAlert) => void;
+   235→  markMedicationMonitoringAlertRead: (alertId: string) => void;
+   236→  medicationMonitoringAuditLog: MedicationMonitoringAuditEntry[];
+   237→  addMedicationMonitoringAuditEntry: (entry: MedicationMonitoringAuditEntry) => void;
+   238→  medicationComplianceSummaries: MedicationComplianceSummary[];
+   239→  addMedicationComplianceSummary: (summary: MedicationComplianceSummary) => void;
+   240→
+   241→  // Palliative Resume Medis & Surat Rujukan
+   242→  palliativeResumes: PalliativeResumeMedis[];
+   243→  addPalliativeResume: (resume: PalliativeResumeMedis) => void;
+   244→  updatePalliativeResume: (resumeId: string, data: Partial<PalliativeResumeMedis>) => void;
+   245→  palliativeReferralLetters: PalliativeReferralLetter[];
+   246→  addPalliativeReferralLetter: (letter: PalliativeReferralLetter) => void;
+   247→  updatePalliativeReferralLetter: (letterId: string, data: Partial<PalliativeReferralLetter>) => void;
+   248→  palliativeDocumentAuditLog: PalliativeDocumentAuditEntry[];
+   249→  addPalliativeDocumentAuditEntry: (entry: PalliativeDocumentAuditEntry) => void;
+   250→
+   251→  // Social Support Management
+   252→  socialAssessments: SocialAssessmentRecord[];
+   253→  addSocialAssessment: (record: SocialAssessmentRecord) => void;
+   254→  updateSocialAssessment: (id: string, data: Partial<SocialAssessmentRecord>) => void;
+   255→  caregivers: CaregiverInfo[];
+   256→  addCaregiver: (caregiver: CaregiverInfo) => void;
+   257→  updateCaregiver: (id: string, data: Partial<CaregiverInfo>) => void;
+   258→  removeCaregiver: (id: string) => void;
+   259→  familyMeetings: FamilyMeetingRecord[];
+   260→  addFamilyMeeting: (meeting: FamilyMeetingRecord) => void;
+   261→  updateFamilyMeeting: (id: string, data: Partial<FamilyMeetingRecord>) => void;
+   262→  eduMaterials: EduMaterial[];
+   263→  addEduMaterial: (material: EduMaterial) => void;
+   264→  updateEduMaterial: (id: string, data: Partial<EduMaterial>) => void;
+   265→  logEduMaterialAccess: (materialId: string, accessedBy: string) => void;
+   266→  familyCoordinationNotes: FamilyCoordinationNote[];
+   267→  addFamilyCoordinationNote: (note: FamilyCoordinationNote) => void;
+   268→  updateFamilyCoordinationNote: (id: string, data: Partial<FamilyCoordinationNote>) => void;
+   269→  emergencyContacts: EmergencyContact[];
+   270→  addEmergencyContact: (contact: EmergencyContact) => void;
+   271→  updateEmergencyContact: (id: string, data: Partial<EmergencyContact>) => void;
+   272→  removeEmergencyContact: (id: string) => void;
+   273→  financialSupportRecords: FinancialSupportRecord[];
+   274→  addFinancialSupportRecord: (record: FinancialSupportRecord) => void;
+   275→  updateFinancialSupportRecord: (id: string, data: Partial<FinancialSupportRecord>) => void;
+   276→  transportRecords: TransportRecord[];
+   277→  addTransportRecord: (record: TransportRecord) => void;
+   278→  updateTransportRecord: (id: string, data: Partial<TransportRecord>) => void;
+   279→  socialAlerts: SocialMonitoringAlert[];
+   280→  addSocialAlert: (alert: SocialMonitoringAlert) => void;
+   281→  markSocialAlertRead: (alertId: string) => void;
+   282→
+   283→  // AI Social Needs Analysis
+   284→  aiSocialAnalysisResult: AISocialAnalysisResult | null;
+   285→  setAiSocialAnalysisResult: (result: AISocialAnalysisResult | null) => void;
+   286→  aiSocialAnalysisLoading: boolean;
+   287→  setAiSocialAnalysisLoading: (loading: boolean) => void;
+   288→  aiSocialAnalysisRecords: AISocialAnalysisRecord[];
+   289→  addAiSocialAnalysisRecord: (record: AISocialAnalysisRecord) => void;
+   290→  aiSocialPopulationStats: AISocialPopulationStats | null;
+   291→  setAiSocialPopulationStats: (stats: AISocialPopulationStats | null) => void;
+   292→
+   293→  // Patient Paliatif Module
+   294→  patientTransportRequests: PatientTransportRequest[];
+   295→  addPatientTransportRequest: (request: PatientTransportRequest) => void;
+   296→  updatePatientTransportRequest: (id: string, data: Partial<PatientTransportRequest>) => void;
+   297→  patientCareUpdates: PatientCareUpdate[];
+   298→  addPatientCareUpdate: (update: PatientCareUpdate) => void;
+   299→  markCareUpdateViewed: (id: string) => void;
+   300→  patientPaliatifMessages: PatientPaliatifChatMessage[];
+   301→  addPatientPaliatifMessage: (message: PatientPaliatifChatMessage) => void;
+   302→}
+   303→
+   304→export const useStore = create<TelemedicineStore>((set) => ({
+   305→  // Debug: expose store to window
+   306→  _debugInit: (() => { if (typeof window !== 'undefined') { (window as unknown as Record<string, unknown>).__STORE__ = () => useStore.getState(); } })(),
+   307→  // Navigation
+   308→  activePanel: 'home' as ActivePanel,
+   309→  setActivePanel: (panel) => set({ activePanel: panel }),
+   310→  
+   311→  // User
+   312→  currentUser: null,
+   313→  setCurrentUser: (user) => set({ currentUser: user }),
+   314→  
+   315→  // Dashboard
+   316→  dashboardStats: null,
+   317→  setDashboardStats: (stats) => set({ dashboardStats: stats }),
+   318→  
+   319→  // Doctors
+   320→  doctors: [
+   321→    {
+   322→      id: 'doc-sarah',
+   323→      email: 'sarah@carelivia.id',
+   324→      name: 'dr. Sarah Wijaya',
+   325→      role: 'doctor' as const,
+   326→      avatar: '',
+   327→      isVerified: true,
+   328→      isActive: true,
+   329→      createdAt: new Date().toISOString(),
+   330→      updatedAt: new Date().toISOString(),
+   331→      doctorProfile: {
+   332→        id: 'dp-doc-sarah',
+   333→        userId: 'doc-sarah',
+   334→        specialization: 'umum',
+   335→        rating: 4.9,
+   336→        reviewCount: 156,
+   337→        consultationFee: 150000,
+   338→        isOnline: true,
+   339→        isAvailable: true,
+   340→      }
+   341→    },
+   342→    {
+   343→      id: 'doc-ahmad',
+   344→      email: 'ahmad@carelivia.id',
+   345→      name: 'dr. Ahmad Rizki',
+   346→      role: 'doctor' as const,
+   347→      avatar: '',
+   348→      isVerified: true,
+   349→      isActive: true,
+   350→      createdAt: new Date().toISOString(),
+   351→      updatedAt: new Date().toISOString(),
+   352→      doctorProfile: {
+   353→        id: 'dp-doc-ahmad',
+   354→        userId: 'doc-ahmad',
+   355→        specialization: 'anak',
+   356→        rating: 4.8,
+   357→        reviewCount: 98,
+   358→        consultationFee: 175000,
+   359→        isOnline: true,
+   360→        isAvailable: true,
+   361→      }
+   362→    },
+   363→    {
+   364→      id: 'doc-lisa',
+   365→      email: 'lisa@carelivia.id',
+   366→      name: 'dr. Lisa Permata',
+   367→      role: 'doctor' as const,
+   368→      avatar: '',
+   369→      isVerified: true,
+   370→      isActive: true,
+   371→      createdAt: new Date().toISOString(),
+   372→      updatedAt: new Date().toISOString(),
+   373→      doctorProfile: {
+   374→        id: 'dp-doc-lisa',
+   375→        userId: 'doc-lisa',
+   376→        specialization: 'penyakit_dalam',
+   377→        rating: 4.7,
+   378→        reviewCount: 73,
+   379→        consultationFee: 200000,
+   380→        isOnline: true,
+   381→        isAvailable: true,
+   382→      }
+   383→    },
+   384→    {
+   385→      id: 'doc-dewi',
+   386→      email: 'dewi@carelivia.id',
+   387→      name: 'dr. Dewi Sartika',
+   388→      role: 'doctor' as const,
+   389→      avatar: '',
+   390→      isVerified: true,
+   391→      isActive: true,
+   392→      createdAt: new Date().toISOString(),
+   393→      updatedAt: new Date().toISOString(),
+   394→      doctorProfile: {
+   395→        id: 'dp-doc-dewi',
+   396→        userId: 'doc-dewi',
+   397→        specialization: 'kebidanan',
+   398→        rating: 4.9,
+   399→        reviewCount: 112,
+   400→        consultationFee: 175000,
+   401→        isOnline: false,
+   402→        isAvailable: true,
+   403→      }
+   404→    },
+   405→    {
+   406→      id: 'doc-budi',
+   407→      email: 'budi@carelivia.id',
+   408→      name: 'drg. Budi Santoso',
+   409→      role: 'doctor' as const,
+   410→      avatar: '',
+   411→      isVerified: true,
+   412→      isActive: true,
+   413→      createdAt: new Date().toISOString(),
+   414→      updatedAt: new Date().toISOString(),
+   415→      doctorProfile: {
+   416→        id: 'dp-doc-budi',
+   417→        userId: 'doc-budi',
+   418→        specialization: 'gigi',
+   419→        rating: 4.6,
+   420→        reviewCount: 45,
+   421→        consultationFee: 200000,
+   422→        isOnline: true,
+   423→        isAvailable: true,
+   424→      }
+   425→    }
+   426→  ] as User[],
+   427→  setDoctors: (doctors) => set({ doctors }),
+   428→  onlineDoctors: ['doc-sarah', 'doc-ahmad', 'doc-lisa', 'doc-budi'],
+   429→  setOnlineDoctors: (ids) => set({ onlineDoctors: ids }),
+   430→  
+   431→  // Consultations
+   432→  consultations: [],
+   433→  setConsultations: (consultations) => set({ consultations }),
+   434→  updateConsultation: (consultationId, data) => set((state) => ({
+   435→    consultations: state.consultations.map(c =>
+   436→      c.id === consultationId ? { ...c, ...data, updatedAt: new Date().toISOString() } : c
+   437→    ),
+   438→    activeConsultation: state.activeConsultation?.id === consultationId
+   439→      ? { ...state.activeConsultation, ...data, updatedAt: new Date().toISOString() }
+   440→      : state.activeConsultation,
+   441→  })),
+   442→  activeConsultation: null,
+   443→  setActiveConsultation: (consultation) => set({ activeConsultation: consultation }),
+   444→  messages: [],
+   445→  setMessages: (messages) => set({ messages }),
+   446→  addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
+   447→  typingUsers: new Map(),
+   448→  setTypingUsers: (map) => set({ typingUsers: map }),
+   449→  
+   450→  // Pharmacy
+   451→  medicines: [
+   452→    { id: 'med-1', name: 'Paracetamol 500mg', genericName: 'Paracetamol', category: 'bebas' as MedicineCategory, price: 15000, stock: 150, unit: 'Tablet (10)', manufacturer: 'Kimia Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   453→    { id: 'med-2', name: 'Amoxicillin 500mg', genericName: 'Amoxicillin', category: 'resep' as MedicineCategory, price: 25000, stock: 80, unit: 'Kapsul (10)', manufacturer: 'Sanbe Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   454→    { id: 'med-3', name: 'Omeprazole 20mg', genericName: 'Omeprazole', category: 'resep' as MedicineCategory, price: 35000, stock: 60, unit: 'Kapsul (10)', manufacturer: 'Bernofarm', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   455→    { id: 'med-4', name: 'CTM (Chlorpheniramine)', genericName: 'Chlorpheniramine Maleate', category: 'bebas' as MedicineCategory, price: 8000, stock: 200, unit: 'Tablet (10)', manufacturer: 'Kimia Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   456→    { id: 'med-5', name: 'Vitamin C 1000mg', genericName: 'Ascorbic Acid', category: 'vitamin' as MedicineCategory, price: 45000, stock: 120, unit: 'Tablet (20)', manufacturer: 'Nature Made', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   457→    { id: 'med-6', name: 'Ibuprofen 400mg', genericName: 'Ibuprofen', category: 'bebas' as MedicineCategory, price: 18000, stock: 90, unit: 'Tablet (10)', manufacturer: 'Pharos', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   458→    { id: 'med-7', name: 'Metformin 500mg', genericName: 'Metformin HCl', category: 'resep' as MedicineCategory, price: 22000, stock: 100, unit: 'Tablet (20)', manufacturer: 'Indofarma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   459→    { id: 'med-8', name: 'Loratadine 10mg', genericName: 'Loratadine', category: 'bebas' as MedicineCategory, price: 28000, stock: 75, unit: 'Tablet (10)', manufacturer: 'Kalbe Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   460→    { id: 'med-9', name: 'Termometer Digital', category: 'alat_kesehatan' as MedicineCategory, price: 85000, stock: 30, unit: 'Unit', manufacturer: 'Omron', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   461→    { id: 'med-10', name: 'Tensimeter Digital', category: 'alat_kesehatan' as MedicineCategory, price: 350000, stock: 15, unit: 'Unit', manufacturer: 'Omron', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   462→    { id: 'med-11', name: 'Vitamin D3 1000IU', genericName: 'Cholecalciferol', category: 'vitamin' as MedicineCategory, price: 65000, stock: 85, unit: 'Softgel (30)', manufacturer: 'Nature Made', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   463→    { id: 'med-12', name: 'Antasida Sirup', genericName: 'Aluminium Hydroxide + Magnesium Hydroxide', category: 'bebas' as MedicineCategory, price: 22000, stock: 60, unit: 'Botol (60ml)', manufacturer: 'Kimia Farma', isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   464→  ] as Medicine[],
+   465→  setMedicines: (medicines) => set({ medicines }),
+   466→  cart: [],
+   467→  addToCart: (item) => set((state) => {
+   468→    const existing = state.cart.find(c => c.medicine.id === item.medicine.id);
+   469→    if (existing) {
+   470→      return {
+   471→        cart: state.cart.map(c => 
+   472→          c.medicine.id === item.medicine.id 
+   473→            ? { ...c, quantity: c.quantity + item.quantity }
+   474→            : c
+   475→        )
+   476→      };
+   477→    }
+   478→    return { cart: [...state.cart, item] };
+   479→  }),
+   480→  removeFromCart: (medicineId) => set((state) => ({
+   481→    cart: state.cart.filter(c => c.medicine.id !== medicineId)
+   482→  })),
+   483→  updateCartQuantity: (medicineId, quantity) => set((state) => ({
+   484→    cart: state.cart.map(c => 
+   485→      c.medicine.id === medicineId ? { ...c, quantity } : c
+   486→    )
+   487→  })),
+   488→  clearCart: () => set({ cart: [] }),
+   489→  
+   490→  // Home Care
+   491→  homeCareServices: [
+   492→    { id: 'hc-1', name: 'Perawatan Luka', description: 'Perawatan luka di rumah oleh perawat profesional', category: 'perawatan', price: 150000, duration: 60, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   493→    { id: 'hc-2', name: 'Injeksi/Suntik', description: 'Pemberian injeksi obat sesuai resep dokter', category: 'perawatan', price: 100000, duration: 30, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   494→    { id: 'hc-3', name: 'Cek Kesehatan Umum', description: 'Pemeriksaan kesehatan umum di rumah', category: 'pemeriksaan', price: 200000, duration: 45, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   495→    { id: 'hc-4', name: 'Fisioterapi', description: 'Terapi fisik di rumah', category: 'terapi', price: 250000, duration: 60, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   496→    { id: 'hc-5', name: 'Perawatan Lansia', description: 'Perawatan dan pendampingan lansia', category: 'pendampingan', price: 300000, duration: 120, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+   497→  ] as HomeCareService[],
+   498→  setHomeCareServices: (services) => set({ homeCareServices: services }),
+   499→  homeCareBookings: [],
+   500→  setHomeCareBookings: (bookings) => set({ homeCareBookings: bookings }),
+   501→  
+   502→  // Medical Records
+   503→  medicalRecords: [],
+   504→  setMedicalRecords: (records) => set({ medicalRecords: records }),
+   505→  addMedicalRecord: (record) => set((state) => ({ medicalRecords: [...state.medicalRecords, record] })),
+   506→  updateMedicalRecord: (recordId, data) => set((state) => ({
+   507→    medicalRecords: state.medicalRecords.map(r => 
+   508→      r.id === recordId ? { ...r, ...data, updatedAt: new Date().toISOString() } : r
+   509→    )
+   510→  })),
+   511→  
+   512→  // Notifications
+   513→  notifications: [
+   514→    { id: 'notif-1', userId: '', title: 'Selamat Datang!', message: "Selamat datang di CareLivia. Mulai konsultasi dengan dokter sekarang!", type: 'chat' as const, isRead: false, createdAt: new Date().toISOString() },
+   515→    { id: 'notif-2', userId: '', title: 'Promo Spesial', message: 'Diskon 20% untuk pembelian vitamin minggu ini!', type: 'pharmacy' as const, isRead: false, createdAt: new Date(Date.now() - 3600000).toISOString() },
+   516→    { id: 'notif-3', userId: '', title: 'Jadwal Konsultasi', message: 'Konsultasi Anda akan dimulai dalam 30 menit', type: 'consultation' as const, isRead: true, createdAt: new Date(Date.now() - 7200000).toISOString() },
+   517→  ] as Notification[],
+   518→  setNotifications: (notifications) => set({ notifications }),
+   519→  unreadCount: 0,
+   520→  setUnreadCount: (count) => set({ unreadCount: count }),
+   521→  
+   522→  // Payments
+   523→  payments: [],
+   524→  setPayments: (payments) => set({ payments }),
+   525→  
+   526→  // Prescriptions
+   527→  prescriptions: [],
+   528→  setPrescriptions: (prescriptions) => set({ prescriptions }),
+   529→  addPrescription: (prescription) => set((state) => ({ prescriptions: [...state.prescriptions, prescription] })),
+   530→  updatePrescriptionStatus: (prescriptionId, status) => set((state) => ({
+   531→    prescriptions: state.prescriptions.map(p => 
+   532→      p.id === prescriptionId ? { ...p, status } : p
+   533→    )
+   534→  })),
+   535→  
+   536→  // Articles
+   537→  articles: [],
+   538→  setArticles: (articles) => set({ articles }),
+   539→  
+   540→  // UI
+   541→  sidebarOpen: true,
+   542→  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+   543→  isLoading: false,
+   544→  setIsLoading: (loading) => set({ isLoading: loading }),
+   545→  selectedChatDoctor: null,
+   546→  setSelectedChatDoctor: (doctor) => set({ selectedChatDoctor: doctor }),
+   547→
+   548→  // Prescription Checkout
+   549→  pendingPrescriptionCheckout: null,
+   550→  setPendingPrescriptionCheckout: (prescription) => set({ pendingPrescriptionCheckout: prescription }),
+   551→
+   552→  // Screening
+   553→  screeningForms: [],
+   554→  setScreeningForms: (forms) => set({ screeningForms: forms }),
+   555→  addScreeningForm: (form) => set((state) => ({ screeningForms: [...state.screeningForms, form] })),
+   556→  updateScreeningForm: (formId, data) => set((state) => ({
+   557→    screeningForms: state.screeningForms.map((f) =>
+   558→      f.id === formId ? { ...f, ...data, updatedAt: new Date().toISOString() } : f
+   559→    ),
+   560→  })),
+   561→  screeningAuditLog: [],
+   562→  addAuditLog: (log) => set((state) => ({ screeningAuditLog: [...state.screeningAuditLog, log] })),
+   563→  clinicalAlerts: [],
+   564→  addClinicalAlert: (alert) => set((state) => ({ clinicalAlerts: [...state.clinicalAlerts, alert] })),
+   565→
+   566→  // Palliative Screening
+   567→  palliativeScreeningForms: [],
+   568→  setPalliativeScreeningForms: (forms) => set({ palliativeScreeningForms: forms }),
+   569→  addPalliativeScreeningForm: (form) => set((state) => ({ palliativeScreeningForms: [...state.palliativeScreeningForms, form] })),
+   570→  updatePalliativeScreeningForm: (formId, data) => set((state) => ({
+   571→    palliativeScreeningForms: state.palliativeScreeningForms.map((f) =>
+   572→      f.id === formId ? { ...f, ...data, updatedAt: new Date().toISOString() } : f
+   573→    ),
+   574→  })),
+   575→  activePalliativeFormId: null,
+   576→  setActivePalliativeFormId: (id) => set({ activePalliativeFormId: id }),
+   577→
+   578→  // Palliative Monitoring — initial state is EMPTY. All data is loaded
+   579→  // from Supabase by SupabaseSyncProvider on mount, and kept in sync via
+   580→  // Realtime subscriptions. Dummy/demo data has been removed.
+   581→  palliativePatients: [] as PalliativePatientInfo[],
+   582→  setPalliativePatients: (patients) => set({ palliativePatients: patients }),
+   583→  addPalliativePatient: async (patient) => {
+   584→    // ── If the patient already has a real UUID (e.g. from a Supabase
+   585→    //    Realtime event), just add it to local state — don't re-create.
+   586→    if (isValidUuid(patient.id)) {
+   587→      set((state) => {
+   588→        // Avoid duplicates
+   589→        if (state.palliativePatients.some((p) => p.id === patient.id)) return state;
+   590→        return { palliativePatients: [...state.palliativePatients, patient] };
+   591→      });
+   592→      return patient;
+   593→    }
+   594→
+   595→    // ── Otherwise, this is a NEW patient from the form. The `id` field
+   596→    //    (if present) is a custom temporary string like "pp-..." which is
+   597→    //    NOT a valid UUID. We MUST call Supabase to create the patient and
+   598→    //    get the real auto-generated UUID, then store that.
+   599→    console.log('[Store.addPalliativePatient] creating patient in Supabase (patient has no valid UUID yet):', {
+   600→      name: patient.patientName,
+   601→      rm: patient.rmNumber,
+   602→      temporaryId: patient.id,
+   603→    });
+   604→
+   605→    try {
+   606→      const created = await patientService.create(patient);
+   607→      if (created) {
+   608→        console.log('[Store.addPalliativePatient] SUCCESS — real UUID from Supabase:', created.id);
+   609→        set((state) => {
+   610→          // Avoid duplicates
+   611→          if (state.palliativePatients.some((p) => p.id === created.id)) return state;
+   612→          return { palliativePatients: [...state.palliativePatients, created] };
+   613→        });
+   614→        return created;
+   615→      }
+   616→      console.error('[Store.addPalliativePatient] patientService.create returned null — patient NOT saved to Supabase');
+   617→      return null;
+   618→    } catch (err) {
+   619→      console.error('[Store.addPalliativePatient] error creating patient in Supabase:', err);
+   620→      toast({
+   621→        title: 'Gagal menyimpan pasien',
+   622→        description: err instanceof Error ? err.message : 'Pasien tidak tersimpan ke database',
+   623→        variant: 'destructive',
+   624→      });
+   625→      return null;
+   626→    }
+   627→  },
+   628→  updatePalliativePatient: (patientId, data) => {
+   629→    set((state) => ({
+   630→      palliativePatients: state.palliativePatients.map(p =>
+   631→        p.id === patientId ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
+   632→      ),
+   633→    }));
+   634→    // Persist to Firestore
+   635→    firestoreSync.updatePatient(patientId, data).catch(err => console.error('[Store] Firestore sync error (updatePatient):', err));
+   636→  },
+   637→  removePalliativePatient: (patientId) => {
+   638→    set((state) => ({
+   639→      palliativePatients: state.palliativePatients.filter(p => p.id !== patientId),
+   640→    }));
+   641→    // Persist to Firestore
+   642→    firestoreSync.deletePatient(patientId).catch(err => console.error('[Store] Firestore sync error (removePatient):', err));
+   643→  },
+   644→  selectedPalliativePatientId: null,
+   645→  setSelectedPalliativePatientId: (id) => set({ selectedPalliativePatientId: id }),
+   646→  vitalSignRecords: [] as VitalSignRecordInfo[],
+   647→  setVitalSignRecords: (records) => set({ vitalSignRecords: records }),
+   648→  addVitalSignRecord: (record) => {
+   649→    set((state) => ({ vitalSignRecords: [...state.vitalSignRecords, record] }));
+   650→    // Persist to Firestore
+   651→    firestoreSync.addTTV(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addTTV):', err));
+   652→  },
+   653→  palliativeMedications: [] as PalliativeMedicationInfo[],
+   654→  setPalliativeMedications: (meds) => set({ palliativeMedications: meds }),
+   655→  addPalliativeMedication: (med) => {
+   656→    set((state) => ({ palliativeMedications: [...state.palliativeMedications, med] }));
+   657→    // Persist to Firestore
+   658→    firestoreSync.addObat(med.palliativePatientId, { ...med }).catch(err => console.error('[Store] Firestore sync error (addObat):', err));
+   659→  },
+   660→  updatePalliativeMedication: (medId, data) => {
+   661→    const state = useStore.getState();
+   662→    const med = state.palliativeMedications.find(m => m.id === medId);
+   663→    set((state) => ({
+   664→      palliativeMedications: state.palliativeMedications.map(m =>
+   665→        m.id === medId ? { ...m, ...data, updatedAt: new Date().toISOString() } : m
+   666→      ),
+   667→    }));
+   668→    // Persist to Firestore
+   669→    if (med) {
+   670→      firestoreSync.updateObat(med.palliativePatientId, medId, data).catch(err => console.error('[Store] Firestore sync error (updateObat):', err));
+   671→    }
+   672→  },
+   673→  advanceCarePlans: [] as AdvanceCarePlanInfo[],
+   674→  setAdvanceCarePlans: (plans) => set({ advanceCarePlans: plans }),
+   675→  addAdvanceCarePlan: (plan) => {
+   676→    set((state) => ({ advanceCarePlans: [...state.advanceCarePlans, plan] }));
+   677→    // Persist to Firestore
+   678→    firestoreSync.addACP(plan.palliativePatientId, { ...plan }).catch(err => console.error('[Store] Firestore sync error (addACP):', err));
+   679→  },
+   680→  updateAdvanceCarePlan: (planId, data) => {
+   681→    const state = useStore.getState();
+   682→    const plan = state.advanceCarePlans.find(p => p.id === planId);
+   683→    set((state) => ({
+   684→      advanceCarePlans: state.advanceCarePlans.map(p =>
+   685→        p.id === planId ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
+   686→      ),
+   687→    }));
+   688→    // Persist to Firestore
+   689→    if (plan) {
+   690→      firestoreSync.updateACP(plan.palliativePatientId, planId, data).catch(err => console.error('[Store] Firestore sync error (updateACP):', err));
+   691→    }
+   692→  },
+   693→  palliativeScreeningRecords: [] as PalliativeScreeningRecordInfo[],
+   694→  setPalliativeScreeningRecords: (records) => set({ palliativeScreeningRecords: records }),
+   695→  addPalliativeScreeningRecord: (record) => {
+   696→    set((state) => ({ palliativeScreeningRecords: [...state.palliativeScreeningRecords, record] }));
+   697→    // Persist to Firestore
+   698→    firestoreSync.addSkrining(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addSkrining):', err));
+   699→  },
+   700→  palliativeAiSummary: '',
+   701→  setPalliativeAiSummary: (summary) => set({ palliativeAiSummary: summary }),
+   702→  nutritionRecords: [] as NutritionRecordInfo[],
+   703→  setNutritionRecords: (records) => set({ nutritionRecords: records }),
+   704→  addNutritionRecord: (record) => {
+   705→    set((state) => ({ nutritionRecords: [...state.nutritionRecords, record] }));
+   706→    // Persist to Firestore
+   707→    firestoreSync.addNutrisi(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addNutrisi):', err));
+   708→  },
+   709→  nutritionAiRecommendation: null,
+   710→  setNutritionAiRecommendation: (rec) => set({ nutritionAiRecommendation: rec }),
+   711→
+   712→  // Palliative Chat — empty initial state; loaded from Supabase
+   713→  palliativeChatMessages: [] as PalliativeChatMessage[],
+   714→  setPalliativeChatMessages: (messages) => set({ palliativeChatMessages: messages }),
+   715→  addPalliativeChatMessage: (message) => {
+   716→    set((state) => ({ palliativeChatMessages: [...state.palliativeChatMessages, message] }));
+   717→    // Resolve patient_id for Supabase persistence. The message may carry
+   718→    // `palliativePatientId` directly, OR we extract it from the `roomId`
+   719→    // (which can be `${patientId}_${doctorId}` or `room-${patientId}`).
+   720→    let pid = (message as any).palliativePatientId as string | undefined;
+   721→    if (!isValidUuid(pid) && message.roomId) {
+   722→      // Try format: ${patientId}_${doctorId}
+   723→      const underscoreParts = message.roomId.split('_');
+   724→      if (underscoreParts.length > 0 && isValidUuid(underscoreParts[0])) {
+   725→        pid = underscoreParts[0];
+   726→      } else {
+   727→        // Try format: room-${patientId}
+   728→        const roomMatch = message.roomId.match(/^room-(.+)$/);
+   729→        if (roomMatch && isValidUuid(roomMatch[1])) pid = roomMatch[1];
+   730→      }
+   731→    }
+   732→    // Persist to Firestore
+   733→    firestoreSync.addChatMessage(pid || '', { ...message, palliativePatientId: pid }).catch(err => console.error('[Store] Firestore sync error (addChat):', err));
+   734→  },
+   735→  updatePalliativeChatMessage: (msgId, data) => {
+   736→    const state = useStore.getState();
+   737→    const msg = state.palliativeChatMessages.find(m => m.id === msgId);
+   738→    set((state) => ({
+   739→      palliativeChatMessages: state.palliativeChatMessages.map(m =>
+   740→        m.id === msgId ? { ...m, ...data } : m
+   741→      ),
+   742→    }));
+   743→    // Persist to Firestore
+   744→    if (msg) {
+   745→      firestoreSync.updateChatMessage(msg.palliativePatientId || '', msgId, data).catch(err => console.error('[Store] Firestore sync error (updateChat):', err));
+   746→    }
+   747→  },
+   748→  palliativeClinicalAlerts: [] as PalliativeClinicalAlert[],
+   749→  addPalliativeClinicalAlert: (alert) => {
+   750→    set((state) => ({ palliativeClinicalAlerts: [...state.palliativeClinicalAlerts, alert] }));
+   751→    // Persist to Firestore
+   752→    firestoreSync.addClinicalAlert(alert.palliativePatientId || alert.patientId, { ...alert }).catch(err => console.error('[Store] Firestore sync error (addAlert):', err));
+   753→  },
+   754→  markPalliativeAlertRead: (alertId) => {
+   755→    const state = useStore.getState();
+   756→    const alert = state.palliativeClinicalAlerts.find(a => a.id === alertId);
+   757→    set((state) => ({
+   758→      palliativeClinicalAlerts: state.palliativeClinicalAlerts.map(a =>
+   759→        a.id === alertId ? { ...a, isRead: true } : a
+   760→      ),
+   761→    }));
+   762→    // Persist to Firestore
+   763→    if (alert) {
+   764→      firestoreSync.markAlertRead(alert.palliativePatientId || alert.patientId, alertId).catch(err => console.error('[Store] Firestore sync error (markAlertRead):', err));
+   765→    }
+   766→  },
+   767→  palliativeAuditLog: [] as PalliativeAuditEntry[],
+   768→  addPalliativeAuditEntry: (entry) => {
+   769→    set((state) => ({ palliativeAuditLog: [...state.palliativeAuditLog, entry] }));
+   770→    // Persist to Firestore
+   771→    firestoreSync.addAuditEntry(entry.patientId || '', { ...entry }).catch(err => console.error('[Store] Firestore sync error (addAudit):', err));
+   772→  },
+   773→
+   774→  // Palliative Monitoring Integration
+   775→  palliativeMonitoringNotifications: [] as PalliativeMonitoringNotification[],
+   776→  addPalliativeMonitoringNotification: (notification) => set((state) => ({
+   777→    palliativeMonitoringNotifications: [notification, ...state.palliativeMonitoringNotifications],
+   778→  })),
+   779→  markPalliativeNotificationRead: (notificationId) => set((state) => ({
+   780→    palliativeMonitoringNotifications: state.palliativeMonitoringNotifications.map(n =>
+   781→      n.id === notificationId ? { ...n, isRead: true } : n
+   782→    ),
+   783→  })),
+   784→  markPatientAsPalliative: async (consultationId, doctorId, patientId, patientName, markingData) => {
+   785→    // Check if patient already exists in palliative patients
+   786→    const existing = useStore.getState().palliativePatients.some(p => p.patientId === patientId || p.id === patientId);
+   787→    if (existing) {
+   788→      console.log('[Store.markPatientAsPalliative] patient already exists, skipping');
+   789→      return null;
+   790→    }
+   791→
+   792→    // Build the patient object WITHOUT a custom id — let Supabase generate
+   793→    // the real UUID. We never use "pp-..." style ids anymore.
+   794→    const newPatientData: PalliativePatientInfo = {
+   795→      id: '', // will be replaced by Supabase-generated UUID
+   796→      patientId,
+   797→      patientName,
+   798→      primaryDiagnosis: markingData.primaryDiagnosis,
+   799→      secondaryDiagnosis: markingData.secondaryDiagnosis,
+   800→      attendingDoctorId: doctorId,
+   801→      attendingDoctorName: useStore.getState().doctors.find(d => d.id === doctorId)?.name,
+   802→      careStatus: 'rawat_jalan',
+   803→      patientStatus: 'aktif',
+   804→      monitoringStatus: 'monitoring_aktif',
+   805→      riskLevel: 'kuning',
+   806→      markingData,
+   807→      consultationId,
+   808→      createdAt: new Date().toISOString(),
+   809→      updatedAt: new Date().toISOString(),
+   810→    };
+   811→
+   812→    console.log('[Store.markPatientAsPalliative] creating patient in Supabase:', {
+   813→      name: patientName,
+   814→      doctorId,
+   815→      doctorIdIsUuid: isValidUuid(doctorId),
+   816→    });
+   817→
+   818→    try {
+   819→      const created = await patientService.create(newPatientData);
+   820→      if (!created) {
+   821→        console.error('[Store.markPatientAsPalliative] patientService.create returned null');
+   822→        return null;
+   823→      }
+   824→      console.log('[Store.markPatientAsPalliative] SUCCESS — real UUID:', created.id);
+   825→
+   826→      // Add to local state with the real UUID
+   827→      set((state) => ({
+   828→        palliativePatients: [...state.palliativePatients, created],
+   829→      }));
+   830→
+   831→      // Create notification (local-only — uses the real UUID as patientId)
+   832→      const notification: PalliativeMonitoringNotification = {
+   833→        id: `pn-${Date.now()}`,
+   834→        patientId: created.id,
+   835→        patientName,
+   836→        type: 'status_change',
+   837→        title: 'Pasien Baru Monitoring Paliatif',
+   838→        description: `${patientName} telah ditambahkan ke program monitoring paliatif`,
+   839→        severity: 'info',
+   840→        isRead: false,
+   841→        createdAt: new Date().toISOString(),
+   842→      };
+   843→      set((state) => ({
+   844→        palliativeMonitoringNotifications: [notification, ...state.palliativeMonitoringNotifications],
+   845→      }));
+   846→
+   847→      return created;
+   848→    } catch (err) {
+   849→      console.error('[Store.markPatientAsPalliative] error:', err);
+   850→      toast({
+   851→        title: 'Gagal menandai pasien paliatif',
+   852→        description: err instanceof Error ? err.message : 'Pasien tidak tersimpan ke database',
+   853→        variant: 'destructive',
+   854→      });
+   855→      return null;
+   856→    }
+   857→  },
+   858→  updatePalliativeMonitoringStatus: (patientId, status) => set((state) => ({
+   859→    palliativePatients: state.palliativePatients.map(p =>
+   860→      p.id === patientId ? { ...p, monitoringStatus: status, updatedAt: new Date().toISOString() } : p
+   861→    ),
+   862→  })),
+   863→  activeInlineScreeningFormId: null as string | null,
+   864→  setActiveInlineScreeningFormId: (id) => set({ activeInlineScreeningFormId: id }),
+   865→  activeInlineScreeningType: null as PalliativeMonitoringFormType | null,
+   866→  setActiveInlineScreeningType: (type) => set({ activeInlineScreeningType: type }),
+   867→
+   868→  // Screening Navigation state
+   869→  screeningNavigationFrom: null as 'monitoring' | null,
+   870→  setScreeningNavigationFrom: (from) => set({ screeningNavigationFrom: from }),
+   871→  screeningPreselectedPatientId: null as string | null,
+   872→  setScreeningPreselectedPatientId: (id) => set({ screeningPreselectedPatientId: id }),
+   873→
+   874→  // Palliative Program Completion
+   875→  palliativeProgramCompletions: [] as PalliativeProgramCompletion[],
+   876→  completePalliativeProgram: (patientId, completionData) => set((state) => {
+   877→    const completion: PalliativeProgramCompletion = {
+   878→      ...completionData,
+   879→      id: `pcomp-${Date.now()}`,
+   880→      createdAt: new Date().toISOString(),
+   881→    };
+   882→    // Update patient status to program_selesai
+   883→    const updatedPatients = state.palliativePatients.map(p =>
+   884→      p.id === patientId
+   885→        ? { ...p, patientStatus: 'program_selesai' as const, monitoringStatus: 'program_selesai' as PalliativeMonitoringStatus, updatedAt: new Date().toISOString() }
+   886→        : p
+   887→    );
+   888→    return {
+   889→      palliativeProgramCompletions: [...state.palliativeProgramCompletions, completion],
+   890→      palliativePatients: updatedPatients,
+   891→    };
+   892→  }),
+   893→
+   894→  // Daily Complaint (Keluhan Harian)
+   895→  dailyComplaints: [] as DailyComplaintRecord[],
+   896→  setDailyComplaints: (complaints) => set({ dailyComplaints: complaints }),
+   897→  addDailyComplaint: (complaint) => {
+   898→    set((state) => ({ dailyComplaints: [complaint, ...state.dailyComplaints] }));
+   899→    // Persist to Firestore
+   900→    firestoreSync.addKeluhan(complaint.palliativePatientId, { ...complaint }).catch(err => console.error('[Store] Firestore sync error (addKeluhan):', err));
+   901→  },
+   902→
+   903→  // RVSM — empty initial state; data is populated when a device connects
+   904→  rvsmDevices: [] as WearableDevice[],
+   905→  addRvsmDevice: (device) => set((state) => ({ rvsmDevices: [...state.rvsmDevices, device] })),
+   906→  updateRvsmDevice: (deviceId, data) => set((state) => ({
+   907→    rvsmDevices: state.rvsmDevices.map(d => d.id === deviceId ? { ...d, ...data } : d),
+   908→  })),
+   909→  removeRvsmDevice: (deviceId) => set((state) => ({ rvsmDevices: state.rvsmDevices.filter(d => d.id !== deviceId) })),
+   910→
+   911→  rvsmVitalData: [] as WearableVitalData[],
+   912→  addRvsmVitalData: (d) => set((state) => ({ rvsmVitalData: [...state.rvsmVitalData, d] })),
+   913→
+   914→  rvsmAlerts: [] as RVSMAlert[],
+   915→  addRvsmAlert: (alert) => set((state) => ({ rvsmAlerts: [...state.rvsmAlerts, alert] })),
+   916→  markRvsmAlertRead: (alertId) => set((state) => ({
+   917→    rvsmAlerts: state.rvsmAlerts.map(a => a.id === alertId ? { ...a, isRead: true } : a),
+   918→  })),
+   919→  acknowledgeRvsmAlert: (alertId, acknowledgedBy) => set((state) => ({
+   920→    rvsmAlerts: state.rvsmAlerts.map(a => a.id === alertId ? { ...a, isAcknowledged: true, acknowledgedBy, acknowledgedAt: new Date().toISOString() } : a),
+   921→  })),
+   922→
+   923→  rvsmDailyReports: [] as RVSMDailyReport[],
+   924→  addRvsmDailyReport: (report) => set((state) => ({ rvsmDailyReports: [...state.rvsmDailyReports, report] })),
+   925→
+   926→  rvsmFamilyAccess: [] as RVSMFamilyAccess[],
+   927→  addRvsmFamilyAccess: (access) => set((state) => ({ rvsmFamilyAccess: [...state.rvsmFamilyAccess, access] })),
+   928→  removeRvsmFamilyAccess: (accessId) => set((state) => ({ rvsmFamilyAccess: state.rvsmFamilyAccess.filter(a => a.id !== accessId) })),
+   929→
+   930→  rvsmAuditLog: [] as RVSMAuditEntry[],
+   931→  addRvsmAuditEntry: (entry) => set((state) => ({ rvsmAuditLog: [...state.rvsmAuditLog, entry] })),
+   932→
+   933→  rvsmPalliativeEstimates: [] as RVSMPalliativeScoreEstimate[],
+   934→  addRvsmPalliativeEstimate: (estimate) => set((state) => ({ rvsmPalliativeEstimates: [...state.rvsmPalliativeEstimates, estimate] })),
+   935→
+   936→  rvsmAiSummary: '',
+   937→  setRvsmAiSummary: (summary) => set({ rvsmAiSummary: summary }),
+   938→
+   939→  // Medication Monitoring
+   940→  medicationMonitoringForms: [] as MedicationMonitoringFormInfo[],
+   941→  addMedicationMonitoringForm: (form) => set((state) => ({ medicationMonitoringForms: [...state.medicationMonitoringForms, form] })),
+   942→  updateMedicationMonitoringForm: (formId, data) => set((state) => ({
+   943→    medicationMonitoringForms: state.medicationMonitoringForms.map(f =>
+   944→      f.id === formId ? { ...f, ...data, updatedAt: new Date().toISOString() } : f
+   945→    ),
+   946→  })),
+   947→  medicationMonitoringAlerts: [] as MedicationMonitoringAlert[],
+   948→  addMedicationMonitoringAlert: (alert) => set((state) => ({ medicationMonitoringAlerts: [...state.medicationMonitoringAlerts, alert] })),
+   949→  markMedicationMonitoringAlertRead: (alertId) => set((state) => ({
+   950→    medicationMonitoringAlerts: state.medicationMonitoringAlerts.map(a =>
+   951→      a.id === alertId ? { ...a, isRead: true } : a
+   952→    ),
+   953→  })),
+   954→  medicationMonitoringAuditLog: [] as MedicationMonitoringAuditEntry[],
+   955→  addMedicationMonitoringAuditEntry: (entry) => set((state) => ({ medicationMonitoringAuditLog: [...state.medicationMonitoringAuditLog, entry] })),
+   956→  medicationComplianceSummaries: [] as MedicationComplianceSummary[],
+   957→  addMedicationComplianceSummary: (summary) => set((state) => ({ medicationComplianceSummaries: [...state.medicationComplianceSummaries, summary] })),
+   958→
+   959→  // Palliative Resume Medis & Surat Rujukan
+   960→  palliativeResumes: [] as PalliativeResumeMedis[],
+   961→  addPalliativeResume: (resume) => {
+   962→    set((state) => ({ palliativeResumes: [...state.palliativeResumes, resume] }));
+   963→    // Persist to Firestore
+   964→    firestoreSync.addResume(resume.palliativePatientId, { ...resume }).catch(err => console.error('[Store] Firestore sync error (addResume):', err));
+   965→  },
+   966→  updatePalliativeResume: (resumeId, data) => {
+   967→    const state = useStore.getState();
+   968→    const resume = state.palliativeResumes.find(r => r.id === resumeId);
+   969→    set((state) => ({
+   970→      palliativeResumes: state.palliativeResumes.map(r =>
+   971→        r.id === resumeId ? { ...r, ...data, updatedAt: new Date().toISOString() } : r
+   972→      ),
+   973→    }));
+   974→    // Persist to Firestore
+   975→    if (resume) {
+   976→      firestoreSync.updateResume(resume.palliativePatientId, resumeId, data).catch(err => console.error('[Store] Firestore sync error (updateResume):', err));
+   977→    }
+   978→  },
+   979→  palliativeReferralLetters: [] as PalliativeReferralLetter[],
+   980→  addPalliativeReferralLetter: (letter) => set((state) => ({ palliativeReferralLetters: [...state.palliativeReferralLetters, letter] })),
+   981→  updatePalliativeReferralLetter: (letterId, data) => set((state) => ({
+   982→    palliativeReferralLetters: state.palliativeReferralLetters.map(l =>
+   983→      l.id === letterId ? { ...l, ...data, updatedAt: new Date().toISOString() } : l
+   984→    ),
+   985→  })),
+   986→  palliativeDocumentAuditLog: [] as PalliativeDocumentAuditEntry[],
+   987→  addPalliativeDocumentAuditEntry: (entry) => set((state) => ({ palliativeDocumentAuditLog: [...state.palliativeDocumentAuditLog, entry] })),
+   988→
+   989→  // Social Support Management — empty initial state; loaded from Supabase
+   990→  socialAssessments: [] as SocialAssessmentRecord[],
+   991→  addSocialAssessment: (record) => {
+   992→    set((state) => ({ socialAssessments: [...state.socialAssessments, record] }));
+   993→    // Persist to Firestore
+   994→    firestoreSync.addSosial(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addSosial):', err));
+   995→  },
+   996→  updateSocialAssessment: (id, data) => set((state) => ({
+   997→    socialAssessments: state.socialAssessments.map(a => a.id === id ? { ...a, ...data, updatedAt: new Date().toISOString() } : a),
+   998→  })),
+   999→  caregivers: [] as CaregiverInfo[],
+  1000→  addCaregiver: (caregiver) => set((state) => ({ caregivers: [...state.caregivers, caregiver] })),
+  1001→  updateCaregiver: (id, data) => set((state) => ({
+  1002→    caregivers: state.caregivers.map(c => c.id === id ? { ...c, ...data, updatedAt: new Date().toISOString() } : c),
+  1003→  })),
+  1004→  removeCaregiver: (id) => set((state) => ({ caregivers: state.caregivers.filter(c => c.id !== id) })),
+  1005→  familyMeetings: [] as FamilyMeetingRecord[],
+  1006→  addFamilyMeeting: (meeting) => set((state) => ({ familyMeetings: [...state.familyMeetings, meeting] })),
+  1007→  updateFamilyMeeting: (id, data) => set((state) => ({
+  1008→    familyMeetings: state.familyMeetings.map(m => m.id === id ? { ...m, ...data, updatedAt: new Date().toISOString() } : m),
+  1009→  })),
+  1010→  // Edu materials are general (not patient-specific) — kept as default catalog
+  1011→  eduMaterials: [
+  1012→    { id: 'edu-1', title: 'Panduan Perawatan Pasien Paliatif di Rumah', category: 'perawatan_rumah' as const, description: 'Panduan lengkap perawatan harian pasien paliatif di rumah', type: 'pdf' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1013→    { id: 'edu-2', title: 'Cara Mengelola Nyeri di Rumah', category: 'perawatan_rumah' as const, description: 'Tips dan panduan manajemen nyeri untuk caregiver', type: 'artikel' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1014→    { id: 'edu-3', title: 'Panduan Caregiver: Menjaga Kesehatan Mental', category: 'panduan_caregiver' as const, description: 'Self-care untuk caregiver agar tidak burnout', type: 'artikel' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1015→    { id: 'edu-4', title: 'Video: Posisi Nyaman Pasien Bed Rest', category: 'video_edukasi' as const, description: 'Video tutorial posisi nyaman dan pencegahan dekubitus', type: 'video' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1016→    { id: 'edu-5', title: 'Dukungan Psikososial untuk Keluarga', category: 'dukungan_psikososial' as const, description: 'Mengenali tanda stres dan cara mengatasinya', type: 'artikel' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1017→    { id: 'edu-6', title: 'Kapan Harus ke UGD?', category: 'gawat_darurat' as const, description: 'Panduan mengenali tanda bahaya yang memerlukan penanganan darurat', type: 'infografis' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1018→    { id: 'edu-7', title: 'Persiapan Akhir Kehidupan', category: 'end_of_life' as const, description: 'Panduan mempersiapkan tahap akhir kehidupan dengan bermartabat', type: 'pdf' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1019→    { id: 'edu-8', title: 'FAQ: Pertanyaan Umum Keluarga Pasien Paliatif', category: 'faq' as const, description: 'Jawaban atas pertanyaan yang sering diajukan keluarga', type: 'faq' as const, accessCount: 0, accessLogs: [], isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  1020→  ] as EduMaterial[],
+  1021→  addEduMaterial: (material) => set((state) => ({ eduMaterials: [...state.eduMaterials, material] })),
+  1022→  updateEduMaterial: (id, data) => set((state) => ({
+  1023→    eduMaterials: state.eduMaterials.map(m => m.id === id ? { ...m, ...data, updatedAt: new Date().toISOString() } : m),
+  1024→  })),
+  1025→  logEduMaterialAccess: (materialId, accessedBy) => set((state) => ({
+  1026→    eduMaterials: state.eduMaterials.map(m => m.id === materialId ? {
+  1027→      ...m, accessCount: m.accessCount + 1,
+  1028→      accessLogs: [...m.accessLogs, { materialId, accessedBy, accessedAt: new Date().toISOString() }],
+  1029→    } : m),
+  1030→  })),
+  1031→  familyCoordinationNotes: [] as FamilyCoordinationNote[],
+  1032→  addFamilyCoordinationNote: (note) => set((state) => ({ familyCoordinationNotes: [...state.familyCoordinationNotes, note] })),
+  1033→  updateFamilyCoordinationNote: (id, data) => set((state) => ({
+  1034→    familyCoordinationNotes: state.familyCoordinationNotes.map(n => n.id === id ? { ...n, ...data, updatedAt: new Date().toISOString() } : n),
+  1035→  })),
+  1036→  emergencyContacts: [] as EmergencyContact[],
+  1037→  addEmergencyContact: (contact) => set((state) => ({ emergencyContacts: [...state.emergencyContacts, contact] })),
+  1038→  updateEmergencyContact: (id, data) => set((state) => ({
+  1039→    emergencyContacts: state.emergencyContacts.map(c => c.id === id ? { ...c, ...data, updatedAt: new Date().toISOString() } : c),
+  1040→  })),
+  1041→  removeEmergencyContact: (id) => set((state) => ({ emergencyContacts: state.emergencyContacts.filter(c => c.id !== id) })),
+  1042→  financialSupportRecords: [] as FinancialSupportRecord[],
+  1043→  addFinancialSupportRecord: (record) => set((state) => ({ financialSupportRecords: [...state.financialSupportRecords, record] })),
+  1044→  updateFinancialSupportRecord: (id, data) => set((state) => ({
+  1045→    financialSupportRecords: state.financialSupportRecords.map(r => r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r),
+  1046→  })),
+  1047→  transportRecords: [] as TransportRecord[],
+  1048→  addTransportRecord: (record) => set((state) => ({ transportRecords: [...state.transportRecords, record] })),
+  1049→  updateTransportRecord: (id, data) => set((state) => ({
+  1050→    transportRecords: state.transportRecords.map(r => r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r),
+  1051→  })),
+  1052→  socialAlerts: [] as SocialMonitoringAlert[],
+  1053→  addSocialAlert: (alert) => set((state) => ({ socialAlerts: [...state.socialAlerts, alert] })),
+  1054→  markSocialAlertRead: (alertId) => set((state) => ({
+  1055→    socialAlerts: state.socialAlerts.map(a => a.id === alertId ? { ...a, isRead: true } : a),
+  1056→  })),
+  1057→
+  1058→  // AI Social Needs Analysis
+  1059→  aiSocialAnalysisResult: null,
+  1060→  setAiSocialAnalysisResult: (result) => set({ aiSocialAnalysisResult: result }),
+  1061→  aiSocialAnalysisLoading: false,
+  1062→  setAiSocialAnalysisLoading: (loading) => set({ aiSocialAnalysisLoading: loading }),
+  1063→  aiSocialAnalysisRecords: [],
+  1064→  addAiSocialAnalysisRecord: (record) => set((state) => ({ aiSocialAnalysisRecords: [...state.aiSocialAnalysisRecords, record] })),
+  1065→  aiSocialPopulationStats: null,
+  1066→  setAiSocialPopulationStats: (stats) => set({ aiSocialPopulationStats: stats }),
+  1067→
+  1068→  // Patient Paliatif Module — empty initial state; loaded from Supabase
+  1069→  patientTransportRequests: [] as PatientTransportRequest[],
+  1070→  addPatientTransportRequest: (request) => set((state) => ({ patientTransportRequests: [...state.patientTransportRequests, request] })),
+  1071→  updatePatientTransportRequest: (id, data) => set((state) => ({
+  1072→    patientTransportRequests: state.patientTransportRequests.map(r =>
+  1073→      r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r
+  1074→    ),
+  1075→  })),
+  1076→  patientCareUpdates: [] as PatientCareUpdate[],
+  1077→  addPatientCareUpdate: (update) => set((state) => ({ patientCareUpdates: [...state.patientCareUpdates, update] })),
+  1078→  markCareUpdateViewed: (id) => set((state) => ({
+  1079→    patientCareUpdates: state.patientCareUpdates.map(u =>
+  1080→      u.id === id ? { ...u, viewedByDoctor: true } : u
+  1081→    ),
+  1082→  })),
+  1083→  patientPaliatifMessages: [] as PatientPaliatifChatMessage[],
+  1084→  addPatientPaliatifMessage: (message) => set((state) => ({ patientPaliatifMessages: [...state.patientPaliatifMessages, message] })),
+  1085→}));
+  1086→

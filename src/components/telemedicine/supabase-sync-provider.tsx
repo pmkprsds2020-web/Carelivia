@@ -160,6 +160,114 @@ async function loadPatientScopedData(
       }
     } catch (e) { warn('acpService.getAll', e); }
 
+    // Caregivers
+    try {
+      const rows = await svc.caregiverService.getAll(pid);
+      if (Array.isArray(rows)) {
+        const cur = useStore.getState().caregivers;
+        const others = cur.filter((c) => c.palliativePatientId !== pid);
+        useStore.setState({
+          caregivers: [...others, ...(rows as any[])],
+        });
+      }
+    } catch (e) { warn('caregiverService.getAll', e); }
+
+    // Family meetings
+    try {
+      const rows = await svc.familyMeetingService.getAll(pid);
+      if (Array.isArray(rows)) {
+        const cur = useStore.getState().familyMeetings;
+        const others = cur.filter((m) => m.palliativePatientId !== pid);
+        useStore.setState({
+          familyMeetings: [...others, ...(rows as any[])],
+        });
+      }
+    } catch (e) { warn('familyMeetingService.getAll', e); }
+
+    // Family coordination notes
+    try {
+      const rows = await svc.familyCoordinationNoteService.getAll(pid);
+      if (Array.isArray(rows)) {
+        const cur = useStore.getState().familyCoordinationNotes;
+        const others = cur.filter((n) => n.palliativePatientId !== pid);
+        useStore.setState({
+          familyCoordinationNotes: [...others, ...(rows as any[])],
+        });
+      }
+    } catch (e) { warn('familyCoordinationNoteService.getAll', e); }
+
+    // Emergency contacts
+    try {
+      const rows = await svc.emergencyContactService.getAll(pid);
+      if (Array.isArray(rows)) {
+        const cur = useStore.getState().emergencyContacts;
+        const others = cur.filter((c) => c.palliativePatientId !== pid);
+        useStore.setState({
+          emergencyContacts: [...others, ...(rows as any[])],
+        });
+      }
+    } catch (e) { warn('emergencyContactService.getAll', e); }
+
+    // Financial support
+    try {
+      const rows = await svc.financialSupportService.getAll(pid);
+      if (Array.isArray(rows)) {
+        const cur = useStore.getState().financialSupportRecords;
+        const others = cur.filter((r) => r.palliativePatientId !== pid);
+        useStore.setState({
+          financialSupportRecords: [...others, ...(rows as any[])],
+        });
+      }
+    } catch (e) { warn('financialSupportService.getAll', e); }
+
+    // Transport records
+    try {
+      const rows = await svc.transportRecordService.getAll(pid);
+      if (Array.isArray(rows)) {
+        const cur = useStore.getState().transportRecords;
+        const others = cur.filter((r) => r.palliativePatientId !== pid);
+        useStore.setState({
+          transportRecords: [...others, ...(rows as any[])],
+        });
+      }
+    } catch (e) { warn('transportRecordService.getAll', e); }
+
+    // Palliative resumes
+    try {
+      const rows = await svc.palliativeResumeService.getAll(pid);
+      if (Array.isArray(rows)) {
+        const cur = useStore.getState().palliativeResumes;
+        const others = cur.filter((r) => r.palliativePatientId !== pid);
+        useStore.setState({
+          palliativeResumes: [...others, ...(rows as any[])],
+        });
+      }
+    } catch (e) { warn('palliativeResumeService.getAll', e); }
+
+    // Referral letters
+    try {
+      const rows = await svc.referralLetterService.getAll(pid);
+      if (Array.isArray(rows)) {
+        const cur = useStore.getState().palliativeReferralLetters;
+        const others = cur.filter((l) => l.palliativePatientId !== pid);
+        useStore.setState({
+          palliativeReferralLetters: [...others, ...(rows as any[])],
+        });
+      }
+    } catch (e) { warn('referralLetterService.getAll', e); }
+
+    // Patient documents (Pemeriksaan Penunjang)
+    try {
+      const rows = await svc.documentService.list(pid);
+      if (Array.isArray(rows)) {
+        const cur = (useStore.getState() as any).patientDocuments ?? [];
+        const others = cur.filter((d: any) => d.patientId !== pid);
+        useStore.setState({
+          patientDocuments: [...others, ...(rows as any[])],
+        } as any);
+      }
+    } catch (e) { warn('documentService.list', e); }
+
     // Clinical alerts — loaded via direct Supabase query (the sibling agent's
     // notificationService is for user notifications, not clinical alerts).
     try {
@@ -600,6 +708,131 @@ function handleNotificationEvent(_store: ReturnType<typeof useStore.getState>, _
   // Supabase notifications to populate the store, dispatch here.
 }
 
+// ─── Generic realtime handlers for the new modules ─────────────────────────
+//
+// These tables (caregivers, family_meetings, family_coordination_notes,
+// emergency_contacts, financial_support, transport_records, palliative_resumes,
+// referral_letters, patient_documents) all follow the same pattern:
+//   - DELETE → filter the matching array by id
+//   - INSERT/UPDATE → reload via the service's getAll(patientId) and
+//     upsert the fresh row into the store array.
+//
+// We use a factory so each table gets its own typed handler without duplicating
+// the boilerplate.
+
+function makeGenericHandler<T extends { id: string; palliativePatientId?: string }>(opts: {
+  label: string;
+  getState: () => T[];
+  setState: (updater: (cur: T[]) => T[]) => void;
+  reload: (patientId: string) => Promise<T[]>;
+}): (store: ReturnType<typeof useStore.getState>, p: RealtimePayload) => void {
+  return (_store, p) => {
+    const row = p.new;
+    const id = (row?.id ?? p.old?.id) as string | undefined;
+    if (!id) return;
+    const patientId = (row?.patient_id ?? row?.palliativePatientId ?? p.old?.patient_id) as string | undefined;
+    if (p.eventType === 'DELETE') {
+      opts.setState((cur) => cur.filter((x) => x.id !== id));
+      return;
+    }
+    if (!patientId) return;
+    opts
+      .reload(patientId)
+      .then((rows) => {
+        const fresh = rows.find((r) => r.id === id);
+        if (!fresh) return;
+        opts.setState((cur) => {
+          const exists = cur.some((x) => x.id === id);
+          return exists ? cur.map((x) => (x.id === id ? fresh : x)) : [...cur, fresh];
+        });
+      })
+      .catch((e: unknown) => warn(`realtime ${opts.label}`, e));
+  };
+}
+
+const handleCaregiverEvent = makeGenericHandler({
+  label: 'caregivers',
+  getState: () => useStore.getState().caregivers as any[],
+  setState: (updater) => useStore.setState((s) => ({ caregivers: updater(s.caregivers as any[]) as any })),
+  reload: (pid) => svc.caregiverService.getAll(pid) as Promise<any[]>,
+});
+
+const handleFamilyMeetingEvent = makeGenericHandler({
+  label: 'family_meetings',
+  getState: () => useStore.getState().familyMeetings as any[],
+  setState: (updater) => useStore.setState((s) => ({ familyMeetings: updater(s.familyMeetings as any[]) as any })),
+  reload: (pid) => svc.familyMeetingService.getAll(pid) as Promise<any[]>,
+});
+
+const handleFamilyCoordinationNoteEvent = makeGenericHandler({
+  label: 'family_coordination_notes',
+  getState: () => useStore.getState().familyCoordinationNotes as any[],
+  setState: (updater) => useStore.setState((s) => ({ familyCoordinationNotes: updater(s.familyCoordinationNotes as any[]) as any })),
+  reload: (pid) => svc.familyCoordinationNoteService.getAll(pid) as Promise<any[]>,
+});
+
+const handleEmergencyContactEvent = makeGenericHandler({
+  label: 'emergency_contacts',
+  getState: () => useStore.getState().emergencyContacts as any[],
+  setState: (updater) => useStore.setState((s) => ({ emergencyContacts: updater(s.emergencyContacts as any[]) as any })),
+  reload: (pid) => svc.emergencyContactService.getAll(pid) as Promise<any[]>,
+});
+
+const handleFinancialSupportEvent = makeGenericHandler({
+  label: 'financial_support',
+  getState: () => useStore.getState().financialSupportRecords as any[],
+  setState: (updater) => useStore.setState((s) => ({ financialSupportRecords: updater(s.financialSupportRecords as any[]) as any })),
+  reload: (pid) => svc.financialSupportService.getAll(pid) as Promise<any[]>,
+});
+
+const handleTransportRecordEvent = makeGenericHandler({
+  label: 'transport_records',
+  getState: () => useStore.getState().transportRecords as any[],
+  setState: (updater) => useStore.setState((s) => ({ transportRecords: updater(s.transportRecords as any[]) as any })),
+  reload: (pid) => svc.transportRecordService.getAll(pid) as Promise<any[]>,
+});
+
+const handlePalliativeResumeEvent = makeGenericHandler({
+  label: 'palliative_resumes',
+  getState: () => useStore.getState().palliativeResumes as any[],
+  setState: (updater) => useStore.setState((s) => ({ palliativeResumes: updater(s.palliativeResumes as any[]) as any })),
+  reload: (pid) => svc.palliativeResumeService.getAll(pid) as Promise<any[]>,
+});
+
+const handleReferralLetterEvent = makeGenericHandler({
+  label: 'referral_letters',
+  getState: () => useStore.getState().palliativeReferralLetters as any[],
+  setState: (updater) => useStore.setState((s) => ({ palliativeReferralLetters: updater(s.palliativeReferralLetters as any[]) as any })),
+  reload: (pid) => svc.referralLetterService.getAll(pid) as Promise<any[]>,
+});
+
+const handlePatientDocumentEvent = (_store: ReturnType<typeof useStore.getState>, p: RealtimePayload) => {
+  // patient_documents uses `patientId` (not `palliativePatientId`) on the TS
+  // side, so we handle it inline rather than via the generic factory.
+  const row = p.new;
+  const id = (row?.id ?? p.old?.id) as string | undefined;
+  if (!id) return;
+  const patientId = (row?.patient_id ?? p.old?.patient_id) as string | undefined;
+  if (p.eventType === 'DELETE') {
+    const cur = (useStore.getState() as any).patientDocuments ?? [];
+    useStore.setState({ patientDocuments: cur.filter((d: any) => d.id !== id) } as any);
+    return;
+  }
+  if (!patientId) return;
+  svc.documentService
+    .list(patientId)
+    .then((rows) => {
+      const fresh = rows.find((r) => r.id === id);
+      if (!fresh) return;
+      const cur = (useStore.getState() as any).patientDocuments ?? [];
+      const exists = cur.some((d: any) => d.id === id);
+      useStore.setState({
+        patientDocuments: exists ? cur.map((d: any) => (d.id === id ? fresh : d)) : [...cur, fresh],
+      } as any);
+    })
+    .catch((e: unknown) => warn('realtime patient_documents', e));
+};
+
 // ─── Provider ──────────────────────────────────────────────────────────────
 
 export function SupabaseSyncProvider({ children }: SupabaseSyncProviderProps) {
@@ -649,6 +882,16 @@ export function SupabaseSyncProvider({ children }: SupabaseSyncProviderProps) {
         ['clinical_alerts', handleClinicalAlertEvent],
         ['audit_log', handleAuditLogEvent],
         ['notifications', handleNotificationEvent],
+        // ── New modules — full realtime sync ──────────────────────────────
+        ['caregivers', handleCaregiverEvent],
+        ['family_meetings', handleFamilyMeetingEvent],
+        ['family_coordination_notes', handleFamilyCoordinationNoteEvent],
+        ['emergency_contacts', handleEmergencyContactEvent],
+        ['financial_support', handleFinancialSupportEvent],
+        ['transport_records', handleTransportRecordEvent],
+        ['palliative_resumes', handlePalliativeResumeEvent],
+        ['referral_letters', handleReferralLetterEvent],
+        ['patient_documents', handlePatientDocumentEvent],
       ];
 
       let builder = channel;
