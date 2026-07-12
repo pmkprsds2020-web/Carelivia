@@ -795,3 +795,52 @@ Stage Summary:
 - Realtime: All changes (services + exams) trigger Supabase Realtime subscriptions that refresh the UI without page reload.
 - Zero new TS/ESLint errors introduced. Dev server runs cleanly.
 - Both features production-ready and fully integrated with the existing CareLivia Monitoring Paliatif platform.
+
+---
+Task ID: 4
+Agent: main
+Task: Fix Clinical Alert Engine duplicate alert creation — 47,665 duplicates reduced to 33, loop eliminated
+
+Work Log:
+- Read worklog.md and explored the Clinical Alert Engine codebase (clinicalAlertEngine.ts, clinicalAlertService.ts, store.ts, supabase-sync-provider.tsx, clinical-alert-panel.tsx)
+- Identified 5 root causes of duplicate alert creation:
+  1. clinicalAlertService.create() used getByPatient() (fetch ALL alerts) for dedup — when this failed with 502 (overwhelmed by 3000+ rows), safeQuery returned [] → dedup saw nothing → INSERT duplicate. Exponential growth.
+  2. Realtime handlers (handleVitalEvent, handleScreeningEvent, handleMedicationEvent, handleNutritionEvent) called store.addXxxRecord(fresh) which triggered runClinicalAlertEngine() AND firestoreSync.addXxx() (duplicate INSERT) — unlike handleClinicalAlertEvent/handleMessageEvent which correctly used useStore.setState.
+  3. loadPatientScopedData called store.addPalliativeClinicalAlert(alert) and store.addPalliativeAuditEntry(entry) on initial load — these called firestoreSync which RE-INSERTed every loaded row back to Supabase, creating duplicates on every page load.
+  4. No throttle — multiple clinical events fired multiple scans in quick succession.
+  5. No auto-resolve — old ACTIVE alerts never resolved when condition normalized.
+- Fixed clinicalAlertService.ts:
+  * Added findActiveDup() — targeted dedup query (eq patient_id + eq alert_type), returns 'QUERY_FAILED' sentinel on error
+  * Changed create() to use findActiveDup() and ABORT on query failure (fail-safe: don't insert if can't verify)
+  * Changed dedup to be by (patient_id, alert_type) only — one ACTIVE alert per type per patient (per user spec)
+  * Added resolveByType() — resolves all ACTIVE alerts of a given type for auto-resolve
+  * Added cleanupDuplicates() — paginated cleanup that fetches ALL alerts (1000/page), groups by (patient_id, alert_type), deletes all but oldest per group
+- Fixed clinicalAlertEngine.ts:
+  * Added 30s throttle per patient (canScan/resetThrottle)
+  * Changed evaluateVitals to evaluate only the LATEST vital (not 3) to avoid multiple candidates per condition
+  * Rewrote evaluateAndPersist: batch-fetch active alerts ONCE, in-memory dedup, auto-resolve old alerts when condition normalizes, detailed logging (scan START/DONE with created/skipped/resolved counts)
+  * Added alertTypeToModule map so auto-resolve only fires for modules that had data in the scan
+- Fixed store.ts:
+  * Added canScan throttle check in runClinicalAlertEngine
+  * Added forceRunClinicalAlertEngine (bypasses throttle) for the manual Scan button
+- Fixed supabase-sync-provider.tsx:
+  * Changed handleVitalEvent, handleScreeningEvent, handleMedicationEvent, handleNutritionEvent, handleComplaintEvent, handleSocialEvent to use useStore.setState directly (NOT store.addXxxRecord) — prevents scan loop and duplicate INSERT
+  * Changed loadPatientScopedData clinical_alerts section to use useStore.setState directly (NOT store.addPalliativeClinicalAlert) — prevents re-INSERT on page load
+  * Changed loadPatientScopedData audit_log section to use useStore.setState directly (NOT store.addPalliativeAuditEntry)
+  * Added auto-cleanup on startup: runs cleanupDuplicates() then refreshes store with getAll(1000)
+- Fixed clinical-alert-panel.tsx:
+  * Changed Scan button to use forceRunClinicalAlertEngine (bypasses throttle)
+  * Added "Bersihkan Duplikat" button for manual cleanup
+- Verified with Agent Browser:
+  * Page loads cleanly, no errors
+  * Clinical Alert tab shows: Critical: 12, High: 3, Medium: 11, Resolved: 7 (total 33)
+  * Count stable at 33 after 30s — no new duplicates being created
+  * Auto-cleanup on startup deleted 46,649 historical duplicates
+  * Console shows clean logs: "scan START", "scan DONE — X created, Y skipped (dedup), Z auto-resolved"
+
+Stage Summary:
+- ROOT CAUSE: The old engine had no effective dedup (getByPatient fetched ALL alerts, failed with 502 at scale → no dedup → exponential duplicate growth). Realtime handlers and loadPatientScopedData re-INSERTed loaded rows, creating feedback loops.
+- FIX: 5-layer defense — (1) targeted+fail-safe dedup in create(), (2) batch in-memory dedup in evaluateAndPersist, (3) 30s throttle per patient, (4) realtime handlers use setState directly (no scan/insert), (5) auto-resolve when conditions normalize.
+- CLEANUP: 47,665 historical alerts → 33 (26 active + 7 resolved). 46,649 duplicates deleted.
+- STABILITY: Count stable at 33 after 30s. No new duplicates created. Loop eliminated.
+- Zero new TypeScript/ESLint errors (only pre-existing seed-palliative.js require-import error).

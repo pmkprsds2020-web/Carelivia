@@ -1,0 +1,735 @@
+     1→// ───────────────────────────────────────────────────────────────────────────
+     2→// clinicalAlertEngine — Early Warning System (EWS) Rule Engine
+     3→// ───────────────────────────────────────────────────────────────────────────
+     4→//
+     5→// Scans a patient's clinical data (TTV, Skrining, Obat, Nutrisi, Keluhan
+     6→// Harian, Sosial, Lab) and produces a list of alerts that should be created.
+     7→//
+     8→// The engine is PURE — it does NOT touch Supabase. It returns a list of
+     9→// `AlertCandidate` objects. The caller (store action or UI) passes them to
+    10→// `clinicalAlertService.create()`, which handles deduplication and persistence.
+    11→//
+    12→// Rules are based on the user's specification:
+    13→//   TTV:     SpO2<90, RR>30, SBP>180, DBP>110, SBP<90, HR>130, Temp>39
+    14→//   Skrining: ESAS-r Nyeri≥7, Sesak≥7, Distress≥6, PPS<40, SPICT positif
+    15→//   Obat:    tidak diminum 3 hari, hampir habis (<3 hari), efek samping berat
+    16→//   Nutrisi: tidak makan >24h, tidak minum >12h, penurunan BB >5%
+    17→//   Keluhan: sesak bertambah, nyeri bertambah, tidak BAB >5 hari, tidak BAK
+    18→//   Sosial:  caregiver burden tinggi, pasien hidup sendiri
+    19→//   Lab:     HbA1c≥9, GDP≥250, GDS≥300, LDL≥190, Kreatinin tinggi, Mikroalbumin positif
+    20→// ───────────────────────────────────────────────────────────────────────────
+    21→import type {
+    22→  VitalSignRecordInfo,
+    23→  PalliativeScreeningRecordInfo,
+    24→  PalliativeMedicationInfo,
+    25→  NutritionRecordInfo,
+    26→  DailyComplaintRecord,
+    27→  SocialAssessmentRecord,
+    28→  PalliativeClinicalAlert,
+    29→  ClinicalAlertSeverity,
+    30→  ClinicalAlertSource,
+    31→} from '@/lib/types';
+    32→import type { CreateAlertInput } from './clinicalAlertService';
+    33→import type { LabResult } from './supportingExamService';
+    34→
+    35→export type AlertCandidate = CreateAlertInput;
+    36→
+    37→export interface EnginePatientData {
+    38→  patientId: string;
+    39→  doctorId?: string;
+    40→  vitals: VitalSignRecordInfo[];
+    41→  screenings: PalliativeScreeningRecordInfo[];
+    42→  medications: PalliativeMedicationInfo[];
+    43→  nutrition: NutritionRecordInfo[];
+    44→  dailyComplaints: DailyComplaintRecord[];
+    45→  socialAssessments: SocialAssessmentRecord[];
+    46→  labResults?: LabResult[];
+    47→}
+    48→
+    49→// ── Helpers ─────────────────────────────────────────────────────────────────
+    50→
+    51→function num(v: unknown): number | null {
+    52→  if (v == null) return null;
+    53→  const n = Number(v);
+    54→  return isNaN(n) ? null : n;
+    55→}
+    56→
+    57→function hoursAgo(iso: string): number {
+    58→  return (Date.now() - new Date(iso).getTime()) / 3_600_000;
+    59→}
+    60→
+    61→function daysAgo(iso: string): number {
+    62→  return hoursAgo(iso) / 24;
+    63→}
+    64→
+    65→// ── TTV Rules ───────────────────────────────────────────────────────────────
+    66→
+    67→function evaluateVitals(data: EnginePatientData): AlertCandidate[] {
+    68→  const alerts: AlertCandidate[] = [];
+    69→  if (!data.vitals.length) return alerts;
+    70→
+    71→  // Evaluate the latest 3 vitals to catch recent deterioration.
+    72→  for (const v of data.vitals.slice(0, 3)) {
+    73→    const spo2 = num(v.oxygenSat);
+    74→    const rr = num(v.respiratoryRate);
+    75→    const sbp = num(v.systolicBP);
+    76→    const dbp = num(v.diastolicBP);
+    77→    const hr = num(v.heartRate);
+    78→    const temp = num(v.temperature);
+    79→
+    80→    // SpO2 < 90 → CRITICAL Hipoksemia
+    81→    if (spo2 !== null && spo2 < 90) {
+    82→      alerts.push({
+    83→        patientId: data.patientId,
+    84→        doctorId: data.doctorId,
+    85→        alertType: 'hipoksemia',
+    86→        severityLevel: 'CRITICAL',
+    87→        title: 'Hipoksemia',
+    88→        description: `Saturasi oksigen ${spo2}% (normal ≥90%). Segera evaluasi pasien dan pertimbangkan terapi oksigen.`,
+    89→        sourceModule: 'vital_signs',
+    90→        sourceRecordId: v.id,
+    91→        kategori: 'Pernapasan',
+    92→        recommendation: 'Evaluasi segera: pemberian oksigen suplemental, auskultasi paru, pertimbangkan ABG.',
+    93→      });
+    94→    }
+    95→
+    96→    // RR > 30 → CRITICAL Distres Pernapasan
+    97→    if (rr !== null && rr > 30) {
+    98→      alerts.push({
+    99→        patientId: data.patientId,
+   100→        doctorId: data.doctorId,
+   101→        alertType: 'distres_pernapasan',
+   102→        severityLevel: 'CRITICAL',
+   103→        title: 'Distres Pernapasan',
+   104→        description: `Frekuensi napas ${rr}/menit (normal 12-20). Pasien mengalami distres pernapasan.`,
+   105→        sourceModule: 'vital_signs',
+   106→        sourceRecordId: v.id,
+   107→        kategori: 'Pernapasan',
+   108→        recommendation: 'Evaluasi penyebab sesak, pertimbangkan posisi semi-Fowler, oksigen, dan nebulizer jika indikasi.',
+   109→      });
+   110→    }
+   111→
+   112→    // SBP > 180 or DBP > 110 → CRITICAL Krisis Hipertensi
+   113→    if ((sbp !== null && sbp > 180) || (dbp !== null && dbp > 110)) {
+   114→      alerts.push({
+   115→        patientId: data.patientId,
+   116→        doctorId: data.doctorId,
+   117→        alertType: 'krisis_hipertensi',
+   118→        severityLevel: 'CRITICAL',
+   119→        title: 'Krisis Hipertensi',
+   120→        description: `Tekanan darah ${sbp}/${dbp} mmHg. Krisis hipertensi — risiko stroke, edema paru, atau encefalopati.`,
+   121→        sourceModule: 'vital_signs',
+   122→        sourceRecordId: v.id,
+   123→        kategori: 'Kardiovaskular',
+   124→        recommendation: 'Turunkan TD bertahap (jangan terlalu cepat), evaluasi organ target, pertimbangkan antihipertensi IV.',
+   125→      });
+   126→    }
+   127→
+   128→    // SBP < 90 → HIGH Hipotensi
+   129→    if (sbp !== null && sbp < 90) {
+   130→      alerts.push({
+   131→        patientId: data.patientId,
+   132→        doctorId: data.doctorId,
+   133→        alertType: 'hipotensi',
+   134→        severityLevel: 'HIGH',
+   135→        title: 'Hipotensi',
+   136→        description: `Tekanan darah sistolik ${sbp} mmHg (<90). Risiko perfusi organ tidak adekuat.`,
+   137→        sourceModule: 'vital_signs',
+   138→        sourceRecordId: v.id,
+   139→        kategori: 'Kardiovaskular',
+   140→        recommendation: 'Evaluasi penyebab (hipovolemia, sepsis, kardiogenik), berikan cairan, pertimbangkan vasopresor.',
+   141→      });
+   142→    }
+   143→
+   144→    // HR > 130 → HIGH Takikardia Berat
+   145→    if (hr !== null && hr > 130) {
+   146→      alerts.push({
+   147→        patientId: data.patientId,
+   148→        doctorId: data.doctorId,
+   149→        alertType: 'takikardia',
+   150→        severityLevel: 'HIGH',
+   151→        title: 'Takikardia Berat',
+   152→        description: `Nadi ${hr} bpm (>130). Evaluasi penyebab takikardia berat.`,
+   153→        sourceModule: 'vital_signs',
+   154→        sourceRecordId: v.id,
+   155→        kategori: 'Kardiovaskular',
+   156→        recommendation: 'Evaluasi irama (EKG), cari penyebab (nyeri, demam, hipovolemia, tirotoksikosis), pertimbangkan beta-blocker.',
+   157→      });
+   158→    }
+   159→
+   160→    // Temp > 39 → HIGH Demam Tinggi
+   161→    if (temp !== null && temp > 39) {
+   162→      alerts.push({
+   163→        patientId: data.patientId,
+   164→        doctorId: data.doctorId,
+   165→        alertType: 'demam_tinggi',
+   166→        severityLevel: 'HIGH',
+   167→        title: 'Demam Tinggi',
+   168→        description: `Suhu ${temp}°C (>39°C). Demam tinggi — risiko dehidrasi dan perburukan kondisi.`,
+   169→        sourceModule: 'vital_signs',
+   170→        sourceRecordId: v.id,
+   171→        kategori: 'Infeksi',
+   172→        recommendation: 'Antipiretik, kompres dingin, evaluasi sumber infeksi, kultur jika perlu, pertimbangkan antibiotik empiris.',
+   173→      });
+   174→    }
+   175→  }
+   176→
+   177→  return alerts;
+   178→}
+   179→
+   180→// ── Skrining Rules ──────────────────────────────────────────────────────────
+   181→
+   182→function evaluateScreenings(data: EnginePatientData): AlertCandidate[] {
+   183→  const alerts: AlertCandidate[] = [];
+   184→  if (!data.screenings.length) return alerts;
+   185→
+   186→  // Group screenings by type, take the latest of each.
+   187→  const byType: Record<string, PalliativeScreeningRecordInfo[]> = {};
+   188→  for (const s of data.screenings) {
+   189→    const t = (s.screeningType || '').toLowerCase();
+   190→    if (!byType[t]) byType[t] = [];
+   191→    byType[t].push(s);
+   192→  }
+   193→
+   194→  for (const [type, records] of Object.entries(byType)) {
+   195→    const latest = records[0];
+   196→    if (!latest) continue;
+   197→    const score = num(latest.score);
+   198→    // `details` is a JSON string of the jawaban JSONB. Parse it to get individual scores.
+   199→    let jawaban: Record<string, any> = {};
+   200→    if (latest.details) {
+   201→      try {
+   202→        jawaban = typeof latest.details === 'string' ? JSON.parse(latest.details) : (latest.details as any);
+   203→      } catch { jawaban = {}; }
+   204→    }
+   205→
+   206→    if (type.includes('esas')) {
+   207→      // ESAS-r: check individual symptom scores (0-10). ≥7 = severe.
+   208→      const nyeri = num(jawaban.nyeri ?? jawaban.pain);
+   209→      const sesak = num(jawaban.sesak ?? jawaban.dyspnea ?? jawaban.shortness_of_breath);
+   210→      if (nyeri !== null && nyeri >= 7) {
+   211→        alerts.push({
+   212→          patientId: data.patientId,
+   213→          doctorId: data.doctorId,
+   214→          alertType: 'nyeri_berat',
+   215→          severityLevel: 'HIGH',
+   216→          title: 'Nyeri Berat (ESAS-r)',
+   217→          description: `Skrining ESAS-r: skor nyeri ${nyeri}/10 (≥7 = berat). Nyeri tidak terkontrol.`,
+   218→          sourceModule: 'screenings',
+   219→          sourceRecordId: latest.id,
+   220→          kategori: 'Nyeri',
+   221→          recommendation: 'Titrasi analgesik (eskalasi opioid sesuai tangga nyeri WHO), evaluasi multi-modal, pertimbangkan adjuvan.',
+   222→        });
+   223→      }
+   224→      if (sesak !== null && sesak >= 7) {
+   225→        alerts.push({
+   226→          patientId: data.patientId,
+   227→          doctorId: data.doctorId,
+   228→          alertType: 'sesak_berat',
+   229→          severityLevel: 'HIGH',
+   230→          title: 'Sesak Berat (ESAS-r)',
+   231→          description: `Skrining ESAS-r: skor sesak ${sesak}/10 (≥7 = berat). Sesak napas berat.`,
+   232→          sourceModule: 'screenings',
+   233→          sourceRecordId: latest.id,
+   234→          kategori: 'Pernapasan',
+   235→          recommendation: 'Oksigen suplemental, posisi semi-Fowler, evaluasi penyebab (efusi, PPOK, gagal jantung), morfin untuk sesak paliatif.',
+   236→        });
+   237→      }
+   238→    }
+   239→
+   240→    if (type.includes('distress')) {
+   241→      // Distress Thermometer: score ≥6 = severe distress
+   242→      if (score !== null && score >= 6) {
+   243→        alerts.push({
+   244→          patientId: data.patientId,
+   245→          doctorId: data.doctorId,
+   246→          alertType: 'distres_psikologis',
+   247→          severityLevel: 'MEDIUM',
+   248→          title: 'Distres Psikologis',
+   249→          description: `Distress Thermometer: skor ${score}/10 (≥6 = distres tinggi). Pasien mengalami distres psikologis bermakna.`,
+   250→          sourceModule: 'screenings',
+   251→          sourceRecordId: latest.id,
+   252→          kategori: 'Psikologis',
+   253→          recommendation: 'Rujuk ke konselor/psikolog, pertimbangkan intervensi psikososial, evaluasi kebutuhan anxiolitik.',
+   254→        });
+   255→      }
+   256→    }
+   257→
+   258→    if (type.includes('pps')) {
+   259→      // PPS < 40 → severe functional decline
+   260→      if (score !== null && score < 40) {
+   261→        alerts.push({
+   262→          patientId: data.patientId,
+   263→          doctorId: data.doctorId,
+   264→          alertType: 'penurunan_fungsi',
+   265→          severityLevel: 'HIGH',
+   266→          title: 'Penurunan Fungsi Berat (PPS)',
+   267→          description: `Palliative Performance Scale: ${score}% (<40%). Penurunan fungsi berat — pasien mendekati fase akhir.`,
+   268→          sourceModule: 'screenings',
+   269→          sourceRecordId: latest.id,
+   270→          kategori: 'Fungsional',
+   271→          recommendation: 'Diskusikan tujuan perawatan, pertimbangkan hospice, evaluasi ACP, siapkan keluarga.',
+   272→        });
+   273→      }
+   274→    }
+   275→
+   276→    if (type.includes('spict')) {
+   277→      // SPICT: any positive result = patient meets palliative care indicators
+   278→      if (score !== null && score > 0) {
+   279→        alerts.push({
+   280→          patientId: data.patientId,
+   281→          doctorId: data.doctorId,
+   282→          alertType: 'spict_positif',
+   283→          severityLevel: 'MEDIUM',
+   284→          title: 'SPICT Positif',
+   285→          description: `SPICT: ${score} indikator terdeteksi. Pasien memenuhi indikator kebutuhan paliatif lanjutan.`,
+   286→          sourceModule: 'screenings',
+   287→          sourceRecordId: latest.id,
+   288→          kategori: 'Paliatif',
+   289→          recommendation: 'Konsultasi tim paliatif, evaluasi gejala komprehensif, diskusikan rencana perawatan.',
+   290→        });
+   291→      }
+   292→    }
+   293→  }
+   294→
+   295→  return alerts;
+   296→}
+   297→
+   298→// ── Obat Rules ──────────────────────────────────────────────────────────────
+   299→
+   300→function evaluateMedications(data: EnginePatientData): AlertCandidate[] {
+   301→  const alerts: AlertCandidate[] = [];
+   302→  for (const med of data.medications) {
+   303→    if (!med.isActive) continue;
+   304→
+   305→    // Check adherence — if the patient has missed doses for 3+ consecutive records
+   306→    const adherences = Array.isArray(med.adherences) ? med.adherences : [];
+   307→    if (adherences.length >= 3) {
+   308→      // Check last 3 adherence records — if all missed, alert.
+   309→      const last3 = adherences.slice(0, 3);
+   310→      const allMissed = last3.every(
+   311→        (a: any) => a.takenOnTime === false || a.missedDose === true
+   312→      );
+   313→      if (allMissed) {
+   314→        alerts.push({
+   315→          patientId: data.patientId,
+   316→          doctorId: data.doctorId,
+   317→          alertType: 'obat_tidak_diminum',
+   318→          severityLevel: 'MEDIUM',
+   319→          title: 'Kepatuhan Obat Rendah',
+   320→          description: `Obat "${med.medicineName}" tidak diminum selama 3 hari terakhir. Kepatuhan rendah — risiko perburukan gejala.`,
+   321→          sourceModule: 'medications',
+   322→          sourceRecordId: med.id,
+   323→          kategori: 'Kepatuhan',
+   324→          recommendation: 'Evaluasi hambatan kepatuhan (efek samping, biaya, lupa), edukasi pasien/keluarga, pertimbangkan reminder.',
+   325→        });
+   326→      }
+   327→    }
+   328→
+   329→    // Check stock — if endDate is within 3 days, or notes mention low stock
+   330→    const endDate = med.endDate;
+   331→    if (endDate) {
+   332→      const daysLeft = daysAgo(endDate) * -1; // positive = future
+   333→      if (daysLeft >= 0 && daysLeft < 3) {
+   334→        alerts.push({
+   335→          patientId: data.patientId,
+   336→          doctorId: data.doctorId,
+   337→          alertType: 'obat_hampir_habis',
+   338→          severityLevel: 'LOW',
+   339→          title: 'Obat Hampir Habis',
+   340→          description: `Obat "${med.medicineName}" diperkirakan habis dalam ${Math.ceil(daysLeft)} hari (tanggal selesai: ${endDate}). Perlu resep ulang.`,
+   341→          sourceModule: 'medications',
+   342→          sourceRecordId: med.id,
+   343→          kategori: 'Logistik',
+   344→          recommendation: 'Buat resep ulang, koordinasi dengan apotek, pastikan pasien tidak kehabisan obat.',
+   345→        });
+   346→      }
+   347→    }
+   348→
+   349→    // Check for severe side effects reported in notes
+   350→    const efekSamping = med.notes;
+   351→    if (efekSamping && typeof efekSamping === 'string' && efekSamping.toLowerCase().match(/berat|parah|severe|anafilaks|urtikaria|syok|reaksi alergi/)) {
+   352→      alerts.push({
+   353→        patientId: data.patientId,
+   354→        doctorId: data.doctorId,
+   355→        alertType: 'efek_samping_berat',
+   356→        severityLevel: 'HIGH',
+   357→        title: 'Efek Samping Obat Berat',
+   358→        description: `Efek samping berat dilaporkan untuk obat "${med.medicineName}": ${efekSamping}.`,
+   359→        sourceModule: 'medications',
+   360→        sourceRecordId: med.id,
+   361→        kategori: 'Farmakologi',
+   362→        recommendation: 'Hentikan atau reduksi obat, evaluasi gejala, pertimbangkan obat alternatif, laporkan ke farmakovigilans.',
+   363→      });
+   364→    }
+   365→  }
+   366→  return alerts;
+   367→}
+   368→
+   369→// ── Nutrisi Rules ───────────────────────────────────────────────────────────
+   370→
+   371→function evaluateNutrition(data: EnginePatientData): AlertCandidate[] {
+   372→  const alerts: AlertCandidate[] = [];
+   373→  if (!data.nutrition.length) return alerts;
+   374→  const latest = data.nutrition[0];
+   375→
+   376→  // Check for no eating > 24h — if the latest nutrition record shows 0 calorie intake
+   377→  // and it's from the last 48 hours.
+   378→  const kaloriTercapai = num(latest.actualIntakeKcal);
+   379→  const recordedHoursAgo = latest.recordedAt ? hoursAgo(latest.recordedAt) : null;
+   380→  if (kaloriTercapai !== null && kaloriTercapai === 0 && recordedHoursAgo !== null && recordedHoursAgo <= 48) {
+   381→    alerts.push({
+   382→      patientId: data.patientId,
+   383→      doctorId: data.doctorId,
+   384→      alertType: 'risiko_malnutrisi',
+   385→      severityLevel: 'HIGH',
+   386→      title: 'Risiko Malnutrisi',
+   387→      description: `Asupan kalori 0 kcal (tidak makan >24 jam). Risiko malnutrisi tinggi.`,
+   388→      sourceModule: 'nutrition',
+   389→      sourceRecordId: latest.id,
+   390→      kategori: 'Nutrisi',
+   391→      recommendation: 'Evaluasi penyebab (mual, nyeri, depresi, disfagia), pertimbangkan nutrisi enteral/parenteral, konsul gizi.',
+   392→    });
+   393→  }
+   394→
+   395→  // Check for >5% weight loss — compare latest vs earliest weight.
+   396→  if (data.nutrition.length >= 2) {
+   397→    const latestBb = num(latest.weight);
+   398→    const earliest = data.nutrition[data.nutrition.length - 1];
+   399→    const earliestBb = num(earliest.weight);
+   400→    if (latestBb !== null && earliestBb !== null && earliestBb > 0) {
+   401→      const drop = ((earliestBb - latestBb) / earliestBb) * 100;
+   402→      if (drop > 5) {
+   403→        alerts.push({
+   404→          patientId: data.patientId,
+   405→          doctorId: data.doctorId,
+   406→          alertType: 'penurunan_bb',
+   407→          severityLevel: 'MEDIUM',
+   408→          title: 'Penurunan Berat Badan',
+   409→          description: `Penurunan berat badan ${drop.toFixed(1)}% (dari ${earliestBb}kg ke ${latestBb}kg). Melebihi ambang 5%.`,
+   410→          sourceModule: 'nutrition',
+   411→          sourceRecordId: latest.id,
+   412→          kategori: 'Nutrisi',
+   413→          recommendation: 'Evaluasi status gizi (MNA/SNAQ), tingkatkan asupan kalori-protein, pertimbangkan suplementasi.',
+   414→        });
+   415→      }
+   416→    }
+   417→  }
+   418→
+   419→  return alerts;
+   420→}
+   421→
+   422→// ── Keluhan Harian Rules ────────────────────────────────────────────────────
+   423→
+   424→function evaluateDailyComplaints(data: EnginePatientData): AlertCandidate[] {
+   425→  const alerts: AlertCandidate[] = [];
+   426→  if (!data.dailyComplaints.length) return alerts;
+   427→  const latest = data.dailyComplaints[0];
+   428→
+   429→  // Sesak bertambah berat → CRITICAL
+   430→  if (latest.kondisiSesak === 'bertambah') {
+   431→    alerts.push({
+   432→      patientId: data.patientId,
+   433→      doctorId: data.doctorId,
+   434→      alertType: 'sesak_napas',
+   435→      severityLevel: 'CRITICAL',
+   436→      title: 'Sesak Bertambah Berat',
+   437→      description: `Keluhan harian: sesak napas bertambah berat. ${latest.deskripsiKeluhanBaru || ''}`.trim(),
+   438→      sourceModule: 'daily_complaints',
+   439→      sourceRecordId: latest.id,
+   440→      kategori: 'Pernapasan',
+   441→      recommendation: 'Evaluasi segera: auskultasi, SpO2, pertimbangkan oksigen dan posisi semi-Fowler.',
+   442→    });
+   443→  }
+   444→
+   445→  // Nyeri bertambah berat → HIGH
+   446→  if (latest.kondisiNyeri === 'bertambah') {
+   447→    alerts.push({
+   448→      patientId: data.patientId,
+   449→      doctorId: data.doctorId,
+   450→      alertType: 'nyeri_meningkat',
+   451→      severityLevel: 'HIGH',
+   452→      title: 'Nyeri Bertambah Berat',
+   453→      description: `Keluhan harian: nyeri bertambah berat. ${latest.deskripsiKeluhanBaru || ''}`.trim(),
+   454→      sourceModule: 'daily_complaints',
+   455→      sourceRecordId: latest.id,
+   456→      kategori: 'Nyeri',
+   457→      recommendation: 'Titrasi analgesik, evaluasi sumber nyeri, pertimbangkan adjuvan.',
+   458→    });
+   459→  }
+   460→
+   461→  // Kondisi tidak baik → HIGH
+   462→  if (latest.kondisiHariIni === 'tidak_baik') {
+   463→    alerts.push({
+   464→      patientId: data.patientId,
+   465→      doctorId: data.doctorId,
+   466→      alertType: 'perburukan',
+   467→      severityLevel: 'HIGH',
+   468→      title: 'Kondisi Pasien Tidak Baik',
+   469→      description: `Keluhan harian: pasien melaporkan kondisi tidak baik. ${latest.alasanKondisi || ''}`.trim(),
+   470→      sourceModule: 'daily_complaints',
+   471→      sourceRecordId: latest.id,
+   472→      kategori: 'Umum',
+   473→      recommendation: 'Evaluasi komprehensif, TTV, pertimbangkan kunjungan home care.',
+   474→    });
+   475→  }
+   476→
+   477→  // Tidak makan → MEDIUM (also covered by nutrition, but keluhan is patient-reported)
+   478→  if (latest.makanMinum === 'tidak') {
+   479→    alerts.push({
+   480→      patientId: data.patientId,
+   481→      doctorId: data.doctorId,
+   482→      alertType: 'risiko_malnutrisi',
+   483→      severityLevel: 'MEDIUM',
+   484→      title: 'Pasien Tidak Makan',
+   485→      description: `Keluhan harian: pasien tidak makan. ${latest.alasanMakanMinum || ''}`.trim(),
+   486→      sourceModule: 'daily_complaints',
+   487→      sourceRecordId: latest.id,
+   488→      kategori: 'Nutrisi',
+   489→      recommendation: 'Evaluasi penyebab, pertimbangkan nutrisi cair, monitor asupan.',
+   490→    });
+   491→  }
+   492→
+   493→  // Masalah obat → MEDIUM
+   494→  if (latest.masalahObat === 'ya') {
+   495→    alerts.push({
+   496→      patientId: data.patientId,
+   497→      doctorId: data.doctorId,
+   498→      alertType: 'efek_samping_berat',
+   499→      severityLevel: 'MEDIUM',
+   500→      title: 'Masalah Obat Dilaporkan',
+   501→      description: `Keluhan harian: pasien melaporkan masalah obat. ${latest.deskripsiMasalahObat || ''}`.trim(),
+   502→      sourceModule: 'daily_complaints',
+   503→      sourceRecordId: latest.id,
+   504→      kategori: 'Farmakologi',
+   505→      recommendation: 'Evaluasi obat dan efek samping, pertimbangkan adjustment dosis.',
+   506→    });
+   507→  }
+   508→
+   509→  return alerts;
+   510→}
+   511→
+   512→// ── Sosial Rules ────────────────────────────────────────────────────────────
+   513→
+   514→function evaluateSocial(data: EnginePatientData): AlertCandidate[] {
+   515→  const alerts: AlertCandidate[] = [];
+   516→  if (!data.socialAssessments.length) return alerts;
+   517→  const latest = data.socialAssessments[0];
+   518→
+   519→  // Caregiver burden tinggi — family support lemah/tidak_ada or priority tinggi
+   520→  if (latest.familySupportLevel === 'lemah' || latest.familySupportLevel === 'tidak_ada' || latest.priorityLevel === 'tinggi') {
+   521→    alerts.push({
+   522→      patientId: data.patientId,
+   523→      doctorId: data.doctorId,
+   524→      alertType: 'risiko_burnout_caregiver',
+   525→      severityLevel: 'MEDIUM',
+   526→      title: 'Risiko Burnout Caregiver',
+   527→      description: `Assessment sosial: dukungan keluarga ${latest.familySupportLevel} / prioritas ${latest.priorityLevel}. Risiko burnout caregiver.`,
+   528→      sourceModule: 'social_assessments',
+   529→      sourceRecordId: latest.id,
+   530→      kategori: 'Sosial',
+   531→      recommendation: 'Edukasi caregiver, pertimbangkan bantuan perawat home care, rujuk ke kelompok dukungan.',
+   532→    });
+   533→  }
+   534→
+   535→  // Pasien hidup sendiri / social isolation risk tinggi or no caregiver
+   536→  if (latest.socialIsolationRisk === 'tinggi' || latest.caregiverAvailability === 'tidak_tersedia') {
+   537→    alerts.push({
+   538→      patientId: data.patientId,
+   539→      doctorId: data.doctorId,
+   540→      alertType: 'risiko_dukungan_sosial',
+   541→      severityLevel: 'MEDIUM',
+   542→      title: 'Risiko Dukungan Sosial Rendah',
+   543→      description: `Assessment sosial: pasien berisiko isolasi sosial (risiko ${latest.socialIsolationRisk}) / caregiver ${latest.caregiverAvailability}.`,
+   544→      sourceModule: 'social_assessments',
+   545→      sourceRecordId: latest.id,
+   546→      kategori: 'Sosial',
+   547→      recommendation: 'Aktivasi dukungan komunitas, koordinasi dengan pekerja sosial, evaluasi kebutuhan home care.',
+   548→    });
+   549→  }
+   550→
+   551→  return alerts;
+   552→}
+   553→
+   554→// ── Lab Results Rules ───────────────────────────────────────────────────────
+   555→//
+   556→// Triggered when a new lab result is saved. Creates alerts for abnormal values:
+   557→//   HbA1c ≥ 9%      → CRITICAL (kadar gula darah tidak terkontrol berat)
+   558→//   GDP  ≥ 250      → CRITICAL (hiperglikemia berat)
+   559→//   GDS  ≥ 300      → CRITICAL (hiperglikemia berat)
+   560→//   LDL  ≥ 190      → HIGH     (hiperkolesterolemia berat)
+   561→//   Kreatinin > 2.0 → HIGH     (gangguan fungsi ginjal)
+   562→//   Mikroalbumin >30→ MEDIUM   (mikroalbuminuria positif)
+   563→// ───────────────────────────────────────────────────────────────────────────
+   564→
+   565→function evaluateLabResults(data: EnginePatientData): AlertCandidate[] {
+   566→  const alerts: AlertCandidate[] = [];
+   567→  if (!data.labResults || !data.labResults.length) return alerts;
+   568→  const latest = data.labResults[0];
+   569→
+   570→  const hba1c = num(latest.hba1c);
+   571→  const gdp = num(latest.gdp);
+   572→  const gds = num(latest.gds);
+   573→  const ldl = num(latest.ldl);
+   574→  const kreatinin = num(latest.kreatinin);
+   575→  const mikroalbumin = num(latest.mikroalbumin);
+   576→
+   577→  if (hba1c !== null && hba1c >= 9) {
+   578→    alerts.push({
+   579→      patientId: data.patientId,
+   580→      doctorId: data.doctorId,
+   581→      alertType: 'hba1c_tinggi',
+   582→      severityLevel: 'CRITICAL',
+   583→      title: 'HbA1c Tinggi (≥9%)',
+   584→      description: `Hasil lab: HbA1c ${hba1c}% (≥9%). Kadar gula darah tidak terkontrol berat — risiko komplikasi makrovaskular dan mikrovaskular.`,
+   585→      sourceModule: 'laboratory_results',
+   586→      sourceRecordId: latest.id,
+   587→      kategori: 'Metabolik',
+   588→      recommendation: 'Eskalasi terapi anti-diabetes (pertimbangkan insulin), evaluasi pola makan, edukasi pasien, monitoring gula darah lebih sering.',
+   589→    });
+   590→  }
+   591→
+   592→  if (gdp !== null && gdp >= 250) {
+   593→    alerts.push({
+   594→      patientId: data.patientId,
+   595→      doctorId: data.doctorId,
+   596→      alertType: 'gdp_tinggi',
+   597→      severityLevel: 'CRITICAL',
+   598→      title: 'Glukosa Darah Puasa Tinggi (≥250)',
+   599→      description: `Hasil lab: GDP ${gdp} mg/dL (≥250). Hiperglikemia berat — risiko ketoasidosis atau sindrom hiperosmolar.`,
+   600→      sourceModule: 'laboratory_results',
+   601→      sourceRecordId: latest.id,
+   602→      kategori: 'Metabolik',
+   603→      recommendation: 'Evaluasi segera status hidrasi dan keton, pertimbangkan insulin, koreksi penyebab (infeksi, kepatuhan obat).',
+   604→    });
+   605→  }
+   606→
+   607→  if (gds !== null && gds >= 300) {
+   608→    alerts.push({
+   609→      patientId: data.patientId,
+   610→      doctorId: data.doctorId,
+   611→      alertType: 'gds_tinggi',
+   612→      severityLevel: 'CRITICAL',
+   613→      title: 'Glukosa Darah Sewaktu Tinggi (≥300)',
+   614→      description: `Hasil lab: GDS ${gds} mg/dL (≥300). Hiperglikemia berat — risiko komplikasi akut.`,
+   615→      sourceModule: 'laboratory_results',
+   616→      sourceRecordId: latest.id,
+   617→      kategori: 'Metabolik',
+   618→      recommendation: 'Evaluasi segera, pertimbangkan insulin, monitoring keton, koreksi penyebab.',
+   619→    });
+   620→  }
+   621→
+   622→  if (ldl !== null && ldl >= 190) {
+   623→    alerts.push({
+   624→      patientId: data.patientId,
+   625→      doctorId: data.doctorId,
+   626→      alertType: 'ldl_tinggi',
+   627→      severityLevel: 'HIGH',
+   628→      title: 'LDL Kolesterol Tinggi (≥190)',
+   629→      description: `Hasil lab: LDL ${ldl} mg/dL (≥190). Hiperkolesterolemia berat — risiko aterosklerosis dan kejadian kardiovaskular.`,
+   630→      sourceModule: 'laboratory_results',
+   631→      sourceRecordId: latest.id,
+   632→      kategori: 'Kardiovaskular',
+   633→      recommendation: 'Mulai/eskalasi statin, evaluasi risiko kardiovaskular, edukasi diet, pertimbangkan rujukan ke ardiologi.',
+   634→    });
+   635→  }
+   636→
+   637→  if (kreatinin !== null && kreatinin > 2.0) {
+   638→    alerts.push({
+   639→      patientId: data.patientId,
+   640→      doctorId: data.doctorId,
+   641→      alertType: 'kreatinin_tinggi',
+   642→      severityLevel: 'HIGH',
+   643→      title: 'Kreatinin Tinggi (>2.0)',
+   644→      description: `Hasil lab: Kreatinin ${kreatinin} mg/dL (>2.0). Penurunan fungsi ginjal — risiko gagal ginjal akut/kronik.`,
+   645→      sourceModule: 'laboratory_results',
+   646→      sourceRecordId: latest.id,
+   647→      kategori: 'Renal',
+   648→      recommendation: 'Evaluasi penyebab (prarenal, renal, pascarenal), review obat nefrotoksik, monitoring asupan cairan, rujuk ke nefrologi.',
+   649→    });
+   650→  }
+   651→
+   652→  if (mikroalbumin !== null && mikroalbumin > 30) {
+   653→    alerts.push({
+   654→      patientId: data.patientId,
+   655→      doctorId: data.doctorId,
+   656→      alertType: 'mikroalbumin_positif',
+   657→      severityLevel: 'MEDIUM',
+   658→      title: 'Mikroalbuminuria Positif (>30)',
+   659→      description: `Hasil lab: Mikroalbumin ${mikroalbumin} mg/dL (>30). Tanda awal nefropati diabetik/hipertensi.`,
+   660→      sourceModule: 'laboratory_results',
+   661→      sourceRecordId: latest.id,
+   662→      kategori: 'Renal',
+   663→      recommendation: 'Optimasi kontrol gula darah dan tekanan darah, pertimbangkan ACE-inhibitor/ARB, monitoring fungsi ginjal berkala.',
+   664→    });
+   665→  }
+   666→
+   667→  return alerts;
+   668→}
+   669→
+   670→// ── Main engine entry point ─────────────────────────────────────────────────
+   671→
+   672→// Run all rules against the patient's clinical data and return a list of
+   673→// alert candidates. The caller is responsible for persisting them via
+   674→// clinicalAlertService.create() (which deduplicates).
+   675→export function evaluatePatient(data: EnginePatientData): AlertCandidate[] {
+   676→  const all: AlertCandidate[] = [];
+   677→  all.push(...evaluateVitals(data));
+   678→  all.push(...evaluateScreenings(data));
+   679→  all.push(...evaluateMedications(data));
+   680→  all.push(...evaluateNutrition(data));
+   681→  all.push(...evaluateDailyComplaints(data));
+   682→  all.push(...evaluateSocial(data));
+   683→  all.push(...evaluateLabResults(data));
+   684→  return all;
+   685→}
+   686→
+   687→/**
+   688→ * Convenience: run the engine and persist all generated alerts.
+   689→ * Returns the number of NEW alerts actually created (after dedup).
+   690→ * Deduplicates against BOTH Supabase and the local Zustand store.
+   691→ */
+   692→export async function evaluateAndPersist(data: EnginePatientData): Promise<number> {
+   693→  const candidates = evaluatePatient(data);
+   694→  if (candidates.length === 0) return 0;
+   695→
+   696→  // Lazy-import to avoid circular dependency at module load time.
+   697→  const { clinicalAlertService } = await import('./clinicalAlertService');
+   698→  // Also check local store state for alerts that were just created but
+   699→  // might not yet be visible to the Supabase query (race condition).
+   700→  let localAlerts: any[] = [];
+   701→  try {
+   702→    const { useStore } = await import('@/lib/store');
+   703→    localAlerts = useStore.getState().palliativeClinicalAlerts.filter(
+   704→      (a) => a.palliativePatientId === data.patientId || a.patientId === data.patientId
+   705→    );
+   706→  } catch { /* store not available in this context */ }
+   707→
+   708→  let created = 0;
+   709→  for (const c of candidates) {
+   710→    // Check local store first (fast, no network round-trip).
+   711→    if (c.sourceRecordId) {
+   712→      const localDup = localAlerts.find(
+   713→        (a) =>
+   714→          a.status !== 'RESOLVED' &&
+   715→          a.sourceRecordId === c.sourceRecordId &&
+   716→          a.alertType === c.alertType
+   717→      );
+   718→      if (localDup) {
+   719→        // Already have an active alert in local state — skip.
+   720→        continue;
+   721→      }
+   722→    }
+   723→    try {
+   724→      const alert = await clinicalAlertService.create(c);
+   725→      if (alert) created++;
+   726→    } catch (err) {
+   727→      console.error('[clinicalAlertEngine.evaluateAndPersist] error creating alert:', err);
+   728→    }
+   729→  }
+   730→  if (created > 0) {
+   731→    console.log(`[clinicalAlertEngine] created ${created} new alert(s) for patient ${data.patientId}`);
+   732→  }
+   733→  return created;
+   734→}
+   735→

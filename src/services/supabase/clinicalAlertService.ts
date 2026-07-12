@@ -181,14 +181,21 @@ export const clinicalAlertService = {
 
   /**
    * Get active (non-resolved) alerts for a patient.
+   *
+   * IMPORTANT: We fetch recent alerts (last 90 days) and filter ACTIVE in JS
+   * because `status` lives inside the `values` JSONB column and cannot be
+   * filtered efficiently in SQL. The 90-day window keeps the result set small
+   * even if the patient has thousands of historical RESOLVED alerts.
    */
   async getActive(patientId: string): Promise<PalliativeClinicalAlert[]> {
     if (!isValidUuid(patientId)) return [];
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
     const rows = await safeQuery(
       supabase
         .from('clinical_alerts')
         .select('*')
         .eq('patient_id', patientId)
+        .gte('created_at', ninetyDaysAgo)
         .order('created_at', { ascending: false }),
       [] as any[],
       'clinicalAlertService.getActive'
@@ -199,8 +206,53 @@ export const clinicalAlertService = {
   },
 
   /**
+   * Targeted dedup check — fetches only alerts matching the same
+   * (patient_id, alert_type) pair. This is indexed and fast even when the
+   * patient has thousands of alerts of other types.
+   *
+   * Returns the matching ACTIVE alert if a duplicate exists, or `null`.
+   * Crucially, if the query FAILS we return a sentinel `'QUERY_FAILED'` so the
+   * caller can choose to SKIP the insert (fail-safe) rather than create a
+   * duplicate.
+   */
+  async findActiveDup(
+    patientId: string,
+    alertType: string,
+    sourceRecordId?: string
+  ): Promise<PalliativeClinicalAlert | null | 'QUERY_FAILED'> {
+    if (!isValidUuid(patientId)) return null;
+    try {
+      const { data, error } = await supabase
+        .from('clinical_alerts')
+        .select('*')
+        .eq('patient_id', patientId)
+        .eq('alert_type', alertType)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) {
+        console.warn('[clinicalAlertService.findActiveDup] query error:', error.message);
+        return 'QUERY_FAILED';
+      }
+      const rows = (data ?? []) as any[];
+      const mapped = rows.map(fromDb);
+      // Per the dedup specification: one ACTIVE alert per (patient, alertType).
+      // We do NOT consider sourceRecordId for dedup — the first active alert
+      // of a given type wins, and subsequent scans skip until it is RESOLVED.
+      const dup = mapped.find((a) => a.status !== 'RESOLVED');
+      return dup ?? null;
+    } catch (e: any) {
+      console.warn('[clinicalAlertService.findActiveDup] threw:', e?.message ?? e);
+      return 'QUERY_FAILED';
+    }
+  },
+
+  /**
    * Create a new alert. Deduplicates by (patient_id, alert_type, source_record_id)
    * — if an ACTIVE alert with the same source already exists, it is NOT recreated.
+   *
+   * FAIL-SAFE: If the dedup query fails (network error, 502, timeout), we
+   * return `null` and do NOT insert. This prevents the exponential-duplicate
+   * feedback loop where a failed dedup check leads to uncontrolled INSERTs.
    */
   async create(input: CreateAlertInput): Promise<PalliativeClinicalAlert | null> {
     if (!isValidUuid(input.patientId)) {
@@ -211,22 +263,24 @@ export const clinicalAlertService = {
       return null;
     }
 
-    // ── Deduplication ───────────────────────────────────────────────────
-    // If sourceRecordId is provided, check whether an ACTIVE alert for the
-    // same patient + sourceRecordId already exists. This prevents duplicate
-    // alerts when the Rule Engine runs multiple times.
-    if (input.sourceRecordId) {
-      const existing = await this.getByPatient(input.patientId);
-      const dup = existing.find(
-        (a) =>
-          a.status !== 'RESOLVED' &&
-          a.sourceRecordId === input.sourceRecordId &&
-          a.alertType === input.alertType
+    // ── Deduplication (targeted + fail-safe) ────────────────────────────
+    // Query only rows matching (patient_id, alert_type) — indexed and fast.
+    // If the query fails, we ABORT rather than risk a duplicate.
+    const dup = await this.findActiveDup(
+      input.patientId,
+      input.alertType,
+      input.sourceRecordId
+    );
+    if (dup === 'QUERY_FAILED') {
+      console.warn(
+        `[clinicalAlertService.create] ABORTED — dedup query failed for alertType="${input.alertType}". Skipping to prevent duplicate.`
       );
-      if (dup) {
-        // Already have an active alert for this source — skip.
-        return dup;
-      }
+      return null;
+    }
+    if (dup) {
+      // Already have an active alert for this source — skip (optionally
+      // update the timestamp so it surfaces as "recently re-detected").
+      return dup;
     }
 
     const alertData: Partial<PalliativeClinicalAlert> = {
@@ -342,5 +396,162 @@ export const clinicalAlertService = {
       'clinicalAlertService.remove'
     );
     return res !== null;
+  },
+
+  /**
+   * Resolve all ACTIVE alerts of a given alertType for a patient.
+   * Used by the auto-resolve logic: when a clinical condition returns to
+   * normal, the old alert should be closed so the active count stays accurate.
+   *
+   * Returns the number of alerts resolved.
+   */
+  async resolveByType(
+    patientId: string,
+    alertType: string,
+    resolvedBy: string,
+    reason?: string
+  ): Promise<number> {
+    if (!isValidUuid(patientId)) return 0;
+    try {
+      // Fetch active alerts of this type (limit to recent 90 days for safety)
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from('clinical_alerts')
+        .select('id, values')
+        .eq('patient_id', patientId)
+        .eq('alert_type', alertType)
+        .gte('created_at', ninetyDaysAgo)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) {
+        console.warn('[clinicalAlertService.resolveByType] query error:', error.message);
+        return 0;
+      }
+      const rows = (data ?? []) as any[];
+      const nowIso = new Date().toISOString();
+      let count = 0;
+      for (const row of rows) {
+        const v = (row.values ?? {}) as Record<string, any>;
+        if (v.status === 'RESOLVED') continue; // already resolved
+        const newValues = {
+          ...v,
+          status: 'RESOLVED',
+          resolvedBy,
+          resolvedAt: nowIso,
+          notes: reason
+            ? `${v.notes ?? ''}\n---\n[${nowIso}] AUTO-RESOLVED: ${reason}`.trim()
+            : `${v.notes ?? ''}\n---\n[${nowIso}] AUTO-RESOLVED (condition normalized)`.trim(),
+        };
+        const { error: updErr } = await supabase
+          .from('clinical_alerts')
+          .update({ is_read: true, values: newValues })
+          .eq('id', row.id);
+        if (!updErr) count++;
+      }
+      return count;
+    } catch (e: any) {
+      console.warn('[clinicalAlertService.resolveByType] threw:', e?.message ?? e);
+      return 0;
+    }
+  },
+
+  /**
+   * ONE-TIME CLEANUP: Delete duplicate ACTIVE alerts for a patient, keeping
+   * only the OLDEST alert per (alert_type) combination per patient.
+   *
+   * This is used to repair the database after the duplicate-creation bug has
+   * been fixed. It should be called once on app startup (best-effort) and can
+   * also be triggered manually from the Clinical Alert panel.
+   *
+   * PAGINATED: fetches in batches of 5000 (Supabase default limit) and loops
+   * until all duplicates are processed. With 47k+ historical duplicates, a
+   * single 5000-row fetch is not enough.
+   *
+   * Returns the number of duplicate alerts deleted.
+   */
+  async cleanupDuplicates(patientId?: string): Promise<number> {
+    try {
+      const oneHundredEightyDaysAgo = new Date(
+        Date.now() - 180 * 24 * 60 * 60 * 1000
+      ).toISOString();
+
+      // ── Paginated fetch: collect ALL active (non-resolved) alert IDs ──
+      // We page through in batches of 1000 (Supabase REST API default limit)
+      // using offset pagination. For each batch, we group by (patient_id,
+      // alert_type) and mark all-but-oldest for deletion.
+      const keepIds = new Set<string>();
+      const deleteIds: string[] = [];
+      const groups = new Map<string, any[]>(); // key → rows (oldest first)
+      let offset = 0;
+      const pageSize = 1000; // Supabase REST API default limit is 1000
+      let totalFetched = 0;
+
+      while (true) {
+        let query = supabase
+          .from('clinical_alerts')
+          .select('id, patient_id, alert_type, values, created_at')
+          .gte('created_at', oneHundredEightyDaysAgo)
+          .order('created_at', { ascending: true }) // oldest first
+          .range(offset, offset + pageSize - 1);
+        if (patientId && isValidUuid(patientId)) {
+          query = query.eq('patient_id', patientId);
+        }
+        const { data, error } = await query;
+        if (error) {
+          console.warn('[clinicalAlertService.cleanupDuplicates] query error at offset ' + offset + ':', error.message);
+          break;
+        }
+        const rows = (data ?? []) as any[];
+        if (rows.length === 0) break; // no more rows
+        totalFetched += rows.length;
+
+        for (const row of rows) {
+          const v = (row.values ?? {}) as Record<string, any>;
+          if (v.status === 'RESOLVED') continue; // don't touch resolved alerts
+          const key = `${row.patient_id}||${row.alert_type}`;
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key)!.push(row);
+        }
+
+        offset += pageSize;
+        if (rows.length < pageSize) break; // last page
+      }
+
+      // ── Identify duplicates: keep oldest per group, delete the rest ──
+      for (const [, groupRows] of groups) {
+        keepIds.add(groupRows[0].id);
+        for (let i = 1; i < groupRows.length; i++) {
+          deleteIds.push(groupRows[i].id);
+        }
+      }
+
+      console.log(
+        `[clinicalAlertService.cleanupDuplicates] fetched ${totalFetched} rows, ${groups.size} unique groups, ${deleteIds.length} duplicates to delete.`
+      );
+
+      if (deleteIds.length === 0) return 0;
+
+      // ── Delete in batches of 200 (URL length limit for .in()) ──
+      let deleted = 0;
+      for (let i = 0; i < deleteIds.length; i += 200) {
+        const batch = deleteIds.slice(i, i + 200);
+        const { error: delErr } = await supabase
+          .from('clinical_alerts')
+          .delete()
+          .in('id', batch);
+        if (delErr) {
+          console.warn('[clinicalAlertService.cleanupDuplicates] delete batch error:', delErr.message);
+        } else {
+          deleted += batch.length;
+        }
+      }
+      console.log(
+        `[clinicalAlertService.cleanupDuplicates] deleted ${deleted} duplicate alerts (kept ${keepIds.size} active).`
+      );
+      return deleted;
+    } catch (e: any) {
+      console.warn('[clinicalAlertService.cleanupDuplicates] threw:', e?.message ?? e);
+      return 0;
+    }
   },
 };

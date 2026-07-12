@@ -180,6 +180,7 @@ interface TelemedicineStore {
   updatePalliativeClinicalAlert: (alertId: string, data: Partial<PalliativeClinicalAlert>) => void;
   setPalliativeClinicalAlerts: (alerts: PalliativeClinicalAlert[]) => void;
   runClinicalAlertEngine: (patientId: string) => Promise<number>;
+  forceRunClinicalAlertEngine: (patientId: string) => Promise<number>;
   palliativeAuditLog: PalliativeAuditEntry[];
   addPalliativeAuditEntry: (entry: PalliativeAuditEntry) => void;
 
@@ -915,7 +916,14 @@ export const useStore = create<TelemedicineStore>((set) => ({
   runClinicalAlertEngine: async (patientId) => {
     try {
       // Lazy-import the engine to avoid circular dependencies at load time.
-      const { evaluateAndPersist } = await import('@/services/supabase/clinicalAlertEngine');
+      const { evaluateAndPersist, canScan } = await import('@/services/supabase/clinicalAlertEngine');
+      // Throttle: skip if this patient was scanned less than 30s ago.
+      // This prevents the realtime → scan → insert → realtime loop that
+      // caused thousands of duplicate alerts.
+      if (!canScan(patientId)) {
+        console.log(`[Store] runClinicalAlertEngine THROTTLED for patient ${patientId}`);
+        return 0;
+      }
       const state = useStore.getState();
       const patient = state.palliativePatients.find(p => p.id === patientId);
       const doctorId = patient?.attendingDoctorId;
@@ -933,6 +941,34 @@ export const useStore = create<TelemedicineStore>((set) => ({
       return created;
     } catch (err) {
       console.error('[Store] runClinicalAlertEngine error:', err);
+      return 0;
+    }
+  },
+  /**
+   * Force-run the Clinical Alert Engine for a patient, bypassing the throttle.
+   * Used by the manual "Scan" button in the Clinical Alert panel.
+   */
+  forceRunClinicalAlertEngine: async (patientId) => {
+    try {
+      const { evaluateAndPersist, resetThrottle } = await import('@/services/supabase/clinicalAlertEngine');
+      resetThrottle(patientId);
+      const state = useStore.getState();
+      const patient = state.palliativePatients.find(p => p.id === patientId);
+      const doctorId = patient?.attendingDoctorId;
+      const data = {
+        patientId,
+        doctorId,
+        vitals: state.vitalSignRecords.filter(v => v.palliativePatientId === patientId),
+        screenings: state.palliativeScreeningRecords.filter(s => s.palliativePatientId === patientId),
+        medications: state.palliativeMedications.filter(m => m.palliativePatientId === patientId),
+        nutrition: state.nutritionRecords.filter(n => n.palliativePatientId === patientId),
+        dailyComplaints: state.dailyComplaints.filter(d => d.palliativePatientId === patientId),
+        socialAssessments: state.socialAssessments.filter(s => s.palliativePatientId === patientId),
+      };
+      const created = await evaluateAndPersist(data);
+      return created;
+    } catch (err) {
+      console.error('[Store] forceRunClinicalAlertEngine error:', err);
       return 0;
     }
   },

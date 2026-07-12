@@ -68,110 +68,112 @@ function evaluateVitals(data: EnginePatientData): AlertCandidate[] {
   const alerts: AlertCandidate[] = [];
   if (!data.vitals.length) return alerts;
 
-  // Evaluate the latest 3 vitals to catch recent deterioration.
-  for (const v of data.vitals.slice(0, 3)) {
-    const spo2 = num(v.oxygenSat);
-    const rr = num(v.respiratoryRate);
-    const sbp = num(v.systolicBP);
-    const dbp = num(v.diastolicBP);
-    const hr = num(v.heartRate);
-    const temp = num(v.temperature);
+  // Evaluate ONLY the latest vital. Evaluating multiple vitals would generate
+  // multiple candidates for the same condition (e.g. 3 vitals with SpO2<90
+  // → 3 "hipoksemia" candidates), which causes duplicate alerts. The dedup
+  // logic ensures one ACTIVE alert per alertType per patient.
+  const v = data.vitals[0];
+  const spo2 = num(v.oxygenSat);
+  const rr = num(v.respiratoryRate);
+  const sbp = num(v.systolicBP);
+  const dbp = num(v.diastolicBP);
+  const hr = num(v.heartRate);
+  const temp = num(v.temperature);
 
-    // SpO2 < 90 → CRITICAL Hipoksemia
-    if (spo2 !== null && spo2 < 90) {
-      alerts.push({
-        patientId: data.patientId,
-        doctorId: data.doctorId,
-        alertType: 'hipoksemia',
-        severityLevel: 'CRITICAL',
-        title: 'Hipoksemia',
-        description: `Saturasi oksigen ${spo2}% (normal ≥90%). Segera evaluasi pasien dan pertimbangkan terapi oksigen.`,
-        sourceModule: 'vital_signs',
-        sourceRecordId: v.id,
-        kategori: 'Pernapasan',
-        recommendation: 'Evaluasi segera: pemberian oksigen suplemental, auskultasi paru, pertimbangkan ABG.',
-      });
-    }
+  // SpO2 < 90 → CRITICAL Hipoksemia
+  if (spo2 !== null && spo2 < 90) {
+    alerts.push({
+      patientId: data.patientId,
+      doctorId: data.doctorId,
+      alertType: 'hipoksemia',
+      severityLevel: 'CRITICAL',
+      title: 'Hipoksemia',
+      description: `Saturasi oksigen ${spo2}% (normal ≥90%). Segera evaluasi pasien dan pertimbangkan terapi oksigen.`,
+      sourceModule: 'vital_signs',
+      sourceRecordId: v.id,
+      kategori: 'Pernapasan',
+      recommendation: 'Evaluasi segera: pemberian oksigen suplemental, auskultasi paru, pertimbangkan ABG.',
+    });
+  }
 
-    // RR > 30 → CRITICAL Distres Pernapasan
-    if (rr !== null && rr > 30) {
-      alerts.push({
-        patientId: data.patientId,
-        doctorId: data.doctorId,
-        alertType: 'distres_pernapasan',
-        severityLevel: 'CRITICAL',
-        title: 'Distres Pernapasan',
-        description: `Frekuensi napas ${rr}/menit (normal 12-20). Pasien mengalami distres pernapasan.`,
-        sourceModule: 'vital_signs',
-        sourceRecordId: v.id,
-        kategori: 'Pernapasan',
-        recommendation: 'Evaluasi penyebab sesak, pertimbangkan posisi semi-Fowler, oksigen, dan nebulizer jika indikasi.',
-      });
-    }
+  // RR > 30 → CRITICAL Distres Pernapasan
+  if (rr !== null && rr > 30) {
+    alerts.push({
+      patientId: data.patientId,
+      doctorId: data.doctorId,
+      alertType: 'distres_pernapasan',
+      severityLevel: 'CRITICAL',
+      title: 'Distres Pernapasan',
+      description: `Frekuensi napas ${rr}/menit (normal 12-20). Pasien mengalami distres pernapasan.`,
+      sourceModule: 'vital_signs',
+      sourceRecordId: v.id,
+      kategori: 'Pernapasan',
+      recommendation: 'Evaluasi penyebab sesak, pertimbangkan posisi semi-Fowler, oksigen, dan nebulizer jika indikasi.',
+    });
+  }
 
-    // SBP > 180 or DBP > 110 → CRITICAL Krisis Hipertensi
-    if ((sbp !== null && sbp > 180) || (dbp !== null && dbp > 110)) {
-      alerts.push({
-        patientId: data.patientId,
-        doctorId: data.doctorId,
-        alertType: 'krisis_hipertensi',
-        severityLevel: 'CRITICAL',
-        title: 'Krisis Hipertensi',
-        description: `Tekanan darah ${sbp}/${dbp} mmHg. Krisis hipertensi — risiko stroke, edema paru, atau encefalopati.`,
-        sourceModule: 'vital_signs',
-        sourceRecordId: v.id,
-        kategori: 'Kardiovaskular',
-        recommendation: 'Turunkan TD bertahap (jangan terlalu cepat), evaluasi organ target, pertimbangkan antihipertensi IV.',
-      });
-    }
+  // SBP > 180 or DBP > 110 → CRITICAL Krisis Hipertensi
+  if ((sbp !== null && sbp > 180) || (dbp !== null && dbp > 110)) {
+    alerts.push({
+      patientId: data.patientId,
+      doctorId: data.doctorId,
+      alertType: 'krisis_hipertensi',
+      severityLevel: 'CRITICAL',
+      title: 'Krisis Hipertensi',
+      description: `Tekanan darah ${sbp}/${dbp} mmHg. Krisis hipertensi — risiko stroke, edema paru, atau encefalopati.`,
+      sourceModule: 'vital_signs',
+      sourceRecordId: v.id,
+      kategori: 'Kardiovaskular',
+      recommendation: 'Turunkan TD bertahap (jangan terlalu cepat), evaluasi organ target, pertimbangkan antihipertensi IV.',
+    });
+  }
 
-    // SBP < 90 → HIGH Hipotensi
-    if (sbp !== null && sbp < 90) {
-      alerts.push({
-        patientId: data.patientId,
-        doctorId: data.doctorId,
-        alertType: 'hipotensi',
-        severityLevel: 'HIGH',
-        title: 'Hipotensi',
-        description: `Tekanan darah sistolik ${sbp} mmHg (<90). Risiko perfusi organ tidak adekuat.`,
-        sourceModule: 'vital_signs',
-        sourceRecordId: v.id,
-        kategori: 'Kardiovaskular',
-        recommendation: 'Evaluasi penyebab (hipovolemia, sepsis, kardiogenik), berikan cairan, pertimbangkan vasopresor.',
-      });
-    }
+  // SBP < 90 → HIGH Hipotensi
+  if (sbp !== null && sbp < 90) {
+    alerts.push({
+      patientId: data.patientId,
+      doctorId: data.doctorId,
+      alertType: 'hipotensi',
+      severityLevel: 'HIGH',
+      title: 'Hipotensi',
+      description: `Tekanan darah sistolik ${sbp} mmHg (<90). Risiko perfusi organ tidak adekuat.`,
+      sourceModule: 'vital_signs',
+      sourceRecordId: v.id,
+      kategori: 'Kardiovaskular',
+      recommendation: 'Evaluasi penyebab (hipovolemia, sepsis, kardiogenik), berikan cairan, pertimbangkan vasopresor.',
+    });
+  }
 
-    // HR > 130 → HIGH Takikardia Berat
-    if (hr !== null && hr > 130) {
-      alerts.push({
-        patientId: data.patientId,
-        doctorId: data.doctorId,
-        alertType: 'takikardia',
-        severityLevel: 'HIGH',
-        title: 'Takikardia Berat',
-        description: `Nadi ${hr} bpm (>130). Evaluasi penyebab takikardia berat.`,
-        sourceModule: 'vital_signs',
-        sourceRecordId: v.id,
-        kategori: 'Kardiovaskular',
-        recommendation: 'Evaluasi irama (EKG), cari penyebab (nyeri, demam, hipovolemia, tirotoksikosis), pertimbangkan beta-blocker.',
-      });
-    }
+  // HR > 130 → HIGH Takikardia Berat
+  if (hr !== null && hr > 130) {
+    alerts.push({
+      patientId: data.patientId,
+      doctorId: data.doctorId,
+      alertType: 'takikardia',
+      severityLevel: 'HIGH',
+      title: 'Takikardia Berat',
+      description: `Nadi ${hr} bpm (>130). Evaluasi penyebab takikardia berat.`,
+      sourceModule: 'vital_signs',
+      sourceRecordId: v.id,
+      kategori: 'Kardiovaskular',
+      recommendation: 'Evaluasi irama (EKG), cari penyebab (nyeri, demam, hipovolemia, tirotoksikosis), pertimbangkan beta-blocker.',
+    });
+  }
 
-    // Temp > 39 → HIGH Demam Tinggi
-    if (temp !== null && temp > 39) {
-      alerts.push({
-        patientId: data.patientId,
-        doctorId: data.doctorId,
-        alertType: 'demam_tinggi',
-        severityLevel: 'HIGH',
-        title: 'Demam Tinggi',
-        description: `Suhu ${temp}°C (>39°C). Demam tinggi — risiko dehidrasi dan perburukan kondisi.`,
-        sourceModule: 'vital_signs',
-        sourceRecordId: v.id,
-        kategori: 'Infeksi',
-        recommendation: 'Antipiretik, kompres dingin, evaluasi sumber infeksi, kultur jika perlu, pertimbangkan antibiotik empiris.',
-      });
-    }
+  // Temp > 39 → HIGH Demam Tinggi
+  if (temp !== null && temp > 39) {
+    alerts.push({
+      patientId: data.patientId,
+      doctorId: data.doctorId,
+      alertType: 'demam_tinggi',
+      severityLevel: 'HIGH',
+      title: 'Demam Tinggi',
+      description: `Suhu ${temp}°C (>39°C). Demam tinggi — risiko dehidrasi dan perburukan kondisi.`,
+      sourceModule: 'vital_signs',
+      sourceRecordId: v.id,
+      kategori: 'Infeksi',
+      recommendation: 'Antipiretik, kompres dingin, evaluasi sumber infeksi, kultur jika perlu, pertimbangkan antibiotik empiris.',
+    });
   }
 
   return alerts;
@@ -667,6 +669,31 @@ function evaluateLabResults(data: EnginePatientData): AlertCandidate[] {
   return alerts;
 }
 
+// ── Throttle ─────────────────────────────────────────────────────────────────
+//
+// Prevent the engine from running more than once per THROTTLE_MS per patient.
+// Multiple clinical events (e.g. saving TTV + medication in quick succession,
+// or a realtime event arriving right after a user save) would otherwise each
+// trigger a full scan, hammering Supabase with redundant queries.
+//
+const THROTTLE_MS = 30_000; // 30 seconds per patient
+const lastScanAt = new Map<string, number>();
+
+/**
+ * Check whether a scan is allowed for this patient right now.
+ * Returns `true` if allowed, `false` if throttled.
+ */
+export function canScan(patientId: string): boolean {
+  const now = Date.now();
+  const last = lastScanAt.get(patientId) ?? 0;
+  return now - last >= THROTTLE_MS;
+}
+
+/** Force-clear the throttle for a patient (used by the manual "Scan" button). */
+export function resetThrottle(patientId: string): void {
+  lastScanAt.delete(patientId);
+}
+
 // ── Main engine entry point ─────────────────────────────────────────────────
 
 // Run all rules against the patient's clinical data and return a list of
@@ -686,49 +713,159 @@ export function evaluatePatient(data: EnginePatientData): AlertCandidate[] {
 
 /**
  * Convenience: run the engine and persist all generated alerts.
+ *
+ * THROTTLED: only runs once per 30s per patient (unless the caller clears the
+ * throttle via `resetThrottle`). Returns 0 if throttled.
+ *
+ * DEDUP: fetches the patient's ACTIVE alerts ONCE (batch) and checks each
+ * candidate against that list in-memory. The service-level `create()` also
+ * does a targeted dedup as a second line of defense.
+ *
+ * AUTO-RESOLVE: for each module that had data, if an ACTIVE alert of a given
+ * alertType exists but NO candidate was generated for that type, the old
+ * alert is resolved (condition returned to normal).
+ *
  * Returns the number of NEW alerts actually created (after dedup).
- * Deduplicates against BOTH Supabase and the local Zustand store.
  */
 export async function evaluateAndPersist(data: EnginePatientData): Promise<number> {
+  // ── Throttle check ──────────────────────────────────────────────────
+  if (!canScan(data.patientId)) {
+    const last = lastScanAt.get(data.patientId) ?? 0;
+    const elapsed = ((Date.now() - last) / 1000).toFixed(1);
+    console.log(
+      `[clinicalAlertEngine] THROTTLED — patient ${data.patientId} scanned ${elapsed}s ago (< ${THROTTLE_MS / 1000}s). Skipping.`
+    );
+    return 0;
+  }
+  lastScanAt.set(data.patientId, Date.now());
+
   const candidates = evaluatePatient(data);
-  if (candidates.length === 0) return 0;
+  console.log(
+    `[clinicalAlertEngine] scan START — patient ${data.patientId}, ${candidates.length} candidate(s) from rules.`
+  );
 
   // Lazy-import to avoid circular dependency at module load time.
   const { clinicalAlertService } = await import('./clinicalAlertService');
-  // Also check local store state for alerts that were just created but
-  // might not yet be visible to the Supabase query (race condition).
-  let localAlerts: any[] = [];
-  try {
-    const { useStore } = await import('@/lib/store');
-    localAlerts = useStore.getState().palliativeClinicalAlerts.filter(
-      (a) => a.palliativePatientId === data.patientId || a.patientId === data.patientId
-    );
-  } catch { /* store not available in this context */ }
 
+  // ── Batch-fetch active alerts for this patient (ONE query) ──────────
+  // Used for both dedup (skip candidates that already have an active alert)
+  // and auto-resolve (close alerts whose condition has normalized).
+  let activeAlerts: any[] = [];
+  try {
+    activeAlerts = await clinicalAlertService.getActive(data.patientId);
+  } catch (e) {
+    console.warn('[clinicalAlertEngine] could not fetch active alerts for dedup — aborting scan to prevent duplicates.', e);
+    return 0;
+  }
+  // If the query returned null/undefined (shouldn't happen, but be safe),
+  // abort — we can't safely dedup.
+  if (!Array.isArray(activeAlerts)) {
+    console.warn('[clinicalAlertEngine] getActive returned non-array — aborting scan.');
+    return 0;
+  }
+
+  // Build a set of alertTypes that already have an ACTIVE alert.
+  const activeTypeSet = new Set(
+    activeAlerts.map((a) => a.alertType).filter(Boolean)
+  );
+
+  // ── Persist candidates (dedup against batch-fetched active alerts) ──
   let created = 0;
+  let skipped = 0;
+  const candidateTypes = new Set<string>();
+
   for (const c of candidates) {
-    // Check local store first (fast, no network round-trip).
-    if (c.sourceRecordId) {
-      const localDup = localAlerts.find(
-        (a) =>
-          a.status !== 'RESOLVED' &&
-          a.sourceRecordId === c.sourceRecordId &&
-          a.alertType === c.alertType
-      );
-      if (localDup) {
-        // Already have an active alert in local state — skip.
-        continue;
-      }
+    candidateTypes.add(c.alertType);
+    // In-memory dedup: if an active alert of this type already exists, skip.
+    // (The service-level create() also checks, but this avoids the network
+    // round-trip entirely for the common case.)
+    if (activeTypeSet.has(c.alertType)) {
+      skipped++;
+      continue;
     }
     try {
       const alert = await clinicalAlertService.create(c);
-      if (alert) created++;
+      if (alert) {
+        created++;
+        // Add to the active set so subsequent candidates of the same type
+        // in this same scan are also skipped.
+        activeTypeSet.add(c.alertType);
+      }
     } catch (err) {
       console.error('[clinicalAlertEngine.evaluateAndPersist] error creating alert:', err);
     }
   }
-  if (created > 0) {
-    console.log(`[clinicalAlertEngine] created ${created} new alert(s) for patient ${data.patientId}`);
+
+  // ── Auto-resolve: close alerts whose condition has normalized ───────
+  // For each module that had data, if an ACTIVE alert of a given alertType
+  // exists but NO candidate was generated, the condition is now normal.
+  // Resolve the old alert so the active count stays accurate.
+  let resolved = 0;
+  const modulesWithData = new Set<string>();
+  if (data.vitals?.length) modulesWithData.add('vital_signs');
+  if (data.screenings?.length) modulesWithData.add('screenings');
+  if (data.medications?.length) modulesWithData.add('medications');
+  if (data.nutrition?.length) modulesWithData.add('nutrition');
+  if (data.dailyComplaints?.length) modulesWithData.add('daily_complaints');
+  if (data.socialAssessments?.length) modulesWithData.add('social_assessments');
+  if (data.labResults?.length) modulesWithData.add('laboratory_results');
+
+  // Map each alertType to its source module so we only auto-resolve for
+  // modules that were actually evaluated (had data) in this scan.
+  const alertTypeToModule: Record<string, string> = {
+    hipoksemia: 'vital_signs',
+    distres_pernapasan: 'vital_signs',
+    krisis_hipertensi: 'vital_signs',
+    hipotensi: 'vital_signs',
+    takikardia: 'vital_signs',
+    demam_tinggi: 'vital_signs',
+    nyeri_berat: 'screenings',
+    sesak_berat: 'screenings',
+    distres_psikologis: 'screenings',
+    penurunan_fungsi: 'screenings',
+    spict_positif: 'screenings',
+    obat_tidak_diminum: 'medications',
+    obat_hampir_habis: 'medications',
+    efek_samping_berat: 'medications', // also from daily_complaints
+    risiko_malnutrisi: 'nutrition', // also from daily_complaints
+    penurunan_bb: 'nutrition',
+    sesak_napas: 'daily_complaints',
+    nyeri_meningkat: 'daily_complaints',
+    perburukan: 'daily_complaints',
+    risiko_burnout_caregiver: 'social_assessments',
+    risiko_dukungan_sosial: 'social_assessments',
+    hba1c_tinggi: 'laboratory_results',
+    gdp_tinggi: 'laboratory_results',
+    gds_tinggi: 'laboratory_results',
+    ldl_tinggi: 'laboratory_results',
+    kreatinin_tinggi: 'laboratory_results',
+    mikroalbumin_positif: 'laboratory_results',
+  };
+
+  for (const active of activeAlerts) {
+    const at = active.alertType;
+    if (!at) continue;
+    // Skip if a candidate was generated for this type (condition still abnormal)
+    if (candidateTypes.has(at)) continue;
+    const mod = alertTypeToModule[at];
+    // Only auto-resolve if the module had data in this scan (so we know the
+    // condition was actually re-evaluated and found normal).
+    if (!mod || !modulesWithData.has(mod)) continue;
+    try {
+      const n = await clinicalAlertService.resolveByType(
+        data.patientId,
+        at,
+        'system',
+        `Condition normalized — latest ${mod} record no longer triggers this alert.`
+      );
+      resolved += n;
+    } catch (e) {
+      console.warn(`[clinicalAlertEngine] auto-resolve failed for ${at}:`, e);
+    }
   }
+
+  console.log(
+    `[clinicalAlertEngine] scan DONE — patient ${data.patientId}: ${created} created, ${skipped} skipped (dedup), ${resolved} auto-resolved.`
+  );
   return created;
 }

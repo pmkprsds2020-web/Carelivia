@@ -270,6 +270,10 @@ async function loadPatientScopedData(
 
     // Clinical alerts — loaded via direct Supabase query (the sibling agent's
     // notificationService is for user notifications, not clinical alerts).
+    // CRITICAL: use useStore.setState directly (NOT store.addPalliativeClinicalAlert)
+    // because addPalliativeClinicalAlert calls firestoreSync.addClinicalAlert
+    // which would RE-INSERT every loaded row back into Supabase, creating
+    // duplicates on every page load.
     try {
       const rows = await safeQuery(
         supabase
@@ -281,6 +285,8 @@ async function loadPatientScopedData(
         'loadPatientScopedData.clinical_alerts'
       );
       if (Array.isArray(rows) && rows.length > 0) {
+        const mapped: PalliativeClinicalAlert[] = [];
+        const existingIds = new Set(useStore.getState().palliativeClinicalAlerts.map((a) => a.id));
         for (const r of rows as any[]) {
           const v = (r.values ?? {}) as Record<string, any>;
           const alert: PalliativeClinicalAlert = {
@@ -308,14 +314,22 @@ async function loadPatientScopedData(
             doctorId: v.doctorId ?? undefined,
             notes: v.notes ?? undefined,
           };
-          if (!hasId(useStore.getState().palliativeClinicalAlerts, alert.id)) {
-            store.addPalliativeClinicalAlert(alert);
+          if (!existingIds.has(alert.id)) {
+            mapped.push(alert);
           }
+        }
+        if (mapped.length > 0) {
+          useStore.setState((s) => ({
+            palliativeClinicalAlerts: [...mapped, ...s.palliativeClinicalAlerts],
+          }));
         }
       }
     } catch (e) { warn('clinical_alerts load', e); }
 
     // Audit log — same pattern, direct Supabase query.
+    // CRITICAL: use useStore.setState directly (NOT store.addPalliativeAuditEntry)
+    // because addPalliativeAuditEntry calls firestoreSync.addAuditEntry which
+    // would RE-INSERT every loaded row back into Supabase.
     try {
       const rows = await safeQuery(
         supabase
@@ -327,6 +341,8 @@ async function loadPatientScopedData(
         'loadPatientScopedData.audit_log'
       );
       if (Array.isArray(rows) && rows.length > 0) {
+        const mapped: PalliativeAuditEntry[] = [];
+        const existingIds = new Set(useStore.getState().palliativeAuditLog.map((a) => a.id));
         for (const r of rows as any[]) {
           const entry: PalliativeAuditEntry = {
             id: r.id,
@@ -339,9 +355,14 @@ async function loadPatientScopedData(
             device: r.device ?? undefined,
             createdAt: r.created_at ?? new Date().toISOString(),
           };
-          if (!hasId(useStore.getState().palliativeAuditLog, entry.id)) {
-            store.addPalliativeAuditEntry(entry);
+          if (!existingIds.has(entry.id)) {
+            mapped.push(entry);
           }
+        }
+        if (mapped.length > 0) {
+          useStore.setState((s) => ({
+            palliativeAuditLog: [...mapped, ...s.palliativeAuditLog],
+          }));
         }
       }
     } catch (e) { warn('audit_log load', e); }
@@ -414,7 +435,13 @@ function handleVitalEvent(store: ReturnType<typeof useStore.getState>, p: Realti
           vitalSignRecords: state.vitalSignRecords.map((v) => (v.id === id ? fresh : v)),
         });
       } else {
-        store.addVitalSignRecord(fresh);
+        // Use setState directly (NOT store.addVitalSignRecord) so we don't
+        // trigger firestoreSync.addTTV (duplicate INSERT) or
+        // runClinicalAlertEngine (scan loop). Realtime rows are already in
+        // Supabase — we only need to mirror them into the local store.
+        useStore.setState((s) => ({
+          vitalSignRecords: [...s.vitalSignRecords, fresh],
+        }));
       }
     })
     .catch((e: unknown) => warn('vital realtime', e));
@@ -444,7 +471,11 @@ function handleScreeningEvent(store: ReturnType<typeof useStore.getState>, p: Re
           ),
         });
       } else {
-        store.addPalliativeScreeningRecord(fresh);
+        // Use setState directly (NOT store.addPalliativeScreeningRecord) so
+        // we don't trigger a duplicate Supabase insert or scan loop.
+        useStore.setState((s) => ({
+          palliativeScreeningRecords: [...s.palliativeScreeningRecords, fresh],
+        }));
       }
     })
     .catch((e: unknown) => warn('screening realtime', e));
@@ -470,9 +501,19 @@ function handleMedicationEvent(store: ReturnType<typeof useStore.getState>, p: R
       const state = useStore.getState();
       const exists = hasId(state.palliativeMedications, id);
       if (exists) {
-        store.updatePalliativeMedication(id, fresh);
+        // Use setState directly (NOT store.updatePalliativeMedication) to
+        // avoid a duplicate Supabase update.
+        useStore.setState({
+          palliativeMedications: state.palliativeMedications.map((m) =>
+            m.id === id ? { ...m, ...fresh, updatedAt: new Date().toISOString() } : m
+          ),
+        });
       } else {
-        store.addPalliativeMedication(fresh);
+        // Use setState directly (NOT store.addPalliativeMedication) so we
+        // don't trigger a duplicate Supabase insert or scan loop.
+        useStore.setState((s) => ({
+          palliativeMedications: [...s.palliativeMedications, fresh],
+        }));
       }
     })
     .catch((e: unknown) => warn('medication realtime', e));
@@ -500,7 +541,11 @@ function handleNutritionEvent(store: ReturnType<typeof useStore.getState>, p: Re
           nutritionRecords: state.nutritionRecords.map((n) => (n.id === id ? fresh : n)),
         });
       } else {
-        store.addNutritionRecord(fresh);
+        // Use setState directly (NOT store.addNutritionRecord) so we don't
+        // trigger a duplicate Supabase insert or scan loop.
+        useStore.setState((s) => ({
+          nutritionRecords: [...s.nutritionRecords, fresh],
+        }));
       }
     })
     .catch((e: unknown) => warn('nutrition realtime', e));
@@ -528,7 +573,12 @@ function handleComplaintEvent(store: ReturnType<typeof useStore.getState>, p: Re
           dailyComplaints: state.dailyComplaints.map((c) => (c.id === id ? fresh : c)),
         });
       } else {
-        store.addDailyComplaint(fresh);
+        // Use setState directly (NOT store.addDailyComplaint) for consistency
+        // — even though addDailyComplaint doesn't call firestoreSync, using
+        // setState keeps the realtime path uniform and side-effect-free.
+        useStore.setState((s) => ({
+          dailyComplaints: [fresh, ...s.dailyComplaints],
+        }));
       }
     })
     .catch((e: unknown) => warn('complaint realtime', e));
@@ -557,7 +607,11 @@ function handleSocialEvent(store: ReturnType<typeof useStore.getState>, p: Realt
           socialAssessments: state.socialAssessments.map((a) => (a.id === id ? fresh : a)),
         });
       } else {
-        store.addSocialAssessment(fresh);
+        // Use setState directly (NOT store.addSocialAssessment) to avoid a
+        // duplicate Supabase insert (addSocialAssessment calls firestoreSync).
+        useStore.setState((s) => ({
+          socialAssessments: [...s.socialAssessments, fresh],
+        }));
       }
     })
     .catch((e: unknown) => warn('social realtime', e));
@@ -899,6 +953,26 @@ export function SupabaseSyncProvider({ children }: SupabaseSyncProviderProps) {
       } catch (e) {
         warn('initial load skipped', e);
       }
+
+      // ── 1b. One-time duplicate-alert cleanup ───────────────────────────
+      // The old engine had a bug that created thousands of duplicate alerts.
+      // Even though the engine is now fixed, we need to clean up the existing
+      // duplicates in the database. This runs once on startup (best-effort).
+      (async () => {
+        try {
+          const { clinicalAlertService } = await import('@/services/supabase/clinicalAlertService');
+          const deleted = await clinicalAlertService.cleanupDuplicates();
+          if (deleted > 0) {
+            console.log(`[SupabaseSync] auto-cleanup: removed ${deleted} duplicate clinical alerts.`);
+            // Reload alerts into the store after cleanup so the UI reflects
+            // the cleaned state.
+            const freshAlerts = await clinicalAlertService.getAll(1000);
+            useStore.setState({ palliativeClinicalAlerts: freshAlerts });
+          }
+        } catch (e) {
+          warn('auto-cleanup duplicates', e);
+        }
+      })();
     })();
 
     // ── 2. Realtime subscriptions (best-effort, silently skipped on error) ─

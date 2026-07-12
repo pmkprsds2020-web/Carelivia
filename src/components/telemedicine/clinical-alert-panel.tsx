@@ -160,7 +160,7 @@ export function ClinicalAlertPanel({ palliativePatientId }: ClinicalAlertPanelPr
     acknowledgePalliativeAlert,
     resolvePalliativeAlert,
     addPalliativeAlertNote,
-    runClinicalAlertEngine,
+    forceRunClinicalAlertEngine,
     setSelectedPalliativePatientId,
   } = useStore();
 
@@ -326,17 +326,36 @@ export function ClinicalAlertPanel({ palliativePatientId }: ClinicalAlertPanelPr
     }
     setIsScanning(true);
     try {
-      const created = await runClinicalAlertEngine(patientId);
+      // Use the FORCE version (bypasses throttle) for the manual Scan button.
+      const created = await forceRunClinicalAlertEngine(patientId);
       toast({
         title: created > 0 ? `${created} Alert Baru` : 'Scan Selesai',
-        description: created > 0 ? `${created} alert baru terdeteksi dan tersimpan ke Supabase.` : 'Tidak ada alert baru terdeteksi.',
+        description: created > 0 ? `${created} alert baru terdeteksi dan tersimpan ke Supabase.` : 'Tidak ada alert baru terdeteksi. Alert lama yang kondisinya sudah normal akan otomatis di-resolve.',
       });
     } catch (err) {
       toast({ title: 'Gagal', description: 'Gagal menjalankan scan alert.', variant: 'destructive' });
     } finally {
       setIsScanning(false);
     }
-  }, [palliativePatientId, filterPatient, runClinicalAlertEngine, toast]);
+  }, [palliativePatientId, filterPatient, forceRunClinicalAlertEngine, toast]);
+
+  const handleCleanupDuplicates = useCallback(async () => {
+    setIsScanning(true);
+    try {
+      const { clinicalAlertService } = await import('@/services/supabase/clinicalAlertService');
+      const deleted = await clinicalAlertService.cleanupDuplicates();
+      toast({
+        title: deleted > 0 ? `${deleted} Duplikat Dihapus` : 'Tidak Ada Duplikat',
+        description: deleted > 0
+          ? `${deleted} alert duplikat berhasil dihapus. Hanya alert terlama per kategori yang dipertahankan.`
+          : 'Tidak ditemukan alert duplikat aktif. Database sudah bersih.',
+      });
+    } catch (err) {
+      toast({ title: 'Gagal', description: 'Gagal membersihkan duplikat.', variant: 'destructive' });
+    } finally {
+      setIsScanning(false);
+    }
+  }, [toast]);
 
   const handleAIAnalysis = useCallback(async () => {
     const patientId = palliativePatientId ?? filterPatient;
@@ -388,10 +407,20 @@ export function ClinicalAlertPanel({ palliativePatientId }: ClinicalAlertPanelPr
             </Badge>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={handleScan} disabled={isScanning}>
             <RefreshCw className={cn('w-4 h-4 mr-1', isScanning && 'animate-spin')} />
             Scan Alert
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCleanupDuplicates}
+            disabled={isScanning}
+            title="Hapus alert duplikat — hanya simpan satu alert aktif per kategori per pasien"
+          >
+            <ShieldCheck className="w-4 h-4 mr-1" />
+            Bersihkan Duplikat
           </Button>
           <Button variant="default" size="sm" onClick={handleAIAnalysis} disabled={isGeneratingAI}>
             <Sparkles className="w-4 h-4 mr-1" />
