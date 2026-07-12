@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { isValidUuid } from '@/services/supabase';
 import type {
   PalliativeChatMessage,
   PalliativeChatMsgType,
@@ -448,13 +449,25 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
     addMedicationMonitoringAuditEntry,
   } = useStore();
 
-  // Get room messages for current patient
+  // Get room messages for current patient.
+  //
+  // We filter by `palliativePatientId` (the real patient UUID) so that
+  // messages loaded from Supabase (which carry the DB `room_id` UUID, not the
+  // local composite `${patientId}_${doctorId}`) are matched correctly. We also
+  // fall back to matching the composite `roomId` for any legacy optimistic
+  // messages that haven't been persisted yet.
   const roomId = patient ? `${patient.id}_${patient.attendingDoctorId || currentUser?.id}` : '';
   const roomMessages = useMemo(() =>
     palliativeChatMessages
-      .filter(m => m.roomId === roomId)
+      .filter(m => {
+        // Match by patient UUID (preferred — works for Supabase-loaded rows).
+        if (patient && m.palliativePatientId === patient.id) return true;
+        // Fallback: match by composite roomId (for optimistic local-only msgs).
+        if (m.roomId === roomId) return true;
+        return false;
+      })
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
-    [palliativeChatMessages, roomId]
+    [palliativeChatMessages, roomId, patient]
   );
 
   // Get patient alerts
@@ -470,12 +483,57 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [roomMessages.length]);
 
+  // ── Load messages from Supabase when a patient is selected ──────────────
+  //
+  // On patient select (or page reload with a patient already selected), we
+  // resolve the chat room UUID via chatService.getOrCreateRoom, then fetch all
+  // existing messages for that room. This ensures the chat history shows up
+  // even after a full page reload (the realtime subscription only fires on
+  // NEW inserts, not on existing rows).
+  //
+  // We REPLACE all messages for this patient (both optimistic local ones with
+  // composite roomId AND any previously-loaded Supabase rows) with the fresh
+  // fetch — this prevents duplicates when the user navigates away and back.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadMessages() {
+      if (!patient) return;
+      // patient.id is the real Supabase UUID.
+      if (!isValidUuid(patient.id)) return;
+      try {
+        const { chatService } = await import('@/services/supabase');
+        const doctorId = patient.attendingDoctorId || currentUser?.id || '';
+        const roomUuid = await chatService.getOrCreateRoom(patient.id, doctorId);
+        if (!roomUuid || cancelled) return;
+        const msgs = await chatService.getMessages(roomUuid);
+        if (cancelled) return;
+        // REPLACE all messages for this patient with the fresh fetch. This
+        // removes any optimistic local messages (with composite roomId or
+        // local genId) that have already been persisted to Supabase, so we
+        // don't show duplicates. Messages for OTHER patients are preserved.
+        useStore.setState((s) => ({
+          palliativeChatMessages: [
+            ...s.palliativeChatMessages.filter(
+              (m) => m.palliativePatientId !== patient.id && m.roomId !== roomId
+            ),
+            ...msgs,
+          ],
+        }));
+      } catch (e) {
+        console.error('[palliative-chat-panel] loadMessages failed:', e);
+      }
+    }
+    loadMessages();
+    return () => { cancelled = true; };
+  }, [patient?.id]);
+
   // Send text message
   const handleSendMessage = useCallback(() => {
     if (!messageInput.trim() || !patient || !currentUser) return;
     const msg: PalliativeChatMessage = {
       id: genId('pcm'),
       roomId,
+      palliativePatientId: patient.id,
       senderId: currentUser.id,
       senderName: currentUser.name,
       senderRole: 'doctor',
@@ -511,6 +569,7 @@ export function PalliativeChatPanel({ patient }: PalliativeChatPanelProps) {
     const msg: PalliativeChatMessage = {
       id: genId('pcm'),
       roomId,
+      palliativePatientId: patient.id,
       senderId: currentUser.id,
       senderName: currentUser.name,
       senderRole: 'doctor',

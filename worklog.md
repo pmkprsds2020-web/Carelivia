@@ -396,3 +396,91 @@ Stage Summary:
 - UUID validation enforced in every service: patient_id must be a valid UUID or the insert is aborted with a clear console.error (no more "invalid input syntax for type uuid" errors)
 - Zero new TypeScript errors, zero ESLint errors, zero runtime errors
 - Verified end-to-end: add caregiver → persists to Supabase; add financial support → persists; add transport → persists; generate referral letter → persists (after CHECK fix); generate resume → persists with structured envelope; all data reloads from Supabase on page refresh; realtime updates the UI when new rows are inserted
+
+---
+Task ID: SUPABASE-CHAT-KELUHAN-FIX
+Agent: Z.ai Code (main)
+Task: Fix Chat module (POST /rest/v1/messages 400 — invalid input syntax for type uuid) and Daily Complaints module (POST /api/daily-complaints 500). Also unify architecture: Supabase as single source of truth, no Prisma-as-primary-with-Supabase-mirror.
+
+Work Log:
+- Read worklog.md to understand previous fixes (UUID validation, safeInsert, check constraints, etc.)
+- Read chatService.ts, /api/daily-complaints/route.ts, daily-complaint-panel.tsx, supabase-sync.ts, store.ts, supabase-sync-provider.tsx, schema.sql, prisma/schema.prisma to map the full data flow
+- ROOT CAUSE #1 (Chat): In chatService.sendMessage, the line `messageToDb({ roomId, ...data })` caused `data.roomId` (the local composite string `${patientId}_${doctorId}`) to OVERRIDE the explicit `roomId` parameter (the real UUID resolved via getOrCreateRoom). The composite string is NOT a UUID → Postgres rejected with "invalid input syntax for type uuid" → 400 Bad Request
+- ROOT CAUSE #2 (Daily Complaints): /api/daily-complaints/route.ts used Prisma as PRIMARY store (`db.dailyComplaint.create`) with Supabase as a best-effort mirror. Prisma's PalliativePatient.id uses cuid() format, but the frontend sends a UUID (from Supabase patients table). The FK constraint `patient PalliativePatient @relation(fields: [palliativePatientId], references: [id])` failed because no PalliativePatient row exists with the UUID → 500 Internal Server Error
+- ROOT CAUSE #3 (Duplicate daily complaints): store.addDailyComplaint called firestoreSync.addKeluhan (which calls complaintService.create → Supabase insert) AFTER the API route already inserted. This would have created duplicate rows once the API route was fixed
+- ROOT CAUSE #4 (Duplicate clinical_alerts): daily-complaint-panel.tsx called addPalliativeClinicalAlert (which calls firestoreSync.addClinicalAlert → Supabase insert) for each alert, but the API route ALSO inserted alerts → would have created duplicates
+- ROOT CAUSE #5 (Chat messages not loading after reload): supabase-sync-provider does NOT preload messages on initial load (skipped to avoid N+1). The chat panel filtered by composite roomId, but Supabase-stored messages have the real UUID roomId → filter never matched → messages didn't display after page reload
+
+Fixes applied:
+- chatService.ts:
+  * Rewrote messageToDb to take `(roomId, data)` as separate params; `out.room_id = roomId` ALWAYS uses the explicit UUID parameter, NEVER data.roomId
+  * Added patient_id mapping (from data.palliativePatientId, validated as UUID)
+  * Added doctor_id mapping (from data.doctorId, validated as UUID, nullable)
+  * Added sender_id fallback to 'system' if empty (schema is text NOT NULL)
+  * Added diagnostic console.log in sendMessage showing room_id, patient_id, doctor_id, sender_id, sender_role, type
+  * Updated messageFromDb to map row.patient_id → palliativePatientId (so chat panel can filter by patient UUID)
+- /api/daily-complaints/route.ts: COMPLETE REWRITE
+  * Removed all Prisma imports and calls (db.dailyComplaint, db.palliativePatient, db.user, db.notification)
+  * GET: queries Supabase daily_complaints directly by patient_id (UUID validated); returns empty array if patient_id is missing/invalid
+  * POST: validates patient_id is UUID (400 if not); inserts directly into Supabase daily_complaints; inserts clinical_alerts into Supabase clinical_alerts table (with proper alert_type, severity normalized to hijau/kuning/merah); returns 201 with the created record
+  * Removed doctor_id from payload (daily_complaints table has no doctor_id column)
+  * Added console.log for patient_id and full payload
+  * Surfaces actual Supabase error messages in the 500 response
+- store.ts:
+  * Removed firestoreSync.addKeluhan call from addDailyComplaint (API route now handles persistence; this prevents duplicate rows)
+  * Added comment explaining the architecture: API route is the single source of truth for daily complaints
+- daily-complaint-panel.tsx:
+  * Removed addPalliativeClinicalAlert call (API route now persists alerts; this prevents duplicate alert rows)
+  * Kept addPalliativeMonitoringNotification (local-only UI notifications, no Supabase persistence)
+  * Updated error handling to surface the actual server error message (parses errJson.error) instead of generic "Gagal menyimpan keluhan harian"
+  * Added console.error logging on submit failure
+- supabase-sync.ts (addChatMessage):
+  * Now injects palliativePatientId and doctorId (as valid UUIDs) into the data passed to chatService.sendMessage, so the messages table records who the conversation is between
+- supabase-sync-provider.tsx (handleMessageEvent):
+  * Added palliativePatientId: row?.patient_id mapping to realtime-delivered messages
+  * Changed INSERT path to use useStore.setState directly (instead of store.addPalliativeChatMessage) to avoid triggering a duplicate Supabase insert for realtime-delivered rows
+- palliative-chat-panel.tsx:
+  * Added isValidUuid import from @/services/supabase
+  * Changed roomMessages filter to match by palliativePatientId (preferred — works for Supabase-loaded rows) with fallback to composite roomId (for optimistic local-only messages)
+  * Added useEffect that loads messages from Supabase on patient select: calls chatService.getOrCreateRoom(patient.id, doctorId) to resolve the room UUID, then chatService.getMessages(roomUuid) to fetch all existing messages, then REPLACES all messages for this patient in the store (prevents duplicates when navigating away and back)
+  * Added palliativePatientId: patient.id to optimistic messages (handleSendMessage, handleSendForm) so they match the new filter
+
+Verification (agent-browser end-to-end):
+- Logged in as Dr. Sarah → Monitoring Paliatif → 2 patients loaded from Supabase (Test UUID Patient, Juniarti)
+- CHAT TEST 1: Selected Test UUID Patient → Chat tab → typed "Halo, ini pesan test dari dokter" → clicked send
+  * Console: [chatService.sendMessage] payload: {room_id: "303f433e-3d95-4158-8197-feb3cb188138", patient_id: "9501a17a-0a8f-46ef-bad8-754621820833", doctor_id: "(null)", sender_id: "doc-sarah", sender_role: "doctor", ...}
+  * NO "invalid input syntax for type uuid" error
+  * NO 400 Bad Request
+  * Message appeared in chat UI immediately
+  * Verified in Supabase: messages table has row with real UUID id, room_id, patient_id, sender_id="doc-sarah", content="Halo, ini pesan test dari dokter"
+- CHAT TEST 2: Sent second message "Pesan kedua untuk test realtime" → both messages displayed
+  * Verified in Supabase: 2 rows in messages table for room 303f433e-...
+- CHAT TEST 3 (persistence): Reloaded page → logged in again → Monitoring Paliatif → Chat tab
+  * BOTH messages loaded from Supabase and displayed (previously would show "Mulai percakapan" empty state)
+  * Console: [SupabaseSync] initial load complete — patients: 2 (zero errors)
+- CHAT TEST 4 (dedup): Sent third message "Pesan ketiga setelah fix dedup" → all 3 messages displayed exactly once (no duplicates)
+  * Verified in Supabase: 3 rows in messages table
+- CHAT TEST 5 (multi-patient): Switched to Juniarti → sent "Halo Juniarti, ini pesan test"
+  * Console: [chatService.sendMessage] payload: {room_id: "13adb7a2-8a59-4628-aa11-e16c035ad386", patient_id: "da9bde51-07fd-4348-bccf-2e9659a3cea3", ...}
+  * Separate room UUID created for Juniarti (13adb7a2-...) — different from Test UUID Patient's room (303f433e-...)
+  * Verified in Supabase: messages table has row for Juniarti's room
+- KELUHAN HARIAN TEST 1 (stable): Filled form with all-green answers (Baik, Tidak Ada, Tidak Nyeri, Tidak Sesak, Ya makan, Ya tidur, Tidak masalah obat)
+  * Dev log: [daily-complaints POST] patient_id: 9501a17a-0a8f-46ef-bad8-754621820833, severity_level: 'hijau'
+  * POST /api/daily-complaints 201 in 683ms (NOT 500!)
+  * UI: "Keluhan Harian Berhasil Dikirim" success message
+  * Verified in Supabase: daily_complaints table has row with patient_id UUID, severity_level='hijau'
+  * Riwayat Keluhan tab: "1 entri ditemukan", record displayed with correct values
+- KELUHAN HARIAN TEST 2 (red flags): Filled form with all-red answers (Tidak Baik, Ada keluhan, Nyeri bertambah, Sesak bertambah, Tidak makan, Tidak tidur, Ya masalah obat)
+  * Dev log: [daily-complaints POST] severity_level: 'merah', POST /api/daily-complaints 201 in 1598ms
+  * Verified in Supabase: daily_complaints table has row with severity_level='merah'
+  * Verified in Supabase: clinical_alerts table has 7 new rows for this patient (kondisi_tidak_baik, keluhan_baru, nyeri_bertambah, sesak_bertambah, gangguan_makan_minum, gangguan_tidur, masalah_obat) with proper severity (merah for critical, kuning for warnings)
+  * Riwayat Keluhan tab: "2 entri ditemukan", stats show 1 Stabil + 1 Kritis, both records displayed
+- KELUHAN HARIAN TEST 3 (persistence): Reloaded page → Riwayat Keluhan tab → both records loaded from Supabase
+- Final console check: ZERO errors, ZERO warnings, only [SupabaseSync] initial load complete log
+- Final lint check: only pre-existing seed-palliative.js error (no new errors/warnings)
+
+Stage Summary:
+- CHAT 100% FIXED: Root cause was `messageToDb({ roomId, ...data })` where the spread overrode the explicit UUID roomId with the composite string. Fixed by passing roomId as a separate parameter. Messages now persist to Supabase with real UUIDs, load on patient select, and display without duplicates after page reload.
+- KELUHAN HARIAN 100% FIXED: Root cause was Prisma-as-primary with Supabase-mirror. Rewrote API route to use Supabase directly. Clinical alerts now also persist to Supabase. No more 500 errors.
+- ARCHITECTURE UNIFIED: Daily complaints now use Supabase as single source of truth (no Prisma, no duplicate inserts). Chat uses Supabase directly via chatService (no API route needed).
+- All 5 root causes identified and fixed; all 8 test scenarios pass; zero console errors; data verified in Supabase via REST API.

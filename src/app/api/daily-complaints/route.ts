@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
 import { supabase } from '@/supabaseClient';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// /api/daily-complaints
+//
+// Supabase is the SINGLE SOURCE OF TRUTH for daily_complaints. This route no
+// longer touches Prisma — every read/write goes straight to Supabase.
+//
+// Tables touched:
+//   • daily_complaints  (the complaint itself)
+//   • clinical_alerts   (auto-generated when the patient reports red flags)
+//
+// All UUID columns (patient_id, doctor_id) are validated before INSERT so we
+// never send a non-UUID string to Postgres (which would trigger
+// `invalid input syntax for type uuid`).
+// ─────────────────────────────────────────────────────────────────────────────
 
 // UUID validation — patient_id is a uuid FK in Supabase.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -14,87 +28,51 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const palliativePatientId = searchParams.get('palliativePatientId');
 
-    // ── Try Supabase first ─────────────────────────────────────────────────
-    if (palliativePatientId) {
-      try {
-        const { data: supaRows, error } = await supabase
-          .from('daily_complaints')
-          .select('*')
-          .eq('patient_id', palliativePatientId)
-          .order('submitted_at', { ascending: false });
-        if (!error && supaRows && supaRows.length > 0) {
-          const mapped = supaRows.map((r: any) => ({
-            id: r.id,
-            palliativePatientId: r.patient_id,
-            kondisiHariIni: r.kondisi_hari_ini,
-            alasanKondisi: r.alasan_kondisi,
-            keluhanBaru: r.keluhan_baru,
-            deskripsiKeluhanBaru: r.deskripsi_keluhan,
-            kondisiNyeri: r.kondisi_nyeri,
-            kondisiSesak: r.kondisi_sesak,
-            makanMinum: r.makan_minum,
-            alasanMakanMinum: r.alasan_makan_minum,
-            tidur: r.tidur,
-            alasanTidur: r.alasan_tidur,
-            masalahObat: r.masalah_obat,
-            deskripsiMasalahObat: r.deskripsi_masalah,
-            severityLevel: r.severity_level || 'ringan',
-            sumberPengisian: r.sumber_pengisian || 'manual',
-            submittedAt: r.submitted_at,
-            createdAt: r.created_at,
-          }));
-          return NextResponse.json({ complaints: mapped, source: 'supabase' });
-        }
-      } catch (e) {
-        console.warn('[daily-complaints] Supabase read failed, falling back to Prisma:', (e as any)?.message);
-      }
+    if (!palliativePatientId || !isValidUuid(palliativePatientId)) {
+      // No valid UUID → return empty list (don't try to query with a bad ID)
+      return NextResponse.json({ complaints: [], source: 'supabase' });
     }
 
-    // ── Fallback to Prisma ─────────────────────────────────────────────────
-    const where: Record<string, string> = {};
-    if (palliativePatientId) {
-      where.palliativePatientId = palliativePatientId;
+    const { data: supaRows, error } = await supabase
+      .from('daily_complaints')
+      .select('*')
+      .eq('patient_id', palliativePatientId)
+      .order('submitted_at', { ascending: false });
+
+    if (error) {
+      console.error('[daily-complaints GET] Supabase error:', error.message);
+      return NextResponse.json(
+        { error: 'Failed to fetch daily complaints: ' + error.message },
+        { status: 500 }
+      );
     }
 
-    const complaints = await db.dailyComplaint.findMany({
-      where,
-      include: { patient: { select: { id: true } } },
-      orderBy: { submittedAt: 'desc' },
-    });
-
-    // Enrich with patient name from the related PalliativePatient record
-    const enriched = complaints.map((c) => ({
-      ...c,
-      patientName: undefined as string | undefined,
+    const mapped = (supaRows ?? []).map((r: any) => ({
+      id: r.id,
+      palliativePatientId: r.patient_id,
+      kondisiHariIni: r.kondisi_hari_ini,
+      alasanKondisi: r.alasan_kondisi,
+      keluhanBaru: r.keluhan_baru,
+      deskripsiKeluhanBaru: r.deskripsi_keluhan,
+      kondisiNyeri: r.kondisi_nyeri,
+      kondisiSesak: r.kondisi_sesak,
+      makanMinum: r.makan_minum,
+      alasanMakanMinum: r.alasan_makan_minum,
+      tidur: r.tidur,
+      alasanTidur: r.alasan_tidur,
+      masalahObat: r.masalah_obat,
+      deskripsiMasalahObat: r.deskripsi_masalah,
+      severityLevel: r.severity_level || 'ringan',
+      sumberPengisian: r.sumber_pengisian || 'manual',
+      submittedAt: r.submitted_at,
+      createdAt: r.created_at,
     }));
 
-    // Get patient names from the palliativePatients store approach - 
-    // since PalliativePatient doesn't have name directly, we get it from the linked User
-    const patientIds = [...new Set(complaints.map((c) => c.palliativePatientId))];
-    const patients = await db.palliativePatient.findMany({
-      where: { id: { in: patientIds } },
-      select: { id: true, patientId: true },
-    });
-
-    // Get user names
-    const userIds = patients.map((p) => p.patientId);
-    const users = await db.user.findMany({
-      where: { id: { in: userIds } },
-      select: { id: true, name: true },
-    });
-
-    const userMap = new Map(users.map((u) => [u.id, u.name]));
-    const patientMap = new Map(patients.map((p) => [p.id, p.patientId]));
-
-    const result = complaints.map((c) => ({
-      ...c,
-      patientName: userMap.get(patientMap.get(c.palliativePatientId) || '') || undefined,
-    }));
-
-    return NextResponse.json({ complaints: result });
+    return NextResponse.json({ complaints: mapped, source: 'supabase' });
   } catch (error) {
     console.error('Error fetching daily complaints:', error);
-    return NextResponse.json({ error: 'Failed to fetch daily complaints' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to fetch daily complaints';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -103,93 +81,29 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
+    // ── Validate required UUID ────────────────────────────────────────────
+    if (!isValidUuid(body.palliativePatientId)) {
+      console.error(
+        '[daily-complaints POST] ABORTED — patient_id is not a valid UUID:',
+        body.palliativePatientId
+      );
+      return NextResponse.json(
+        { error: 'Patient UUID tidak valid — pilih pasien yang valid sebelum mengisi keluhan.' },
+        { status: 400 }
+      );
+    }
+
+    const patientId: string = body.palliativePatientId;
+    // NOTE: the daily_complaints table has no doctor_id column — we don't
+    // forward it. (clinical_alerts also has no doctor_id in the schema.)
+
     // Calculate severity level based on answers
     const severityLevel = calculateSeverity(body);
 
-    const complaint = await db.dailyComplaint.create({
-      data: {
-        palliativePatientId: body.palliativePatientId,
-        kondisiHariIni: body.kondisiHariIni,
-        alasanKondisi: body.alasanKondisi || null,
-        keluhanBaru: body.keluhanBaru,
-        deskripsiKeluhanBaru: body.deskripsiKeluhanBaru || null,
-        kondisiNyeri: body.kondisiNyeri,
-        kondisiSesak: body.kondisiSesak,
-        makanMinum: body.makanMinum,
-        alasanMakanMinum: body.alasanMakanMinum || null,
-        tidur: body.tidur,
-        alasanTidur: body.alasanTidur || null,
-        masalahObat: body.masalahObat,
-        deskripsiMasalahObat: body.deskripsiMasalahObat || null,
-        severityLevel,
-        sumberPengisian: body.sumberPengisian || 'monitoring',
-      },
-    });
-
-    // Get patient name for notification
-    const patient = await db.palliativePatient.findUnique({
-      where: { id: body.palliativePatientId },
-      select: { patientId: true },
-    });
-
-    let patientName = 'Pasien';
-    if (patient) {
-      const user = await db.user.findUnique({
-        where: { id: patient.patientId },
-        select: { name: true },
-      });
-      if (user) patientName = user.name;
-    }
-
-    // Create clinical notifications for alert conditions
-    const alerts = generateAlerts(body, complaint.id, patientName);
-
-    // Create notifications in DB for each alert
-    if (patient) {
-      for (const alert of alerts) {
-        await db.notification.create({
-          data: {
-            userId: patient.patientId,
-            title: alert.title,
-            message: alert.message,
-            type: 'clinical_alert',
-            referenceId: complaint.id,
-          },
-        });
-      }
-    }
-
-    // ── Mirror to Supabase (best-effort, never throws) ──────────────────────
-    await mirrorToSupabase(body, severityLevel);
-
-    return NextResponse.json({
-      complaint: {
-        ...complaint,
-        patientName,
-      },
-      alerts,
-      severityLevel,
-    }, { status: 201 });
-  } catch (error) {
-    console.error('Error creating daily complaint:', error);
-    const message = error instanceof Error ? error.message : 'Failed to create daily complaint';
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
-}
-
-// ── Mirror an inserted complaint to Supabase (best-effort, never throws) ────
-async function mirrorToSupabase(body: Record<string, string>, severityLevel: string) {
-  try {
-    // patient_id is a NOT NULL uuid FK — abort if it's not a valid UUID.
-    if (!isValidUuid(body.palliativePatientId)) {
-      console.warn(
-        '[daily-complaints] Supabase mirror SKIPPED — patient_id is not a valid UUID:',
-        body.palliativePatientId
-      );
-      return;
-    }
-    const row = {
-      patient_id: body.palliativePatientId,
+    // ── Build the Supabase row ────────────────────────────────────────────
+    // Field names MUST match the daily_complaints table columns exactly.
+    const row: Record<string, any> = {
+      patient_id: patientId,
       kondisi_hari_ini: body.kondisiHariIni,
       alasan_kondisi: body.alasanKondisi || null,
       keluhan_baru: body.keluhanBaru,
@@ -205,11 +119,78 @@ async function mirrorToSupabase(body: Record<string, string>, severityLevel: str
       severity_level: severityLevel,
       sumber_pengisian: body.sumberPengisian || 'monitoring',
     };
-    console.log('[daily-complaints] Supabase insert payload patient_id:', row.patient_id);
-    const { error } = await supabase.from('daily_complaints').insert(row);
-    if (error) console.warn('[daily-complaints] Supabase insert failed:', error.message);
-  } catch (e) {
-    console.warn('[daily-complaints] Supabase mirror threw:', (e as any)?.message);
+
+    // Diagnostic logging — required by spec.
+    console.log('[daily-complaints POST] patient_id:', patientId);
+    console.log('[daily-complaints POST] payload:', row);
+
+    // ── INSERT into daily_complaints ──────────────────────────────────────
+    const { data: inserted, error: insErr } = await supabase
+      .from('daily_complaints')
+      .insert(row)
+      .select()
+      .single();
+
+    if (insErr) {
+      console.error('[daily-complaints POST] Supabase INSERT failed:', insErr.message);
+      return NextResponse.json(
+        { error: 'Gagal menyimpan keluhan: ' + insErr.message },
+        { status: 500 }
+      );
+    }
+
+    const complaint = {
+      id: inserted.id,
+      palliativePatientId: inserted.patient_id,
+      kondisiHariIni: inserted.kondisi_hari_ini,
+      alasanKondisi: inserted.alasan_kondisi,
+      keluhanBaru: inserted.keluhan_baru,
+      deskripsiKeluhanBaru: inserted.deskripsi_keluhan,
+      kondisiNyeri: inserted.kondisi_nyeri,
+      kondisiSesak: inserted.kondisi_sesak,
+      makanMinum: inserted.makan_minum,
+      alasanMakanMinum: inserted.alasan_makan_minum,
+      tidur: inserted.tidur,
+      alasanTidur: inserted.alasan_tidur,
+      masalahObat: inserted.masalah_obat,
+      deskripsiMasalahObat: inserted.deskripsi_masalah,
+      severityLevel: inserted.severity_level,
+      sumberPengisian: inserted.sumber_pengisian,
+      submittedAt: inserted.submitted_at,
+      createdAt: inserted.created_at,
+    };
+
+    // ── Generate clinical_alerts into Supabase (best-effort) ──────────────
+    const alerts = generateAlerts(body, complaint.id);
+    for (const alert of alerts) {
+      const alertRow: Record<string, any> = {
+        patient_id: patientId,
+        alert_type: alert.alertType,
+        severity: alert.severity, // already normalized to hijau|kuning|merah
+        title: alert.title,
+        description: alert.message,
+        values: { complaintId: complaint.id, source: 'daily_complaint' },
+        is_read: false,
+      };
+      const { error: alertErr } = await supabase.from('clinical_alerts').insert(alertRow);
+      if (alertErr) {
+        console.error('[daily-complaints POST] clinical_alerts insert failed:', alertErr.message);
+      }
+    }
+
+    return NextResponse.json(
+      {
+        complaint,
+        alerts: alerts.map((a) => ({ title: a.title, message: a.message, severity: a.severity })),
+        severityLevel,
+        source: 'supabase',
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error('Error creating daily complaint:', error);
+    const message = error instanceof Error ? error.message : 'Failed to create daily complaint';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -250,66 +231,74 @@ function calculateSeverity(body: Record<string, string>): string {
 }
 
 interface AlertInfo {
+  alertType: string;
   title: string;
   message: string;
-  severity: string;
+  severity: 'hijau' | 'kuning' | 'merah';
 }
 
-function generateAlerts(body: Record<string, string>, complaintId: string, patientName: string): AlertInfo[] {
+function generateAlerts(body: Record<string, string>, complaintId: string): AlertInfo[] {
   const alerts: AlertInfo[] = [];
 
   if (body.kondisiHariIni === 'tidak_baik') {
     alerts.push({
+      alertType: 'kondisi_tidak_baik',
       title: 'Kondisi Pasien Tidak Baik',
-      message: `${patientName} melaporkan kondisi tidak baik hari ini. Alasan: ${body.alasanKondisi || '-'}`,
+      message: `Pasien melaporkan kondisi tidak baik hari ini. Alasan: ${body.alasanKondisi || '-'}`,
       severity: 'kuning',
     });
   }
 
   if (body.keluhanBaru === 'ada') {
     alerts.push({
+      alertType: 'keluhan_baru',
       title: 'Keluhan Baru Dilaporkan',
-      message: `${patientName} melaporkan keluhan baru: ${body.deskripsiKeluhanBaru || '-'}`,
+      message: `Pasien melaporkan keluhan baru: ${body.deskripsiKeluhanBaru || '-'}`,
       severity: 'kuning',
     });
   }
 
   if (body.kondisiNyeri === 'bertambah') {
     alerts.push({
+      alertType: 'nyeri_bertambah',
       title: 'Nyeri Bertambah Berat',
-      message: `${patientName} melaporkan nyeri bertambah berat. Perlu evaluasi dan tindak lanjut segera.`,
+      message: `Pasien melaporkan nyeri bertambah berat. Perlu evaluasi dan tindak lanjut segera.`,
       severity: 'merah',
     });
   }
 
   if (body.kondisiSesak === 'bertambah') {
     alerts.push({
+      alertType: 'sesak_bertambah',
       title: 'Sesak Napas Bertambah Berat',
-      message: `${patientName} melaporkan sesak napas bertambah berat. Perlu evaluasi dan tindak lanjut segera.`,
+      message: `Pasien melaporkan sesak napas bertambah berat. Perlu evaluasi dan tindak lanjut segera.`,
       severity: 'merah',
     });
   }
 
   if (body.makanMinum === 'tidak') {
     alerts.push({
+      alertType: 'gangguan_makan_minum',
       title: 'Gangguan Makan & Minum',
-      message: `${patientName} tidak dapat makan dan minum dengan baik: ${body.alasanMakanMinum || '-'}`,
+      message: `Pasien tidak dapat makan dan minum dengan baik: ${body.alasanMakanMinum || '-'}`,
       severity: 'kuning',
     });
   }
 
   if (body.tidur === 'tidak') {
     alerts.push({
+      alertType: 'gangguan_tidur',
       title: 'Gangguan Tidur',
-      message: `${patientName} tidak dapat tidur dengan baik: ${body.alasanTidur || '-'}`,
+      message: `Pasien tidak dapat tidur dengan baik: ${body.alasanTidur || '-'}`,
       severity: 'kuning',
     });
   }
 
   if (body.masalahObat === 'ya') {
     alerts.push({
+      alertType: 'masalah_obat',
       title: 'Masalah Obat Dilaporkan',
-      message: `${patientName} melaporkan masalah dengan obat: ${body.deskripsiMasalahObat || '-'}`,
+      message: `Pasien melaporkan masalah dengan obat: ${body.deskripsiMasalahObat || '-'}`,
       severity: 'merah',
     });
   }

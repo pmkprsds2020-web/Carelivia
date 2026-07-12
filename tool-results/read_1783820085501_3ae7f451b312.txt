@@ -1,0 +1,1055 @@
+     1→'use client';
+     2→
+     3→import React, { useState, useMemo } from 'react';
+     4→import { useStore } from '@/lib/store';
+     5→import { useToast } from '@/hooks/use-toast';
+     6→import { isValidUuid } from '@/services/supabase';
+     7→import type {
+     8→  DailyCondition,
+     9→  DailyComplaintYesNo,
+    10→  DailyPainCondition,
+    11→  DailyDyspneaCondition,
+    12→  DailyYesNo,
+    13→  DailyMedicineProblem,
+    14→  DailyComplaintRecord,
+    15→  DailyComplaintFormInput,
+    16→  DailyComplaintSeverity,
+    17→  PalliativeClinicalAlert,
+    18→} from '@/lib/types';
+    19→
+    20→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+    21→import { Button } from '@/components/ui/button';
+    22→import { Label } from '@/components/ui/label';
+    23→import { Textarea } from '@/components/ui/textarea';
+    24→import { Badge } from '@/components/ui/badge';
+    25→import { Separator } from '@/components/ui/separator';
+    26→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+    27→import { Input } from '@/components/ui/input';
+    28→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+    29→
+    30→import {
+    31→  ClipboardList, Send, AlertTriangle, CheckCircle2, ChevronDown,
+    32→  Search, Calendar, ArrowUpDown, Eye, Heart, Frown, Smile,
+    33→  ThermometerSun, Wind, Utensils, Moon, Pill, AlertCircle, XCircle,
+    34→  Filter, RotateCcw
+    35→} from 'lucide-react';
+    36→
+    37→// ─── Label Maps ──────────────────────────────────────────────────────────
+    38→
+    39→const conditionLabels: Record<DailyCondition, string> = {
+    40→  baik: 'Baik',
+    41→  tidak_baik: 'Tidak Baik',
+    42→};
+    43→
+    44→const complaintYesNoLabels: Record<DailyComplaintYesNo, string> = {
+    45→  tidak_ada: 'Tidak Ada',
+    46→  ada: 'Ada',
+    47→};
+    48→
+    49→const painLabels: Record<DailyPainCondition, string> = {
+    50→  tidak_nyeri: 'Sudah tidak nyeri',
+    51→  berkurang: 'Nyeri sudah berkurang',
+    52→  sama: 'Nyeri masih dirasakan sama',
+    53→  bertambah: 'Nyeri bertambah berat',
+    54→};
+    55→
+    56→const dyspneaLabels: Record<DailyDyspneaCondition, string> = {
+    57→  tidak_sesak: 'Sudah tidak sesak',
+    58→  berkurang: 'Sesak sudah berkurang',
+    59→  sama: 'Sesak masih dirasakan sama',
+    60→  bertambah: 'Sesak bertambah berat',
+    61→};
+    62→
+    63→const yesNoLabels: Record<DailyYesNo, string> = {
+    64→  ya: 'Ya',
+    65→  tidak: 'Tidak',
+    66→};
+    67→
+    68→const medicineProblemLabels: Record<DailyMedicineProblem, string> = {
+    69→  tidak: 'Tidak',
+    70→  ya: 'Ya',
+    71→};
+    72→
+    73→const severityConfig: Record<DailyComplaintSeverity, { label: string; cls: string; icon: React.ReactNode }> = {
+    74→  hijau: { label: 'Stabil', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300', icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
+    75→  kuning: { label: 'Perhatian', cls: 'bg-amber-100 text-amber-800 border-amber-300', icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+    76→  merah: { label: 'Kritis', cls: 'bg-red-100 text-red-800 border-red-300', icon: <AlertCircle className="h-3.5 w-3.5" /> },
+    77→};
+    78→
+    79→// ─── Props ─────────────────────────────────────────────────────────────
+    80→
+    81→interface DailyComplaintPanelProps {
+    82→  palliativePatientId: string | null;
+    83→}
+    84→
+    85→// ─── Radio Option Component ─────────────────────────────────────────────
+    86→
+    87→function RadioOption<T extends string>({
+    88→  options,
+    89→  labels,
+    90→  value,
+    91→  onChange,
+    92→  colorMap,
+    93→}: {
+    94→  options: T[];
+    95→  labels: Record<T, string>;
+    96→  value: T | '';
+    97→  onChange: (val: T) => void;
+    98→  colorMap?: Partial<Record<T, string>>;
+    99→}) {
+   100→  return (
+   101→    <div className="flex flex-wrap gap-2">
+   102→      {options.map((opt) => {
+   103→        const isSelected = value === opt;
+   104→        const colorCls = colorMap?.[opt];
+   105→        return (
+   106→          <button
+   107→            key={opt}
+   108→            type="button"
+   109→            onClick={() => onChange(opt)}
+   110→            className={`px-3 py-2 rounded-lg border text-sm transition-all whitespace-nowrap
+   111→              ${isSelected
+   112→                ? colorCls || 'bg-primary text-primary-foreground border-primary shadow-sm'
+   113→                : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'}
+   114→              `}
+   115→          >
+   116→            {labels[opt]}
+   117→          </button>
+   118→        );
+   119→      })}
+   120→    </div>
+   121→  );
+   122→}
+   123→
+   124→// ─── Conditional Textarea ─────────────────────────────────────────────
+   125→
+   126→function ConditionalTextarea({
+   127→  show,
+   128→  label,
+   129→  value,
+   130→  onChange,
+   131→  placeholder,
+   132→}: {
+   133→  show: boolean;
+   134→  label: string;
+   135→  value: string;
+   136→  onChange: (val: string) => void;
+   137→  placeholder: string;
+   138→}) {
+   139→  if (!show) return null;
+   140→  return (
+   141→    <div className="mt-2 ml-2 pl-3 border-l-2 border-amber-300 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+   142→      <Label className="text-sm font-medium text-amber-800">{label} *</Label>
+   143→      <Textarea
+   144→        value={value}
+   145→        onChange={(e) => onChange(e.target.value)}
+   146→        placeholder={placeholder}
+   147→        className="min-h-[80px] resize-y"
+   148→      />
+   149→    </div>
+   150→  );
+   151→}
+   152→
+   153→// ─── Form Section ─────────────────────────────────────────────────────
+   154→
+   155→export interface DailyComplaintFormProps {
+   156→  palliativePatientId: string;
+   157→  source?: 'monitoring' | 'chat';
+   158→  onSubmitSuccess?: (complaint: DailyComplaintRecord) => void;
+   159→  compact?: boolean;
+   160→}
+   161→
+   162→export function DailyComplaintForm({ palliativePatientId, source = 'monitoring', onSubmitSuccess, compact = false }: DailyComplaintFormProps) {
+   163→  const { toast } = useToast();
+   164→  const addDailyComplaint = useStore((s) => s.addDailyComplaint);
+   165→  const addPalliativeClinicalAlert = useStore((s) => s.addPalliativeClinicalAlert);
+   166→  const addPalliativeMonitoringNotification = useStore((s) => s.addPalliativeMonitoringNotification);
+   167→  const palliativePatients = useStore((s) => s.palliativePatients);
+   168→
+   169→  const [submitting, setSubmitting] = useState(false);
+   170→  const [submitted, setSubmitted] = useState(false);
+   171→
+   172→  // Form state
+   173→  const [kondisiHariIni, setKondisiHariIni] = useState<DailyCondition | ''>('');
+   174→  const [alasanKondisi, setAlasanKondisi] = useState('');
+   175→  const [keluhanBaru, setKeluhanBaru] = useState<DailyComplaintYesNo | ''>('');
+   176→  const [deskripsiKeluhanBaru, setDeskripsiKeluhanBaru] = useState('');
+   177→  const [kondisiNyeri, setKondisiNyeri] = useState<DailyPainCondition | ''>('');
+   178→  const [kondisiSesak, setKondisiSesak] = useState<DailyDyspneaCondition | ''>('');
+   179→  const [makanMinum, setMakanMinum] = useState<DailyYesNo | ''>('');
+   180→  const [alasanMakanMinum, setAlasanMakanMinum] = useState('');
+   181→  const [tidur, setTidur] = useState<DailyYesNo | ''>('');
+   182→  const [alasanTidur, setAlasanTidur] = useState('');
+   183→  const [masalahObat, setMasalahObat] = useState<DailyMedicineProblem | ''>('');
+   184→  const [deskripsiMasalahObat, setDeskripsiMasalahObat] = useState('');
+   185→
+   186→  const patient = palliativePatients.find((p) => p.id === palliativePatientId);
+   187→  const patientName = patient?.patientName || 'Pasien';
+   188→
+   189→  const resetForm = () => {
+   190→    setSubmitted(false);
+   191→    setKondisiHariIni('');
+   192→    setAlasanKondisi('');
+   193→    setKeluhanBaru('');
+   194→    setDeskripsiKeluhanBaru('');
+   195→    setKondisiNyeri('');
+   196→    setKondisiSesak('');
+   197→    setMakanMinum('');
+   198→    setAlasanMakanMinum('');
+   199→    setTidur('');
+   200→    setAlasanTidur('');
+   201→    setMasalahObat('');
+   202→    setDeskripsiMasalahObat('');
+   203→  };
+   204→
+   205→  const canSubmit = useMemo(() => {
+   206→    if (!kondisiHariIni || !keluhanBaru || !kondisiNyeri || !kondisiSesak || !makanMinum || !tidur || !masalahObat) return false;
+   207→    if (kondisiHariIni === 'tidak_baik' && !alasanKondisi.trim()) return false;
+   208→    if (keluhanBaru === 'ada' && !deskripsiKeluhanBaru.trim()) return false;
+   209→    if (makanMinum === 'tidak' && !alasanMakanMinum.trim()) return false;
+   210→    if (tidur === 'tidak' && !alasanTidur.trim()) return false;
+   211→    if (masalahObat === 'ya' && !deskripsiMasalahObat.trim()) return false;
+   212→    return true;
+   213→  }, [kondisiHariIni, keluhanBaru, kondisiNyeri, kondisiSesak, makanMinum, tidur, masalahObat,
+   214→      alasanKondisi, deskripsiKeluhanBaru, alasanMakanMinum, alasanTidur, deskripsiMasalahObat]);
+   215→
+   216→  const handleSubmit = async () => {
+   217→    if (!canSubmit) return;
+   218→    // ── UUID validation ──
+   219→    if (!isValidUuid(palliativePatientId)) {
+   220→      console.error('[daily-complaint] ABORTED — patient_id is not a valid UUID:', palliativePatientId);
+   221→      toast({
+   222→        title: 'Patient UUID tidak ditemukan',
+   223→        description: 'Pilih pasien yang valid sebelum mengisi keluhan harian.',
+   224→        variant: 'destructive',
+   225→      });
+   226→      return;
+   227→    }
+   228→    setSubmitting(true);
+   229→
+   230→    try {
+   231→      const formData: DailyComplaintFormInput = {
+   232→        palliativePatientId,
+   233→        kondisiHariIni: kondisiHariIni as DailyCondition,
+   234→        alasanKondisi: kondisiHariIni === 'tidak_baik' ? alasanKondisi : undefined,
+   235→        keluhanBaru: keluhanBaru as DailyComplaintYesNo,
+   236→        deskripsiKeluhanBaru: keluhanBaru === 'ada' ? deskripsiKeluhanBaru : undefined,
+   237→        kondisiNyeri: kondisiNyeri as DailyPainCondition,
+   238→        kondisiSesak: kondisiSesak as DailyDyspneaCondition,
+   239→        makanMinum: makanMinum as DailyYesNo,
+   240→        alasanMakanMinum: makanMinum === 'tidak' ? alasanMakanMinum : undefined,
+   241→        tidur: tidur as DailyYesNo,
+   242→        alasanTidur: tidur === 'tidak' ? alasanTidur : undefined,
+   243→        masalahObat: masalahObat as DailyMedicineProblem,
+   244→        deskripsiMasalahObat: masalahObat === 'ya' ? deskripsiMasalahObat : undefined,
+   245→        sumberPengisian: source,
+   246→      };
+   247→
+   248→      const res = await fetch('/api/daily-complaints', {
+   249→        method: 'POST',
+   250→        headers: { 'Content-Type': 'application/json' },
+   251→        body: JSON.stringify(formData),
+   252→      });
+   253→
+   254→      if (!res.ok) throw new Error('Gagal menyimpan keluhan harian');
+   255→
+   256→      const data = await res.json();
+   257→      const savedComplaint: DailyComplaintRecord = {
+   258→        ...data.complaint,
+   259→        submittedAt: data.complaint.submittedAt,
+   260→        createdAt: data.complaint.createdAt,
+   261→      };
+   262→
+   263→      // Add to store
+   264→      addDailyComplaint(savedComplaint);
+   265→
+   266→      // Generate clinical alerts in the store
+   267→      if (data.alerts && data.alerts.length > 0) {
+   268→        for (const alert of data.alerts) {
+   269→          addPalliativeClinicalAlert({
+   270→            id: `alert-dc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+   271→            patientId: palliativePatientId,
+   272→            alertType: alert.severity === 'merah' ? 'perburukan' : 'gejala_berat',
+   273→            severity: alert.severity === 'merah' ? 'merah' : 'kuning',
+   274→            title: alert.title,
+   275→            description: alert.message,
+   276→            isRead: false,
+   277→            createdAt: new Date().toISOString(),
+   278→          });
+   279→
+   280→          addPalliativeMonitoringNotification({
+   281→            id: `notif-dc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+   282→            patientId: palliativePatientId,
+   283→            patientName,
+   284→            type: alert.severity === 'merah' ? 'pain_increase' : 'screening_completed',
+   285→            title: alert.title,
+   286→            description: alert.message,
+   287→            severity: alert.severity === 'merah' ? 'critical' : 'warning',
+   288→            isRead: false,
+   289→            referenceId: savedComplaint.id,
+   290→            createdAt: new Date().toISOString(),
+   291→          });
+   292→        }
+   293→      }
+   294→
+   295→      setSubmitted(true);
+   296→      toast({
+   297→        title: 'Keluhan Harian Terkirim',
+   298→        description: 'Terima kasih telah mengisi keluhan harian. Tim paliatif akan memantau kondisi Anda.',
+   299→      });
+   300→
+   301→      // Notify parent component (e.g., chat panel)
+   302→      if (onSubmitSuccess) {
+   303→        onSubmitSuccess(savedComplaint);
+   304→      }
+   305→    } catch (error) {
+   306→      toast({
+   307→        title: 'Gagal Mengirim',
+   308→        description: 'Terjadi kesalahan saat menyimpan keluhan. Silakan coba lagi.',
+   309→        variant: 'destructive',
+   310→      });
+   311→    } finally {
+   312→      setSubmitting(false);
+   313→    }
+   314→  };
+   315→
+   316→  if (submitted) {
+   317→    return (
+   318→      <Card className="border-emerald-200 bg-emerald-50/50">
+   319→        <CardContent className="py-12 flex flex-col items-center gap-4 text-center">
+   320→          <div className="h-16 w-16 rounded-full bg-emerald-100 flex items-center justify-center">
+   321→            <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+   322→          </div>
+   323→          <div>
+   324→            <h3 className="text-lg font-semibold text-emerald-900">Keluhan Harian Berhasil Dikirim</h3>
+   325→            <p className="text-sm text-emerald-700 mt-1">
+   326→              Terima kasih telah mengisi keluhan harian. Tim paliatif akan memantau kondisi Anda.
+   327→            </p>
+   328→          </div>
+   329→          <Button
+   330→            variant="outline"
+   331→            onClick={resetForm}
+   332→            className="mt-2"
+   333→          >
+   334→            Isi Keluhan Baru
+   335→          </Button>
+   336→        </CardContent>
+   337→      </Card>
+   338→    );
+   339→  }
+   340→
+   341→  return (
+   342→    <Card>
+   343→      <CardHeader className="pb-4">
+   344→        <div className="flex items-center gap-2">
+   345→          <ClipboardList className="h-5 w-5 text-primary" />
+   346→          <CardTitle className="text-lg">Form Keluhan Harian</CardTitle>
+   347→        </div>
+   348→        <CardDescription>
+   349→          Isilah form berikut untuk melaporkan kondisi Anda hari ini. Data Anda akan dipantau oleh tim paliatif.
+   350→        </CardDescription>
+   351→      </CardHeader>
+   352→      <CardContent className="space-y-6">
+   353→        {/* Q1: Kondisi Hari Ini */}
+   354→        <div className="space-y-2">
+   355→          <Label className="text-sm font-semibold flex items-center gap-1.5">
+   356→            <Smile className="h-4 w-4 text-teal-600" />
+   357→            1. Bagaimana kondisi Anda hari ini?
+   358→          </Label>
+   359→          <RadioOption
+   360→            options={['baik', 'tidak_baik'] as DailyCondition[]}
+   361→            labels={conditionLabels}
+   362→            value={kondisiHariIni}
+   363→            onChange={setKondisiHariIni}
+   364→            colorMap={{
+   365→              baik: 'bg-emerald-600 text-white border-emerald-600 shadow-sm',
+   366→              tidak_baik: 'bg-red-600 text-white border-red-600 shadow-sm',
+   367→            }}
+   368→          />
+   369→          <ConditionalTextarea
+   370→            show={kondisiHariIni === 'tidak_baik'}
+   371→            label="Alasan kondisi tidak baik hari ini"
+   372→            value={alasanKondisi}
+   373→            onChange={setAlasanKondisi}
+   374→            placeholder="Jelaskan alasan kondisi Anda tidak baik..."
+   375→          />
+   376→        </div>
+   377→
+   378→        <Separator />
+   379→
+   380→        {/* Q2: Keluhan Baru */}
+   381→        <div className="space-y-2">
+   382→          <Label className="text-sm font-semibold flex items-center gap-1.5">
+   383→            <AlertCircle className="h-4 w-4 text-teal-600" />
+   384→            2. Apakah ada keluhan baru hari ini?
+   385→          </Label>
+   386→          <RadioOption
+   387→            options={['tidak_ada', 'ada'] as DailyComplaintYesNo[]}
+   388→            labels={complaintYesNoLabels}
+   389→            value={keluhanBaru}
+   390→            onChange={setKeluhanBaru}
+   391→            colorMap={{
+   392→              tidak_ada: 'bg-emerald-600 text-white border-emerald-600 shadow-sm',
+   393→              ada: 'bg-amber-600 text-white border-amber-600 shadow-sm',
+   394→            }}
+   395→          />
+   396→          <ConditionalTextarea
+   397→            show={keluhanBaru === 'ada'}
+   398→            label="Jelaskan keluhan baru yang dirasakan"
+   399→            value={deskripsiKeluhanBaru}
+   400→            onChange={setDeskripsiKeluhanBaru}
+   401→            placeholder="Jelaskan keluhan baru yang Anda rasakan..."
+   402→          />
+   403→        </div>
+   404→
+   405→        <Separator />
+   406→
+   407→        {/* Q3: Nyeri */}
+   408→        <div className="space-y-2">
+   409→          <Label className="text-sm font-semibold flex items-center gap-1.5">
+   410→            <ThermometerSun className="h-4 w-4 text-teal-600" />
+   411→            3. Bagaimana kondisi nyeri yang Anda rasakan?
+   412→          </Label>
+   413→          <RadioOption
+   414→            options={['tidak_nyeri', 'berkurang', 'sama', 'bertambah'] as DailyPainCondition[]}
+   415→            labels={painLabels}
+   416→            value={kondisiNyeri}
+   417→            onChange={setKondisiNyeri}
+   418→            colorMap={{
+   419→              tidak_nyeri: 'bg-emerald-600 text-white border-emerald-600 shadow-sm',
+   420→              berkurang: 'bg-teal-600 text-white border-teal-600 shadow-sm',
+   421→              sama: 'bg-amber-600 text-white border-amber-600 shadow-sm',
+   422→              bertambah: 'bg-red-600 text-white border-red-600 shadow-sm',
+   423→            }}
+   424→          />
+   425→        </div>
+   426→
+   427→        <Separator />
+   428→
+   429→        {/* Q4: Sesak Napas */}
+   430→        <div className="space-y-2">
+   431→          <Label className="text-sm font-semibold flex items-center gap-1.5">
+   432→            <Wind className="h-4 w-4 text-teal-600" />
+   433→            4. Bagaimana kondisi sesak napas yang Anda rasakan?
+   434→          </Label>
+   435→          <RadioOption
+   436→            options={['tidak_sesak', 'berkurang', 'sama', 'bertambah'] as DailyDyspneaCondition[]}
+   437→            labels={dyspneaLabels}
+   438→            value={kondisiSesak}
+   439→            onChange={setKondisiSesak}
+   440→            colorMap={{
+   441→              tidak_sesak: 'bg-emerald-600 text-white border-emerald-600 shadow-sm',
+   442→              berkurang: 'bg-teal-600 text-white border-teal-600 shadow-sm',
+   443→              sama: 'bg-amber-600 text-white border-amber-600 shadow-sm',
+   444→              bertambah: 'bg-red-600 text-white border-red-600 shadow-sm',
+   445→            }}
+   446→          />
+   447→        </div>
+   448→
+   449→        <Separator />
+   450→
+   451→        {/* Q5: Makan & Minum */}
+   452→        <div className="space-y-2">
+   453→          <Label className="text-sm font-semibold flex items-center gap-1.5">
+   454→            <Utensils className="h-4 w-4 text-teal-600" />
+   455→            5. Apakah Anda dapat makan dan minum dengan baik?
+   456→          </Label>
+   457→          <RadioOption
+   458→            options={['ya', 'tidak'] as DailyYesNo[]}
+   459→            labels={yesNoLabels}
+   460→            value={makanMinum}
+   461→            onChange={setMakanMinum}
+   462→            colorMap={{
+   463→              ya: 'bg-emerald-600 text-white border-emerald-600 shadow-sm',
+   464→              tidak: 'bg-red-600 text-white border-red-600 shadow-sm',
+   465→            }}
+   466→          />
+   467→          <ConditionalTextarea
+   468→            show={makanMinum === 'tidak'}
+   469→            label="Jelaskan kendala makan dan minum"
+   470→            value={alasanMakanMinum}
+   471→            onChange={setAlasanMakanMinum}
+   472→            placeholder="Jelaskan kendala yang Anda alami saat makan dan minum..."
+   473→          />
+   474→        </div>
+   475→
+   476→        <Separator />
+   477→
+   478→        {/* Q6: Tidur */}
+   479→        <div className="space-y-2">
+   480→          <Label className="text-sm font-semibold flex items-center gap-1.5">
+   481→            <Moon className="h-4 w-4 text-teal-600" />
+   482→            6. Apakah Anda dapat tidur dengan baik?
+   483→          </Label>
+   484→          <RadioOption
+   485→            options={['ya', 'tidak'] as DailyYesNo[]}
+   486→            labels={yesNoLabels}
+   487→            value={tidur}
+   488→            onChange={setTidur}
+   489→            colorMap={{
+   490→              ya: 'bg-emerald-600 text-white border-emerald-600 shadow-sm',
+   491→              tidak: 'bg-amber-600 text-white border-amber-600 shadow-sm',
+   492→            }}
+   493→          />
+   494→          <ConditionalTextarea
+   495→            show={tidur === 'tidak'}
+   496→            label="Jelaskan gangguan tidur yang dialami"
+   497→            value={alasanTidur}
+   498→            onChange={setAlasanTidur}
+   499→            placeholder="Jelaskan gangguan tidur yang Anda alami..."
+   500→          />
+   501→        </div>
+   502→
+   503→        <Separator />
+   504→
+   505→        {/* Q7: Masalah Obat */}
+   506→        <div className="space-y-2">
+   507→          <Label className="text-sm font-semibold flex items-center gap-1.5">
+   508→            <Pill className="h-4 w-4 text-teal-600" />
+   509→            7. Apakah ada masalah dengan obat yang diberikan?
+   510→          </Label>
+   511→          <RadioOption
+   512→            options={['tidak', 'ya'] as DailyMedicineProblem[]}
+   513→            labels={medicineProblemLabels}
+   514→            value={masalahObat}
+   515→            onChange={setMasalahObat}
+   516→            colorMap={{
+   517→              tidak: 'bg-emerald-600 text-white border-emerald-600 shadow-sm',
+   518→              ya: 'bg-red-600 text-white border-red-600 shadow-sm',
+   519→            }}
+   520→          />
+   521→          <ConditionalTextarea
+   522→            show={masalahObat === 'ya'}
+   523→            label="Jelaskan masalah yang dialami terkait obat"
+   524→            value={deskripsiMasalahObat}
+   525→            onChange={setDeskripsiMasalahObat}
+   526→            placeholder="Jelaskan masalah yang Anda alami terkait obat..."
+   527→          />
+   528→        </div>
+   529→
+   530→        {/* Submit Button */}
+   531→        <div className="pt-4">
+   532→          <Button
+   533→            onClick={handleSubmit}
+   534→            disabled={!canSubmit || submitting}
+   535→            className="w-full bg-teal-600 hover:bg-teal-700 text-white py-3 text-base"
+   536→          >
+   537→            {submitting ? (
+   538→              <>
+   539→                <span className="animate-spin mr-2">⏳</span>
+   540→                Mengirim...
+   541→              </>
+   542→            ) : (
+   543→              <>
+   544→                <Send className="h-4 w-4 mr-2" />
+   545→                Kirim Keluhan Harian
+   546→              </>
+   547→            )}
+   548→          </Button>
+   549→          {!canSubmit && (
+   550→            <p className="text-xs text-muted-foreground mt-2 text-center">
+   551→              Silakan isi semua pertanyaan yang wajib dijawab
+   552→            </p>
+   553→          )}
+   554→        </div>
+   555→      </CardContent>
+   556→    </Card>
+   557→  );
+   558→}
+   559→
+   560→// ─── History Table ─────────────────────────────────────────────────────
+   561→
+   562→function DailyComplaintHistory({ palliativePatientId }: { palliativePatientId: string | null }) {
+   563→  const { toast } = useToast();
+   564→  const dailyComplaints = useStore((s) => s.dailyComplaints);
+   565→  const palliativePatients = useStore((s) => s.palliativePatients);
+   566→
+   567→  const [searchQuery, setSearchQuery] = useState('');
+   568→  const [dateFrom, setDateFrom] = useState('');
+   569→  const [dateTo, setDateTo] = useState('');
+   570→  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+   571→  const [filterSource, setFilterSource] = useState<'all' | 'monitoring' | 'chat'>('all');
+   572→  const [detailRecord, setDetailRecord] = useState<DailyComplaintRecord | null>(null);
+   573→  const [loading, setLoading] = useState(false);
+   574→
+   575→  // Fetch complaints
+   576→  React.useEffect(() => {
+   577→    const fetchComplaints = async () => {
+   578→      setLoading(true);
+   579→      try {
+   580→        const params = new URLSearchParams();
+   581→        if (palliativePatientId) params.set('palliativePatientId', palliativePatientId);
+   582→        const res = await fetch(`/api/daily-complaints?${params.toString()}`);
+   583→        if (res.ok) {
+   584→          const data = await res.json();
+   585→          useStore.getState().setDailyComplaints(data.complaints);
+   586→        }
+   587→      } catch {
+   588→        // Silent fail, use store data
+   589→      } finally {
+   590→        setLoading(false);
+   591→      }
+   592→    };
+   593→    fetchComplaints();
+   594→  }, [palliativePatientId]);
+   595→
+   596→  const filteredComplaints = useMemo(() => {
+   597→    let result = [...dailyComplaints];
+   598→
+   599→    // Filter by patient if specific
+   600→    if (palliativePatientId) {
+   601→      result = result.filter((c) => c.palliativePatientId === palliativePatientId);
+   602→    }
+   603→
+   604→    // Search by patient name
+   605→    if (searchQuery.trim()) {
+   606→      const q = searchQuery.toLowerCase();
+   607→      result = result.filter((c) =>
+   608→        (c.patientName || '').toLowerCase().includes(q)
+   609→      );
+   610→    }
+   611→
+   612→    // Date range filter
+   613→    if (dateFrom) {
+   614→      const from = new Date(dateFrom);
+   615→      result = result.filter((c) => new Date(c.submittedAt) >= from);
+   616→    }
+   617→    if (dateTo) {
+   618→      const to = new Date(dateTo);
+   619→      to.setHours(23, 59, 59, 999);
+   620→      result = result.filter((c) => new Date(c.submittedAt) <= to);
+   621→    }
+   622→
+   623→    // Source filter
+   624→    if (filterSource !== 'all') {
+   625→      result = result.filter((c) => c.sumberPengisian === filterSource);
+   626→    }
+   627→
+   628→    // Sort
+   629→    result.sort((a, b) => {
+   630→      const diff = new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime();
+   631→      return sortOrder === 'newest' ? -diff : diff;
+   632→    });
+   633→
+   634→    return result;
+   635→  }, [dailyComplaints, palliativePatientId, searchQuery, dateFrom, dateTo, sortOrder, filterSource]);
+   636→
+   637→  const resetFilters = () => {
+   638→    setSearchQuery('');
+   639→    setDateFrom('');
+   640→    setDateTo('');
+   641→    setSortOrder('newest');
+   642→    setFilterSource('all');
+   643→  };
+   644→
+   645→  const fmtDate = (d: string) =>
+   646→    new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+   647→
+   648→  const shortLabel = (val: string, labels: Record<string, string>) => labels[val] || val;
+   649→
+   650→  const conditionShort: Record<string, string> = { baik: 'Baik', tidak_baik: 'Tidak Baik' };
+   651→  const complaintShort: Record<string, string> = { tidak_ada: 'Tidak Ada', ada: 'Ada' };
+   652→  const painShort: Record<string, string> = { tidak_nyeri: 'Tidak Nyeri', berkurang: 'Berkurang', sama: 'Sama', bertambah: 'Bertambah' };
+   653→  const dyspneaShort: Record<string, string> = { tidak_sesak: 'Tidak Sesak', berkurang: 'Berkurang', sama: 'Sama', bertambah: 'Bertambah' };
+   654→  const yesNoShort: Record<string, string> = { ya: 'Ya', tidak: 'Tidak' };
+   655→  const medShort: Record<string, string> = { tidak: 'Tidak', ya: 'Ya' };
+   656→
+   657→  return (
+   658→    <div className="space-y-4">
+   659→      {/* Filters */}
+   660→      <Card>
+   661→        <CardContent className="py-4">
+   662→          <div className="flex flex-wrap items-end gap-3">
+   663→            <div className="flex-1 min-w-[180px]">
+   664→              <Label className="text-xs text-muted-foreground mb-1">Cari Pasien</Label>
+   665→              <div className="relative">
+   666→                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+   667→                <Input
+   668→                  value={searchQuery}
+   669→                  onChange={(e) => setSearchQuery(e.target.value)}
+   670→                  placeholder="Nama pasien..."
+   671→                  className="pl-8 h-9 text-sm"
+   672→                />
+   673→              </div>
+   674→            </div>
+   675→            <div className="min-w-[140px]">
+   676→              <Label className="text-xs text-muted-foreground mb-1">Dari Tanggal</Label>
+   677→              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm" />
+   678→            </div>
+   679→            <div className="min-w-[140px]">
+   680→              <Label className="text-xs text-muted-foreground mb-1">Sampai Tanggal</Label>
+   681→              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm" />
+   682→            </div>
+   683→            <div className="min-w-[130px]">
+   684→              <Label className="text-xs text-muted-foreground mb-1">Urutkan</Label>
+   685→              <Button
+   686→                variant="outline"
+   687→                size="sm"
+   688→                onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
+   689→                className="h-9 text-sm w-full"
+   690→              >
+   691→                <ArrowUpDown className="h-3.5 w-3.5 mr-1" />
+   692→                {sortOrder === 'newest' ? 'Terbaru' : 'Terlama'}
+   693→              </Button>
+   694→            </div>
+   695→            <div className="min-w-[130px]">
+   696→              <Label className="text-xs text-muted-foreground mb-1">Sumber</Label>
+   697→              <Select value={filterSource} onValueChange={(v) => setFilterSource(v as 'all' | 'monitoring' | 'chat')}>
+   698→                <SelectTrigger className="h-9 text-sm">
+   699→                  <SelectValue />
+   700→                </SelectTrigger>
+   701→                <SelectContent>
+   702→                  <SelectItem value="all">Semua</SelectItem>
+   703→                  <SelectItem value="monitoring">Monitoring Paliatif</SelectItem>
+   704→                  <SelectItem value="chat">Via Chat</SelectItem>
+   705→                </SelectContent>
+   706→              </Select>
+   707→            </div>
+   708→            <Button variant="ghost" size="sm" onClick={resetFilters} className="h-9 text-sm">
+   709→              <RotateCcw className="h-3.5 w-3.5 mr-1" />
+   710→              Reset
+   711→            </Button>
+   712→          </div>
+   713→        </CardContent>
+   714→      </Card>
+   715→
+   716→      {/* Stats Summary */}
+   717→      {filteredComplaints.length > 0 && (
+   718→        <div className="grid grid-cols-3 gap-3">
+   719→          <Card className="border-emerald-200 bg-emerald-50/50">
+   720→            <CardContent className="py-3 text-center">
+   721→              <div className="text-2xl font-bold text-emerald-700">
+   722→                {filteredComplaints.filter((c) => c.severityLevel === 'hijau').length}
+   723→              </div>
+   724→              <div className="text-xs text-emerald-600">Stabil</div>
+   725→            </CardContent>
+   726→          </Card>
+   727→          <Card className="border-amber-200 bg-amber-50/50">
+   728→            <CardContent className="py-3 text-center">
+   729→              <div className="text-2xl font-bold text-amber-700">
+   730→                {filteredComplaints.filter((c) => c.severityLevel === 'kuning').length}
+   731→              </div>
+   732→              <div className="text-xs text-amber-600">Perhatian</div>
+   733→            </CardContent>
+   734→          </Card>
+   735→          <Card className="border-red-200 bg-red-50/50">
+   736→            <CardContent className="py-3 text-center">
+   737→              <div className="text-2xl font-bold text-red-700">
+   738→                {filteredComplaints.filter((c) => c.severityLevel === 'merah').length}
+   739→              </div>
+   740→              <div className="text-xs text-red-600">Kritis</div>
+   741→            </CardContent>
+   742→          </Card>
+   743→        </div>
+   744→      )}
+   745→
+   746→      {/* Table */}
+   747→      <Card>
+   748→        <CardHeader className="pb-3">
+   749→          <CardTitle className="text-base flex items-center gap-2">
+   750→            <ClipboardList className="h-4 w-4 text-primary" />
+   751→            Riwayat Keluhan Harian
+   752→          </CardTitle>
+   753→          <CardDescription>
+   754→            {filteredComplaints.length} entri ditemukan
+   755→          </CardDescription>
+   756→        </CardHeader>
+   757→        <CardContent>
+   758→          {loading ? (
+   759→            <div className="text-center py-8 text-muted-foreground">Memuat data...</div>
+   760→          ) : filteredComplaints.length === 0 ? (
+   761→            <div className="text-center py-8 text-muted-foreground">
+   762→              <ClipboardList className="h-10 w-10 mx-auto mb-2 opacity-30" />
+   763→              <p>Belum ada data keluhan harian</p>
+   764→            </div>
+   765→          ) : (
+   766→            <div className="overflow-x-auto custom-scrollbar rounded-lg border">
+   767→              <table className="w-full text-sm">
+   768→                <thead>
+   769→                  <tr className="bg-slate-50 border-b">
+   770→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Waktu</th>
+   771→                    {!palliativePatientId && (
+   772→                      <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Pasien</th>
+   773→                    )}
+   774→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Kondisi</th>
+   775→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Keluhan Baru</th>
+   776→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Nyeri</th>
+   777→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Sesak</th>
+   778→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Makan & Minum</th>
+   779→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Tidur</th>
+   780→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Obat</th>
+   781→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Status</th>
+   782→                    <th className="text-left p-2.5 font-medium text-muted-foreground whitespace-nowrap">Sumber</th>
+   783→                    <th className="text-center p-2.5 font-medium text-muted-foreground whitespace-nowrap">Detail</th>
+   784→                  </tr>
+   785→                </thead>
+   786→                <tbody>
+   787→                  {filteredComplaints.map((c) => {
+   788→                    const sev = severityConfig[c.severityLevel];
+   789→                    return (
+   790→                      <tr key={c.id} className="border-b hover:bg-slate-50/50 transition-colors">
+   791→                        <td className="p-2.5 whitespace-nowrap text-xs">{fmtDate(c.submittedAt)}</td>
+   792→                        {!palliativePatientId && (
+   793→                          <td className="p-2.5 whitespace-nowrap text-xs font-medium">{c.patientName || '-'}</td>
+   794→                        )}
+   795→                        <td className="p-2.5 whitespace-nowrap">
+   796→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${c.kondisiHariIni === 'baik' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+   797→                            {shortLabel(c.kondisiHariIni, conditionShort)}
+   798→                          </Badge>
+   799→                        </td>
+   800→                        <td className="p-2.5 whitespace-nowrap">
+   801→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${c.keluhanBaru === 'tidak_ada' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+   802→                            {shortLabel(c.keluhanBaru, complaintShort)}
+   803→                          </Badge>
+   804→                        </td>
+   805→                        <td className="p-2.5 whitespace-nowrap">
+   806→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
+   807→                            c.kondisiNyeri === 'tidak_nyeri' || c.kondisiNyeri === 'berkurang' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+   808→                            c.kondisiNyeri === 'sama' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+   809→                            'bg-red-50 text-red-700 border-red-200'
+   810→                          }`}>
+   811→                            {shortLabel(c.kondisiNyeri, painShort)}
+   812→                          </Badge>
+   813→                        </td>
+   814→                        <td className="p-2.5 whitespace-nowrap">
+   815→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
+   816→                            c.kondisiSesak === 'tidak_sesak' || c.kondisiSesak === 'berkurang' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+   817→                            c.kondisiSesak === 'sama' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+   818→                            'bg-red-50 text-red-700 border-red-200'
+   819→                          }`}>
+   820→                            {shortLabel(c.kondisiSesak, dyspneaShort)}
+   821→                          </Badge>
+   822→                        </td>
+   823→                        <td className="p-2.5 whitespace-nowrap">
+   824→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${c.makanMinum === 'ya' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+   825→                            {shortLabel(c.makanMinum, yesNoShort)}
+   826→                          </Badge>
+   827→                        </td>
+   828→                        <td className="p-2.5 whitespace-nowrap">
+   829→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${c.tidur === 'ya' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+   830→                            {shortLabel(c.tidur, yesNoShort)}
+   831→                          </Badge>
+   832→                        </td>
+   833→                        <td className="p-2.5 whitespace-nowrap">
+   834→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${c.masalahObat === 'tidak' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+   835→                            {shortLabel(c.masalahObat, medShort)}
+   836→                          </Badge>
+   837→                        </td>
+   838→                        <td className="p-2.5 whitespace-nowrap">
+   839→                          <Badge className={`text-[10px] px-1.5 py-0 border ${sev.cls}`}>
+   840→                            <span className="mr-0.5">{sev.icon}</span>
+   841→                            {sev.label}
+   842→                          </Badge>
+   843→                        </td>
+   844→                        <td className="p-2.5 whitespace-nowrap">
+   845→                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${c.sumberPengisian === 'chat' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-teal-50 text-teal-700 border-teal-200'}`}>
+   846→                            {c.sumberPengisian === 'chat' ? 'Chat' : 'Monitoring'}
+   847→                          </Badge>
+   848→                        </td>
+   849→                        <td className="p-2.5 text-center">
+   850→                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setDetailRecord(c)}>
+   851→                            <Eye className="h-3.5 w-3.5" />
+   852→                          </Button>
+   853→                        </td>
+   854→                      </tr>
+   855→                    );
+   856→                  })}
+   857→                </tbody>
+   858→              </table>
+   859→            </div>
+   860→          )}
+   861→        </CardContent>
+   862→      </Card>
+   863→
+   864→      {/* Detail Dialog */}
+   865→      <Dialog open={!!detailRecord} onOpenChange={(open) => !open && setDetailRecord(null)}>
+   866→        <DialogContent className="max-w-2xl max-h-[85vh]">
+   867→          <DialogHeader>
+   868→            <DialogTitle className="flex items-center gap-2">
+   869→              <ClipboardList className="h-5 w-5 text-primary" />
+   870→              Detail Keluhan Harian
+   871→            </DialogTitle>
+   872→            <DialogDescription>
+   873→              {detailRecord && fmtDate(detailRecord.submittedAt)}
+   874→              {detailRecord?.patientName && ` — ${detailRecord.patientName}`}
+   875→            </DialogDescription>
+   876→          </DialogHeader>
+   877→          {detailRecord && (
+   878→            <div className="overflow-y-auto custom-scrollbar space-y-4 pr-1" style={{ maxHeight: 'calc(85vh - 8rem)' }}>
+   879→              {/* Severity Badge */}
+   880→              <div className="flex items-center gap-2">
+   881→                <span className="text-sm font-medium">Status:</span>
+   882→                <Badge className={`border ${severityConfig[detailRecord.severityLevel].cls}`}>
+   883→                  {severityConfig[detailRecord.severityLevel].icon}
+   884→                  <span className="ml-1">{severityConfig[detailRecord.severityLevel].label}</span>
+   885→                </Badge>
+   886→              </div>
+   887→
+   888→              <Separator />
+   889→
+   890→              {/* Q1 */}
+   891→              <DetailSection
+   892→                icon={<Smile className="h-4 w-4" />}
+   893→                number={1}
+   894→                question="Kondisi hari ini"
+   895→                answer={conditionLabels[detailRecord.kondisiHariIni]}
+   896→                detail={detailRecord.kondisiHariIni === 'tidak_baik' ? detailRecord.alasanKondisi : undefined}
+   897→                detailLabel="Alasan"
+   898→                isAlert={detailRecord.kondisiHariIni === 'tidak_baik'}
+   899→              />
+   900→
+   901→              {/* Q2 */}
+   902→              <DetailSection
+   903→                icon={<AlertCircle className="h-4 w-4" />}
+   904→                number={2}
+   905→                question="Keluhan baru"
+   906→                answer={complaintYesNoLabels[detailRecord.keluhanBaru]}
+   907→                detail={detailRecord.keluhanBaru === 'ada' ? detailRecord.deskripsiKeluhanBaru : undefined}
+   908→                detailLabel="Deskripsi Keluhan"
+   909→                isAlert={detailRecord.keluhanBaru === 'ada'}
+   910→              />
+   911→
+   912→              {/* Q3 */}
+   913→              <DetailSection
+   914→                icon={<ThermometerSun className="h-4 w-4" />}
+   915→                number={3}
+   916→                question="Kondisi nyeri"
+   917→                answer={painLabels[detailRecord.kondisiNyeri]}
+   918→                isAlert={detailRecord.kondisiNyeri === 'bertambah'}
+   919→              />
+   920→
+   921→              {/* Q4 */}
+   922→              <DetailSection
+   923→                icon={<Wind className="h-4 w-4" />}
+   924→                number={4}
+   925→                question="Kondisi sesak napas"
+   926→                answer={dyspneaLabels[detailRecord.kondisiSesak]}
+   927→                isAlert={detailRecord.kondisiSesak === 'bertambah'}
+   928→              />
+   929→
+   930→              {/* Q5 */}
+   931→              <DetailSection
+   932→                icon={<Utensils className="h-4 w-4" />}
+   933→                number={5}
+   934→                question="Makan dan minum"
+   935→                answer={yesNoLabels[detailRecord.makanMinum]}
+   936→                detail={detailRecord.makanMinum === 'tidak' ? detailRecord.alasanMakanMinum : undefined}
+   937→                detailLabel="Kendala"
+   938→                isAlert={detailRecord.makanMinum === 'tidak'}
+   939→              />
+   940→
+   941→              {/* Q6 */}
+   942→              <DetailSection
+   943→                icon={<Moon className="h-4 w-4" />}
+   944→                number={6}
+   945→                question="Tidur"
+   946→                answer={yesNoLabels[detailRecord.tidur]}
+   947→                detail={detailRecord.tidur === 'tidak' ? detailRecord.alasanTidur : undefined}
+   948→                detailLabel="Gangguan"
+   949→                isAlert={detailRecord.tidur === 'tidak'}
+   950→              />
+   951→
+   952→              {/* Q7 */}
+   953→              <DetailSection
+   954→                icon={<Pill className="h-4 w-4" />}
+   955→                number={7}
+   956→                question="Masalah obat"
+   957→                answer={medicineProblemLabels[detailRecord.masalahObat]}
+   958→                detail={detailRecord.masalahObat === 'ya' ? detailRecord.deskripsiMasalahObat : undefined}
+   959→                detailLabel="Deskripsi Masalah"
+   960→                isAlert={detailRecord.masalahObat === 'ya'}
+   961→              />
+   962→            </div>
+   963→          )}
+   964→        </DialogContent>
+   965→      </Dialog>
+   966→    </div>
+   967→  );
+   968→}
+   969→
+   970→// ─── Detail Section ────────────────────────────────────────────────────
+   971→
+   972→function DetailSection({
+   973→  icon,
+   974→  number,
+   975→  question,
+   976→  answer,
+   977→  detail,
+   978→  detailLabel,
+   979→  isAlert,
+   980→}: {
+   981→  icon: React.ReactNode;
+   982→  number: number;
+   983→  question: string;
+   984→  answer: string;
+   985→  detail?: string;
+   986→  detailLabel?: string;
+   987→  isAlert?: boolean;
+   988→}) {
+   989→  return (
+   990→    <div className={`rounded-lg p-3 ${isAlert ? 'bg-red-50 border border-red-200' : 'bg-slate-50 border border-slate-200'}`}>
+   991→      <div className="flex items-center gap-2 mb-1">
+   992→        <span className={isAlert ? 'text-red-600' : 'text-teal-600'}>{icon}</span>
+   993→        <span className="text-sm font-semibold">{number}. {question}</span>
+   994→        {isAlert && <AlertTriangle className="h-3.5 w-3.5 text-red-500 ml-auto" />}
+   995→      </div>
+   996→      <div className="text-sm ml-6">
+   997→        <span className={`font-medium ${isAlert ? 'text-red-700' : 'text-slate-700'}`}>{answer}</span>
+   998→        {detail && (
+   999→          <div className="mt-1.5 p-2 rounded bg-white border text-xs text-slate-600">
+  1000→            <span className="font-medium">{detailLabel}:</span> {detail}
+  1001→          </div>
+  1002→        )}
+  1003→      </div>
+  1004→    </div>
+  1005→  );
+  1006→}
+  1007→
+  1008→// ─── Main Panel ────────────────────────────────────────────────────────
+  1009→
+  1010→export default function DailyComplaintPanel({ palliativePatientId }: DailyComplaintPanelProps) {
+  1011→  const [activeView, setActiveView] = useState<'form' | 'history'>('form');
+  1012→
+  1013→  return (
+  1014→    <div className="space-y-4">
+  1015→      {/* View Toggle */}
+  1016→      <div className="flex gap-2">
+  1017→        <Button
+  1018→          variant={activeView === 'form' ? 'default' : 'outline'}
+  1019→          size="sm"
+  1020→          onClick={() => setActiveView('form')}
+  1021→          className={activeView === 'form' ? 'bg-teal-600 hover:bg-teal-700 text-white' : ''}
+  1022→        >
+  1023→          <ClipboardList className="h-4 w-4 mr-1.5" />
+  1024→          Isi Keluhan
+  1025→        </Button>
+  1026→        <Button
+  1027→          variant={activeView === 'history' ? 'default' : 'outline'}
+  1028→          size="sm"
+  1029→          onClick={() => setActiveView('history')}
+  1030→          className={activeView === 'history' ? 'bg-teal-600 hover:bg-teal-700 text-white' : ''}
+  1031→        >
+  1032→          <Calendar className="h-4 w-4 mr-1.5" />
+  1033→          Riwayat Keluhan
+  1034→        </Button>
+  1035→      </div>
+  1036→
+  1037→      {/* Content */}
+  1038→      {activeView === 'form' ? (
+  1039→        palliativePatientId ? (
+  1040→          <DailyComplaintForm palliativePatientId={palliativePatientId} />
+  1041→        ) : (
+  1042→          <Card>
+  1043→            <CardContent className="py-12 text-center text-muted-foreground">
+  1044→              <ClipboardList className="h-10 w-10 mx-auto mb-2 opacity-30" />
+  1045→              <p>Pilih pasien terlebih dahulu untuk mengisi keluhan harian</p>
+  1046→            </CardContent>
+  1047→          </Card>
+  1048→        )
+  1049→      ) : (
+  1050→        <DailyComplaintHistory palliativePatientId={palliativePatientId} />
+  1051→      )}
+  1052→    </div>
+  1053→  );
+  1054→}
+  1055→

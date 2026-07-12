@@ -162,7 +162,6 @@ export interface DailyComplaintFormProps {
 export function DailyComplaintForm({ palliativePatientId, source = 'monitoring', onSubmitSuccess, compact = false }: DailyComplaintFormProps) {
   const { toast } = useToast();
   const addDailyComplaint = useStore((s) => s.addDailyComplaint);
-  const addPalliativeClinicalAlert = useStore((s) => s.addPalliativeClinicalAlert);
   const addPalliativeMonitoringNotification = useStore((s) => s.addPalliativeMonitoringNotification);
   const palliativePatients = useStore((s) => s.palliativePatients);
 
@@ -251,7 +250,15 @@ export function DailyComplaintForm({ palliativePatientId, source = 'monitoring',
         body: JSON.stringify(formData),
       });
 
-      if (!res.ok) throw new Error('Gagal menyimpan keluhan harian');
+      // Surface the actual server error message instead of a generic one.
+      if (!res.ok) {
+        let serverMsg = 'Gagal menyimpan keluhan harian';
+        try {
+          const errJson = await res.json();
+          if (errJson?.error) serverMsg = errJson.error;
+        } catch { /* ignore JSON parse errors */ }
+        throw new Error(serverMsg);
+      }
 
       const data = await res.json();
       const savedComplaint: DailyComplaintRecord = {
@@ -260,23 +267,16 @@ export function DailyComplaintForm({ palliativePatientId, source = 'monitoring',
         createdAt: data.complaint.createdAt,
       };
 
-      // Add to store
+      // Add to local store ONLY (the API route already persisted to Supabase).
+      // The store's addDailyComplaint no longer calls firestoreSync.addKeluhan.
       addDailyComplaint(savedComplaint);
 
-      // Generate clinical alerts in the store
+      // Generate IN-APP monitoring notifications (these are local-only; the
+      // API route already inserted persistent clinical_alerts into Supabase,
+      // so we intentionally do NOT call addPalliativeClinicalAlert here —
+      // that would create a duplicate row in the clinical_alerts table.)
       if (data.alerts && data.alerts.length > 0) {
         for (const alert of data.alerts) {
-          addPalliativeClinicalAlert({
-            id: `alert-dc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-            patientId: palliativePatientId,
-            alertType: alert.severity === 'merah' ? 'perburukan' : 'gejala_berat',
-            severity: alert.severity === 'merah' ? 'merah' : 'kuning',
-            title: alert.title,
-            description: alert.message,
-            isRead: false,
-            createdAt: new Date().toISOString(),
-          });
-
           addPalliativeMonitoringNotification({
             id: `notif-dc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
             patientId: palliativePatientId,
@@ -303,9 +303,11 @@ export function DailyComplaintForm({ palliativePatientId, source = 'monitoring',
         onSubmitSuccess(savedComplaint);
       }
     } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Terjadi kesalahan saat menyimpan keluhan. Silakan coba lagi.';
+      console.error('[daily-complaint] submit failed:', msg);
       toast({
         title: 'Gagal Mengirim',
-        description: 'Terjadi kesalahan saat menyimpan keluhan. Silakan coba lagi.',
+        description: msg,
         variant: 'destructive',
       });
     } finally {

@@ -8,6 +8,10 @@ import type { PalliativeChatMessage } from '@/lib/types';
  * Map a DB row from `messages` → PalliativeChatMessage.
  * `clinicalAlert` is stored inside the `form_data` JSONB under the key
  * `clinicalAlert` (no dedicated column exists).
+ *
+ * CRITICAL: We map `row.patient_id` → `palliativePatientId` so the chat panel
+ * can filter messages by patient UUID (the DB `room_id` is a real UUID that
+ * doesn't match the local composite `${patientId}_${doctorId}` filter).
  */
 function messageFromDb(row: any): PalliativeChatMessage {
   const formData: any = row.form_data ?? undefined;
@@ -16,6 +20,7 @@ function messageFromDb(row: any): PalliativeChatMessage {
   return {
     id: row.id,
     roomId: row.room_id,
+    palliativePatientId: row.patient_id ?? undefined,
     senderId: row.sender_id,
     senderName: row.sender_name ?? '',
     senderRole: row.sender_role ?? 'system',
@@ -34,11 +39,41 @@ function messageFromDb(row: any): PalliativeChatMessage {
   };
 }
 
-function messageToDb(data: Partial<PalliativeChatMessage>): Record<string, any> {
+/**
+ * Build the DB row from a partial message.
+ *
+ * CRITICAL: `roomId` is taken from the explicit function parameter, NOT from
+ * `data.roomId`. The caller may pass a `data` object that still contains the
+ * local composite `roomId` (e.g. `${patientId}_${doctorId}`) — that string is
+ * NOT a UUID and would cause `invalid input syntax for type uuid` if it leaked
+ * into `room_id`. The explicit `roomId` parameter is the real UUID resolved
+ * via `getOrCreateRoom()`.
+ *
+ * Likewise `patient_id` and `doctor_id` are validated — only forwarded if they
+ * are real UUIDs. The schema allows both to be NULL.
+ */
+function messageToDb(roomId: string, data: Partial<PalliativeChatMessage>): Record<string, any> {
   const out: Record<string, any> = {};
-  if (data.roomId !== undefined) out.room_id = data.roomId;
-  if (data.senderId !== undefined) out.sender_id = data.senderId;
+  // room_id — always use the explicit UUID parameter (never data.roomId)
+  out.room_id = roomId;
+
+  // patient_id — nullable uuid. Only forward if it's a real UUID.
+  const pid = (data as any).palliativePatientId as string | undefined;
+  if (pid && isValidUuid(pid)) out.patient_id = pid;
+
+  // doctor_id — nullable uuid. Only forward if it's a real UUID.
+  const did = (data as any).doctorId as string | undefined;
+  if (did && isValidUuid(did)) out.doctor_id = did;
+
+  // sender_id is `text NOT NULL` in the schema — any non-empty string is OK.
+  // Coerce falsy values to 'system' to satisfy the NOT NULL constraint.
+  if (data.senderId !== undefined && data.senderId !== null && data.senderId !== '') {
+    out.sender_id = data.senderId;
+  } else {
+    out.sender_id = 'system';
+  }
   if (data.senderName !== undefined) out.sender_name = data.senderName;
+
   // sender_role CHECK constraint: ('doctor','patient','family','system')
   if (data.senderRole !== undefined) {
     const sr = String(data.senderRole).toLowerCase();
@@ -163,6 +198,15 @@ export const chatService = {
     return (rows as any[]).map(messageFromDb);
   },
 
+  /**
+   * Insert a new message into the `messages` table.
+   *
+   * CRITICAL: The `roomId` parameter MUST be a real UUID (from chat_rooms.id).
+   * The `data` object may still carry a local composite `roomId` (e.g.
+   * `${patientId}_${doctorId}`) — we IGNORE that and use the explicit
+   * parameter, because the composite string is not a UUID and would trigger
+   * `invalid input syntax for type uuid`.
+   */
   async sendMessage(roomId: string, data: SendMessageInput): Promise<PalliativeChatMessage | null> {
     // room_id is a NOT NULL uuid FK. Abort if it's not a real UUID — otherwise
     // Postgres rejects with "invalid input syntax for type uuid".
@@ -173,7 +217,21 @@ export const chatService = {
       );
       throw new Error('room_id is not a valid UUID — call getOrCreateRoom first');
     }
-    const payload = messageToDb({ roomId, ...data });
+
+    // Build the DB row. NOTE: messageToDb uses the explicit `roomId` parameter,
+    // NOT data.roomId (which may be a composite string from the local store).
+    const payload = messageToDb(roomId, data as Partial<PalliativeChatMessage>);
+
+    // Diagnostic logging — make it easy to spot a malformed payload at a glance.
+    console.log('[chatService.sendMessage] payload:', {
+      room_id: payload.room_id,
+      patient_id: payload.patient_id ?? '(null)',
+      doctor_id: payload.doctor_id ?? '(null)',
+      sender_id: payload.sender_id,
+      sender_role: payload.sender_role,
+      type: payload.type,
+    });
+
     const { data: row, error } = await safeInsert<any>(
       supabase.from('messages').insert(payload).select().single(),
       'chatService.sendMessage'

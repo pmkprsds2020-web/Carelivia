@@ -597,6 +597,7 @@ function handleMessageEvent(store: ReturnType<typeof useStore.getState>, p: Real
     const fresh: PalliativeChatMessage = {
       id,
       roomId: row?.room_id ?? '',
+      palliativePatientId: row?.patient_id ?? undefined,
       senderId: row?.sender_id ?? '',
       senderName: row?.sender_name ?? '',
       senderRole: row?.sender_role ?? 'system',
@@ -622,7 +623,11 @@ function handleMessageEvent(store: ReturnType<typeof useStore.getState>, p: Real
         ),
       });
     } else {
-      store.addPalliativeChatMessage(fresh);
+      // Use setState directly (not store.addPalliativeChatMessage) so we don't
+      // trigger a duplicate Supabase insert for realtime-delivered rows.
+      useStore.setState((s) => ({
+        palliativeChatMessages: [...s.palliativeChatMessages, fresh],
+      }));
     }
   } catch (e) { warn('message mapping', e); }
 }

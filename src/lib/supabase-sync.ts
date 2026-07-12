@@ -194,7 +194,16 @@ export const supabaseSync = {
       if (!realRoomId) {
         throw new Error('Could not resolve or create a chat room');
       }
-      await chatService.sendMessage(realRoomId, data as any);
+
+      // Inject patient_id and doctor_id (as UUIDs) into the payload so the
+      // messages table records who the conversation is between. chatService
+      // .sendMessage will pick these up via messageToDb and validate them.
+      const enrichedData = {
+        ...(data as any),
+        palliativePatientId: patientId, // → patient_id column (uuid)
+        doctorId: validDoctorId,        // → doctor_id column (nullable uuid)
+      };
+      await chatService.sendMessage(realRoomId, enrichedData as any);
     } catch (err) {
       toastSaveError('Kirim Pesan Chat', err);
     }

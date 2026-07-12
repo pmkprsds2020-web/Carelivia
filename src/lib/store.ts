@@ -905,8 +905,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setDailyComplaints: (complaints) => set({ dailyComplaints: complaints }),
   addDailyComplaint: (complaint) => {
     set((state) => ({ dailyComplaints: [complaint, ...state.dailyComplaints] }));
-    // Persist to Firestore
-    firestoreSync.addKeluhan(complaint.palliativePatientId, { ...complaint }).catch(err => console.error('[Store] Firestore sync error (addKeluhan):', err));
+    // NOTE: Supabase persistence is handled by the /api/daily-complaints route
+    // (called from the form panel). We intentionally do NOT call
+    // firestoreSync.addKeluhan here — that would create a duplicate row.
   },
 
   // RVSM — empty initial state; data is populated when a device connects
