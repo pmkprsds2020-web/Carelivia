@@ -6,6 +6,7 @@ import { useStore } from '@/lib/store';
 import { Sidebar } from '@/components/telemedicine/sidebar';
 import { LoginPage } from '@/components/telemedicine/login-page';
 import { SupabaseSyncProvider } from '@/components/telemedicine/supabase-sync-provider';
+import { useSupabaseAuth } from '@/hooks/use-supabase-auth';
 import { Button } from '@/components/ui/button';
 import { Menu, X } from 'lucide-react';
 
@@ -58,6 +59,11 @@ export default function TelemedicineApp() {
     setSidebarOpen,
     currentUser,
   } = useStore();
+
+  // ── Supabase Auth: restore session on mount + subscribe to auth changes ──
+  // This keeps the user logged in across browser refreshes. The hook calls
+  // setCurrentUser() when a session is restored, which gates the app below.
+  useSupabaseAuth();
 
   // Load data from API in the background (non-blocking)
   const loadDataInBackground = useCallback(async () => {

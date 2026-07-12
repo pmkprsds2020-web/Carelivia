@@ -996,3 +996,68 @@ Stage Summary:
 - Scroll position terjaga saat beralih antar alert (natural dari master-detail, tanpa modal).
 - Tidak mengubah statistik, status, rule engine, realtime, atau database (hanya tampilan).
 - File diubah: `src/app/globals.css` (CSS scrollbar), `src/components/telemedicine/clinical-alert-panel.tsx` (rewrite UI).
+
+---
+Task ID: 4
+Agent: main
+Task: Integrasikan autentikasi CareLivia dengan Supabase Auth — Sign In, Sign Up, session management, role-based redirect, audit log, route protection. Jangan ubah desain UI yang sudah ada.
+
+Work Log:
+- Audit arsitektur eksisting: app single-route (`/` only), `page.tsx` gates via `if (!currentUser) return <LoginPage />`, `LoginPage` adalah demo/mock role-selection (NO real auth), store punya `currentUser`/`setCurrentUser`/`activePanel`/`setActivePanel`, Supabase client ada di `src/supabaseClient.js` (persistSession:true, autoRefreshToken:true), tabel `audit_log` ada di schema, `SUPABASE_SERVICE_ROLE_KEY` belum diset di `.env`.
+- Identifikasi konflik: user request redirect ke `/admin/dashboard`, `/patient/dashboard`, dll. TAPI project rule "user can only see the / route". Solusi: "redirect" = switch `activePanel` berdasarkan role (Admin→'admin', Dokter→'doctor-panel', Perawat/Caregiver→'homecare-staff-panel', Pasien→'home').
+- Append `profiles` table + RLS policies + `auth_audit_log` table ke `supabase/schema.sql` (section 20 & 21). Profiles: id (uuid FK auth.users), email, full_name, role (check 5 roles), phone, profession, status, created_at, updated_at + trigger updated_at. RLS: select all authenticated, insert/update own. auth_audit_log: user_id, email, role, action (LOGIN/LOGOUT/SIGNUP/LOGIN_FAILED), ip_address, device, browser, details, created_at.
+- Buat 4 API routes di `src/app/api/auth/`:
+  * `create-profile/route.ts` — POST: upsert profile via admin client (bypass RLS) setelah signUp. Degrade gracefully jika service-role key tidak diset atau tabel belum ada.
+  * `audit/route.ts` — POST: insert auth_audit_log dengan IP (x-forwarded-for/x-real-ip/cf-connecting-ip) + device + browser (parsed dari user-agent) di server-side.
+  * `profile/route.ts` — GET: fetch profile by userId via admin client.
+  * `migrate/route.ts` — GET: cek apakah tabel profiles & auth_audit_log sudah ada di live DB (supabase-js tidak bisa run DDL, jadi ini hanya verifikasi).
+- Buat `src/lib/supabaseAuth.ts` (client-side auth helpers):
+  * `signUpWithEmail` — wrap `supabase.auth.signUp` dengan metadata (full_name, role, phone, profession), lalu call `/api/auth/create-profile` (best-effort) + log audit SIGNUP.
+  * `signInWithEmail` — wrap `supabase.auth.signInWithPassword`, log audit LOGIN (atau LOGIN_FAILED).
+  * `signOutFromSupabase` — log audit LOGOUT lalu `supabase.auth.signOut()`.
+  * `getCurrentAuthUser` — untuk restore session di mount.
+  * `onAuthChange` — wrapper `supabase.auth.onAuthStateChange`.
+  * `translateError` — map error Supabase ke pesan Indonesia ("Email atau password salah.", "Silakan verifikasi email terlebih dahulu.", "Password minimal 8 karakter.", "Terlalu banyak percobaan...", dll).
+  * `roleToActivePanel` + `roleToUserRole` — mapping role CareLivia (Admin/Dokter/Perawat/Caregiver/Pasien) ke ActivePanel & UserRole app.
+- Buat `src/hooks/use-supabase-auth.ts` — hook yang di-mount di `page.tsx`: restore session via `getCurrentAuthUser()` + subscribe `onAuthStateChange` (SIGNED_IN/OUT/TOKEN_REFRESHED/USER_UPDATED) untuk sync ke Zustand store. Return `logout` action.
+- Rewrite `src/components/telemedicine/login-page.tsx` — PERTAHANKAN 100% desain UI eksisting (gradient sage green, botanical leaves SVG, floating orbs, glass container, 3 role cards, branding, footer). Ganti demo account list dengan form auth real:
+  * Toggle Masuk/Daftar di header.
+  * Sign In form: Email + Password (dengan show/hide), tombol "Masuk", link "Belum punya akun? Daftar di sini".
+  * Sign Up form: Nama Lengkap, Email, No. HP, Profesi, Role dropdown (5 roles: Dokter/Perawat/Caregiver/Pasien/Admin), Password (min 8), Konfirmasi Password, tombol "Daftar".
+  * Validasi: email format, password min 8, konfirmasi sama, nama wajib.
+  * Loading state: tombol jadi "Memproses.../Mendaftarkan..." + spinner, disabled.
+  * Error banner: glass style merah (error) / hijau (info) di bawah form.
+  * Toast: "Selamat datang kembali, {name}." (signin) / "Registrasi berhasil. Silakan cek email untuk verifikasi akun." (signup dengan email confirm).
+  * Role-based redirect: setelah login berhasil, `setActivePanel(roleToActivePanel(role))`.
+  * Jika signUp butuh email confirmation → switch ke signin mode otomatis + info banner.
+- Wire up `useSupabaseAuth()` hook di `src/app/page.tsx` (setelah store destructuring) untuk session restore + auth listener.
+- Update `src/components/telemedicine/sidebar.tsx` `handleLogout` jadi async: call `signOutFromSupabase()` (Supabase signOut + audit LOGOUT) sebelum clear store, agar session benar-benar dihancurkan dan tidak re-hydrate setelah refresh.
+- Verifikasi via Agent Browser:
+  * Login page render dengan 3 role cards (UI tidak berubah — VLM konfirmasi).
+  * Klik Dokter → form Masuk muncul (Email, Password, Masuk button, Daftar link).
+  * Toggle ke Daftar → form signup muncul (Nama Lengkap, Email, No. HP, Profesi, Role dropdown 5 opsi, Password, Konfirmasi Password, show/hide buttons).
+  * Validasi: submit kosong → "Nama lengkap wajib diisi." banner.
+  * Sign Up real → POST ke `https://vvfpidchtavcyudmasqd.supabase.co/auth/v1/signup` (terverifikasi via network). Supabase kembalikan 429 (over_email_send_rate_limit karena terlalu banyak percobaan test) → banner "Terlalu banyak percobaan. Coba lagi beberapa saat." (VLM konfirmasi banner visible).
+  * Sign In real → POST ke `/auth/v1/token?grant_type=password` (terverifikasi). Invalid credentials → banner "Email atau password salah."
+  * Reload page → session restore hook jalan, login page muncul (no active session).
+  * API routes: `/api/auth/audit` POST 200, `/api/auth/create-profile` POST 200, `/api/auth/profile` GET 200 (semua degrade gracefully saat service-role key tidak diset).
+  * Tidak ada console error. Dev log bersih (hanya 200 responses).
+  * ESLint: 0 error pada file auth (hanya 1 error pre-existing di seed-palliative.js).
+
+Stage Summary:
+- Autentikasi CareLivia sekarang menggunakan Supabase Auth sebagai single source of truth (signUp/signInWithPassword/signOut/onAuthStateChange).
+- UI login page TIDAK berubah (gradient, leaves, glass container, 3 role cards, branding semua intact — VLM verified). Hanya ditambahkan form Sign In/Sign Up.
+- Sign Up menyimpan metadata (full_name, role, phone, profession) di auth.users.user_metadata + best-effort upsert ke tabel `profiles` (via API route admin client, bypass RLS).
+- Sign In validasi kredensial via Supabase, role diambil dari user_metadata.
+- Session persist setelah refresh (onAuthStateChange + getCurrentAuthUser di hook).
+- Role-based "redirect" via setActivePanel (Admin→admin, Dokter→doctor-panel, Perawat/Caregiver→homecare-staff-panel, Pasien→home).
+- Route protection: sudah ada via `if (!currentUser) return <LoginPage />` di page.tsx.
+- Logout: Supabase signOut + audit LOGOUT + clear store (sidebar handleLogout updated).
+- Audit log: LOGIN/LOGOUT/SIGNUP/LOGIN_FAILED dengan IP+device+browser (server-side via /api/auth/audit).
+- Error handling: translateError map ke pesan Indonesia, banner di bawah form.
+- Validasi form: email format, password min 8, konfirmasi sama, nama wajib.
+- Toast notifications: "Selamat datang kembali, {name}." / "Registrasi berhasil. Silakan cek email untuk verifikasi akun."
+- Graceful degradation: jika SUPABASE_SERVICE_ROLE_KEY tidak diset ATAU tabel profiles/auth_audit_log belum dibuat di live DB, auth tetap berfungsi via user_metadata (Supabase Auth independen dari tabel profiles).
+- File dibuat: `src/lib/supabaseAuth.ts`, `src/hooks/use-supabase-auth.ts`, `src/app/api/auth/create-profile/route.ts`, `src/app/api/auth/audit/route.ts`, `src/app/api/auth/profile/route.ts`, `src/app/api/auth/migrate/route.ts`.
+- File diubah: `src/components/telemedicine/login-page.tsx` (tambah form auth, pertahankan UI), `src/app/page.tsx` (wire hook), `src/components/telemedicine/sidebar.tsx` (logout call Supabase signOut), `supabase/schema.sql` (append profiles + auth_audit_log).
+- Catatan: untuk persistensi profile row di tabel `profiles`, jalankan SQL section 20 & 21 di `supabase/schema.sql` via Supabase Dashboard → SQL Editor, DAN set `SUPABASE_SERVICE_ROLE_KEY` di `.env`. Tanpa itu, auth tetap berfungsi penuh via user_metadata.

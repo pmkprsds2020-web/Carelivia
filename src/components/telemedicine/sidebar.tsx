@@ -120,7 +120,16 @@ export function Sidebar({ collapsed }: SidebarProps) {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Sign out from Supabase Auth so the session is destroyed server-side.
+    // This prevents the useSupabaseAuth hook from re-hydrating the session on
+    // the next page load.
+    try {
+      const { signOutFromSupabase } = await import('@/lib/supabaseAuth');
+      await signOutFromSupabase();
+    } catch {
+      // Even if Supabase signout fails, clear local state so the user sees the login page.
+    }
     setCurrentUser(null);
     setPanel('home');
   };

@@ -732,3 +732,77 @@ alter table public.radiology_results enable row level security;
 --    patient-files, medical-images, radiology, lab-results, documents, acp-files
 -- 3) Set .env vars: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY.
 -- ============================================================================
+
+-- ============================================================================
+-- 20. PROFILES  (linked to auth.users via Supabase Auth)
+-- ============================================================================
+-- One row per authenticated user. `id` MUST equal auth.users.id (UUID).
+-- Created after supabase.auth.signUp() succeeds.
+create table if not exists public.profiles (
+  id           uuid primary key references auth.users(id) on delete cascade,
+  email        text not null,
+  full_name    text not null,
+  role         text not null check (role in ('Admin','Dokter','Perawat','Caregiver','Pasien')),
+  phone        text,
+  profession   text,
+  status       text not null default 'Active' check (status in ('Active','Inactive','Suspended')),
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+create index if not exists profiles_role_idx on public.profiles(role);
+create index if not exists profiles_email_idx on public.profiles(email);
+alter table public.profiles enable row level security;
+
+-- RLS: a user can read & update their own profile; anyone authenticated can read (for role lookup)
+drop policy if exists "profiles_select_own_or_authenticated" on public.profiles;
+create policy "profiles_select_own_or_authenticated" on public.profiles
+  for select to authenticated using (true);
+
+drop policy if exists "profiles_insert_own" on public.profiles;
+create policy "profiles_insert_own" on public.profiles
+  for insert to authenticated with check (id = auth.uid());
+
+drop policy if exists "profiles_update_own" on public.profiles;
+create policy "profiles_update_own" on public.profiles
+  for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
+
+-- Updated_at trigger
+create or replace function public.handle_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+drop trigger if exists profiles_updated_at on public.profiles;
+create trigger profiles_updated_at before update on public.profiles
+  for each row execute function public.handle_updated_at();
+
+-- ============================================================================
+-- 21. AUTH_AUDIT_LOG  (login/logout events from Supabase Auth)
+-- ============================================================================
+-- Separate from clinical audit_log. Tracks auth events with IP + device.
+create table if not exists public.auth_audit_log (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid,
+  email       text,
+  role        text,
+  action      text not null check (action in ('LOGIN','LOGOUT','SIGNUP','LOGIN_FAILED')),
+  ip_address  text,
+  device      text,
+  browser     text,
+  details     text,
+  created_at  timestamptz not null default now()
+);
+create index if not exists auth_audit_log_user_idx on public.auth_audit_log(user_id, created_at desc);
+alter table public.auth_audit_log enable row level security;
+
+-- Auth audit log: only admins can read; any authenticated user can insert (login event)
+drop policy if exists "auth_audit_log_select_admin" on public.auth_audit_log;
+create policy "auth_audit_log_select_admin" on public.auth_audit_log
+  for select to authenticated using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'Admin')
+  );
+drop policy if exists "auth_audit_log_insert_authenticated" on public.auth_audit_log;
+create policy "auth_audit_log_insert_authenticated" on public.auth_audit_log
+  for insert to authenticated with check (true);

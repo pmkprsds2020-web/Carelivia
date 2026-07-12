@@ -3,10 +3,18 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '@/lib/store';
-import type { User, DoctorProfile } from '@/lib/types';
+import type { User } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
-import { Stethoscope, Heart, Shield, ChevronRight, ArrowLeft, Lock } from 'lucide-react';
+import { Stethoscope, Heart, Shield, ChevronRight, ArrowLeft, Lock, Mail, Phone, User as UserIcon, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2, Briefcase } from 'lucide-react';
 import Image from 'next/image';
+import { useToast } from '@/hooks/use-toast';
+import {
+  signUpWithEmail,
+  signInWithEmail,
+  roleToUserRole,
+  roleToActivePanel,
+  type CareLiviaRole,
+} from '@/lib/supabaseAuth';
 
 type RoleType = 'dokter' | 'pasien' | 'admin';
 
@@ -28,6 +36,7 @@ const roleConfig: Record<RoleType, {
   gradient: string;
   accentColor: string;
   hoverShadow: string;
+  careliviaRole: CareLiviaRole;
 }> = {
   dokter: {
     label: 'Dokter',
@@ -36,6 +45,7 @@ const roleConfig: Record<RoleType, {
     gradient: 'from-[#2D8C7A] to-[#1F6B5C]',
     accentColor: '#2D8C7A',
     hoverShadow: '0 8px 30px rgba(45,140,122,0.25)',
+    careliviaRole: 'Dokter',
   },
   pasien: {
     label: 'Pasien',
@@ -44,6 +54,7 @@ const roleConfig: Record<RoleType, {
     gradient: 'from-[#6DB8A8] to-[#2D8C7A]',
     accentColor: '#6DB8A8',
     hoverShadow: '0 8px 30px rgba(109,184,168,0.25)',
+    careliviaRole: 'Pasien',
   },
   admin: {
     label: 'Admin',
@@ -52,9 +63,11 @@ const roleConfig: Record<RoleType, {
     gradient: 'from-[#D9B26F] to-[#C49A52]',
     accentColor: '#D9B26F',
     hoverShadow: '0 8px 30px rgba(217,178,111,0.25)',
+    careliviaRole: 'Admin',
   },
 };
 
+// Demo accounts kept for backward-compat (used by quick-login button)
 const demoAccounts: Record<RoleType, DemoAccount[]> = {
   dokter: [
     { id: 'doc-sarah', name: 'dr. Sarah Wijaya', email: 'sarah@carelivia.id', role: 'doctor', specialization: 'umum', consultationFee: 150000, gender: 'Perempuan' },
@@ -83,26 +96,45 @@ const specializationLabels: Record<string, string> = {
   gigi: 'Dokter Gigi',
 };
 
-function getInitials(name: string): string {
-  const parts = name.replace(/^(dr\.|drg\.)\s*/i, '').split(' ');
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  }
-  return parts[0].substring(0, 2).toUpperCase();
-}
+// Extra roles available in the Sign Up form (beyond the 3 main cards)
+const ALL_SIGNUP_ROLES: { value: CareLiviaRole; label: string }[] = [
+  { value: 'Dokter', label: 'Dokter' },
+  { value: 'Perawat', label: 'Perawat' },
+  { value: 'Caregiver', label: 'Caregiver' },
+  { value: 'Pasien', label: 'Pasien' },
+  { value: 'Admin', label: 'Admin' },
+];
 
 export function LoginPage() {
-  const { setCurrentUser } = useStore();
+  const { setCurrentUser, setActivePanel } = useStore();
+  const { toast } = useToast();
   const [selectedRole, setSelectedRole] = useState<RoleType | null>(null);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
-  const handleLogin = (account: DemoAccount) => {
-    setIsLoggingIn(true);
-    setSelectedAccountId(account.id);
+  // Auth form state
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [isLoading, setIsLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authInfo, setAuthInfo] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
+  // Sign In fields
+  const [signinEmail, setSigninEmail] = useState('');
+  const [signinPassword, setSigninPassword] = useState('');
+
+  // Sign Up fields
+  const [signupName, setSignupName] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPhone, setSignupPhone] = useState('');
+  const [signupProfession, setSignupProfession] = useState('');
+  const [signupRole, setSignupRole] = useState<CareLiviaRole>('Pasien');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [signupConfirm, setSignupConfirm] = useState('');
+
+  // ── Demo quick-login (preserved for dev convenience) ───────────────────
+  const handleDemoLogin = (account: DemoAccount) => {
+    setIsLoading(true);
     const now = new Date().toISOString();
-
     const user: User = {
       id: account.id,
       email: account.email,
@@ -116,28 +148,139 @@ export function LoginPage() {
       updatedAt: now,
       gender: account.gender,
     };
-
-    if (account.role === 'doctor' && account.specialization) {
-      user.doctorProfile = {
-        id: `dp-${account.id}`,
-        userId: account.id,
-        specialization: account.specialization,
-        rating: 4.8,
-        reviewCount: Math.floor(Math.random() * 200) + 50,
-        consultationFee: account.consultationFee || 150000,
-        isOnline: true,
-        isAvailable: true,
-      } as DoctorProfile;
-    }
-
     setTimeout(() => {
       setCurrentUser(user);
-    }, 600);
+      toast({ title: `Selamat datang, ${account.name}` });
+    }, 400);
+  };
+
+  // ── Validation helpers ─────────────────────────────────────────────────
+  const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+  const validateSignIn = (): string | null => {
+    if (!signinEmail.trim()) return 'Email wajib diisi.';
+    if (!isValidEmail(signinEmail)) return 'Format email tidak valid.';
+    if (!signinPassword) return 'Password wajib diisi.';
+    return null;
+  };
+
+  const validateSignUp = (): string | null => {
+    if (!signupName.trim()) return 'Nama lengkap wajib diisi.';
+    if (!signupEmail.trim()) return 'Email wajib diisi.';
+    if (!isValidEmail(signupEmail)) return 'Format email tidak valid.';
+    if (signupPassword.length < 8) return 'Password minimal 8 karakter.';
+    if (signupPassword !== signupConfirm) return 'Konfirmasi password tidak sama.';
+    if (!signupRole) return 'Role wajib dipilih.';
+    return null;
+  };
+
+  // ── Apply successful auth → store + redirect by role ───────────────────
+  const applyAuthSuccess = (
+    authUser: { id: string; email: string; fullName: string; role: CareLiviaRole; phone?: string; profession?: string },
+    welcomeTitle: string
+  ) => {
+    const now = new Date().toISOString();
+    const storeUser: User = {
+      id: authUser.id,
+      email: authUser.email,
+      phone: authUser.phone,
+      name: authUser.fullName,
+      role: roleToUserRole(authUser.role),
+      avatar: '',
+      isVerified: true,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    } as User;
+    setCurrentUser(storeUser);
+    // Single-route app: "redirect" = switch activePanel based on role
+    setActivePanel(roleToActivePanel(authUser.role));
+    toast({ title: welcomeTitle });
+  };
+
+  // ── Sign In submit ─────────────────────────────────────────────────────
+  const handleSignIn = async () => {
+    setAuthError(null);
+    setAuthInfo(null);
+    const v = validateSignIn();
+    if (v) { setAuthError(v); return; }
+    setIsLoading(true);
+    try {
+      const res = await signInWithEmail({ email: signinEmail.trim(), password: signinPassword });
+      if (!res.ok || !res.user) {
+        setAuthError(res.error ?? 'Login gagal.');
+        setIsLoading(false);
+        return;
+      }
+      applyAuthSuccess(res.user, `Selamat datang kembali, ${res.user.fullName}.`);
+    } catch (err) {
+      setAuthError('Terjadi kesalahan. Silakan coba lagi.');
+      setIsLoading(false);
+    }
+  };
+
+  // ── Sign Up submit ─────────────────────────────────────────────────────
+  const handleSignUp = async () => {
+    setAuthError(null);
+    setAuthInfo(null);
+    const v = validateSignUp();
+    if (v) { setAuthError(v); return; }
+    setIsLoading(true);
+    try {
+      const res = await signUpWithEmail({
+        email: signupEmail.trim(),
+        password: signupPassword,
+        fullName: signupName.trim(),
+        role: signupRole,
+        phone: signupPhone.trim() || undefined,
+        profession: signupProfession.trim() || undefined,
+      });
+      if (!res.ok) {
+        setAuthError(res.error ?? 'Registrasi gagal.');
+        setIsLoading(false);
+        return;
+      }
+      if (res.needsEmailConfirm) {
+        // Email confirmation required — don't auto-login. Show success message.
+        setAuthInfo('Registrasi berhasil. Silakan cek email untuk verifikasi akun.');
+        toast({ title: 'Registrasi berhasil', description: 'Silakan cek email untuk verifikasi akun.' });
+        // Switch to sign-in mode so the user can login after confirming
+        setAuthMode('signin');
+        setSigninEmail(signupEmail.trim());
+        setSigninPassword('');
+      } else {
+        // No email confirmation required → auto-login
+        if (res.user) {
+          applyAuthSuccess(res.user, `Selamat datang, ${res.user.fullName}.`);
+        } else {
+          setAuthInfo('Registrasi berhasil. Silakan masuk.');
+          setAuthMode('signin');
+          setSigninEmail(signupEmail.trim());
+        }
+      }
+      // Clear signup form
+      setSignupName(''); setSignupEmail(''); setSignupPhone(''); setSignupProfession(''); setSignupPassword(''); setSignupConfirm('');
+    } catch (err) {
+      setAuthError('Terjadi kesalahan. Silakan coba lagi.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleBack = () => {
     setSelectedRole(null);
-    setSelectedAccountId(null);
+    setAuthError(null);
+    setAuthInfo(null);
+    setAuthMode('signin');
+  };
+
+  // When a role card is clicked, pre-fill the signup role + switch to sign-in mode
+  const handleRoleSelect = (role: RoleType) => {
+    setSelectedRole(role);
+    setSignupRole(roleConfig[role].careliviaRole);
+    setAuthMode('signin');
+    setAuthError(null);
+    setAuthInfo(null);
   };
 
   return (
@@ -318,15 +461,27 @@ export function LoginPage() {
                   </button>
                   <div>
                     <h2 className="text-sm font-semibold text-white">
-                      Pilih Akun {roleConfig[selectedRole].label}
+                      {authMode === 'signin' ? `Masuk sebagai ${roleConfig[selectedRole].label}` : `Daftar akun ${roleConfig[selectedRole].label}`}
                     </h2>
                     <p className="text-[11px] text-white/40">
-                      Masuk sebagai {roleConfig[selectedRole].label.toLowerCase()}
+                      {authMode === 'signin' ? 'Masuk dengan email & password' : 'Lengkapi data untuk membuat akun'}
                     </p>
                   </div>
-                  <Badge className="ml-auto bg-white/8 text-white/50 border-0 text-[10px]">
-                    {demoAccounts[selectedRole].length} akun
-                  </Badge>
+                  {/* Mode toggle */}
+                  <div className="ml-auto flex items-center gap-1 p-0.5 rounded-full bg-white/5 border border-white/8">
+                    <button
+                      onClick={() => { setAuthMode('signin'); setAuthError(null); setAuthInfo(null); }}
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-colors ${authMode === 'signin' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/60'}`}
+                    >
+                      Masuk
+                    </button>
+                    <button
+                      onClick={() => { setAuthMode('signup'); setAuthError(null); setAuthInfo(null); }}
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-colors ${authMode === 'signup' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/60'}`}
+                    >
+                      Daftar
+                    </button>
+                  </div>
                 </motion.div>
               ) : (
                 <motion.div
@@ -372,8 +527,7 @@ export function LoginPage() {
                       if (isSelected) {
                         handleBack();
                       } else {
-                        setSelectedRole(role);
-                        setSelectedAccountId(null);
+                        handleRoleSelect(role);
                       }
                     }}
                   >
@@ -440,11 +594,11 @@ export function LoginPage() {
               })}
             </motion.div>
 
-            {/* ── ACCOUNT LIST ── */}
+            {/* ── AUTH FORM / ACCOUNT LIST ── */}
             <AnimatePresence mode="wait">
               {selectedRole && (
                 <motion.div
-                  key={`accounts-${selectedRole}`}
+                  key={`auth-${selectedRole}-${authMode}`}
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
@@ -452,85 +606,200 @@ export function LoginPage() {
                   className="overflow-hidden"
                 >
                   <div className="mt-5 pt-5 border-t border-white/8">
-                    <div className="space-y-1.5 max-h-80 overflow-y-auto custom-scrollbar pr-1">
-                      {demoAccounts[selectedRole].map((account, index) => {
-                        const isThisSelected = selectedAccountId === account.id;
-                        const config = roleConfig[selectedRole];
-                        const initials = getInitials(account.name);
-
-                        return (
-                          <motion.div
-                            key={account.id}
-                            initial={{ opacity: 0, x: -15 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: index * 0.05, duration: 0.3 }}
-                            whileHover={{ x: 3 }}
-                            whileTap={{ scale: 0.99 }}
+                    {/* ── SIGN IN FORM ── */}
+                    {authMode === 'signin' && (
+                      <div className="space-y-3 max-w-md mx-auto">
+                        {/* Email */}
+                        <div className="relative">
+                          <Mail className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+                          <input
+                            type="email"
+                            autoComplete="email"
+                            placeholder="Email"
+                            value={signinEmail}
+                            onChange={(e) => { setSigninEmail(e.target.value); setAuthError(null); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleSignIn(); }}
+                            className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+                            disabled={isLoading}
+                          />
+                        </div>
+                        {/* Password */}
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            autoComplete="current-password"
+                            placeholder="Password"
+                            value={signinPassword}
+                            onChange={(e) => { setSigninPassword(e.target.value); setAuthError(null); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleSignIn(); }}
+                            className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+                            disabled={isLoading}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-3 text-white/30 hover:text-white/60 transition-colors"
+                            tabIndex={-1}
                           >
-                            <div
-                              className={`cursor-pointer transition-all duration-200 ${
-                                isThisSelected ? 'border-white/25' : 'border-white/6 hover:border-white/12'
-                              } ${isLoggingIn && isThisSelected ? 'opacity-50' : ''}`}
-                              style={{
-                                background: isThisSelected
-                                  ? 'rgba(255,255,255,0.12)'
-                                  : 'rgba(255,255,255,0.04)',
-                                backdropFilter: 'blur(6px)',
-                                WebkitBackdropFilter: 'blur(6px)',
-                                borderRadius: '14px',
-                                border: isThisSelected ? '1px solid rgba(255,255,255,0.25)' : '1px solid rgba(255,255,255,0.06)',
-                                boxShadow: isThisSelected
-                                  ? `0 0 12px ${config.accentColor}12`
-                                  : 'inset 0 1px 0 rgba(255,255,255,0.04)',
-                              }}
-                              onClick={() => handleLogin(account)}
-                            >
-                              <div className="p-3 flex items-center gap-3">
-                                {/* Avatar */}
-                                <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${config.gradient} flex items-center justify-center shrink-0 shadow-sm`}>
-                                  <span className="text-white font-semibold text-xs">
-                                    {initials}
-                                  </span>
-                                </div>
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
 
-                                {/* Info */}
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <h4 className="font-medium text-white text-sm truncate">
-                                      {account.name}
-                                    </h4>
-                                    {account.specialization && (
-                                      <Badge className="hidden sm:inline-flex text-[9px] px-1.5 py-0 border-0 bg-white/8 text-white/55">
-                                        {specializationLabels[account.specialization] || account.specialization}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                  <p className="text-[11px] text-white/35 truncate mt-0.5">
-                                    {account.email}
-                                  </p>
-                                </div>
+                        {/* Error / Info banner */}
+                        <AuthBanner error={authError} info={authInfo} />
 
-                                {/* Action */}
-                                <div className="shrink-0">
-                                  {isThisSelected && isLoggingIn ? (
-                                    <motion.div
-                                      className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin"
-                                      style={{ borderColor: 'rgba(255,255,255,0.25)', borderTopColor: 'transparent' }}
-                                      initial={{ opacity: 0 }}
-                                      animate={{ opacity: 1 }}
-                                    />
-                                  ) : (
-                                    <div className="w-6 h-6 rounded-full flex items-center justify-center bg-white/8 text-white/40">
-                                      <ChevronRight className="w-3 h-3" />
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </motion.div>
-                        );
-                      })}
-                    </div>
+                        {/* Submit */}
+                        <button
+                          onClick={handleSignIn}
+                          disabled={isLoading}
+                          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#2D8C7A] to-[#1F6B5C] text-white text-sm font-semibold shadow-lg hover:shadow-xl hover:brightness-110 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Memproses...</> : <>Masuk <ChevronRight className="w-4 h-4" /></>}
+                        </button>
+
+                        {/* Switch to signup */}
+                        <p className="text-center text-[11px] text-white/40 pt-1">
+                          Belum punya akun?{' '}
+                          <button onClick={() => { setAuthMode('signup'); setAuthError(null); setAuthInfo(null); }} className="text-white/70 hover:text-white underline underline-offset-2">
+                            Daftar di sini
+                          </button>
+                        </p>
+                      </div>
+                    )}
+
+                    {/* ── SIGN UP FORM ── */}
+                    {authMode === 'signup' && (
+                      <div className="space-y-3 max-w-md mx-auto">
+                        {/* Full Name */}
+                        <div className="relative">
+                          <UserIcon className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+                          <input
+                            type="text"
+                            placeholder="Nama Lengkap"
+                            value={signupName}
+                            onChange={(e) => { setSignupName(e.target.value); setAuthError(null); }}
+                            className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+                            disabled={isLoading}
+                          />
+                        </div>
+                        {/* Email */}
+                        <div className="relative">
+                          <Mail className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+                          <input
+                            type="email"
+                            autoComplete="email"
+                            placeholder="Email"
+                            value={signupEmail}
+                            onChange={(e) => { setSignupEmail(e.target.value); setAuthError(null); }}
+                            className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+                            disabled={isLoading}
+                          />
+                        </div>
+                        {/* Phone + Profession */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="relative">
+                            <Phone className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+                            <input
+                              type="tel"
+                              placeholder="No. HP"
+                              value={signupPhone}
+                              onChange={(e) => setSignupPhone(e.target.value)}
+                              className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+                              disabled={isLoading}
+                            />
+                          </div>
+                          <div className="relative">
+                            <Briefcase className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+                            <input
+                              type="text"
+                              placeholder="Profesi"
+                              value={signupProfession}
+                              onChange={(e) => setSignupProfession(e.target.value)}
+                              className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+                              disabled={isLoading}
+                            />
+                          </div>
+                        </div>
+                        {/* Role selector (all 5 roles) */}
+                        <div className="relative">
+                          <Shield className="absolute left-3 top-3 w-4 h-4 text-white/30 pointer-events-none" />
+                          <select
+                            value={signupRole}
+                            onChange={(e) => setSignupRole(e.target.value as CareLiviaRole)}
+                            disabled={isLoading}
+                            className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors appearance-none cursor-pointer [&>option]:text-black"
+                          >
+                            {ALL_SIGNUP_ROLES.map((r) => (
+                              <option key={r.value} value={r.value}>{r.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {/* Password */}
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            autoComplete="new-password"
+                            placeholder="Password (min. 8 karakter)"
+                            value={signupPassword}
+                            onChange={(e) => { setSignupPassword(e.target.value); setAuthError(null); }}
+                            className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+                            disabled={isLoading}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-3 text-white/30 hover:text-white/60 transition-colors"
+                            tabIndex={-1}
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        {/* Confirm Password */}
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+                          <input
+                            type={showConfirm ? 'text' : 'password'}
+                            autoComplete="new-password"
+                            placeholder="Konfirmasi Password"
+                            value={signupConfirm}
+                            onChange={(e) => { setSignupConfirm(e.target.value); setAuthError(null); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleSignUp(); }}
+                            className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+                            disabled={isLoading}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirm(!showConfirm)}
+                            className="absolute right-3 top-3 text-white/30 hover:text-white/60 transition-colors"
+                            tabIndex={-1}
+                          >
+                            {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+
+                        {/* Error / Info banner */}
+                        <AuthBanner error={authError} info={authInfo} />
+
+                        {/* Submit */}
+                        <button
+                          onClick={handleSignUp}
+                          disabled={isLoading}
+                          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#2D8C7A] to-[#1F6B5C] text-white text-sm font-semibold shadow-lg hover:shadow-xl hover:brightness-110 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Mendaftarkan...</> : <>Daftar <ChevronRight className="w-4 h-4" /></>}
+                        </button>
+
+                        {/* Switch to signin */}
+                        <p className="text-center text-[11px] text-white/40 pt-1">
+                          Sudah punya akun?{' '}
+                          <button onClick={() => { setAuthMode('signin'); setAuthError(null); setAuthInfo(null); }} className="text-white/70 hover:text-white underline underline-offset-2">
+                            Masuk di sini
+                          </button>
+                        </p>
+                      </div>
+                    )}
 
                     {/* Demo hint */}
                     <motion.div
@@ -543,7 +812,7 @@ export function LoginPage() {
                       <div className="flex items-center gap-2 text-[11px] text-white/30">
                         <Lock className="w-3 h-3 shrink-0" />
                         <span>
-                          <strong className="text-white/45">Demo Mode</strong> — Klik akun untuk langsung masuk
+                          <strong className="text-white/45">Supabase Auth</strong> — Autentikasi aman dengan email & password
                         </span>
                       </div>
                     </motion.div>
@@ -573,5 +842,29 @@ export function LoginPage() {
         </motion.footer>
       </div>
     </div>
+  );
+}
+
+// ── Auth error/info banner (glass style, matches UI) ────────────────────────
+function AuthBanner({ error, info }: { error: string | null; info: string | null }) {
+  if (!error && !info) return null;
+  return (
+    <AnimatePresence>
+      {(error || info) && (
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          className={`flex items-start gap-2 p-2.5 rounded-xl text-[11px] leading-relaxed ${
+            error
+              ? 'bg-red-500/15 border border-red-400/30 text-red-100'
+              : 'bg-green-500/15 border border-green-400/30 text-green-100'
+          }`}
+        >
+          {error ? <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /> : <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+          <span>{error ?? info}</span>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
