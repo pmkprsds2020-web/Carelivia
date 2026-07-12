@@ -740,18 +740,53 @@ export interface PalliativeFormResponse {
   submittedAt: string;
 }
 
+// ── Clinical Alert severity & status (new EWS module) ──────────────────────
+export type ClinicalAlertSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type ClinicalAlertStatus = 'ACTIVE' | 'ACKNOWLEDGED' | 'RESOLVED';
+export type ClinicalAlertSource =
+  | 'vital_signs'
+  | 'screenings'
+  | 'medications'
+  | 'nutrition'
+  | 'daily_complaints'
+  | 'social_assessments'
+  | 'ai'
+  | 'manual';
+
 export interface PalliativeClinicalAlert {
   id: string;
   patientId: string;
   /** Patient UUID — used for Supabase persistence (FK to patients.id). */
   palliativePatientId?: string;
-  alertType: 'ttv_abnormal' | 'gejala_berat' | 'distres_tinggi' | 'pps_penurunan' | 'perburukan' | 'obat_tidak_diminum' | 'efek_samping_berat' | 'nyeri_meningkat' | 'sesak_napas' | 'kepatuhan_menurun' | 'form_tidak_diisi';
+  alertType: 'ttv_abnormal' | 'gejala_berat' | 'distres_tinggi' | 'pps_penurunan' | 'perburukan' | 'obat_tidak_diminum' | 'efek_samping_berat' | 'nyeri_meningkat' | 'sesak_napas' | 'kepatuhan_menurun' | 'form_tidak_diisi' | 'hipoksemia' | 'distres_pernapasan' | 'krisis_hipertensi' | 'hipotensi' | 'takikardia' | 'demam_tinggi' | 'nyeri_berat' | 'sesak_berat' | 'distres_psikologis' | 'penurunan_fungsi' | 'spict_positif' | 'obat_hampir_habis' | 'risiko_malnutrisi' | 'risiko_dehidrasi' | 'penurunan_bb' | 'konstipasi_berat' | 'retensi_urin' | 'risiko_burnout_caregiver' | 'risiko_dukungan_sosial' | 'high_risk_deterioration' | 'clinical_alert';
   severity: 'hijau' | 'kuning' | 'merah';
   title: string;
   description: string;
-  values?: Record<string, string | number>;
+  values?: Record<string, any>;
   isRead: boolean;
   createdAt: string;
+  // ── New EWS fields (stored in `values` JSONB in Supabase) ──────────────
+  /** Rich severity level from the Rule Engine (LOW/MEDIUM/HIGH/CRITICAL). */
+  severityLevel?: ClinicalAlertSeverity;
+  /** Lifecycle status of the alert. */
+  status?: ClinicalAlertStatus;
+  /** Which module triggered this alert. */
+  sourceModule?: ClinicalAlertSource;
+  /** UUID of the originating record (e.g. vital_signs.id). */
+  sourceRecordId?: string;
+  /** Clinical category for grouping (e.g. "Pernapasan", "Kardiovaskular"). */
+  kategori?: string;
+  /** AI or rule-based recommendation text. */
+  recommendation?: string;
+  /** Doctor UUID who acknowledged the alert. */
+  acknowledgedBy?: string;
+  acknowledgedAt?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  /** Doctor UUID responsible for this patient. */
+  doctorId?: string;
+  /** Free-text notes added by the doctor. */
+  notes?: string;
 }
 
 export interface PalliativeAuditEntry {

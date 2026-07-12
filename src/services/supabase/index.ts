@@ -49,3 +49,8 @@ export { financialSupportService } from './financialSupportService';
 export { transportRecordService } from './transportRecordService';
 export { referralLetterService } from './referralLetterService';
 export { palliativeResumeService } from './palliativeResumeService';
+// ── Clinical Alert EWS module ───────────────────────────────────────────────
+export { clinicalAlertService } from './clinicalAlertService';
+export type { CreateAlertInput } from './clinicalAlertService';
+export { evaluatePatient, evaluateAndPersist } from './clinicalAlertEngine';
+export type { AlertCandidate, EnginePatientData } from './clinicalAlertEngine';

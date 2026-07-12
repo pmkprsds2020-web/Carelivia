@@ -148,12 +148,13 @@ import { MedicationMonitoringDashboard } from './medication-monitoring-dashboard
 import { PalliativeResumeReferralPanel } from './palliative-resume-referral-panel';
 import SocialSupportPanel from './social-support-panel';
 import DailyComplaintPanel from './daily-complaint-panel';
+import { ClinicalAlertPanel } from './clinical-alert-panel';
 import { useToast } from '@/hooks/use-toast';
 import { isValidUuid, validUuidOrUndefined } from '@/services/supabase';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'nutrition' | 'keluhan' | 'sosial' | 'acp' | 'ai' | 'chat' | 'dokumen';
+type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'nutrition' | 'keluhan' | 'sosial' | 'acp' | 'ai' | 'alerts' | 'chat' | 'dokumen';
 
 // ── Helper Functions ─────────────────────────────────────────────────────
 
@@ -3813,7 +3814,7 @@ export function PalliativeMonitoringPanel() {
   };
 
   // ── Main Render ──
-  const needsPatientSelection = ['ttv', 'screening', 'medication', 'nutrition', 'keluhan', 'sosial', 'acp', 'ai', 'chat'].includes(
+  const needsPatientSelection = ['ttv', 'screening', 'medication', 'nutrition', 'keluhan', 'sosial', 'acp', 'ai', 'alerts', 'chat'].includes(
     activeTab
   );
 
@@ -3868,6 +3869,24 @@ export function PalliativeMonitoringPanel() {
             <Brain className="w-4 h-4 mr-1" />
             AI
           </TabsTrigger>
+          <TabsTrigger value="alerts" className="text-xs sm:text-sm">
+            <AlertCircle className="w-4 h-4 mr-1" />
+            Clinical Alert
+            {(() => {
+              const activeAlerts = palliativeClinicalAlerts.filter(
+                (a) =>
+                  a.status !== 'RESOLVED' &&
+                  (selectedPalliativePatientId
+                    ? (a.palliativePatientId === selectedPalliativePatientId || a.patientId === selectedPalliativePatientId)
+                    : true)
+              );
+              return activeAlerts.length > 0 ? (
+                <Badge variant="destructive" className="ml-1 px-1.5 py-0 text-xs">
+                  {activeAlerts.length}
+                </Badge>
+              ) : null;
+            })()}
+          </TabsTrigger>
           <TabsTrigger value="chat" className="text-xs sm:text-sm">
             <MessageCircle className="w-4 h-4 mr-1" />
             Chat
@@ -3896,6 +3915,9 @@ export function PalliativeMonitoringPanel() {
         </TabsContent>
         <TabsContent value="acp">{renderACP()}</TabsContent>
         <TabsContent value="ai">{renderAI()}</TabsContent>
+        <TabsContent value="alerts">
+          <ClinicalAlertPanel palliativePatientId={selectedPalliativePatientId ?? undefined} />
+        </TabsContent>
         <TabsContent value="chat">
           <div className="h-[calc(100vh-280px)]">
             <PalliativeChatPanel patient={selectedPatient} />

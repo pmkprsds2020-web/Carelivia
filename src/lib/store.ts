@@ -174,6 +174,12 @@ interface TelemedicineStore {
   palliativeClinicalAlerts: PalliativeClinicalAlert[];
   addPalliativeClinicalAlert: (alert: PalliativeClinicalAlert) => void;
   markPalliativeAlertRead: (alertId: string) => void;
+  acknowledgePalliativeAlert: (alertId: string, acknowledgedBy: string, notes?: string) => void;
+  resolvePalliativeAlert: (alertId: string, resolvedBy: string, notes?: string) => void;
+  addPalliativeAlertNote: (alertId: string, note: string) => void;
+  updatePalliativeClinicalAlert: (alertId: string, data: Partial<PalliativeClinicalAlert>) => void;
+  setPalliativeClinicalAlerts: (alerts: PalliativeClinicalAlert[]) => void;
+  runClinicalAlertEngine: (patientId: string) => Promise<number>;
   palliativeAuditLog: PalliativeAuditEntry[];
   addPalliativeAuditEntry: (entry: PalliativeAuditEntry) => void;
 
@@ -658,6 +664,10 @@ export const useStore = create<TelemedicineStore>((set) => ({
     set((state) => ({ vitalSignRecords: [...state.vitalSignRecords, record] }));
     // Persist to Firestore
     firestoreSync.addTTV(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addTTV):', err));
+    // Run Clinical Alert Rule Engine for this patient (fire-and-forget)
+    if (record.palliativePatientId) {
+      useStore.getState().runClinicalAlertEngine(record.palliativePatientId).catch(() => {});
+    }
   },
   palliativeMedications: [] as PalliativeMedicationInfo[],
   setPalliativeMedications: (meds) => set({ palliativeMedications: meds }),
@@ -665,6 +675,10 @@ export const useStore = create<TelemedicineStore>((set) => ({
     set((state) => ({ palliativeMedications: [...state.palliativeMedications, med] }));
     // Persist to Firestore
     firestoreSync.addObat(med.palliativePatientId, { ...med }).catch(err => console.error('[Store] Firestore sync error (addObat):', err));
+    // Run Clinical Alert Rule Engine for this patient (fire-and-forget)
+    if (med.palliativePatientId) {
+      useStore.getState().runClinicalAlertEngine(med.palliativePatientId).catch(() => {});
+    }
   },
   updatePalliativeMedication: (medId, data) => {
     const state = useStore.getState();
@@ -705,6 +719,10 @@ export const useStore = create<TelemedicineStore>((set) => ({
     set((state) => ({ palliativeScreeningRecords: [...state.palliativeScreeningRecords, record] }));
     // Persist to Firestore
     firestoreSync.addSkrining(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addSkrining):', err));
+    // Run Clinical Alert Rule Engine for this patient (fire-and-forget)
+    if (record.palliativePatientId) {
+      useStore.getState().runClinicalAlertEngine(record.palliativePatientId).catch(() => {});
+    }
   },
   palliativeAiSummary: '',
   setPalliativeAiSummary: (summary) => set({ palliativeAiSummary: summary }),
@@ -714,6 +732,10 @@ export const useStore = create<TelemedicineStore>((set) => ({
     set((state) => ({ nutritionRecords: [...state.nutritionRecords, record] }));
     // Persist to Firestore
     firestoreSync.addNutrisi(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addNutrisi):', err));
+    // Run Clinical Alert Rule Engine for this patient (fire-and-forget)
+    if (record.palliativePatientId) {
+      useStore.getState().runClinicalAlertEngine(record.palliativePatientId).catch(() => {});
+    }
   },
   nutritionAiRecommendation: null,
   setNutritionAiRecommendation: (rec) => set({ nutritionAiRecommendation: rec }),
@@ -771,6 +793,147 @@ export const useStore = create<TelemedicineStore>((set) => ({
     // Persist to Firestore
     if (alert) {
       firestoreSync.markAlertRead(alert.palliativePatientId || alert.patientId, alertId).catch(err => console.error('[Store] Firestore sync error (markAlertRead):', err));
+    }
+  },
+  acknowledgePalliativeAlert: (alertId, acknowledgedBy, notes) => {
+    const state = useStore.getState();
+    const alert = state.palliativeClinicalAlerts.find(a => a.id === alertId);
+    const now = new Date().toISOString();
+    set((state) => ({
+      palliativeClinicalAlerts: state.palliativeClinicalAlerts.map(a =>
+        a.id === alertId
+          ? { ...a, isRead: true, status: 'ACKNOWLEDGED', acknowledgedBy, acknowledgedAt: now, notes: notes ? `${a.notes ?? ''}\n---\n[${now}] ${notes}`.trim() : a.notes }
+          : a
+      ),
+    }));
+    // Persist to Supabase + audit log
+    if (alert) {
+      // Pass existing values from local state to avoid a SELECT round-trip
+      const existingValues: Record<string, any> = {
+        severityLevel: alert.severityLevel,
+        status: alert.status,
+        sourceModule: alert.sourceModule,
+        sourceRecordId: alert.sourceRecordId,
+        kategori: alert.kategori,
+        recommendation: alert.recommendation,
+        doctorId: alert.doctorId,
+        notes: alert.notes,
+        acknowledgedBy: alert.acknowledgedBy,
+        acknowledgedAt: alert.acknowledgedAt,
+        resolvedBy: alert.resolvedBy,
+        resolvedAt: alert.resolvedAt,
+      };
+      firestoreSync.acknowledgeAlert(alertId, acknowledgedBy, notes, existingValues).catch(err => console.error('[Store] sync error (acknowledgeAlert):', err));
+      useStore.getState().addPalliativeAuditEntry({
+        id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        patientId: alert.palliativePatientId || alert.patientId,
+        action: 'alert_followed_up',
+        performedBy: acknowledgedBy,
+        performedByRole: 'doctor',
+        details: `Alert acknowledged: ${alert.title}${notes ? ` | Note: ${notes}` : ''}`,
+        createdAt: now,
+      });
+    }
+  },
+  resolvePalliativeAlert: (alertId, resolvedBy, notes) => {
+    const state = useStore.getState();
+    const alert = state.palliativeClinicalAlerts.find(a => a.id === alertId);
+    const now = new Date().toISOString();
+    set((state) => ({
+      palliativeClinicalAlerts: state.palliativeClinicalAlerts.map(a =>
+        a.id === alertId
+          ? { ...a, isRead: true, status: 'RESOLVED', resolvedBy, resolvedAt: now, notes: notes ? `${a.notes ?? ''}\n---\n[${now}] ${notes}`.trim() : a.notes }
+          : a
+      ),
+    }));
+    // Persist to Supabase + audit log
+    if (alert) {
+      const existingValues: Record<string, any> = {
+        severityLevel: alert.severityLevel,
+        status: alert.status,
+        sourceModule: alert.sourceModule,
+        sourceRecordId: alert.sourceRecordId,
+        kategori: alert.kategori,
+        recommendation: alert.recommendation,
+        doctorId: alert.doctorId,
+        notes: alert.notes,
+        acknowledgedBy: alert.acknowledgedBy,
+        acknowledgedAt: alert.acknowledgedAt,
+        resolvedBy: alert.resolvedBy,
+        resolvedAt: alert.resolvedAt,
+      };
+      firestoreSync.resolveAlert(alertId, resolvedBy, notes, existingValues).catch(err => console.error('[Store] sync error (resolveAlert):', err));
+      useStore.getState().addPalliativeAuditEntry({
+        id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        patientId: alert.palliativePatientId || alert.patientId,
+        action: 'alert_followed_up',
+        performedBy: resolvedBy,
+        performedByRole: 'doctor',
+        details: `Alert resolved: ${alert.title}${notes ? ` | Note: ${notes}` : ''}`,
+        createdAt: now,
+      });
+    }
+  },
+  addPalliativeAlertNote: (alertId, note) => {
+    const state = useStore.getState();
+    const alert = state.palliativeClinicalAlerts.find(a => a.id === alertId);
+    set((state) => ({
+      palliativeClinicalAlerts: state.palliativeClinicalAlerts.map(a =>
+        a.id === alertId
+          ? { ...a, notes: `${a.notes ?? ''}\n---\n[${new Date().toISOString()}] ${note}`.trim() }
+          : a
+      ),
+    }));
+    if (alert) {
+      const existingValues: Record<string, any> = {
+        severityLevel: alert.severityLevel,
+        status: alert.status,
+        sourceModule: alert.sourceModule,
+        sourceRecordId: alert.sourceRecordId,
+        kategori: alert.kategori,
+        recommendation: alert.recommendation,
+        doctorId: alert.doctorId,
+        notes: alert.notes,
+        acknowledgedBy: alert.acknowledgedBy,
+        acknowledgedAt: alert.acknowledgedAt,
+        resolvedBy: alert.resolvedBy,
+        resolvedAt: alert.resolvedAt,
+      };
+      firestoreSync.addAlertNote(alertId, note, existingValues).catch(err => console.error('[Store] sync error (addAlertNote):', err));
+    }
+  },
+  updatePalliativeClinicalAlert: (alertId, data) => {
+    set((state) => ({
+      palliativeClinicalAlerts: state.palliativeClinicalAlerts.map(a =>
+        a.id === alertId ? { ...a, ...data } : a
+      ),
+    }));
+  },
+  setPalliativeClinicalAlerts: (alerts) => {
+    set({ palliativeClinicalAlerts: alerts });
+  },
+  runClinicalAlertEngine: async (patientId) => {
+    try {
+      // Lazy-import the engine to avoid circular dependencies at load time.
+      const { evaluateAndPersist } = await import('@/services/supabase/clinicalAlertEngine');
+      const state = useStore.getState();
+      const patient = state.palliativePatients.find(p => p.id === patientId);
+      const doctorId = patient?.attendingDoctorId;
+      const data = {
+        patientId,
+        doctorId,
+        vitals: state.vitalSignRecords.filter(v => v.palliativePatientId === patientId),
+        screenings: state.palliativeScreeningRecords.filter(s => s.palliativePatientId === patientId),
+        medications: state.palliativeMedications.filter(m => m.palliativePatientId === patientId),
+        nutrition: state.nutritionRecords.filter(n => n.palliativePatientId === patientId),
+        dailyComplaints: state.dailyComplaints.filter(d => d.palliativePatientId === patientId),
+        socialAssessments: state.socialAssessments.filter(s => s.palliativePatientId === patientId),
+      };
+      const created = await evaluateAndPersist(data);
+      return created;
+    } catch (err) {
+      console.error('[Store] runClinicalAlertEngine error:', err);
+      return 0;
     }
   },
   palliativeAuditLog: [] as PalliativeAuditEntry[],

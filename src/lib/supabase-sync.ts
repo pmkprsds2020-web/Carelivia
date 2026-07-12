@@ -227,14 +227,25 @@ export const supabaseSync = {
         console.error('[supabaseSync.addClinicalAlert] ABORTED — patientId is not a valid UUID:', patientId);
         return;
       }
+      // Build the values JSONB payload with rich EWS fields.
+      const valuesPayload: Record<string, any> = {};
+      if (data.severityLevel) valuesPayload.severityLevel = data.severityLevel;
+      if (data.status) valuesPayload.status = data.status;
+      if (data.sourceModule) valuesPayload.sourceModule = data.sourceModule;
+      if (data.sourceRecordId) valuesPayload.sourceRecordId = data.sourceRecordId;
+      if (data.kategori) valuesPayload.kategori = data.kategori;
+      if (data.recommendation) valuesPayload.recommendation = data.recommendation;
+      if (data.doctorId) valuesPayload.doctorId = data.doctorId;
+      if (data.notes) valuesPayload.notes = data.notes;
+
       const { error } = await supabase.from('clinical_alerts').insert({
         patient_id: patientId,
-        alert_type: (data.alertType as string) ?? 'form_tidak_diisi',
+        alert_type: (data.alertType as string) ?? 'clinical_alert',
         severity: normalizeSeverity(data.severity), // CHECK: hijau|kuning|merah
         title: (data.title as string) ?? '',
         description: (data.description as string) ?? '',
-        values: (data.values as any) ?? null,
-        is_read: false,
+        values: Object.keys(valuesPayload).length > 0 ? valuesPayload : null,
+        is_read: data.status === 'ACKNOWLEDGED' || data.status === 'RESOLVED' ? true : false,
       });
       if (error) throw new Error(error.message);
     } catch (err) {
@@ -249,6 +260,102 @@ export const supabaseSync = {
       if (error) console.error('[SupabaseSync] markAlertRead:', error.message);
     } catch (err) {
       console.error('[SupabaseSync] markAlertRead:', err);
+    }
+  },
+
+  /** Acknowledge an alert — sets status to ACKNOWLEDGED with who/when.
+   *  Pass `existingValues` from the local store to avoid a SELECT round-trip
+   *  (which can fail under heavy realtime load). */
+  async acknowledgeAlert(alertId: string, acknowledgedBy: string, notes?: string, existingValues?: Record<string, any>): Promise<void> {
+    try {
+      // Use provided values (from local store) or fall back to a SELECT.
+      let baseValues: Record<string, any> = existingValues ?? {};
+      if (!existingValues) {
+        const { data: current } = await supabase
+          .from('clinical_alerts')
+          .select('values')
+          .eq('id', alertId)
+          .single();
+        baseValues = (current?.values ?? {}) as Record<string, any>;
+      }
+      const newValues: Record<string, any> = {
+        ...baseValues,
+        status: 'ACKNOWLEDGED',
+        acknowledgedBy,
+        acknowledgedAt: new Date().toISOString(),
+      };
+      if (notes) {
+        const existingNotes = baseValues.notes ? baseValues.notes + '\n---\n' : '';
+        newValues.notes = existingNotes + `[${new Date().toISOString()}] ${notes}`;
+      }
+      const { error } = await supabase
+        .from('clinical_alerts')
+        .update({ is_read: true, values: newValues })
+        .eq('id', alertId);
+      if (error) throw new Error(error.message);
+    } catch (err) {
+      console.error('[SupabaseSync] acknowledgeAlert:', err);
+      throw err;
+    }
+  },
+
+  /** Resolve an alert — sets status to RESOLVED with who/when. */
+  async resolveAlert(alertId: string, resolvedBy: string, notes?: string, existingValues?: Record<string, any>): Promise<void> {
+    try {
+      let baseValues: Record<string, any> = existingValues ?? {};
+      if (!existingValues) {
+        const { data: current } = await supabase
+          .from('clinical_alerts')
+          .select('values')
+          .eq('id', alertId)
+          .single();
+        baseValues = (current?.values ?? {}) as Record<string, any>;
+      }
+      const newValues: Record<string, any> = {
+        ...baseValues,
+        status: 'RESOLVED',
+        resolvedBy,
+        resolvedAt: new Date().toISOString(),
+      };
+      if (notes) {
+        const existingNotes = baseValues.notes ? baseValues.notes + '\n---\n' : '';
+        newValues.notes = existingNotes + `[${new Date().toISOString()}] ${notes}`;
+      }
+      const { error } = await supabase
+        .from('clinical_alerts')
+        .update({ is_read: true, values: newValues })
+        .eq('id', alertId);
+      if (error) throw new Error(error.message);
+    } catch (err) {
+      console.error('[SupabaseSync] resolveAlert:', err);
+      throw err;
+    }
+  },
+
+  /** Add a note to an existing alert (merges into values JSONB). */
+  async addAlertNote(alertId: string, note: string, existingValues?: Record<string, any>): Promise<void> {
+    try {
+      let baseValues: Record<string, any> = existingValues ?? {};
+      if (!existingValues) {
+        const { data: current } = await supabase
+          .from('clinical_alerts')
+          .select('values')
+          .eq('id', alertId)
+          .single();
+        baseValues = (current?.values ?? {}) as Record<string, any>;
+      }
+      const existingNotes = baseValues.notes ? baseValues.notes + '\n---\n' : '';
+      const newValues = {
+        ...baseValues,
+        notes: existingNotes + `[${new Date().toISOString()}] ${note}`,
+      };
+      const { error } = await supabase
+        .from('clinical_alerts')
+        .update({ values: newValues })
+        .eq('id', alertId);
+      if (error) throw new Error(error.message);
+    } catch (err) {
+      console.error('[SupabaseSync] addAlertNote:', err);
     }
   },
 

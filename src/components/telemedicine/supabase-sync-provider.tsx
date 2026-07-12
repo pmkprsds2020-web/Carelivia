@@ -282,16 +282,31 @@ async function loadPatientScopedData(
       );
       if (Array.isArray(rows) && rows.length > 0) {
         for (const r of rows as any[]) {
+          const v = (r.values ?? {}) as Record<string, any>;
           const alert: PalliativeClinicalAlert = {
             id: r.id,
             patientId: r.patient_id ?? pid,
-            alertType: r.alert_type ?? 'form_tidak_diisi',
+            palliativePatientId: r.patient_id ?? undefined,
+            alertType: r.alert_type ?? 'clinical_alert',
             severity: r.severity ?? 'kuning',
             title: r.title ?? '',
             description: r.description ?? '',
-            values: r.values ?? undefined,
+            values: v,
             isRead: !!r.is_read,
             createdAt: r.created_at ?? new Date().toISOString(),
+            // Rich EWS fields from JSONB
+            severityLevel: v.severityLevel ?? (r.severity === 'merah' ? 'CRITICAL' : r.severity === 'kuning' ? 'MEDIUM' : 'LOW'),
+            status: v.status ?? (r.is_read ? 'ACKNOWLEDGED' : 'ACTIVE'),
+            sourceModule: v.sourceModule ?? 'manual',
+            sourceRecordId: v.sourceRecordId ?? undefined,
+            kategori: v.kategori ?? undefined,
+            recommendation: v.recommendation ?? undefined,
+            acknowledgedBy: v.acknowledgedBy ?? undefined,
+            acknowledgedAt: v.acknowledgedAt ?? undefined,
+            resolvedBy: v.resolvedBy ?? undefined,
+            resolvedAt: v.resolvedAt ?? undefined,
+            doctorId: v.doctorId ?? undefined,
+            notes: v.notes ?? undefined,
           };
           if (!hasId(useStore.getState().palliativeClinicalAlerts, alert.id)) {
             store.addPalliativeClinicalAlert(alert);
@@ -642,19 +657,33 @@ function handleClinicalAlertEvent(store: ReturnType<typeof useStore.getState>, p
     }));
     return;
   }
-  // Build a PalliativeClinicalAlert from the row directly (alerts aren't
-  // fetched via a dedicated service method in the loader — we map here).
+  // Build a PalliativeClinicalAlert from the row directly, including rich EWS
+  // fields stored in the `values` JSONB column.
   try {
+    const v = (row?.values ?? {}) as Record<string, any>;
     const fresh: PalliativeClinicalAlert = {
       id,
       patientId: row?.patient_id ?? '',
-      alertType: row?.alert_type ?? 'form_tidak_diisi',
+      palliativePatientId: row?.patient_id ?? undefined,
+      alertType: row?.alert_type ?? 'clinical_alert',
       severity: row?.severity ?? 'kuning',
       title: row?.title ?? '',
       description: row?.description ?? '',
-      values: row?.values ?? undefined,
+      values: v,
       isRead: !!row?.is_read,
       createdAt: row?.created_at ?? new Date().toISOString(),
+      severityLevel: v.severityLevel ?? (row?.severity === 'merah' ? 'CRITICAL' : row?.severity === 'kuning' ? 'MEDIUM' : 'LOW'),
+      status: v.status ?? (row?.is_read ? 'ACKNOWLEDGED' : 'ACTIVE'),
+      sourceModule: v.sourceModule ?? 'manual',
+      sourceRecordId: v.sourceRecordId ?? undefined,
+      kategori: v.kategori ?? undefined,
+      recommendation: v.recommendation ?? undefined,
+      acknowledgedBy: v.acknowledgedBy ?? undefined,
+      acknowledgedAt: v.acknowledgedAt ?? undefined,
+      resolvedBy: v.resolvedBy ?? undefined,
+      resolvedAt: v.resolvedAt ?? undefined,
+      doctorId: v.doctorId ?? undefined,
+      notes: v.notes ?? undefined,
     };
     const state = useStore.getState();
     const exists = hasId(state.palliativeClinicalAlerts, id);
@@ -665,7 +694,11 @@ function handleClinicalAlertEvent(store: ReturnType<typeof useStore.getState>, p
         ),
       });
     } else {
-      store.addPalliativeClinicalAlert(fresh);
+      // Use setState directly (not store.addPalliativeClinicalAlert) to avoid
+      // triggering a duplicate Supabase insert for realtime-delivered rows.
+      useStore.setState((s) => ({
+        palliativeClinicalAlerts: [fresh, ...s.palliativeClinicalAlerts],
+      }));
     }
   } catch (e) { warn('alert mapping', e); }
 }
