@@ -51,7 +51,16 @@ function buildStoragePath(patientId: string, jenis: string, fileName: string): s
   return `${patientId}/${jenis}/${Date.now()}-${sanitized}`;
 }
 
-function resolvePublicUrl(adminClient: any, path: string): string {
+async function resolveAccessibleUrl(adminClient: any, path: string): Promise<string> {
+  // Try signed URL first (10-year expiry; service-role bypasses RLS).
+  try {
+    const { data: signed, error } = await adminClient.storage
+      .from(BUCKET)
+      .createSignedUrl(path, 315360000);
+    if (!error && signed?.signedUrl) return signed.signedUrl;
+  } catch {
+    /* fall through */
+  }
   try {
     const { data } = adminClient.storage.from(BUCKET).getPublicUrl(path);
     return data?.publicUrl ?? '';
@@ -209,7 +218,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    newUrl = resolvePublicUrl(admin, storagePath);
+    newUrl = await resolveAccessibleUrl(admin, storagePath);
     newStoragePath = storagePath;
     newFileName = fileName;
 

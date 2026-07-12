@@ -59,14 +59,23 @@ function buildStoragePath(patientId: string, jenis: string, fileName: string): s
 }
 
 /**
- * Resolve the publicly-accessible URL for an uploaded object.
+ * Resolve an accessible URL for an uploaded object.
  *
- * We try `getPublicUrl` first (works for public buckets). If the bucket is
- * private, the public URL will return 400 on fetch — but the URL is still
- * "valid" as a stored reference. For truly private buckets, callers should
- * use `createSignedUrl` instead; we leave that as a future enhancement.
+ * Tries `createSignedUrl` first (10-year expiry — works for private buckets
+ * via the service-role admin client which bypasses RLS), then falls back to
+ * `getPublicUrl` (works for public buckets). Returns the first non-empty URL.
  */
-function resolvePublicUrl(adminClient: any, path: string): string {
+async function resolveAccessibleUrl(adminClient: any, path: string): Promise<string> {
+  // Try signed URL first (service-role bypasses RLS, so this always works).
+  try {
+    const { data: signed, error } = await adminClient.storage
+      .from(BUCKET)
+      .createSignedUrl(path, 315360000); // 10 years
+    if (!error && signed?.signedUrl) return signed.signedUrl;
+  } catch {
+    /* fall through */
+  }
+  // Fall back to public URL (works for public buckets).
   try {
     const { data } = adminClient.storage.from(BUCKET).getPublicUrl(path);
     return data?.publicUrl ?? '';
@@ -213,8 +222,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── 6. Resolve public URL ────────────────────────────────────────────────
-  const publicUrl = resolvePublicUrl(admin, storagePath);
+  // ── 6. Resolve accessible URL (signed URL first, public URL fallback) ────
+  const publicUrl = await resolveAccessibleUrl(admin, storagePath);
 
   // ── 7. Build keterangan JSON (structured metadata) ───────────────────────
   // The keterangan column carries type-specific fields so we can later

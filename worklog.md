@@ -914,3 +914,46 @@ create policy "patient_files_public_delete"
   on storage.objects for delete
   using (bucket_id = 'patient-files');
 ```
+
+---
+Task ID: SUPP-EXAM-UPLOAD-FIX-V2
+Agent: main (Z.ai Code)
+Task: Fix Pemeriksaan Penunjang image upload — "SUPABASE_SERVICE_ROLE_KEY is not set" / 500 Internal Server Error. Switch to client-side upload (the user's recommended "safer alternative") so uploads work WITHOUT the service-role key.
+
+Work Log:
+- Read worklog.md (previous SUPP-EXAM-UPLOAD-FIX task) and audited the existing flow: the previous fix routed ALL uploads through server-side API routes (/api/supporting-exams/upload|update|delete-file) that call getSupabaseAdmin(). Since SUPABASE_SERVICE_ROLE_KEY is empty in .env, getSupabaseAdmin() returns null → every upload fails with "SUPABASE_SERVICE_ROLE_KEY is not set" + HTTP 500.
+- Confirmed .env has SUPABASE_SERVICE_ROLE_KEY= (empty). Confirmed patient_documents table already has permissive anon RLS (all_read/all_write/all_upd/all_del via the schema loop). The ONLY blocker was Storage RLS on the patient-files bucket.
+- Implemented the user's recommended "safer alternative": DUAL-PATH upload with client-side as PRIMARY.
+- Refactored src/services/supabase/supportingExamService.ts:
+  * Added isRlsError() / isBucketMissingError() detectors (match "row-level security", "permission denied", "bucket not found", 404, etc.).
+  * Added STORAGE_SETUP_SQL export — the idempotent SQL that (1) creates the patient-files bucket as PUBLIC and (2) adds SELECT/INSERT/UPDATE/DELETE policies on storage.objects for the anon role. This is what the user runs ONCE in Supabase Dashboard → SQL Editor to enable client-side uploads.
+  * Added uploadPhotoClient() — Path A: uploads via the browser anon client (supabase.storage.from(BUCKET).upload). After upload, resolves an accessible URL by trying createSignedUrl(path, 10 years) FIRST (works for private buckets with a SELECT policy), falling back to getPublicUrl (works for public buckets). This fixes the "Gagal memuat" display bug where the public URL returned HTTP 400 because the bucket was private.
+  * Added uploadPhotoDualPath() — tries Path A (client) first; on RLS/bucket-missing error, falls back to Path B (callUploadApi server route, needs service-role key). If BOTH fail, throws Error with code='STORAGE_RLS_BLOCKED' + setupSql attached.
+  * Added shared createPhotoExam() / updatePhotoExam() / deletePhotoExam() helpers that encapsulate the dual-path flow + orphan-file cleanup (delete uploaded file if DB INSERT fails; delete old file on update). Each exam type's create/update/delete method is now a thin delegate.
+  * FIXED a pre-existing bug in deletePhotoExam & deleteLab: safeQuery() returns null for a successful DELETE without .select() (data is null), so the old code always thought the delete "failed". Now checks `error` directly via a raw supabase call.
+- Created src/app/api/supporting-exams/setup/route.ts (GET): returns { hasServiceRoleKey, bucket, supabaseUrl, sql, instructions }. Read-only diagnostic endpoint the UI calls when an upload is blocked.
+- Updated src/components/telemedicine/supporting-exam-panel.tsx:
+  * Imported STORAGE_SETUP_SQL + new icons (Database, Copy, Check, Terminal).
+  * Added setupDialogOpen / setupDialogMsg / setupInfo state + handleUploadError(err) callback. If err.code === 'STORAGE_RLS_BLOCKED', opens the setup dialog (and fetches /api/supporting-exams/setup for the hasServiceRoleKey badge). Otherwise shows a destructive toast.
+  * All 3 save handlers (handleSaveUsg/Ekg/Rad) catch blocks now call handleUploadError(err) instead of a plain toast.
+  * Added StorageSetupDialog component: a 2-option modal — Opsi 1 (recommended) shows the setup SQL with a "Salin SQL" copy-to-clipboard button + a "Buka SQL Editor" link to the Supabase dashboard; Opsi 2 shows the .env SUPABASE_SERVICE_ROLE_KEY instructions. Rendered at root level, controlled by setupDialogOpen.
+- Updated src/app/api/supporting-exams/upload/route.ts + update/route.ts: replaced resolvePublicUrl() (getPublicUrl only) with async resolveAccessibleUrl() that tries createSignedUrl(10y) first, getPublicUrl fallback — consistent with the client-side path.
+- Appended the Storage RLS policies SQL to supabase/schema.sql (idempotent bucket creation + 4 policies).
+- Added STORAGE_SETUP_SQL to the services/supabase/index.ts barrel export.
+- Verified with Agent Browser (end-to-end):
+  * Logged in as dr. Sarah Wijaya → Monitoring Paliatif → Pemeriksaan Penunjang → USG sub-tab → Rina Wulandari.
+  * Created a USG record with a test PNG photo: upload SUCCEEDED via Path A (client-side). Stored URL is a SIGNED URL (/storage/v1/object/sign/...?token=...) with 10-year expiry. Signed URL returns HTTP 200.
+  * Photo DISPLAYS in the card (image "Foto USG" element rendered — NOT the "Gagal memuat" error link). VLM confirmed the card shows the uploaded image + "USG Obstetri - janin normal, DJJ 140 bpm" + "oleh doc-sarah" + Detail/Edit/Cetak PDF/Hapus buttons.
+  * Detail modal shows the photo with Zoom / Open-in-new-tab / Download buttons.
+  * Zoom dialog renders the full-size image with Download + Tutup buttons.
+  * Delete works: record removed, "Riwayat USG (0)" → "Belum ada data USG". No "Gagal menghapus data" error (the safeQuery delete bug is fixed).
+  * Zero page errors, zero console errors, zero dev.log errors. All API routes return 200.
+- Verified code quality: `bunx tsc --noEmit` → ZERO errors in modified files. `bunx eslint` on all 6 modified files → ZERO errors.
+
+Stage Summary:
+- ROOT CAUSE: Previous fix depended on SUPABASE_SERVICE_ROLE_KEY (empty in .env) → getSupabaseAdmin() returned null → every upload 500'd. Separately, getPublicUrl() returned a URL that gave HTTP 400 because the bucket is private → "Gagal memuat" on display.
+- FIX: Switched to the user's recommended "safer alternative" — client-side upload (Path A) as PRIMARY, server API (Path B) as fallback. After upload, resolve an accessible URL via createSignedUrl(10 years) first (works for private buckets with a SELECT policy), getPublicUrl fallback (works for public buckets). This makes uploads + display work IMMEDIATELY without any .env change, because the patient-files bucket already has INSERT + SELECT policies for anon.
+- SETUP DIALOG: If BOTH paths ever fail (RLS blocks Path A AND service-role key missing for Path B), the UI shows a StorageSetupDialog with the exact SQL to run + a copy button + a Supabase Dashboard link. The same SQL is also in supabase/schema.sql and at /api/supporting-exams/setup.
+- BONUS FIX: deleteLab/deletePhotoExam had a latent bug where safeQuery() returned null for successful DELETEs (data is null without .select()), making every delete appear to fail. Now checks `error` directly.
+- VERIFICATION: Upload → Storage ✓, Signed URL → DB ✓, Image displays in card ✓, Detail modal + Zoom ✓, Delete ✓. No errors. No service-role key needed.
+- NOTE: The patient-files bucket on this Supabase project already has INSERT + SELECT policies for anon (Path A works). For projects where the bucket has NO policies, the user runs STORAGE_SETUP_SQL once (provided in the setup dialog + schema.sql + /api/supporting-exams/setup) to enable client-side uploads.

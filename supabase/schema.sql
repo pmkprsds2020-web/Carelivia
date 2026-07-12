@@ -554,6 +554,47 @@ end$$;
 -- Storage buckets — create via Dashboard → Storage → New bucket
 -- Names: patient-files, medical-images, radiology, lab-results, documents, acp-files
 -- ============================================================================
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- RLS POLICIES FOR THE "patient-files" BUCKET (REQUIRED FOR UPLOADS)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The Pemeriksaan Penunjang module (USG / EKG / Radiologi) uploads exam photos
+-- to the "patient-files" bucket from the BROWSER using the anon key. By
+-- default, Storage RLS blocks anon INSERTs, so uploads fail with:
+--     "new row violates row-level security policy"
+--
+-- Run the block below ONCE in Supabase Dashboard → SQL Editor to:
+--   1. Create the "patient-files" bucket as PUBLIC (so getPublicUrl() works).
+--   2. Add RLS policies allowing the anon role to read/insert/update/delete
+--      objects in the bucket.
+--
+-- After running this, browser uploads succeed WITHOUT needing
+-- SUPABASE_SERVICE_ROLE_KEY. This is the recommended "safer alternative".
+-- ─────────────────────────────────────────────────────────────────────────────
+insert into storage.buckets (id, name, public)
+values ('patient-files', 'patient-files', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "patient_files_read" on storage.objects;
+create policy "patient_files_read"
+  on storage.objects for select
+  using (bucket_id = 'patient-files');
+
+drop policy if exists "patient_files_insert" on storage.objects;
+create policy "patient_files_insert"
+  on storage.objects for insert
+  with check (bucket_id = 'patient-files');
+
+drop policy if exists "patient_files_update" on storage.objects;
+create policy "patient_files_update"
+  on storage.objects for update
+  using (bucket_id = 'patient-files');
+
+drop policy if exists "patient_files_delete" on storage.objects;
+create policy "patient_files_delete"
+  on storage.objects for delete
+  using (bucket_id = 'patient-files');
+-- ─────────────────────────────────────────────────────────────────────────────
 
 -- ============================================================================
 -- ============================================================================

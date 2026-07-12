@@ -1,0 +1,1062 @@
+     1→     1→// ───────────────────────────────────────────────────────────────────────────
+     2→     2→// supportingExamService — CRUD for Pemeriksaan Penunjang
+     3→     3→// (Laboratorium, USG, EKG, Radiologi)
+     4→     4→// ───────────────────────────────────────────────────────────────────────────
+     5→     5→//
+     6→     6→// STORAGE STRATEGY
+     7→     7→// ─────────────────────────
+     8→     8→// DDL access is unavailable, so we reuse the existing `patient_documents`
+     9→     9→// table for all four supporting examination types. The table already has a
+    10→    10→// `jenis` CHECK constraint that allows 'lab', 'radiologi', 'gambar', 'pdf',
+    11→    11→// 'lainnya' — perfect for our use case.
+    12→    12→//
+    13→    13→//   patient_documents(
+    14→    14→//     id           uuid PK,
+    15→    15→//     patient_id   uuid NOT NULL FK,
+    16→    16→//     jenis        text NOT NULL CHECK in (lab, radiologi, gambar, pdf, lainnya),
+    17→    17→//     nama_file    text NOT NULL,
+    18→    18→//     storage_path text NOT NULL,
+    19→    19→//     url          text,
+    20→    20→//     keterangan   text,        -- we store a JSON string here for structured data
+    21→    21→//     tanggal      date NOT NULL DEFAULT current_date,
+    22→    22→//     uploaded_by  text,
+    23→    23→//     created_at   timestamptz
+    24→    24→//   )
+    25→    25→//
+    26→    26→// Mapping:
+    27→    27→//   • Laboratorium  → jenis='lab',       keterangan=JSON{type, gdp, gds, hba1c, ...}
+    28→    28→//   • USG           → jenis='gambar',    keterangan=JSON{type='usg', jenis_usg, hasil, catatan, doctor_id}
+    29→    29→//                     + foto uploaded to Storage (foto_url stored in `url`)
+    30→    30→//   • EKG           → jenis='gambar',    keterangan=JSON{type='ekg', interpretasi, catatan, doctor_id}
+    31→    31→//                     + foto uploaded to Storage (foto_url stored in `url`)
+    32→    32→//   • Radiologi     → jenis='radiologi', keterangan=JSON{type='radiology', jenis_radiologi, hasil, catatan, doctor_id}
+    33→    33→//                     + foto uploaded to Storage (foto_url stored in `url`)
+    34→    34→//
+    35→    35→// Photos are uploaded to the `patient-files` Storage bucket (same as
+    36→    36→// documentService) under path: {patientId}/{jenis}/{timestamp}-{filename}
+    37→    37→//
+    38→    38→// The DDL for future dedicated tables (laboratory_results, ultrasound_results,
+    39→    39→// ecg_results, radiology_results, supporting_examinations) is documented in
+    40→    40→// supabase/schema.sql for when DDL access becomes available.
+    41→    41→// ───────────────────────────────────────────────────────────────────────────
+    42→    42→import { supabase, safeQuery, safeInsert, stripUndefined, isValidUuid, validUuidOrUndefined } from './_common';
+    43→    43→
+    44→    44→// ── Types ───────────────────────────────────────────────────────────────────
+    45→    45→
+    46→    46→export type ExamType = 'laboratorium' | 'usg' | 'ekg' | 'radiologi';
+    47→    47→
+    48→    48→export interface LabResult {
+    49→    49→  id: string;
+    50→    50→  patientId: string;
+    51→    51→  doctorId?: string;
+    52→    52→  tanggal: string;
+    53→    53→  gdp?: number; // Glukosa Darah Puasa (mg/dL)
+    54→    54→  gds?: number; // Glukosa Darah Sewaktu (mg/dL)
+    55→    55→  hba1c?: number; // HbA1c (%)
+    56→    56→  ureum?: number; // mg/dL
+    57→    57→  kreatinin?: number; // mg/dL
+    58→    58→  kolesterolTotal?: number; // mg/dL
+    59→    59→  hdl?: number; // mg/dL
+    60→    60→  ldl?: number; // mg/dL
+    61→    61→  trigliserida?: number; // mg/dL
+    62→    62→  mikroalbumin?: number; // mg/dL
+    63→    63→  catatan?: string;
+    64→    64→  createdBy?: string;
+    65→    65→  createdAt: string;
+    66→    66→}
+    67→    67→
+    68→    68→export interface USGResult {
+    69→    69→  id: string;
+    70→    70→  patientId: string;
+    71→    71→  doctorId?: string;
+    72→    72→  tanggal: string;
+    73→    73→  jenisUsg?: string;
+    74→    74→  hasil?: string;
+    75→    75→  fotoUrl?: string;
+    76→    76→  catatan?: string;
+    77→    77→  createdBy?: string;
+    78→    78→  createdAt: string;
+    79→    79→}
+    80→    80→
+    81→    81→export interface ECGResult {
+    82→    82→  id: string;
+    83→    83→  patientId: string;
+    84→    84→  doctorId?: string;
+    85→    85→  tanggal: string;
+    86→    86→  fotoUrl?: string;
+    87→    87→  interpretasi?: string;
+    88→    88→  catatan?: string;
+    89→    89→  createdBy?: string;
+    90→    90→  createdAt: string;
+    91→    91→}
+    92→    92→
+    93→    93→export interface RadiologyResult {
+    94→    94→  id: string;
+    95→    95→  patientId: string;
+    96→    96→  doctorId?: string;
+    97→    97→  tanggal: string;
+    98→    98→  jenisRadiologi?: string;
+    99→    99→  fotoUrl?: string;
+   100→   100→  hasil?: string;
+   101→   101→  catatan?: string;
+   102→   102→  createdBy?: string;
+   103→   103→  createdAt: string;
+   104→   104→}
+   105→   105→
+   106→   106→export interface SupportingExamUnion {
+   107→   107→  type: ExamType;
+   108→   108→  data: LabResult | USGResult | ECGResult | RadiologyResult;
+   109→   109→}
+   110→   110→
+   111→   111→// ── Inputs ──────────────────────────────────────────────────────────────────
+   112→   112→
+   113→   113→export interface LabInput {
+   114→   114→  patientId: string;
+   115→   115→  doctorId?: string;
+   116→   116→  tanggal?: string;
+   117→   117→  gdp?: number;
+   118→   118→  gds?: number;
+   119→   119→  hba1c?: number;
+   120→   120→  ureum?: number;
+   121→   121→  kreatinin?: number;
+   122→   122→  kolesterolTotal?: number;
+   123→   123→  hdl?: number;
+   124→   124→  ldl?: number;
+   125→   125→  trigliserida?: number;
+   126→   126→  mikroalbumin?: number;
+   127→   127→  catatan?: string;
+   128→   128→  createdBy?: string;
+   129→   129→}
+   130→   130→
+   131→   131→export interface USGInput {
+   132→   132→  patientId: string;
+   133→   133→  doctorId?: string;
+   134→   134→  tanggal?: string;
+   135→   135→  jenisUsg?: string;
+   136→   136→  hasil?: string;
+   137→   137→  catatan?: string;
+   138→   138→  createdBy?: string;
+   139→   139→  foto?: File | Blob;
+   140→   140→}
+   141→   141→
+   142→   142→export interface ECGInput {
+   143→   143→  patientId: string;
+   144→   144→  doctorId?: string;
+   145→   145→  tanggal?: string;
+   146→   146→  interpretasi?: string;
+   147→   147→  catatan?: string;
+   148→   148→  createdBy?: string;
+   149→   149→  foto?: File | Blob;
+   150→   150→}
+   151→   151→
+   152→   152→export interface RadiologyInput {
+   153→   153→  patientId: string;
+   154→   154→  doctorId?: string;
+   155→   155→  tanggal?: string;
+   156→   156→  jenisRadiologi?: string;
+   157→   157→  hasil?: string;
+   158→   158→  catatan?: string;
+   159→   159→  createdBy?: string;
+   160→   160→  foto?: File | Blob;
+   161→   161→}
+   162→   162→
+   163→   163→// ── Constants ───────────────────────────────────────────────────────────────
+   164→   164→
+   165→   165→const BUCKET = 'patient-files';
+   166→   166→
+   167→   167→export const JENIS_RADIOLOGI_OPTIONS = [
+   168→   168→  'Foto Thorax',
+   169→   169→  'CT Scan',
+   170→   170→  'MRI',
+   171→   171→  'Bone Survey',
+   172→   172→  'USG',
+   173→   173→  'Mammografi',
+   174→   174→  'Lainnya',
+   175→   175→] as const;
+   176→   176→
+   177→   177→export const JENIS_USG_OPTIONS = [
+   178→   178→  'USG Abdomen',
+   179→   179→  'USG Pelvis',
+   180→   180→  'USG Obstetri',
+   181→   181→  'USG Thyroid',
+   182→   182→  'USG Dada',
+   183→   183→  'USG Vaskular',
+   184→   184→  'USG Urologi',
+   185→   185→  'Lainnya',
+   186→   186→] as const;
+   187→   187→
+   188→   188→// ── Helpers ─────────────────────────────────────────────────────────────────
+   189→   189→
+   190→   190→function todayStr(): string {
+   191→   191→  return new Date().toISOString().slice(0, 10);
+   192→   192→}
+   193→   193→
+   194→   194→function buildStoragePath(patientId: string, jenis: string, fileName: string): string {
+   195→   195→  const sanitized = (fileName || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
+   196→   196→  return `${patientId}/${jenis}/${Date.now()}-${sanitized}`;
+   197→   197→}
+   198→   198→
+   199→   199→function safeParseKeterangan(raw: any): Record<string, any> {
+   200→   200→  if (raw == null) return {};
+   201→   201→  if (typeof raw === 'object') return raw as Record<string, any>;
+   202→   202→  if (typeof raw === 'string') {
+   203→   203→    try {
+   204→   204→      return JSON.parse(raw) as Record<string, any>;
+   205→   205→    } catch {
+   206→   206→      return {};
+   207→   207→    }
+   208→   208→  }
+   209→   209→  return {};
+   210→   210→}
+   211→   211→
+   212→   212→// ── Row → typed object mappers ──────────────────────────────────────────────
+   213→   213→
+   214→   214→function fromDbLab(row: any): LabResult {
+   215→   215→  const k = safeParseKeterangan(row.keterangan);
+   216→   216→  return {
+   217→   217→    id: row.id,
+   218→   218→    patientId: row.patient_id,
+   219→   219→    doctorId: k.doctorId ?? validUuidOrUndefined(row.uploaded_by),
+   220→   220→    tanggal: row.tanggal ?? todayStr(),
+   221→   221→    gdp: k.gdp != null ? Number(k.gdp) : undefined,
+   222→   222→    gds: k.gds != null ? Number(k.gds) : undefined,
+   223→   223→    hba1c: k.hba1c != null ? Number(k.hba1c) : undefined,
+   224→   224→    ureum: k.ureum != null ? Number(k.ureum) : undefined,
+   225→   225→    kreatinin: k.kreatinin != null ? Number(k.kreatinin) : undefined,
+   226→   226→    kolesterolTotal: k.kolesterolTotal != null ? Number(k.kolesterolTotal) : undefined,
+   227→   227→    hdl: k.hdl != null ? Number(k.hdl) : undefined,
+   228→   228→    ldl: k.ldl != null ? Number(k.ldl) : undefined,
+   229→   229→    trigliserida: k.trigliserida != null ? Number(k.trigliserida) : undefined,
+   230→   230→    mikroalbumin: k.mikroalbumin != null ? Number(k.mikroalbumin) : undefined,
+   231→   231→    catatan: k.catatan ?? undefined,
+   232→   232→    createdBy: k.createdBy ?? undefined,
+   233→   233→    createdAt: row.created_at ?? new Date().toISOString(),
+   234→   234→  };
+   235→   235→}
+   236→   236→
+   237→   237→function fromDbUsg(row: any): USGResult {
+   238→   238→  const k = safeParseKeterangan(row.keterangan);
+   239→   239→  return {
+   240→   240→    id: row.id,
+   241→   241→    patientId: row.patient_id,
+   242→   242→    doctorId: k.doctorId ?? validUuidOrUndefined(row.uploaded_by),
+   243→   243→    tanggal: row.tanggal ?? todayStr(),
+   244→   244→    jenisUsg: k.jenisUsg ?? undefined,
+   245→   245→    hasil: k.hasil ?? undefined,
+   246→   246→    fotoUrl: row.url ?? undefined,
+   247→   247→    catatan: k.catatan ?? undefined,
+   248→   248→    createdBy: k.createdBy ?? undefined,
+   249→   249→    createdAt: row.created_at ?? new Date().toISOString(),
+   250→   250→  };
+   251→   251→}
+   252→   252→
+   253→   253→function fromDbEcg(row: any): ECGResult {
+   254→   254→  const k = safeParseKeterangan(row.keterangan);
+   255→   255→  return {
+   256→   256→    id: row.id,
+   257→   257→    patientId: row.patient_id,
+   258→   258→    doctorId: k.doctorId ?? validUuidOrUndefined(row.uploaded_by),
+   259→   259→    tanggal: row.tanggal ?? todayStr(),
+   260→   260→    fotoUrl: row.url ?? undefined,
+   261→   261→    interpretasi: k.interpretasi ?? undefined,
+   262→   262→    catatan: k.catatan ?? undefined,
+   263→   263→    createdBy: k.createdBy ?? undefined,
+   264→   264→    createdAt: row.created_at ?? new Date().toISOString(),
+   265→   265→  };
+   266→   266→}
+   267→   267→
+   268→   268→function fromDbRadiology(row: any): RadiologyResult {
+   269→   269→  const k = safeParseKeterangan(row.keterangan);
+   270→   270→  return {
+   271→   271→    id: row.id,
+   272→   272→    patientId: row.patient_id,
+   273→   273→    doctorId: k.doctorId ?? validUuidOrUndefined(row.uploaded_by),
+   274→   274→    tanggal: row.tanggal ?? todayStr(),
+   275→   275→    jenisRadiologi: k.jenisRadiologi ?? undefined,
+   276→   276→    fotoUrl: row.url ?? undefined,
+   277→   277→    hasil: k.hasil ?? undefined,
+   278→   278→    catatan: k.catatan ?? undefined,
+   279→   279→    createdBy: k.createdBy ?? undefined,
+   280→   280→    createdAt: row.created_at ?? new Date().toISOString(),
+   281→   281→  };
+   282→   282→}
+   283→   283→
+   284→   284→// ── Storage helpers (server-side via API routes to bypass RLS) ──────────────
+   285→   285→//
+   286→   286→// The browser anon client is subject to Storage RLS and gets:
+   287→   287→//   "new row violates row-level security policy"
+   288→   288→// when uploading to the `patient-files` bucket. All Storage + DB operations
+   289→   289→// for photo exams therefore go through server-side API routes that use the
+   290→   290→// service-role key (getSupabaseAdmin) to bypass RLS.
+   291→   291→//
+   292→   292→// Routes:
+   293→   293→//   POST /api/supporting-exams/upload       — upload file + INSERT row
+   294→   294→//   POST /api/supporting-exams/update       — optional new file + UPDATE row
+   295→   295→//   POST /api/supporting-exams/delete-file  — delete file + DELETE row
+   296→   296→//
+   297→   297→
+   298→   298→export type UploadProgressCb = (phase: 'uploading' | 'inserting' | 'done' | 'error', pct: number, msg?: string) => void;
+   299→   299→
+   300→   300→/**
+   301→   301→ * Call the /api/supporting-exams/upload route.
+   302→   302→ * Uploads a file to Storage AND inserts a metadata row in one atomic call.
+   303→   303→ * Returns the inserted DB row (raw snake_case) or throws on failure.
+   304→   304→ */
+   305→   305→async function callUploadApi(
+   306→   306→  file: File | Blob,
+   307→   307→  metadata: Record<string, any>,
+   308→   308→  onProgress?: UploadProgressCb
+   309→   309→): Promise<any> {
+   310→   310→  const fileName = (file as File).name ?? `upload-${Date.now()}`;
+   311→   311→  onProgress?.('uploading', 10, `Mengunggah ${fileName}...`);
+   312→   312→
+   313→   313→  const fd = new FormData();
+   314→   314→  // Coerce to File if it's a Blob (some callers pass Blob without name)
+   315→   315→  if (!(file instanceof File) && file instanceof Blob) {
+   316→   316→    fd.append('file', file, fileName);
+   317→   317→  } else {
+   318→   318→    fd.append('file', file as File);
+   319→   319→  }
+   320→   320→  fd.append('metadata', JSON.stringify(metadata));
+   321→   321→
+   322→   322→  onProgress?.('uploading', 30);
+   323→   323→  let res: Response;
+   324→   324→  try {
+   325→   325→    res = await fetch('/api/supporting-exams/upload', {
+   326→   326→      method: 'POST',
+   327→   327→      body: fd,
+   328→   328→    });
+   329→   329→  } catch (e: any) {
+   330→   330→    onProgress?.('error', 0, e?.message ?? 'Network error');
+   331→   331→    throw new Error('Upload gagal (network): ' + (e?.message ?? String(e)));
+   332→   332→  }
+   333→   333→  onProgress?.('uploading', 80);
+   334→   334→
+   335→   335→  let body: any;
+   336→   336→  try {
+   337→   337→    body = await res.json();
+   338→   338→  } catch {
+   339→   339→    body = { error: 'Invalid JSON response from server' };
+   340→   340→  }
+   341→   341→
+   342→   342→  if (!res.ok || !body?.ok) {
+   343→   343→    const msg = body?.error || `HTTP ${res.status}`;
+   344→   344→    onProgress?.('error', 0, msg);
+   345→   345→    // Surface a clear error so the UI can toast it
+   346→   346→    const err = new Error(msg);
+   347→   347→    (err as any).code = body?.code;
+   348→   348→    (err as any).status = res.status;
+   349→   349→    throw err;
+   350→   350→  }
+   351→   351→
+   352→   352→  onProgress?.('done', 100);
+   353→   353→  return body.row;
+   354→   354→}
+   355→   355→
+   356→   356→/**
+   357→   357→ * Call the /api/supporting-exams/update route.
+   358→   358→ * Optionally uploads a new file (and deletes the old one), then UPDATEs the row.
+   359→   359→ */
+   360→   360→async function callUpdateApi(
+   361→   361→  id: string,
+   362→   362→  metadata: Record<string, any>,
+   363→   363→  file?: File | Blob | null,
+   364→   364→  oldStoragePath?: string,
+   365→   365→  onProgress?: UploadProgressCb
+   366→   366→): Promise<any> {
+   367→   367→  const fd = new FormData();
+   368→   368→  fd.append('id', id);
+   369→   369→  fd.append('metadata', JSON.stringify(metadata));
+   370→   370→  if (oldStoragePath) fd.append('oldStoragePath', oldStoragePath);
+   371→   371→  if (file) {
+   372→   372→    const fileName = (file as File).name ?? `upload-${Date.now()}`;
+   373→   373→    onProgress?.('uploading', 20, `Mengunggah ${fileName}...`);
+   374→   374→    if (!(file instanceof File) && file instanceof Blob) {
+   375→   375→      fd.append('file', file, fileName);
+   376→   376→    } else {
+   377→   377→      fd.append('file', file as File);
+   378→   378→    }
+   379→   379→  } else {
+   380→   380→    onProgress?.('inserting', 50, 'Menyimpan perubahan...');
+   381→   381→  }
+   382→   382→
+   383→   383→  let res: Response;
+   384→   384→  try {
+   385→   385→    res = await fetch('/api/supporting-exams/update', {
+   386→   386→      method: 'POST',
+   387→   387→      body: fd,
+   388→   388→    });
+   389→   389→  } catch (e: any) {
+   390→   390→    onProgress?.('error', 0, e?.message ?? 'Network error');
+   391→   391→    throw new Error('Update gagal (network): ' + (e?.message ?? String(e)));
+   392→   392→  }
+   393→   393→
+   394→   394→  let body: any;
+   395→   395→  try {
+   396→   396→    body = await res.json();
+   397→   397→  } catch {
+   398→   398→    body = { error: 'Invalid JSON response from server' };
+   399→   399→  }
+   400→   400→
+   401→   401→  if (!res.ok || !body?.ok) {
+   402→   402→    const msg = body?.error || `HTTP ${res.status}`;
+   403→   403→    onProgress?.('error', 0, msg);
+   404→   404→    const err = new Error(msg);
+   405→   405→    (err as any).code = body?.code;
+   406→   406→    (err as any).status = res.status;
+   407→   407→    throw err;
+   408→   408→  }
+   409→   409→
+   410→   410→  onProgress?.('done', 100);
+   411→   411→  return body.row;
+   412→   412→}
+   413→   413→
+   414→   414→/**
+   415→   415→ * Call the /api/supporting-exams/delete-file route.
+   416→   416→ * Deletes the file from Storage AND the metadata row.
+   417→   417→ */
+   418→   418→async function callDeleteApi(id: string, storagePath?: string): Promise<boolean> {
+   419→   419→  let res: Response;
+   420→   420→  try {
+   421→   421→    res = await fetch('/api/supporting-exams/delete-file', {
+   422→   422→      method: 'POST',
+   423→   423→      headers: { 'Content-Type': 'application/json' },
+   424→   424→      body: JSON.stringify({ id, storagePath }),
+   425→   425→    });
+   426→   426→  } catch (e: any) {
+   427→   427→    console.error('[supportingExamService.callDeleteApi] network error:', e);
+   428→   428→    return false;
+   429→   429→  }
+   430→   430→
+   431→   431→  let body: any;
+   432→   432→  try {
+   433→   433→    body = await res.json();
+   434→   434→  } catch {
+   435→   435→    body = {};
+   436→   436→  }
+   437→   437→
+   438→   438→  if (!res.ok || !body?.ok) {
+   439→   439→    console.error('[supportingExamService.callDeleteApi] failed:', body?.error ?? res.status);
+   440→   440→    return false;
+   441→   441→  }
+   442→   442→  return true;
+   443→   443→}
+   444→   444→
+   445→   445→// ── Service ─────────────────────────────────────────────────────────────────
+   446→   446→
+   447→   447→export const supportingExamService = {
+   448→   448→  // ── LABORATORIUM ────────────────────────────────────────────────────────
+   449→   449→
+   450→   450→  async listLab(patientId: string): Promise<LabResult[]> {
+   451→   451→    if (!isValidUuid(patientId)) return [];
+   452→   452→    const rows = await safeQuery(
+   453→   453→      supabase
+   454→   454→        .from('patient_documents')
+   455→   455→        .select('*')
+   456→   456→        .eq('patient_id', patientId)
+   457→   457→        .eq('jenis', 'lab')
+   458→   458→        .order('tanggal', { ascending: false })
+   459→   459→        .order('created_at', { ascending: false }),
+   460→   460→      [] as any[],
+   461→   461→      'supportingExamService.listLab'
+   462→   462→    );
+   463→   463→    return (rows as any[]).map(fromDbLab);
+   464→   464→  },
+   465→   465→
+   466→   466→  async createLab(input: LabInput): Promise<LabResult | null> {
+   467→   467→    if (!isValidUuid(input.patientId)) {
+   468→   468→      console.error('[supportingExamService.createLab] ABORTED — patient_id is not a valid UUID.', { received: input.patientId });
+   469→   469→      return null;
+   470→   470→    }
+   471→   471→    const keterangan = JSON.stringify({
+   472→   472→      type: 'laboratorium',
+   473→   473→      gdp: input.gdp,
+   474→   474→      gds: input.gds,
+   475→   475→      hba1c: input.hba1c,
+   476→   476→      ureum: input.ureum,
+   477→   477→      kreatinin: input.kreatinin,
+   478→   478→      kolesterolTotal: input.kolesterolTotal,
+   479→   479→      hdl: input.hdl,
+   480→   480→      ldl: input.ldl,
+   481→   481→      trigliserida: input.trigliserida,
+   482→   482→      mikroalbumin: input.mikroalbumin,
+   483→   483→      catatan: input.catatan,
+   484→   484→      doctorId: validUuidOrUndefined(input.doctorId),
+   485→   485→      createdBy: input.createdBy,
+   486→   486→    });
+   487→   487→    const payload = {
+   488→   488→      patient_id: input.patientId,
+   489→   489→      jenis: 'lab' as const,
+   490→   490→      nama_file: `lab-${input.tanggal ?? todayStr()}`,
+   491→   491→      storage_path: `lab/${input.patientId}/${Date.now()}`,
+   492→   492→      keterangan,
+   493→   493→      tanggal: input.tanggal ?? todayStr(),
+   494→   494→      uploaded_by: input.createdBy,
+   495→   495→    };
+   496→   496→    const { data: row, error } = await safeInsert<any>(
+   497→   497→      supabase.from('patient_documents').insert(payload).select().single(),
+   498→   498→      'supportingExamService.createLab'
+   499→   499→    );
+   500→   500→    if (error) throw new Error(error);
+   501→   501→    const created = row ? fromDbLab(row) : null;
+   502→   502→
+   503→   503→    // ── Auto-trigger Clinical Alert generation for abnormal lab values ──
+   504→   504→    // Per user spec: "Jika ditemukan HbA1c ≥ 9%, GDP ≥ 250, GDS ≥ 300,
+   505→   505→    // LDL ≥ 190, Kreatinin meningkat, Mikroalbumin positif — maka otomatis
+   506→   506→    // membuat Clinical Alert". We delegate to the Rule Engine which dedupes
+   507→   507→    // and persists via clinicalAlertService. Fire-and-forget — never blocks
+   508→   508→    // the lab save.
+   509→   509→    if (created) {
+   510→   510→      try {
+   511→   511→        // Lazy-import to avoid circular dependency at module load time.
+   512→   512→        const { evaluateAndPersist } = await import('./clinicalAlertEngine');
+   513→   513→        evaluateAndPersist({
+   514→   514→          patientId: input.patientId,
+   515→   515→          doctorId: input.doctorId,
+   516→   516→          vitals: [],
+   517→   517→          screenings: [],
+   518→   518→          medications: [],
+   519→   519→          nutrition: [],
+   520→   520→          dailyComplaints: [],
+   521→   521→          socialAssessments: [],
+   522→   522→          labResults: [created],
+   523→   523→        }).catch((e) =>
+   524→   524→          console.error('[supportingExamService.createLab] alert engine error:', e)
+   525→   525→        );
+   526→   526→      } catch (e) {
+   527→   527→        console.error('[supportingExamService.createLab] failed to trigger alert engine:', e);
+   528→   528→      }
+   529→   529→    }
+   530→   530→
+   531→   531→    return created;
+   532→   532→  },
+   533→   533→
+   534→   534→  async updateLab(id: string, input: Partial<LabInput>): Promise<LabResult | null> {
+   535→   535→    if (!isValidUuid(id)) return null;
+   536→   536→    const keterangan = JSON.stringify({
+   537→   537→      type: 'laboratorium',
+   538→   538→      gdp: input.gdp,
+   539→   539→      gds: input.gds,
+   540→   540→      hba1c: input.hba1c,
+   541→   541→      ureum: input.ureum,
+   542→   542→      kreatinin: input.kreatinin,
+   543→   543→      kolesterolTotal: input.kolesterolTotal,
+   544→   544→      hdl: input.hdl,
+   545→   545→      ldl: input.ldl,
+   546→   546→      trigliserida: input.trigliserida,
+   547→   547→      mikroalbumin: input.mikroalbumin,
+   548→   548→      catatan: input.catatan,
+   549→   549→      doctorId: validUuidOrUndefined(input.doctorId),
+   550→   550→      createdBy: input.createdBy,
+   551→   551→    });
+   552→   552→    const payload = stripUndefined({
+   553→   553→      keterangan,
+   554→   554→      tanggal: input.tanggal,
+   555→   555→      uploaded_by: input.createdBy,
+   556→   556→    });
+   557→   557→    const { data: row, error } = await safeInsert<any>(
+   558→   558→      supabase.from('patient_documents').update(payload).eq('id', id).select().single(),
+   559→   559→      'supportingExamService.updateLab'
+   560→   560→    );
+   561→   561→    if (error) throw new Error(error);
+   562→   562→    return row ? fromDbLab(row) : null;
+   563→   563→  },
+   564→   564→
+   565→   565→  async deleteLab(id: string): Promise<boolean> {
+   566→   566→    if (!isValidUuid(id)) return false;
+   567→   567→    // First fetch the row to get the storage_path (labs have no actual file,
+   568→   568→    // but we still want to clean up the row).
+   569→   569→    const res = await safeQuery(
+   570→   570→      supabase.from('patient_documents').delete().eq('id', id).eq('jenis', 'lab'),
+   571→   571→      null as any,
+   572→   572→      'supportingExamService.deleteLab'
+   573→   573→    );
+   574→   574→    return res !== null;
+   575→   575→  },
+   576→   576→
+   577→   577→  // ── USG ─────────────────────────────────────────────────────────────────
+   578→   578→
+   579→   579→  async listUsg(patientId: string): Promise<USGResult[]> {
+   580→   580→    if (!isValidUuid(patientId)) return [];
+   581→   581→    const rows = await safeQuery(
+   582→   582→      supabase
+   583→   583→        .from('patient_documents')
+   584→   584→        .select('*')
+   585→   585→        .eq('patient_id', patientId)
+   586→   586→        .eq('jenis', 'gambar')
+   587→   587→        .order('tanggal', { ascending: false })
+   588→   588→        .order('created_at', { ascending: false }),
+   589→   589→      [] as any[],
+   590→   590→      'supportingExamService.listUsg'
+   591→   591→    );
+   592→   592→    // Filter to only USG rows (jenis='gambar' is shared with EKG; we
+   593→   593→    // distinguish by the `type` field inside keterangan JSON).
+   594→   594→    return (rows as any[])
+   595→   595→      .filter((r) => {
+   596→   596→        const k = safeParseKeterangan(r.keterangan);
+   597→   597→        return k.type === 'usg';
+   598→   598→      })
+   599→   599→      .map(fromDbUsg);
+   600→   600→  },
+   601→   601→
+   602→   602→  async createUsg(input: USGInput, onProgress?: UploadProgressCb): Promise<USGResult | null> {
+   603→   603→    if (!isValidUuid(input.patientId)) {
+   604→   604→      console.error('[supportingExamService.createUsg] ABORTED — patient_id is not a valid UUID.');
+   605→   605→      return null;
+   606→   606→    }
+   607→   607→
+   608→   608→    // If a photo is provided, use the server-side upload API (bypasses RLS).
+   609→   609→    if (input.foto) {
+   610→   610→      const metadata = {
+   611→   611→        patientId: input.patientId,
+   612→   612→        jenis: 'gambar',
+   613→   613→        type: 'usg',
+   614→   614→        jenisUsg: input.jenisUsg,
+   615→   615→        hasil: input.hasil,
+   616→   616→        catatan: input.catatan,
+   617→   617→        doctorId: validUuidOrUndefined(input.doctorId),
+   618→   618→        createdBy: input.createdBy,
+   619→   619→        tanggal: input.tanggal ?? todayStr(),
+   620→   620→      };
+   621→   621→      try {
+   622→   622→        const row = await callUploadApi(input.foto, metadata, onProgress);
+   623→   623→        return row ? fromDbUsg(row) : null;
+   624→   624→      } catch (e: any) {
+   625→   625→        console.error('[supportingExamService.createUsg] upload API failed:', e);
+   626→   626→        throw e;
+   627→   627→      }
+   628→   628→    }
+   629→   629→
+   630→   630→    // No photo — insert metadata only (browser client, RLS permits inserts).
+   631→   631→    const keterangan = JSON.stringify({
+   632→   632→      type: 'usg',
+   633→   633→      jenisUsg: input.jenisUsg,
+   634→   634→      hasil: input.hasil,
+   635→   635→      catatan: input.catatan,
+   636→   636→      doctorId: validUuidOrUndefined(input.doctorId),
+   637→   637→      createdBy: input.createdBy,
+   638→   638→    });
+   639→   639→    const payload = {
+   640→   640→      patient_id: input.patientId,
+   641→   641→      jenis: 'gambar' as const,
+   642→   642→      nama_file: `usg-${input.tanggal ?? todayStr()}`,
+   643→   643→      storage_path: `usg/${input.patientId}/${Date.now()}`,
+   644→   644→      url: null,
+   645→   645→      keterangan,
+   646→   646→      tanggal: input.tanggal ?? todayStr(),
+   647→   647→      uploaded_by: input.createdBy,
+   648→   648→    };
+   649→   649→    const { data: row, error } = await safeInsert<any>(
+   650→   650→      supabase.from('patient_documents').insert(payload).select().single(),
+   651→   651→      'supportingExamService.createUsg'
+   652→   652→    );
+   653→   653→    if (error) throw new Error(error);
+   654→   654→    return row ? fromDbUsg(row) : null;
+   655→   655→  },
+   656→   656→
+   657→   657→  async updateUsg(id: string, input: Partial<USGInput>, onProgress?: UploadProgressCb): Promise<USGResult | null> {
+   658→   658→    if (!isValidUuid(id)) return null;
+   659→   659→
+   660→   660→    // If a new photo is provided, use the server-side update API.
+   661→   661→    if (input.foto) {
+   662→   662→      // Fetch old storage_path so the API can delete the old file.
+   663→   663→      const existing = await safeQuery(
+   664→   664→        supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
+   665→   665→        null as any,
+   666→   666→        'supportingExamService.updateUsg.fetch'
+   667→   667→      );
+   668→   668→      const oldStoragePath = (existing as any)?.storage_path;
+   669→   669→      const metadata = {
+   670→   670→        jenis: 'gambar',
+   671→   671→        type: 'usg',
+   672→   672→        jenisUsg: input.jenisUsg,
+   673→   673→        hasil: input.hasil,
+   674→   674→        catatan: input.catatan,
+   675→   675→        doctorId: validUuidOrUndefined(input.doctorId),
+   676→   676→        createdBy: input.createdBy,
+   677→   677→        tanggal: input.tanggal,
+   678→   678→      };
+   679→   679→      try {
+   680→   680→        const row = await callUpdateApi(id, metadata, input.foto, oldStoragePath, onProgress);
+   681→   681→        return row ? fromDbUsg(row) : null;
+   682→   682→      } catch (e: any) {
+   683→   683→        console.error('[supportingExamService.updateUsg] update API failed:', e);
+   684→   684→        throw e;
+   685→   685→      }
+   686→   686→    }
+   687→   687→
+   688→   688→    // No new photo — update metadata only.
+   689→   689→    const keterangan = JSON.stringify({
+   690→   690→      type: 'usg',
+   691→   691→      jenisUsg: input.jenisUsg,
+   692→   692→      hasil: input.hasil,
+   693→   693→      catatan: input.catatan,
+   694→   694→      doctorId: validUuidOrUndefined(input.doctorId),
+   695→   695→      createdBy: input.createdBy,
+   696→   696→    });
+   697→   697→    const payload = stripUndefined({
+   698→   698→      keterangan,
+   699→   699→      tanggal: input.tanggal,
+   700→   700→      uploaded_by: input.createdBy,
+   701→   701→    });
+   702→   702→    const { data: row, error } = await safeInsert<any>(
+   703→   703→      supabase.from('patient_documents').update(payload).eq('id', id).select().single(),
+   704→   704→      'supportingExamService.updateUsg'
+   705→   705→    );
+   706→   706→    if (error) throw new Error(error);
+   707→   707→    return row ? fromDbUsg(row) : null;
+   708→   708→  },
+   709→   709→
+   710→   710→  async deleteUsg(id: string): Promise<boolean> {
+   711→   711→    if (!isValidUuid(id)) return false;
+   712→   712→    // Fetch storage_path then call the server-side delete API.
+   713→   713→    const existing = await safeQuery(
+   714→   714→      supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
+   715→   715→      null as any,
+   716→   716→      'supportingExamService.deleteUsg.fetch'
+   717→   717→    );
+   718→   718→    const storagePath = (existing as any)?.storage_path;
+   719→   719→    // Try the admin delete API first (handles file + row atomically).
+   720→   720→    const ok = await callDeleteApi(id, storagePath);
+   721→   721→    if (ok) return true;
+   722→   722→    // Fallback: browser client delete (row only).
+   723→   723→    const res = await safeQuery(
+   724→   724→      supabase.from('patient_documents').delete().eq('id', id),
+   725→   725→      null as any,
+   726→   726→      'supportingExamService.deleteUsg'
+   727→   727→    );
+   728→   728→    return res !== null;
+   729→   729→  },
+   730→   730→
+   731→   731→  // ── EKG ─────────────────────────────────────────────────────────────────
+   732→   732→
+   733→   733→  async listEcg(patientId: string): Promise<ECGResult[]> {
+   734→   734→    if (!isValidUuid(patientId)) return [];
+   735→   735→    const rows = await safeQuery(
+   736→   736→      supabase
+   737→   737→        .from('patient_documents')
+   738→   738→        .select('*')
+   739→   739→        .eq('patient_id', patientId)
+   740→   740→        .eq('jenis', 'gambar')
+   741→   741→        .order('tanggal', { ascending: false })
+   742→   742→        .order('created_at', { ascending: false }),
+   743→   743→      [] as any[],
+   744→   744→      'supportingExamService.listEcg'
+   745→   745→    );
+   746→   746→    return (rows as any[])
+   747→   747→      .filter((r) => {
+   748→   748→        const k = safeParseKeterangan(r.keterangan);
+   749→   749→        return k.type === 'ekg';
+   750→   750→      })
+   751→   751→      .map(fromDbEcg);
+   752→   752→  },
+   753→   753→
+   754→   754→  async createEcg(input: ECGInput, onProgress?: UploadProgressCb): Promise<ECGResult | null> {
+   755→   755→    if (!isValidUuid(input.patientId)) {
+   756→   756→      console.error('[supportingExamService.createEcg] ABORTED — patient_id is not a valid UUID.');
+   757→   757→      return null;
+   758→   758→    }
+   759→   759→
+   760→   760→    // If a photo is provided, use the server-side upload API (bypasses RLS).
+   761→   761→    if (input.foto) {
+   762→   762→      const metadata = {
+   763→   763→        patientId: input.patientId,
+   764→   764→        jenis: 'gambar',
+   765→   765→        type: 'ekg',
+   766→   766→        interpretasi: input.interpretasi,
+   767→   767→        catatan: input.catatan,
+   768→   768→        doctorId: validUuidOrUndefined(input.doctorId),
+   769→   769→        createdBy: input.createdBy,
+   770→   770→        tanggal: input.tanggal ?? todayStr(),
+   771→   771→      };
+   772→   772→      try {
+   773→   773→        const row = await callUploadApi(input.foto, metadata, onProgress);
+   774→   774→        return row ? fromDbEcg(row) : null;
+   775→   775→      } catch (e: any) {
+   776→   776→        console.error('[supportingExamService.createEcg] upload API failed:', e);
+   777→   777→        throw e;
+   778→   778→      }
+   779→   779→    }
+   780→   780→
+   781→   781→    // No photo — insert metadata only.
+   782→   782→    const keterangan = JSON.stringify({
+   783→   783→      type: 'ekg',
+   784→   784→      interpretasi: input.interpretasi,
+   785→   785→      catatan: input.catatan,
+   786→   786→      doctorId: validUuidOrUndefined(input.doctorId),
+   787→   787→      createdBy: input.createdBy,
+   788→   788→    });
+   789→   789→    const payload = {
+   790→   790→      patient_id: input.patientId,
+   791→   791→      jenis: 'gambar' as const,
+   792→   792→      nama_file: `ekg-${input.tanggal ?? todayStr()}`,
+   793→   793→      storage_path: `ekg/${input.patientId}/${Date.now()}`,
+   794→   794→      url: null,
+   795→   795→      keterangan,
+   796→   796→      tanggal: input.tanggal ?? todayStr(),
+   797→   797→      uploaded_by: input.createdBy,
+   798→   798→    };
+   799→   799→    const { data: row, error } = await safeInsert<any>(
+   800→   800→      supabase.from('patient_documents').insert(payload).select().single(),
+   801→   801→      'supportingExamService.createEcg'
+   802→   802→    );
+   803→   803→    if (error) throw new Error(error);
+   804→   804→    return row ? fromDbEcg(row) : null;
+   805→   805→  },
+   806→   806→
+   807→   807→  async updateEcg(id: string, input: Partial<ECGInput>, onProgress?: UploadProgressCb): Promise<ECGResult | null> {
+   808→   808→    if (!isValidUuid(id)) return null;
+   809→   809→
+   810→   810→    if (input.foto) {
+   811→   811→      const existing = await safeQuery(
+   812→   812→        supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
+   813→   813→        null as any,
+   814→   814→        'supportingExamService.updateEcg.fetch'
+   815→   815→      );
+   816→   816→      const oldStoragePath = (existing as any)?.storage_path;
+   817→   817→      const metadata = {
+   818→   818→        jenis: 'gambar',
+   819→   819→        type: 'ekg',
+   820→   820→        interpretasi: input.interpretasi,
+   821→   821→        catatan: input.catatan,
+   822→   822→        doctorId: validUuidOrUndefined(input.doctorId),
+   823→   823→        createdBy: input.createdBy,
+   824→   824→        tanggal: input.tanggal,
+   825→   825→      };
+   826→   826→      try {
+   827→   827→        const row = await callUpdateApi(id, metadata, input.foto, oldStoragePath, onProgress);
+   828→   828→        return row ? fromDbEcg(row) : null;
+   829→   829→      } catch (e: any) {
+   830→   830→        console.error('[supportingExamService.updateEcg] update API failed:', e);
+   831→   831→        throw e;
+   832→   832→      }
+   833→   833→    }
+   834→   834→
+   835→   835→    const keterangan = JSON.stringify({
+   836→   836→      type: 'ekg',
+   837→   837→      interpretasi: input.interpretasi,
+   838→   838→      catatan: input.catatan,
+   839→   839→      doctorId: validUuidOrUndefined(input.doctorId),
+   840→   840→      createdBy: input.createdBy,
+   841→   841→    });
+   842→   842→    const payload = stripUndefined({
+   843→   843→      keterangan,
+   844→   844→      tanggal: input.tanggal,
+   845→   845→      uploaded_by: input.createdBy,
+   846→   846→    });
+   847→   847→    const { data: row, error } = await safeInsert<any>(
+   848→   848→      supabase.from('patient_documents').update(payload).eq('id', id).select().single(),
+   849→   849→      'supportingExamService.updateEcg'
+   850→   850→    );
+   851→   851→    if (error) throw new Error(error);
+   852→   852→    return row ? fromDbEcg(row) : null;
+   853→   853→  },
+   854→   854→
+   855→   855→  async deleteEcg(id: string): Promise<boolean> {
+   856→   856→    if (!isValidUuid(id)) return false;
+   857→   857→    const existing = await safeQuery(
+   858→   858→      supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
+   859→   859→      null as any,
+   860→   860→      'supportingExamService.deleteEcg.fetch'
+   861→   861→    );
+   862→   862→    const storagePath = (existing as any)?.storage_path;
+   863→   863→    const ok = await callDeleteApi(id, storagePath);
+   864→   864→    if (ok) return true;
+   865→   865→    const res = await safeQuery(
+   866→   866→      supabase.from('patient_documents').delete().eq('id', id),
+   867→   867→      null as any,
+   868→   868→      'supportingExamService.deleteEcg'
+   869→   869→    );
+   870→   870→    return res !== null;
+   871→   871→  },
+   872→   872→
+   873→   873→  // ── RADIOLOGI ───────────────────────────────────────────────────────────
+   874→   874→
+   875→   875→  async listRadiology(patientId: string): Promise<RadiologyResult[]> {
+   876→   876→    if (!isValidUuid(patientId)) return [];
+   877→   877→    const rows = await safeQuery(
+   878→   878→      supabase
+   879→   879→        .from('patient_documents')
+   880→   880→        .select('*')
+   881→   881→        .eq('patient_id', patientId)
+   882→   882→        .eq('jenis', 'radiologi')
+   883→   883→        .order('tanggal', { ascending: false })
+   884→   884→        .order('created_at', { ascending: false }),
+   885→   885→      [] as any[],
+   886→   886→      'supportingExamService.listRadiology'
+   887→   887→    );
+   888→   888→    return (rows as any[]).map(fromDbRadiology);
+   889→   889→  },
+   890→   890→
+   891→   891→  async createRadiology(input: RadiologyInput, onProgress?: UploadProgressCb): Promise<RadiologyResult | null> {
+   892→   892→    if (!isValidUuid(input.patientId)) {
+   893→   893→      console.error('[supportingExamService.createRadiology] ABORTED — patient_id is not a valid UUID.');
+   894→   894→      return null;
+   895→   895→    }
+   896→   896→
+   897→   897→    // If a photo is provided, use the server-side upload API (bypasses RLS).
+   898→   898→    if (input.foto) {
+   899→   899→      const metadata = {
+   900→   900→        patientId: input.patientId,
+   901→   901→        jenis: 'radiologi',
+   902→   902→        type: 'radiology',
+   903→   903→        jenisRadiologi: input.jenisRadiologi,
+   904→   904→        hasil: input.hasil,
+   905→   905→        catatan: input.catatan,
+   906→   906→        doctorId: validUuidOrUndefined(input.doctorId),
+   907→   907→        createdBy: input.createdBy,
+   908→   908→        tanggal: input.tanggal ?? todayStr(),
+   909→   909→      };
+   910→   910→      try {
+   911→   911→        const row = await callUploadApi(input.foto, metadata, onProgress);
+   912→   912→        return row ? fromDbRadiology(row) : null;
+   913→   913→      } catch (e: any) {
+   914→   914→        console.error('[supportingExamService.createRadiology] upload API failed:', e);
+   915→   915→        throw e;
+   916→   916→      }
+   917→   917→    }
+   918→   918→
+   919→   919→    // No photo — insert metadata only.
+   920→   920→    const keterangan = JSON.stringify({
+   921→   921→      type: 'radiology',
+   922→   922→      jenisRadiologi: input.jenisRadiologi,
+   923→   923→      hasil: input.hasil,
+   924→   924→      catatan: input.catatan,
+   925→   925→      doctorId: validUuidOrUndefined(input.doctorId),
+   926→   926→      createdBy: input.createdBy,
+   927→   927→    });
+   928→   928→    const payload = {
+   929→   929→      patient_id: input.patientId,
+   930→   930→      jenis: 'radiologi' as const,
+   931→   931→      nama_file: `radiologi-${input.tanggal ?? todayStr()}`,
+   932→   932→      storage_path: `radiologi/${input.patientId}/${Date.now()}`,
+   933→   933→      url: null,
+   934→   934→      keterangan,
+   935→   935→      tanggal: input.tanggal ?? todayStr(),
+   936→   936→      uploaded_by: input.createdBy,
+   937→   937→    };
+   938→   938→    const { data: row, error } = await safeInsert<any>(
+   939→   939→      supabase.from('patient_documents').insert(payload).select().single(),
+   940→   940→      'supportingExamService.createRadiology'
+   941→   941→    );
+   942→   942→    if (error) throw new Error(error);
+   943→   943→    return row ? fromDbRadiology(row) : null;
+   944→   944→  },
+   945→   945→
+   946→   946→  async updateRadiology(id: string, input: Partial<RadiologyInput>, onProgress?: UploadProgressCb): Promise<RadiologyResult | null> {
+   947→   947→    if (!isValidUuid(id)) return null;
+   948→   948→
+   949→   949→    if (input.foto) {
+   950→   950→      const existing = await safeQuery(
+   951→   951→        supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
+   952→   952→        null as any,
+   953→   953→        'supportingExamService.updateRadiology.fetch'
+   954→   954→      );
+   955→   955→      const oldStoragePath = (existing as any)?.storage_path;
+   956→   956→      const metadata = {
+   957→   957→        jenis: 'radiologi',
+   958→   958→        type: 'radiology',
+   959→   959→        jenisRadiologi: input.jenisRadiologi,
+   960→   960→        hasil: input.hasil,
+   961→   961→        catatan: input.catatan,
+   962→   962→        doctorId: validUuidOrUndefined(input.doctorId),
+   963→   963→        createdBy: input.createdBy,
+   964→   964→        tanggal: input.tanggal,
+   965→   965→      };
+   966→   966→      try {
+   967→   967→        const row = await callUpdateApi(id, metadata, input.foto, oldStoragePath, onProgress);
+   968→   968→        return row ? fromDbRadiology(row) : null;
+   969→   969→      } catch (e: any) {
+   970→   970→        console.error('[supportingExamService.updateRadiology] update API failed:', e);
+   971→   971→        throw e;
+   972→   972→      }
+   973→   973→    }
+   974→   974→
+   975→   975→    const keterangan = JSON.stringify({
+   976→   976→      type: 'radiology',
+   977→   977→      jenisRadiologi: input.jenisRadiologi,
+   978→   978→      hasil: input.hasil,
+   979→   979→      catatan: input.catatan,
+   980→   980→      doctorId: validUuidOrUndefined(input.doctorId),
+   981→   981→      createdBy: input.createdBy,
+   982→   982→    });
+   983→   983→    const payload = stripUndefined({
+   984→   984→      keterangan,
+   985→   985→      tanggal: input.tanggal,
+   986→   986→      uploaded_by: input.createdBy,
+   987→   987→    });
+   988→   988→    const { data: row, error } = await safeInsert<any>(
+   989→   989→      supabase.from('patient_documents').update(payload).eq('id', id).select().single(),
+   990→   990→      'supportingExamService.updateRadiology'
+   991→   991→    );
+   992→   992→    if (error) throw new Error(error);
+   993→   993→    return row ? fromDbRadiology(row) : null;
+   994→   994→  },
+   995→   995→
+   996→   996→  async deleteRadiology(id: string): Promise<boolean> {
+   997→   997→    if (!isValidUuid(id)) return false;
+   998→   998→    const existing = await safeQuery(
+   999→   999→      supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
+  1000→  1000→      null as any,
+  1001→  1001→      'supportingExamService.deleteRadiology.fetch'
+  1002→  1002→    );
+  1003→  1003→    const storagePath = (existing as any)?.storage_path;
+  1004→  1004→    const ok = await callDeleteApi(id, storagePath);
+  1005→  1005→    if (ok) return true;
+  1006→  1006→    const res = await safeQuery(
+  1007→  1007→      supabase.from('patient_documents').delete().eq('id', id),
+  1008→  1008→      null as any,
+  1009→  1009→      'supportingExamService.deleteRadiology'
+  1010→  1010→    );
+  1011→  1011→    return res !== null;
+  1012→  1012→  },
+  1013→  1013→
+  1014→  1014→  // ── TIMELINE: all exams for a patient, merged & sorted by date ──────────
+  1015→  1015→
+  1016→  1016→  async listAll(patientId: string): Promise<SupportingExamUnion[]> {
+  1017→  1017→    if (!isValidUuid(patientId)) return [];
+  1018→  1018→    const [lab, usg, ecg, rad] = await Promise.all([
+  1019→  1019→      this.listLab(patientId),
+  1020→  1020→      this.listUsg(patientId),
+  1021→  1021→      this.listEcg(patientId),
+  1022→  1022→      this.listRadiology(patientId),
+  1023→  1023→    ]);
+  1024→  1024→    const all: SupportingExamUnion[] = [
+  1025→  1025→      ...lab.map((data) => ({ type: 'laboratorium' as const, data })),
+  1026→  1026→      ...usg.map((data) => ({ type: 'usg' as const, data })),
+  1027→  1027→      ...ecg.map((data) => ({ type: 'ekg' as const, data })),
+  1028→  1028→      ...rad.map((data) => ({ type: 'radiologi' as const, data })),
+  1029→  1029→    ];
+  1030→  1030→    all.sort((a, b) => {
+  1031→  1031→      const ta = new Date((a.data as any).tanggal ?? (a.data as any).createdAt).getTime();
+  1032→  1032→      const tb = new Date((b.data as any).tanggal ?? (b.data as any).createdAt).getTime();
+  1033→  1033→      return tb - ta;
+  1034→  1034→    });
+  1035→  1035→    return all;
+  1036→  1036→  },
+  1037→  1037→
+  1038→  1038→  /**
+  1039→  1039→   * Returns the latest exam of each type for dashboard ringkas.
+  1040→  1040→   */
+  1041→  1041→  async getLatestExams(patientId: string): Promise<{
+  1042→  1042→    latestLab?: LabResult;
+  1043→  1043→    latestUsg?: USGResult;
+  1044→  1044→    latestEcg?: ECGResult;
+  1045→  1045→    latestRadiology?: RadiologyResult;
+  1046→  1046→  }> {
+  1047→  1047→    if (!isValidUuid(patientId)) return {};
+  1048→  1048→    const [lab, usg, ecg, rad] = await Promise.all([
+  1049→  1049→      this.listLab(patientId),
+  1050→  1050→      this.listUsg(patientId),
+  1051→  1051→      this.listEcg(patientId),
+  1052→  1052→      this.listRadiology(patientId),
+  1053→  1053→    ]);
+  1054→  1054→    return {
+  1055→  1055→      latestLab: lab[0],
+  1056→  1056→      latestUsg: usg[0],
+  1057→  1057→      latestEcg: ecg[0],
+  1058→  1058→      latestRadiology: rad[0],
+  1059→  1059→    };
+  1060→  1060→  },
+  1061→  1061→};
+  1062→  1062→

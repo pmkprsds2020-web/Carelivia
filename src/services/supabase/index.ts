@@ -59,7 +59,11 @@ export { serviceCatalogService } from './serviceCatalogService';
 export type { ServiceItem, ServiceInput, ServiceStatus } from './serviceCatalogService';
 // ── Supporting examinations (Pemeriksaan Penunjang) ─────────────────────────
 export { supportingExamService } from './supportingExamService';
-export { JENIS_USG_OPTIONS, JENIS_RADIOLOGI_OPTIONS } from './supportingExamService';
+export {
+  JENIS_USG_OPTIONS,
+  JENIS_RADIOLOGI_OPTIONS,
+  STORAGE_SETUP_SQL,
+} from './supportingExamService';
 export type {
   ExamType,
   LabResult,

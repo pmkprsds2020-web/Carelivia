@@ -23,6 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import {
   supportingExamService,
   supabase,
+  STORAGE_SETUP_SQL,
   type ExamType,
   type LabResult,
   type USGResult,
@@ -127,6 +128,10 @@ import {
   ExternalLink,
   ZoomIn,
   Upload,
+  Database,
+  Copy,
+  Check,
+  Terminal,
 } from 'lucide-react';
 
 // ── Constants & helpers ─────────────────────────────────────────────────────
@@ -377,6 +382,48 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
 
   // ── Image preview state (for zoom modal in detail dialog) ──
   const [zoomImage, setZoomImage] = useState<string | null>(null);
+
+  // ── Storage RLS setup dialog (shown when uploads are blocked by RLS) ──
+  const [setupDialogOpen, setSetupDialogOpen] = useState(false);
+  const [setupDialogMsg, setSetupDialogMsg] = useState<string>('');
+  const [setupInfo, setSetupInfo] = useState<{
+    hasServiceRoleKey: boolean;
+    supabaseUrl: string;
+  } | null>(null);
+
+  /**
+   * Centralised error handler for upload failures. If the error is a Storage
+   * RLS block (code === 'STORAGE_RLS_BLOCKED'), opens the setup dialog with
+   * the SQL to run. Otherwise shows a destructive toast.
+   */
+  const handleUploadError = useCallback(
+    (err: any) => {
+      console.error('[SupportingExamPanel] upload error:', err);
+      if (err?.code === 'STORAGE_RLS_BLOCKED') {
+        setSetupDialogMsg(err?.message ?? 'Upload diblokir oleh Storage RLS.');
+        setSetupDialogOpen(true);
+        // Fetch setup info (hasServiceRoleKey etc.) from the diagnostic endpoint.
+        fetch('/api/supporting-exams/setup')
+          .then((r) => r.json())
+          .then((data) => {
+            setSetupInfo({
+              hasServiceRoleKey: !!data.hasServiceRoleKey,
+              supabaseUrl: data.supabaseUrl ?? '',
+            });
+          })
+          .catch(() => {
+            /* non-fatal — the dialog still shows the SQL */
+          });
+        return;
+      }
+      toast({
+        title: 'Gagal',
+        description: err?.message || 'Terjadi kesalahan saat menyimpan.',
+        variant: 'destructive',
+      });
+    },
+    [toast]
+  );
 
   // ── AI analysis ──
   const [aiLoading, setAiLoading] = useState(false);
@@ -681,17 +728,12 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
       setUsgFoto(null);
       reloadAll();
     } catch (err: any) {
-      console.error(err);
-      toast({
-        title: 'Gagal',
-        description: err?.message || 'Terjadi kesalahan saat menyimpan.',
-        variant: 'destructive',
-      });
+      handleUploadError(err);
     } finally {
       setUsgSaving(false);
       setUploadProgress((p) => ({ ...p, active: false }));
     }
-  }, [palliativePatientId, usgForm, usgFoto, editingUsg, currentUser, toast, reloadAll, onUploadProgress]);
+  }, [palliativePatientId, usgForm, usgFoto, editingUsg, currentUser, toast, reloadAll, onUploadProgress, handleUploadError]);
 
   const handleSaveEkg = useCallback(async () => {
     if (!palliativePatientId) return;
@@ -733,17 +775,12 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
       setEkgFoto(null);
       reloadAll();
     } catch (err: any) {
-      console.error(err);
-      toast({
-        title: 'Gagal',
-        description: err?.message || 'Terjadi kesalahan saat menyimpan.',
-        variant: 'destructive',
-      });
+      handleUploadError(err);
     } finally {
       setEkgSaving(false);
       setUploadProgress((p) => ({ ...p, active: false }));
     }
-  }, [palliativePatientId, ekgForm, ekgFoto, editingEkg, currentUser, toast, reloadAll, onUploadProgress]);
+  }, [palliativePatientId, ekgForm, ekgFoto, editingEkg, currentUser, toast, reloadAll, onUploadProgress, handleUploadError]);
 
   const handleSaveRad = useCallback(async () => {
     if (!palliativePatientId) return;
@@ -786,17 +823,12 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
       setRadFoto(null);
       reloadAll();
     } catch (err: any) {
-      console.error(err);
-      toast({
-        title: 'Gagal',
-        description: err?.message || 'Terjadi kesalahan saat menyimpan.',
-        variant: 'destructive',
-      });
+      handleUploadError(err);
     } finally {
       setRadSaving(false);
       setUploadProgress((p) => ({ ...p, active: false }));
     }
-  }, [palliativePatientId, radForm, radFoto, editingRad, currentUser, toast, reloadAll, onUploadProgress]);
+  }, [palliativePatientId, radForm, radFoto, editingRad, currentUser, toast, reloadAll, onUploadProgress, handleUploadError]);
 
   // ── Delete handler ────────────────────────────────────────────────────────
   const handleConfirmDelete = useCallback(async () => {
@@ -1135,6 +1167,16 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
 
       {/* Zoom image dialog (full-screen viewer for exam photos) */}
       <ZoomImageDialog url={zoomImage} onClose={() => setZoomImage(null)} />
+
+      {/* Storage RLS setup dialog (shown when uploads are blocked by RLS) */}
+      <StorageSetupDialog
+        open={setupDialogOpen}
+        onOpenChange={setSetupDialogOpen}
+        message={setupDialogMsg}
+        sql={STORAGE_SETUP_SQL}
+        hasServiceRoleKey={setupInfo?.hasServiceRoleKey ?? false}
+        supabaseUrl={setupInfo?.supabaseUrl ?? ''}
+      />
 
       {/* AI dialog */}
       <Dialog open={aiDialogOpen} onOpenChange={(o) => !o && !aiLoading && setAiDialogOpen(false)}>
@@ -2791,6 +2833,150 @@ function UploadProgressBar({
         />
       </div>
     </div>
+  );
+}
+
+// ── Storage RLS setup dialog ────────────────────────────────────────────────
+//
+// Shown when an upload fails with code='STORAGE_RLS_BLOCKED' — i.e. the
+// browser anon client is blocked by Storage RLS AND the server API route
+// can't help because SUPABASE_SERVICE_ROLE_KEY is not set.
+//
+// Gives the user two clear options:
+//   1. Run the displayed SQL in Supabase Dashboard → SQL Editor (recommended,
+//      enables client-side uploads — no service-role key needed).
+//   2. Set SUPABASE_SERVICE_ROLE_KEY in .env (server-side bypass).
+function StorageSetupDialog({
+  open,
+  onOpenChange,
+  message,
+  sql,
+  hasServiceRoleKey,
+  supabaseUrl,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  message: string;
+  sql: string;
+  hasServiceRoleKey: boolean;
+  supabaseUrl: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(sql);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for browsers without clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = sql;
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        /* ignore */
+      }
+      document.body.removeChild(ta);
+    }
+  }, [sql]);
+
+  const dashboardUrl = supabaseUrl
+    ? `${supabaseUrl.replace(/\/$/, '')}/project/default/sql/new`
+    : 'https://supabase.com/dashboard';
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-amber-700">
+            <Database className="w-5 h-5" />
+            Setup Upload Foto — Storage RLS
+          </DialogTitle>
+          <DialogDescription className="text-left">
+            {message}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="overflow-y-auto space-y-4 px-1 py-2">
+          {/* Status badge */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Badge variant={hasServiceRoleKey ? 'default' : 'secondary'} className="gap-1">
+              <Database className="w-3 h-3" />
+              SERVICE_ROLE_KEY: {hasServiceRoleKey ? 'Tersedia' : 'Belum diset'}
+            </Badge>
+            <Badge variant="outline" className="gap-1">
+              Bucket: patient-files
+            </Badge>
+          </div>
+
+          {/* Option 1 — recommended */}
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
+              <Check className="w-4 h-4" />
+              Opsi 1 — Jalankan SQL ini (Direkomendasikan, paling aman)
+            </div>
+            <p className="text-xs text-emerald-700">
+              Membuat bucket <code className="px-1 bg-white/60 rounded">patient-files</code> sebagai
+              public + RLS policies untuk anon role. Setelah ini, upload langsung
+              berhasil dari browser — tanpa service-role key.
+            </p>
+            <ol className="text-xs text-emerald-700 list-decimal list-inside space-y-0.5">
+              <li>Buka Supabase Dashboard → <strong>SQL Editor</strong> → New query.</li>
+              <li>Salin SQL di bawah, klik <strong>Run</strong>.</li>
+              <li>Coba upload foto lagi — akan langsung berhasil.</li>
+            </ol>
+            <div className="flex items-center gap-2 pt-1">
+              <Button size="sm" variant="outline" onClick={handleCopy} className="gap-1.5">
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? 'Tersalin!' : 'Salin SQL'}
+              </Button>
+              <a href={dashboardUrl} target="_blank" rel="noopener noreferrer">
+                <Button size="sm" variant="outline" className="gap-1.5">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Buka SQL Editor
+                </Button>
+              </a>
+            </div>
+            <pre className="mt-2 text-[10px] leading-relaxed bg-zinc-900 text-zinc-100 rounded-md p-3 overflow-x-auto max-h-56 overflow-y-auto">
+              <code>{sql}</code>
+            </pre>
+          </div>
+
+          {/* Option 2 — service role key */}
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-amber-800">
+              <Terminal className="w-4 h-4" />
+              Opsi 2 — Set SUPABASE_SERVICE_ROLE_KEY di .env
+            </div>
+            <p className="text-xs text-amber-700">
+              Server API route akan bypass RLS menggunakan service-role key.
+              Hanya boleh digunakan di server — jangan diekspos ke browser.
+            </p>
+            <ol className="text-xs text-amber-700 list-decimal list-inside space-y-0.5">
+              <li>Supabase Dashboard → Project Settings → API → <strong>service_role</strong> secret.</li>
+              <li>Salin key, tempel di <code className="px-1 bg-white/60 rounded">.env</code>:</li>
+            </ol>
+            <pre className="text-[10px] bg-zinc-900 text-zinc-100 rounded-md p-2 overflow-x-auto">
+              <code>SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIs...</code>
+            </pre>
+            <p className="text-xs text-amber-700">
+              3. Restart dev server (<code className="px-1 bg-white/60 rounded">bun run dev</code>).
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter className="flex-shrink-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Tutup
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

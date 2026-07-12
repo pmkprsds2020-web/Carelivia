@@ -281,21 +281,243 @@ function fromDbRadiology(row: any): RadiologyResult {
   };
 }
 
-// ── Storage helpers (server-side via API routes to bypass RLS) ──────────────
+// ── Storage helpers (dual-path: client-side primary + server API fallback) ───
 //
-// The browser anon client is subject to Storage RLS and gets:
-//   "new row violates row-level security policy"
-// when uploading to the `patient-files` bucket. All Storage + DB operations
-// for photo exams therefore go through server-side API routes that use the
-// service-role key (getSupabaseAdmin) to bypass RLS.
+// DUAL-PATH UPLOAD STRATEGY
+// ─────────────────────────
+// Path A (PRIMARY): Client-side upload via the browser anon client
+//   (`supabase.storage.from(BUCKET).upload()`). Works when the `patient-files`
+//   Storage bucket has RLS policies allowing the anon role to
+//   INSERT/SELECT/UPDATE/DELETE. This is the recommended "safer alternative"
+//   that does NOT require SUPABASE_SERVICE_ROLE_KEY.
 //
-// Routes:
+// Path B (FALLBACK): Server-side upload via POST /api/supporting-exams/upload.
+//   Uses getSupabaseAdmin() (service-role key) to bypass RLS entirely. Only
+//   works if SUPABASE_SERVICE_ROLE_KEY is set in .env.
+//
+// If BOTH paths fail (RLS blocks Path A AND service-role key missing for Path
+// B), we throw an Error with `code='STORAGE_RLS_BLOCKED'` and attach
+// `setupSql` — the SQL the user must run in Supabase Dashboard → SQL Editor
+// to enable client-side uploads (Path A).
+//
+// Routes (Path B):
 //   POST /api/supporting-exams/upload       — upload file + INSERT row
 //   POST /api/supporting-exams/update       — optional new file + UPDATE row
 //   POST /api/supporting-exams/delete-file  — delete file + DELETE row
 //
 
 export type UploadProgressCb = (phase: 'uploading' | 'inserting' | 'done' | 'error', pct: number, msg?: string) => void;
+
+// ── RLS / bucket-missing detection ──────────────────────────────────────────
+
+const RLS_ERROR_PATTERNS = [
+  'row-level security',
+  'violates row-level security',
+  'new row violates row-level security policy',
+  'permission denied for table',
+  'permission denied for',
+];
+
+function isRlsError(err: any): boolean {
+  const msg = String(err?.message || err?.error || err || '').toLowerCase();
+  return RLS_ERROR_PATTERNS.some((p) => msg.includes(p));
+}
+
+function isBucketMissingError(err: any): boolean {
+  const msg = String(err?.message || err?.error || err || '').toLowerCase();
+  return (
+    msg.includes('bucket not found') ||
+    msg.includes('does not exist') ||
+    msg.includes('not found') ||
+    err?.statusCode === 404
+  );
+}
+
+/**
+ * The SQL the user must run ONCE in Supabase Dashboard → SQL Editor to enable
+ * client-side uploads to the `patient-files` bucket (Path A). After running
+ * this, no service-role key is needed for uploads — the browser anon client
+ * can read/write/delete objects directly (subject to these permissive policies).
+ *
+ * Exported so the UI can surface it in a setup dialog when an upload fails.
+ */
+export const STORAGE_SETUP_SQL = `-- ─────────────────────────────────────────────────────────────────────────
+-- Enable client-side uploads to the "patient-files" Storage bucket.
+-- Run this ONCE in: Supabase Dashboard → SQL Editor → New query → Run.
+--
+-- This (1) creates the bucket as PUBLIC so getPublicUrl() works for reads,
+-- and (2) adds RLS policies allowing the anon role (used by the browser
+-- Supabase client) to read/write/update/delete objects in the bucket.
+-- ─────────────────────────────────────────────────────────────────────────
+
+-- 1. Create the bucket as PUBLIC (idempotent).
+insert into storage.buckets (id, name, public)
+values ('patient-files', 'patient-files', true)
+on conflict (id) do update set public = true;
+
+-- 2. Allow anyone (anon + authenticated) to READ objects.
+drop policy if exists "patient_files_read" on storage.objects;
+create policy "patient_files_read"
+  on storage.objects for select
+  using (bucket_id = 'patient-files');
+
+-- 3. Allow anyone to INSERT (upload) objects.
+drop policy if exists "patient_files_insert" on storage.objects;
+create policy "patient_files_insert"
+  on storage.objects for insert
+  with check (bucket_id = 'patient-files');
+
+-- 4. Allow anyone to UPDATE objects.
+drop policy if exists "patient_files_update" on storage.objects;
+create policy "patient_files_update"
+  on storage.objects for update
+  using (bucket_id = 'patient-files');
+
+-- 5. Allow anyone to DELETE objects.
+drop policy if exists "patient_files_delete" on storage.objects;
+create policy "patient_files_delete"
+  on storage.objects for delete
+  using (bucket_id = 'patient-files');
+`;
+
+/**
+ * Path A: Upload a file to Storage using the browser anon client.
+ * Returns `{ storagePath, publicUrl }`. Throws on any error; the caller
+ * decides whether to fall back to the server API route (Path B).
+ *
+ * URL RESOLUTION STRATEGY
+ * ───────────────────────
+ * After a successful upload we need an accessible URL to store in the DB and
+ * show in <img> tags. We try, in order:
+ *   1. `createSignedUrl(path, 10 years)` — works for PRIVATE buckets that
+ *      have a SELECT policy for the anon role. The signed URL carries a token
+ *      query param and is effectively permanent (10-year expiry).
+ *   2. `getPublicUrl(path)` — works for PUBLIC buckets (no token needed).
+ *
+ * This dual approach means images display correctly whether the bucket is
+ * public or private-with-SELECT-policy. The setup SQL (STORAGE_SETUP_SQL)
+ * makes the bucket public AND adds the SELECT policy, so both paths work
+ * after it's run; before it's run, signed URLs cover the private case.
+ */
+async function uploadPhotoClient(
+  file: File | Blob,
+  patientId: string,
+  jenis: string,
+  onProgress?: UploadProgressCb
+): Promise<{ storagePath: string; publicUrl: string }> {
+  const fileName = (file as File).name ?? `upload-${Date.now()}`;
+  onProgress?.('uploading', 20, `Mengunggah ${fileName}...`);
+  const storagePath = buildStoragePath(patientId, jenis, fileName);
+
+  const { error: upErr } = await supabase.storage
+    .from(BUCKET)
+    .upload(storagePath, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: (file as File).type || 'application/octet-stream',
+    });
+  if (upErr) throw upErr;
+
+  onProgress?.('inserting', 70, 'Menyimpan metadata...');
+
+  // ── Resolve an accessible URL ──
+  // Try a long-lived signed URL first (works for private buckets with a
+  // SELECT policy). 10 years = 315360000 seconds.
+  let accessibleUrl = '';
+  try {
+    const { data: signed, error: signedErr } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(storagePath, 315360000);
+    if (!signedErr && signed?.signedUrl) {
+      accessibleUrl = signed.signedUrl;
+    }
+  } catch {
+    /* fall through to getPublicUrl */
+  }
+
+  // Fall back to the public URL (works for public buckets).
+  if (!accessibleUrl) {
+    try {
+      const { data } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
+      accessibleUrl = data?.publicUrl ?? '';
+    } catch {
+      /* leave empty — caller stores null */
+    }
+  }
+
+  return { storagePath, publicUrl: accessibleUrl };
+}
+
+/**
+ * Dual-path upload: try client-side first (Path A); on RLS / missing-bucket
+ * error, fall back to the server-side API route (Path B, needs service-role
+ * key).
+ *
+ * Returns:
+ *   - `{ storagePath, publicUrl, rowAlreadyInserted: false }` if Path A
+ *     succeeded → caller must still INSERT the metadata row.
+ *   - `{ storagePath, publicUrl, rowAlreadyInserted: true, row }` if Path B
+ *     succeeded → the API route already uploaded + inserted the row.
+ *
+ * Throws Error with `code='STORAGE_RLS_BLOCKED'` and `setupSql` if BOTH paths
+ * fail (RLS blocks Path A AND service-role key missing for Path B).
+ */
+async function uploadPhotoDualPath(
+  file: File | Blob,
+  patientId: string,
+  jenis: string,
+  apiMetadata: Record<string, any>,
+  onProgress?: UploadProgressCb
+): Promise<{
+  storagePath: string;
+  publicUrl: string;
+  rowAlreadyInserted: boolean;
+  row?: any;
+}> {
+  // ── Path A: client-side upload ──
+  try {
+    const r = await uploadPhotoClient(file, patientId, jenis, onProgress);
+    return { storagePath: r.storagePath, publicUrl: r.publicUrl, rowAlreadyInserted: false };
+  } catch (clientErr: any) {
+    // Only fall back to the server API for RLS / missing-bucket errors.
+    // Other errors (network, validation, auth) should propagate directly.
+    if (!isRlsError(clientErr) && !isBucketMissingError(clientErr)) {
+      onProgress?.('error', 0, clientErr?.message ?? 'Upload gagal');
+      throw clientErr;
+    }
+    console.warn(
+      '[supportingExamService] client-side upload blocked (RLS/bucket). ' +
+        'Falling back to server API route (requires SUPABASE_SERVICE_ROLE_KEY)...',
+      clientErr?.message
+    );
+  }
+
+  // ── Path B: server-side API route (service-role key) ──
+  try {
+    const row = await callUploadApi(file, apiMetadata, onProgress);
+    return {
+      storagePath: row?.storage_path ?? '',
+      publicUrl: row?.url ?? '',
+      rowAlreadyInserted: true,
+      row,
+    };
+  } catch (apiErr: any) {
+    if (apiErr?.code === 'MISSING_SERVICE_ROLE_KEY') {
+      // Both paths failed — surface a clear, actionable error.
+      const e = new Error(
+        'Upload diblokir oleh kebijakan Storage RLS. Dua opsi perbaikan: ' +
+          '(1) Jalankan SQL setup pada Supabase Dashboard → SQL Editor (paling aman), atau ' +
+          '(2) Set SUPABASE_SERVICE_ROLE_KEY di file .env lalu restart server.'
+      );
+      (e as any).code = 'STORAGE_RLS_BLOCKED';
+      (e as any).setupSql = STORAGE_SETUP_SQL;
+      onProgress?.('error', 0, e.message);
+      throw e;
+    }
+    onProgress?.('error', 0, apiErr?.message ?? 'Upload gagal');
+    throw apiErr;
+  }
+}
 
 /**
  * Call the /api/supporting-exams/upload route.
@@ -442,6 +664,377 @@ async function callDeleteApi(id: string, storagePath?: string): Promise<boolean>
   return true;
 }
 
+// ── Shared photo-exam helpers (used by USG / EKG / Radiologi) ────────────────
+//
+// These encapsulate the dual-path upload + metadata-insert flow so each
+// exam type's create/update/delete method stays a thin delegate.
+
+interface PhotoExamCreateArgs {
+  patientId: string;
+  tanggal?: string;
+  createdBy?: string;
+  doctorId?: string;
+  foto?: File | Blob;
+  /** DB `jenis` value: 'gambar' for USG/EKG, 'radiologi' for Radiologi. */
+  jenis: 'gambar' | 'radiologi';
+  /** `keterangan.type` discriminator: 'usg' | 'ekg' | 'radiology'. */
+  type: 'usg' | 'ekg' | 'radiology';
+  /** Type-specific fields merged into `keterangan` (e.g. { jenisUsg, hasil, catatan }). */
+  typeSpecificKeterangan: Record<string, any>;
+  /** File-name prefix (e.g. 'usg', 'ekg', 'radiologi'). */
+  namaFilePrefix: string;
+  /** Row → typed object mapper. */
+  fromDb: (row: any) => any;
+  onProgress?: UploadProgressCb;
+}
+
+/**
+ * Create a photo exam (USG / EKG / Radiologi) with dual-path upload.
+ *
+ * Flow:
+ *   1. If `foto` provided:
+ *      a. uploadPhotoDualPath → Path A (client) or Path B (server API).
+ *      b. If Path A: INSERT metadata row; on INSERT failure, delete orphan file.
+ *      c. If Path B: row already inserted by the API → just map & return.
+ *   2. If no `foto`: INSERT metadata row with `url: null`.
+ */
+async function createPhotoExam(args: PhotoExamCreateArgs): Promise<any | null> {
+  const {
+    patientId,
+    foto,
+    jenis,
+    type,
+    typeSpecificKeterangan,
+    fromDb,
+    namaFilePrefix,
+    onProgress,
+    tanggal,
+    createdBy,
+    doctorId,
+  } = args;
+
+  if (!isValidUuid(patientId)) {
+    console.error(
+      `[supportingExamService.create${type}] ABORTED — patient_id is not a valid UUID.`,
+      { received: patientId }
+    );
+    return null;
+  }
+
+  const tgl = tanggal ?? todayStr();
+  const doctorIdUuid = validUuidOrUndefined(doctorId);
+
+  if (foto) {
+    const apiMetadata = {
+      patientId,
+      jenis,
+      type,
+      doctorId: doctorIdUuid,
+      createdBy,
+      tanggal: tgl,
+      ...typeSpecificKeterangan,
+    };
+
+    let result: { storagePath: string; publicUrl: string; rowAlreadyInserted: boolean; row?: any };
+    try {
+      result = await uploadPhotoDualPath(foto, patientId, jenis, apiMetadata, onProgress);
+    } catch (e: any) {
+      console.error(`[supportingExamService.create${type}] upload failed:`, e);
+      throw e;
+    }
+
+    // Path B already inserted the row.
+    if (result.rowAlreadyInserted) {
+      onProgress?.('done', 100);
+      return result.row ? fromDb(result.row) : null;
+    }
+
+    // Path A — INSERT metadata now (upload already succeeded).
+    const keterangan = JSON.stringify({
+      type,
+      doctorId: doctorIdUuid,
+      createdBy,
+      ...typeSpecificKeterangan,
+    });
+    const payload = {
+      patient_id: patientId,
+      jenis,
+      nama_file: `${namaFilePrefix}-${tgl}`,
+      storage_path: result.storagePath,
+      url: result.publicUrl || null,
+      keterangan,
+      tanggal: tgl,
+      uploaded_by: createdBy,
+    };
+    const { data: row, error } = await safeInsert<any>(
+      supabase.from('patient_documents').insert(payload).select().single(),
+      `supportingExamService.create${type}`
+    );
+    if (error) {
+      // INSERT failed — clean up the orphaned file (best-effort, client-side).
+      console.error(`[supportingExamService.create${type}] INSERT failed, cleaning orphan:`, error);
+      try {
+        await supabase.storage.from(BUCKET).remove([result.storagePath]);
+      } catch (cleanupErr) {
+        console.warn(`[supportingExamService.create${type}] orphan cleanup failed:`, cleanupErr);
+      }
+      throw new Error(error);
+    }
+    onProgress?.('done', 100);
+    return row ? fromDb(row) : null;
+  }
+
+  // No photo — insert metadata only.
+  const keterangan = JSON.stringify({
+    type,
+    doctorId: doctorIdUuid,
+    createdBy,
+    ...typeSpecificKeterangan,
+  });
+  const payload = {
+    patient_id: patientId,
+    jenis,
+    nama_file: `${namaFilePrefix}-${tgl}`,
+    storage_path: `${type}/${patientId}/${Date.now()}`,
+    url: null,
+    keterangan,
+    tanggal: tgl,
+    uploaded_by: createdBy,
+  };
+  const { data: row, error } = await safeInsert<any>(
+    supabase.from('patient_documents').insert(payload).select().single(),
+    `supportingExamService.create${type}`
+  );
+  if (error) throw new Error(error);
+  return row ? fromDb(row) : null;
+}
+
+interface PhotoExamUpdateArgs {
+  id: string;
+  patientId?: string;
+  tanggal?: string;
+  createdBy?: string;
+  doctorId?: string;
+  foto?: File | Blob;
+  jenis: 'gambar' | 'radiologi';
+  type: 'usg' | 'ekg' | 'radiology';
+  typeSpecificKeterangan: Record<string, any>;
+  fromDb: (row: any) => any;
+  onProgress?: UploadProgressCb;
+}
+
+/**
+ * Update a photo exam with dual-path upload.
+ *
+ * Flow:
+ *   1. If a new `foto` is provided:
+ *      a. Fetch existing `storage_path` (for old-file cleanup).
+ *      b. Path A (client upload): upload new file → UPDATE row → delete old file.
+ *         On UPDATE failure, delete the new (orphan) file.
+ *      c. Path B (server API): callUpdateApi does upload+update+old-delete atomically.
+ *   2. If no new `foto`: UPDATE metadata only.
+ */
+async function updatePhotoExam(args: PhotoExamUpdateArgs): Promise<any | null> {
+  const { id, patientId, tanggal, createdBy, doctorId, foto, jenis, type, typeSpecificKeterangan, fromDb, onProgress } = args;
+  if (!isValidUuid(id)) return null;
+  const doctorIdUuid = validUuidOrUndefined(doctorId);
+
+  if (foto) {
+    if (!patientId) {
+      throw new Error('patientId diperlukan untuk upload foto baru.');
+    }
+
+    // Fetch existing storage_path for old-file cleanup.
+    let oldStoragePath: string | undefined;
+    try {
+      const existing = await safeQuery(
+        supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
+        null as any,
+        `supportingExamService.update${type}.fetch`
+      );
+      oldStoragePath = (existing as any)?.storage_path;
+    } catch {
+      /* non-fatal — old file cleanup is best-effort */
+    }
+
+    // ── Path A: client-side upload ──
+    let pathAOk = false;
+    let newStoragePath = '';
+    let newPublicUrl = '';
+    try {
+      const r = await uploadPhotoClient(foto, patientId, jenis, onProgress);
+      newStoragePath = r.storagePath;
+      newPublicUrl = r.publicUrl;
+      pathAOk = true;
+    } catch (clientErr: any) {
+      if (!isRlsError(clientErr) && !isBucketMissingError(clientErr)) {
+        onProgress?.('error', 0, clientErr?.message ?? 'Upload gagal');
+        throw clientErr;
+      }
+      console.warn(
+        `[supportingExamService.update${type}] client upload blocked (RLS/bucket), trying server API...`,
+        clientErr?.message
+      );
+    }
+
+    if (pathAOk) {
+      const keterangan = JSON.stringify({ type, doctorId: doctorIdUuid, createdBy, ...typeSpecificKeterangan });
+      const payload = stripUndefined({
+        keterangan,
+        storage_path: newStoragePath,
+        url: newPublicUrl || null,
+        tanggal,
+        uploaded_by: createdBy,
+      });
+      const { data: row, error } = await safeInsert<any>(
+        supabase.from('patient_documents').update(payload).eq('id', id).select().single(),
+        `supportingExamService.update${type}`
+      );
+      if (error) {
+        // UPDATE failed — clean up the new orphan file.
+        console.error(`[supportingExamService.update${type}] UPDATE failed, cleaning orphan:`, error);
+        try {
+          await supabase.storage.from(BUCKET).remove([newStoragePath]);
+        } catch (cleanupErr) {
+          console.warn(`[supportingExamService.update${type}] orphan cleanup failed:`, cleanupErr);
+        }
+        throw new Error(error);
+      }
+      // UPDATE succeeded — delete the OLD file (best-effort).
+      if (oldStoragePath) {
+        try {
+          await supabase.storage.from(BUCKET).remove([oldStoragePath]);
+        } catch (oldCleanupErr) {
+          console.warn(`[supportingExamService.update${type}] old-file cleanup failed:`, oldCleanupErr);
+        }
+      }
+      onProgress?.('done', 100);
+      return row ? fromDb(row) : null;
+    }
+
+    // ── Path B: server-side API route (service-role key) ──
+    const apiMetadata = {
+      patientId,
+      jenis,
+      type,
+      doctorId: doctorIdUuid,
+      createdBy,
+      tanggal,
+      ...typeSpecificKeterangan,
+    };
+    try {
+      const row = await callUpdateApi(id, apiMetadata, foto, oldStoragePath, onProgress);
+      return row ? fromDb(row) : null;
+    } catch (apiErr: any) {
+      if (apiErr?.code === 'MISSING_SERVICE_ROLE_KEY') {
+        const e = new Error(
+          'Upload diblokir oleh kebijakan Storage RLS. Dua opsi perbaikan: ' +
+            '(1) Jalankan SQL setup pada Supabase Dashboard → SQL Editor (paling aman), atau ' +
+            '(2) Set SUPABASE_SERVICE_ROLE_KEY di file .env lalu restart server.'
+        );
+        (e as any).code = 'STORAGE_RLS_BLOCKED';
+        (e as any).setupSql = STORAGE_SETUP_SQL;
+        onProgress?.('error', 0, e.message);
+        throw e;
+      }
+      onProgress?.('error', 0, apiErr?.message ?? 'Upload gagal');
+      throw apiErr;
+    }
+  }
+
+  // No new photo — update metadata only.
+  const keterangan = JSON.stringify({ type, doctorId: doctorIdUuid, createdBy, ...typeSpecificKeterangan });
+  const payload = stripUndefined({
+    keterangan,
+    tanggal,
+    uploaded_by: createdBy,
+  });
+  const { data: row, error } = await safeInsert<any>(
+    supabase.from('patient_documents').update(payload).eq('id', id).select().single(),
+    `supportingExamService.update${type}`
+  );
+  if (error) throw new Error(error);
+  return row ? fromDb(row) : null;
+}
+
+/**
+ * Delete a photo exam: client-side file delete + row delete, with server API
+ * fallback for file cleanup when RLS blocks anon DELETE.
+ */
+async function deletePhotoExam(id: string, type: 'usg' | 'ekg' | 'radiology'): Promise<boolean> {
+  if (!isValidUuid(id)) return false;
+
+  // Fetch storage_path for file cleanup.
+  let storagePath: string | undefined;
+  try {
+    const existing = await safeQuery(
+      supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
+      null as any,
+      `supportingExamService.delete${type}.fetch`
+    );
+    storagePath = (existing as any)?.storage_path;
+  } catch {
+    /* non-fatal */
+  }
+
+  // Path A: client-side file delete (best-effort).
+  let fileDeletedViaClient = false;
+  let rlsBlockedFile = false;
+  if (storagePath) {
+    try {
+      const { error: delErr } = await supabase.storage.from(BUCKET).remove([storagePath]);
+      if (!delErr) {
+        fileDeletedViaClient = true;
+      } else if (isRlsError(delErr) || isBucketMissingError(delErr)) {
+        rlsBlockedFile = true;
+      } else {
+        console.warn(`[supportingExamService.delete${type}] file delete failed:`, delErr.message);
+      }
+    } catch (e: any) {
+      if (isRlsError(e) || isBucketMissingError(e)) {
+        rlsBlockedFile = true;
+      } else {
+        console.warn(`[supportingExamService.delete${type}] file delete threw:`, e?.message);
+      }
+    }
+  }
+
+  // Delete the row (client-side). NOTE: we check `error` directly instead of
+  // using safeQuery, because a successful DELETE without `.select()` returns
+  // `data: null` (which safeQuery would treat as failure via its fallback).
+  let rowDeleted = false;
+  try {
+    const { error: rowDelErr } = await supabase
+      .from('patient_documents')
+      .delete()
+      .eq('id', id);
+    if (!rowDelErr) {
+      rowDeleted = true;
+    } else {
+      console.warn(`[supportingExamService.delete${type}] row delete failed:`, rowDelErr.message);
+    }
+  } catch (e: any) {
+    console.warn(`[supportingExamService.delete${type}] row delete threw:`, e?.message);
+  }
+
+  if (rowDeleted) {
+    // Row deleted. If file delete was RLS-blocked, try server cleanup of the
+    // orphan file (the server route's row delete will be a no-op since the row
+    // is already gone — only the file gets removed).
+    if (rlsBlockedFile && storagePath) {
+      callDeleteApi(id, storagePath).catch(() => {});
+    }
+    return true;
+  }
+
+  // Row delete failed — try the server API (file + row, atomic).
+  if (storagePath) {
+    const ok = await callDeleteApi(id, storagePath);
+    if (ok) return true;
+  }
+  return false;
+}
+
 // ── Service ─────────────────────────────────────────────────────────────────
 
 export const supportingExamService = {
@@ -564,14 +1157,20 @@ export const supportingExamService = {
 
   async deleteLab(id: string): Promise<boolean> {
     if (!isValidUuid(id)) return false;
-    // First fetch the row to get the storage_path (labs have no actual file,
-    // but we still want to clean up the row).
-    const res = await safeQuery(
-      supabase.from('patient_documents').delete().eq('id', id).eq('jenis', 'lab'),
-      null as any,
-      'supportingExamService.deleteLab'
-    );
-    return res !== null;
+    // Labs have no actual file — just delete the row. We check `error` directly
+    // because a successful DELETE without `.select()` returns `data: null`.
+    try {
+      const { error } = await supabase
+        .from('patient_documents')
+        .delete()
+        .eq('id', id)
+        .eq('jenis', 'lab');
+      if (!error) return true;
+      console.warn('[supportingExamService.deleteLab] failed:', error.message);
+    } catch (e: any) {
+      console.warn('[supportingExamService.deleteLab] threw:', e?.message);
+    }
+    return false;
   },
 
   // ── USG ─────────────────────────────────────────────────────────────────
@@ -600,132 +1199,47 @@ export const supportingExamService = {
   },
 
   async createUsg(input: USGInput, onProgress?: UploadProgressCb): Promise<USGResult | null> {
-    if (!isValidUuid(input.patientId)) {
-      console.error('[supportingExamService.createUsg] ABORTED — patient_id is not a valid UUID.');
-      return null;
-    }
-
-    // If a photo is provided, use the server-side upload API (bypasses RLS).
-    if (input.foto) {
-      const metadata = {
-        patientId: input.patientId,
-        jenis: 'gambar',
-        type: 'usg',
+    return createPhotoExam({
+      patientId: input.patientId,
+      tanggal: input.tanggal,
+      createdBy: input.createdBy,
+      doctorId: input.doctorId,
+      foto: input.foto,
+      jenis: 'gambar',
+      type: 'usg',
+      namaFilePrefix: 'usg',
+      fromDb: fromDbUsg,
+      typeSpecificKeterangan: {
         jenisUsg: input.jenisUsg,
         hasil: input.hasil,
         catatan: input.catatan,
-        doctorId: validUuidOrUndefined(input.doctorId),
-        createdBy: input.createdBy,
-        tanggal: input.tanggal ?? todayStr(),
-      };
-      try {
-        const row = await callUploadApi(input.foto, metadata, onProgress);
-        return row ? fromDbUsg(row) : null;
-      } catch (e: any) {
-        console.error('[supportingExamService.createUsg] upload API failed:', e);
-        throw e;
-      }
-    }
-
-    // No photo — insert metadata only (browser client, RLS permits inserts).
-    const keterangan = JSON.stringify({
-      type: 'usg',
-      jenisUsg: input.jenisUsg,
-      hasil: input.hasil,
-      catatan: input.catatan,
-      doctorId: validUuidOrUndefined(input.doctorId),
-      createdBy: input.createdBy,
-    });
-    const payload = {
-      patient_id: input.patientId,
-      jenis: 'gambar' as const,
-      nama_file: `usg-${input.tanggal ?? todayStr()}`,
-      storage_path: `usg/${input.patientId}/${Date.now()}`,
-      url: null,
-      keterangan,
-      tanggal: input.tanggal ?? todayStr(),
-      uploaded_by: input.createdBy,
-    };
-    const { data: row, error } = await safeInsert<any>(
-      supabase.from('patient_documents').insert(payload).select().single(),
-      'supportingExamService.createUsg'
-    );
-    if (error) throw new Error(error);
-    return row ? fromDbUsg(row) : null;
+      },
+      onProgress,
+    }) as Promise<USGResult | null>;
   },
 
   async updateUsg(id: string, input: Partial<USGInput>, onProgress?: UploadProgressCb): Promise<USGResult | null> {
-    if (!isValidUuid(id)) return null;
-
-    // If a new photo is provided, use the server-side update API.
-    if (input.foto) {
-      // Fetch old storage_path so the API can delete the old file.
-      const existing = await safeQuery(
-        supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
-        null as any,
-        'supportingExamService.updateUsg.fetch'
-      );
-      const oldStoragePath = (existing as any)?.storage_path;
-      const metadata = {
-        jenis: 'gambar',
-        type: 'usg',
+    return updatePhotoExam({
+      id,
+      patientId: input.patientId,
+      tanggal: input.tanggal,
+      createdBy: input.createdBy,
+      doctorId: input.doctorId,
+      foto: input.foto,
+      jenis: 'gambar',
+      type: 'usg',
+      fromDb: fromDbUsg,
+      typeSpecificKeterangan: {
         jenisUsg: input.jenisUsg,
         hasil: input.hasil,
         catatan: input.catatan,
-        doctorId: validUuidOrUndefined(input.doctorId),
-        createdBy: input.createdBy,
-        tanggal: input.tanggal,
-      };
-      try {
-        const row = await callUpdateApi(id, metadata, input.foto, oldStoragePath, onProgress);
-        return row ? fromDbUsg(row) : null;
-      } catch (e: any) {
-        console.error('[supportingExamService.updateUsg] update API failed:', e);
-        throw e;
-      }
-    }
-
-    // No new photo — update metadata only.
-    const keterangan = JSON.stringify({
-      type: 'usg',
-      jenisUsg: input.jenisUsg,
-      hasil: input.hasil,
-      catatan: input.catatan,
-      doctorId: validUuidOrUndefined(input.doctorId),
-      createdBy: input.createdBy,
-    });
-    const payload = stripUndefined({
-      keterangan,
-      tanggal: input.tanggal,
-      uploaded_by: input.createdBy,
-    });
-    const { data: row, error } = await safeInsert<any>(
-      supabase.from('patient_documents').update(payload).eq('id', id).select().single(),
-      'supportingExamService.updateUsg'
-    );
-    if (error) throw new Error(error);
-    return row ? fromDbUsg(row) : null;
+      },
+      onProgress,
+    }) as Promise<USGResult | null>;
   },
 
   async deleteUsg(id: string): Promise<boolean> {
-    if (!isValidUuid(id)) return false;
-    // Fetch storage_path then call the server-side delete API.
-    const existing = await safeQuery(
-      supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
-      null as any,
-      'supportingExamService.deleteUsg.fetch'
-    );
-    const storagePath = (existing as any)?.storage_path;
-    // Try the admin delete API first (handles file + row atomically).
-    const ok = await callDeleteApi(id, storagePath);
-    if (ok) return true;
-    // Fallback: browser client delete (row only).
-    const res = await safeQuery(
-      supabase.from('patient_documents').delete().eq('id', id),
-      null as any,
-      'supportingExamService.deleteUsg'
-    );
-    return res !== null;
+    return deletePhotoExam(id, 'usg');
   },
 
   // ── EKG ─────────────────────────────────────────────────────────────────
@@ -752,122 +1266,45 @@ export const supportingExamService = {
   },
 
   async createEcg(input: ECGInput, onProgress?: UploadProgressCb): Promise<ECGResult | null> {
-    if (!isValidUuid(input.patientId)) {
-      console.error('[supportingExamService.createEcg] ABORTED — patient_id is not a valid UUID.');
-      return null;
-    }
-
-    // If a photo is provided, use the server-side upload API (bypasses RLS).
-    if (input.foto) {
-      const metadata = {
-        patientId: input.patientId,
-        jenis: 'gambar',
-        type: 'ekg',
+    return createPhotoExam({
+      patientId: input.patientId,
+      tanggal: input.tanggal,
+      createdBy: input.createdBy,
+      doctorId: input.doctorId,
+      foto: input.foto,
+      jenis: 'gambar',
+      type: 'ekg',
+      namaFilePrefix: 'ekg',
+      fromDb: fromDbEcg,
+      typeSpecificKeterangan: {
         interpretasi: input.interpretasi,
         catatan: input.catatan,
-        doctorId: validUuidOrUndefined(input.doctorId),
-        createdBy: input.createdBy,
-        tanggal: input.tanggal ?? todayStr(),
-      };
-      try {
-        const row = await callUploadApi(input.foto, metadata, onProgress);
-        return row ? fromDbEcg(row) : null;
-      } catch (e: any) {
-        console.error('[supportingExamService.createEcg] upload API failed:', e);
-        throw e;
-      }
-    }
-
-    // No photo — insert metadata only.
-    const keterangan = JSON.stringify({
-      type: 'ekg',
-      interpretasi: input.interpretasi,
-      catatan: input.catatan,
-      doctorId: validUuidOrUndefined(input.doctorId),
-      createdBy: input.createdBy,
-    });
-    const payload = {
-      patient_id: input.patientId,
-      jenis: 'gambar' as const,
-      nama_file: `ekg-${input.tanggal ?? todayStr()}`,
-      storage_path: `ekg/${input.patientId}/${Date.now()}`,
-      url: null,
-      keterangan,
-      tanggal: input.tanggal ?? todayStr(),
-      uploaded_by: input.createdBy,
-    };
-    const { data: row, error } = await safeInsert<any>(
-      supabase.from('patient_documents').insert(payload).select().single(),
-      'supportingExamService.createEcg'
-    );
-    if (error) throw new Error(error);
-    return row ? fromDbEcg(row) : null;
+      },
+      onProgress,
+    }) as Promise<ECGResult | null>;
   },
 
   async updateEcg(id: string, input: Partial<ECGInput>, onProgress?: UploadProgressCb): Promise<ECGResult | null> {
-    if (!isValidUuid(id)) return null;
-
-    if (input.foto) {
-      const existing = await safeQuery(
-        supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
-        null as any,
-        'supportingExamService.updateEcg.fetch'
-      );
-      const oldStoragePath = (existing as any)?.storage_path;
-      const metadata = {
-        jenis: 'gambar',
-        type: 'ekg',
+    return updatePhotoExam({
+      id,
+      patientId: input.patientId,
+      tanggal: input.tanggal,
+      createdBy: input.createdBy,
+      doctorId: input.doctorId,
+      foto: input.foto,
+      jenis: 'gambar',
+      type: 'ekg',
+      fromDb: fromDbEcg,
+      typeSpecificKeterangan: {
         interpretasi: input.interpretasi,
         catatan: input.catatan,
-        doctorId: validUuidOrUndefined(input.doctorId),
-        createdBy: input.createdBy,
-        tanggal: input.tanggal,
-      };
-      try {
-        const row = await callUpdateApi(id, metadata, input.foto, oldStoragePath, onProgress);
-        return row ? fromDbEcg(row) : null;
-      } catch (e: any) {
-        console.error('[supportingExamService.updateEcg] update API failed:', e);
-        throw e;
-      }
-    }
-
-    const keterangan = JSON.stringify({
-      type: 'ekg',
-      interpretasi: input.interpretasi,
-      catatan: input.catatan,
-      doctorId: validUuidOrUndefined(input.doctorId),
-      createdBy: input.createdBy,
-    });
-    const payload = stripUndefined({
-      keterangan,
-      tanggal: input.tanggal,
-      uploaded_by: input.createdBy,
-    });
-    const { data: row, error } = await safeInsert<any>(
-      supabase.from('patient_documents').update(payload).eq('id', id).select().single(),
-      'supportingExamService.updateEcg'
-    );
-    if (error) throw new Error(error);
-    return row ? fromDbEcg(row) : null;
+      },
+      onProgress,
+    }) as Promise<ECGResult | null>;
   },
 
   async deleteEcg(id: string): Promise<boolean> {
-    if (!isValidUuid(id)) return false;
-    const existing = await safeQuery(
-      supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
-      null as any,
-      'supportingExamService.deleteEcg.fetch'
-    );
-    const storagePath = (existing as any)?.storage_path;
-    const ok = await callDeleteApi(id, storagePath);
-    if (ok) return true;
-    const res = await safeQuery(
-      supabase.from('patient_documents').delete().eq('id', id),
-      null as any,
-      'supportingExamService.deleteEcg'
-    );
-    return res !== null;
+    return deletePhotoExam(id, 'ekg');
   },
 
   // ── RADIOLOGI ───────────────────────────────────────────────────────────
@@ -889,126 +1326,47 @@ export const supportingExamService = {
   },
 
   async createRadiology(input: RadiologyInput, onProgress?: UploadProgressCb): Promise<RadiologyResult | null> {
-    if (!isValidUuid(input.patientId)) {
-      console.error('[supportingExamService.createRadiology] ABORTED — patient_id is not a valid UUID.');
-      return null;
-    }
-
-    // If a photo is provided, use the server-side upload API (bypasses RLS).
-    if (input.foto) {
-      const metadata = {
-        patientId: input.patientId,
-        jenis: 'radiologi',
-        type: 'radiology',
+    return createPhotoExam({
+      patientId: input.patientId,
+      tanggal: input.tanggal,
+      createdBy: input.createdBy,
+      doctorId: input.doctorId,
+      foto: input.foto,
+      jenis: 'radiologi',
+      type: 'radiology',
+      namaFilePrefix: 'radiologi',
+      fromDb: fromDbRadiology,
+      typeSpecificKeterangan: {
         jenisRadiologi: input.jenisRadiologi,
         hasil: input.hasil,
         catatan: input.catatan,
-        doctorId: validUuidOrUndefined(input.doctorId),
-        createdBy: input.createdBy,
-        tanggal: input.tanggal ?? todayStr(),
-      };
-      try {
-        const row = await callUploadApi(input.foto, metadata, onProgress);
-        return row ? fromDbRadiology(row) : null;
-      } catch (e: any) {
-        console.error('[supportingExamService.createRadiology] upload API failed:', e);
-        throw e;
-      }
-    }
-
-    // No photo — insert metadata only.
-    const keterangan = JSON.stringify({
-      type: 'radiology',
-      jenisRadiologi: input.jenisRadiologi,
-      hasil: input.hasil,
-      catatan: input.catatan,
-      doctorId: validUuidOrUndefined(input.doctorId),
-      createdBy: input.createdBy,
-    });
-    const payload = {
-      patient_id: input.patientId,
-      jenis: 'radiologi' as const,
-      nama_file: `radiologi-${input.tanggal ?? todayStr()}`,
-      storage_path: `radiologi/${input.patientId}/${Date.now()}`,
-      url: null,
-      keterangan,
-      tanggal: input.tanggal ?? todayStr(),
-      uploaded_by: input.createdBy,
-    };
-    const { data: row, error } = await safeInsert<any>(
-      supabase.from('patient_documents').insert(payload).select().single(),
-      'supportingExamService.createRadiology'
-    );
-    if (error) throw new Error(error);
-    return row ? fromDbRadiology(row) : null;
+      },
+      onProgress,
+    }) as Promise<RadiologyResult | null>;
   },
 
   async updateRadiology(id: string, input: Partial<RadiologyInput>, onProgress?: UploadProgressCb): Promise<RadiologyResult | null> {
-    if (!isValidUuid(id)) return null;
-
-    if (input.foto) {
-      const existing = await safeQuery(
-        supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
-        null as any,
-        'supportingExamService.updateRadiology.fetch'
-      );
-      const oldStoragePath = (existing as any)?.storage_path;
-      const metadata = {
-        jenis: 'radiologi',
-        type: 'radiology',
+    return updatePhotoExam({
+      id,
+      patientId: input.patientId,
+      tanggal: input.tanggal,
+      createdBy: input.createdBy,
+      doctorId: input.doctorId,
+      foto: input.foto,
+      jenis: 'radiologi',
+      type: 'radiology',
+      fromDb: fromDbRadiology,
+      typeSpecificKeterangan: {
         jenisRadiologi: input.jenisRadiologi,
         hasil: input.hasil,
         catatan: input.catatan,
-        doctorId: validUuidOrUndefined(input.doctorId),
-        createdBy: input.createdBy,
-        tanggal: input.tanggal,
-      };
-      try {
-        const row = await callUpdateApi(id, metadata, input.foto, oldStoragePath, onProgress);
-        return row ? fromDbRadiology(row) : null;
-      } catch (e: any) {
-        console.error('[supportingExamService.updateRadiology] update API failed:', e);
-        throw e;
-      }
-    }
-
-    const keterangan = JSON.stringify({
-      type: 'radiology',
-      jenisRadiologi: input.jenisRadiologi,
-      hasil: input.hasil,
-      catatan: input.catatan,
-      doctorId: validUuidOrUndefined(input.doctorId),
-      createdBy: input.createdBy,
-    });
-    const payload = stripUndefined({
-      keterangan,
-      tanggal: input.tanggal,
-      uploaded_by: input.createdBy,
-    });
-    const { data: row, error } = await safeInsert<any>(
-      supabase.from('patient_documents').update(payload).eq('id', id).select().single(),
-      'supportingExamService.updateRadiology'
-    );
-    if (error) throw new Error(error);
-    return row ? fromDbRadiology(row) : null;
+      },
+      onProgress,
+    }) as Promise<RadiologyResult | null>;
   },
 
   async deleteRadiology(id: string): Promise<boolean> {
-    if (!isValidUuid(id)) return false;
-    const existing = await safeQuery(
-      supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
-      null as any,
-      'supportingExamService.deleteRadiology.fetch'
-    );
-    const storagePath = (existing as any)?.storage_path;
-    const ok = await callDeleteApi(id, storagePath);
-    if (ok) return true;
-    const res = await safeQuery(
-      supabase.from('patient_documents').delete().eq('id', id),
-      null as any,
-      'supportingExamService.deleteRadiology'
-    );
-    return res !== null;
+    return deletePhotoExam(id, 'radiology');
   },
 
   // ── TIMELINE: all exams for a patient, merged & sorted by date ──────────
