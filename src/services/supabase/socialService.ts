@@ -6,7 +6,7 @@
 // are left `undefined` on read and silently dropped on write. If you need to
 // persist notes, store them inside the `recommendations` JSON.
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined, isValidUuid } from './_common';
+import { supabase, safeQuery, safeInsert, stripUndefined, isValidUuid } from './_common';
 import type { SocialAssessmentRecord } from '@/lib/types';
 
 function fromDb(row: any): SocialAssessmentRecord {
@@ -81,21 +81,21 @@ export const socialService = {
     }
     const payload = toDb(data);
     console.log('[socialService.create] payload:', { patient_id: data.palliativePatientId });
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('social_assessments').insert(payload).select().single(),
-      null as any,
       'socialService.create'
     );
+    if (error) throw new Error(error);
     return row ? fromDb(row) : null;
   },
 
   async update(id: string, data: Partial<SocialAssessmentRecord>): Promise<SocialAssessmentRecord | null> {
     const payload = toDb(data);
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('social_assessments').update(payload).eq('id', id).select().single(),
-      null as any,
       'socialService.update'
     );
+    if (error) throw new Error(error);
     return row ? fromDb(row) : null;
   },
 

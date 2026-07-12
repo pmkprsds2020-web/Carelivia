@@ -1,8 +1,50 @@
 // ───────────────────────────────────────────────────────────────────────────
 // patientService — Supabase CRUD for `patients`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined, validUuidOrUndefined } from './_common';
+import { supabase, safeQuery, safeInsert, stripUndefined, validUuidOrUndefined } from './_common';
 import type { PalliativePatientInfo } from '@/lib/types';
+
+/**
+ * Normalize patient `status` to one of the DB-allowed values:
+ *   'aktif', 'meninggal', 'lost_follow_up', 'pindah_faskes', 'program_selesai'
+ * The frontend sometimes sends 'Aktif', 'Meninggal', 'selesai', etc.
+ */
+function normalizeStatus(raw: unknown): string {
+  if (typeof raw !== 'string' || !raw) return 'aktif';
+  const s = raw.toLowerCase().trim();
+  if (s === 'aktif' || s === 'active') return 'aktif';
+  if (s === 'meninggal' || s === 'death' || s === 'died') return 'meninggal';
+  if (s.includes('lost') || s.includes('follow')) return 'lost_follow_up';
+  if (s.includes('pindah') || s.includes('transfer')) return 'pindah_faskes';
+  if (s.includes('selesai') || s.includes('completed') || s.includes('program_selesai')) return 'program_selesai';
+  return 'aktif';
+}
+
+/**
+ * Normalize `risiko` to 'hijau' | 'kuning' | 'merah' (CHECK constraint).
+ */
+function normalizeRisiko(raw: unknown): string {
+  if (typeof raw !== 'string' || !raw) return 'hijau';
+  const s = raw.toLowerCase().trim();
+  if (s === 'hijau' || s === 'green') return 'hijau';
+  if (s === 'kuning' || s === 'yellow') return 'kuning';
+  if (s === 'merah' || s === 'red') return 'merah';
+  return 'hijau';
+}
+
+/**
+ * Normalize `program` (careStatus) to one of:
+ *   'rawat_jalan', 'home_care', 'hospice', 'rawat_inap'
+ */
+function normalizeProgram(raw: unknown): string {
+  if (typeof raw !== 'string' || !raw) return 'rawat_jalan';
+  const s = raw.toLowerCase().trim().replace(/\s+/g, '_');
+  if (s === 'rawat_jalan' || s === 'outpatient') return 'rawat_jalan';
+  if (s === 'home_care' || s === 'homecare') return 'home_care';
+  if (s === 'hospice') return 'hospice';
+  if (s === 'rawat_inap' || s === 'inpatient') return 'rawat_inap';
+  return 'rawat_jalan';
+}
 
 /**
  * Map a DB row (snake_case) → PalliativePatientInfo (camelCase).
@@ -74,9 +116,10 @@ function toDb(data: Partial<PalliativePatientInfo>): Record<string, any> {
   if (data.familyContactRelation !== undefined) out.family_contact_relation = data.familyContactRelation;
   if (data.familyContactPhone !== undefined) out.family_contact_phone = data.familyContactPhone;
   if (data.address !== undefined) out.alamat = data.address;
-  if (data.patientStatus !== undefined) out.status = data.patientStatus;
-  if (data.riskLevel !== undefined) out.risiko = data.riskLevel;
-  if (data.careStatus !== undefined) out.program = data.careStatus;
+  // Normalize enum values so we never violate the CHECK constraints.
+  if (data.patientStatus !== undefined) out.status = normalizeStatus(data.patientStatus);
+  if (data.riskLevel !== undefined) out.risiko = normalizeRisiko(data.riskLevel);
+  if (data.careStatus !== undefined) out.program = normalizeProgram(data.careStatus);
   if (data.notes !== undefined) out.notes = data.notes;
   return stripUndefined(out);
 }
@@ -103,11 +146,14 @@ export const patientService = {
   async create(data: Partial<PalliativePatientInfo>): Promise<PalliativePatientInfo | null> {
     const payload = toDb(data);
     console.log('[patientService.create] payload (no id — Supabase auto-generates UUID):', payload);
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('patients').insert(payload).select().single(),
-      null as any,
       'patientService.create'
     );
+    if (error) {
+      // Re-throw so the supabase-sync / store layer can toast the user.
+      throw new Error(error);
+    }
     if (row) {
       console.log('[patientService.create] SUCCESS — new patient UUID:', row.id);
     }
@@ -116,11 +162,11 @@ export const patientService = {
 
   async update(id: string, data: Partial<PalliativePatientInfo>): Promise<PalliativePatientInfo | null> {
     const payload = toDb(data);
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('patients').update(payload).eq('id', id).select().single(),
-      null as any,
       'patientService.update'
     );
+    if (error) throw new Error(error);
     return row ? fromDb(row) : null;
   },
 

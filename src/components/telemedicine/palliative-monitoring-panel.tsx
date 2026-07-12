@@ -517,7 +517,7 @@ export function PalliativeMonitoringPanel() {
     const sevenDays = 7 * 24 * 60 * 60 * 1000;
 
     for (const med of patientActiveMedications) {
-      if (med.adherences) {
+      if (Array.isArray(med.adherences)) {
         for (const a of med.adherences) {
           totalAdherenceEntries++;
           if (a.takenOnTime) onTimeCount++;

@@ -11,7 +11,7 @@
 // sensible defaults (0 / 'L') on read. Callers can re-derive them from the
 // patient record if needed.
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined, isValidUuid } from './_common';
+import { supabase, safeQuery, safeInsert, stripUndefined, isValidUuid } from './_common';
 import type { NutritionRecordInfo, NutritionCalculationResult } from '@/lib/types';
 
 function fromDb(row: any): NutritionRecordInfo {
@@ -131,21 +131,21 @@ export const nutritionService = {
     }
     const payload = toDb(data);
     console.log('[nutritionService.create] payload:', { patient_id: data.palliativePatientId });
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('nutrition').insert(payload).select().single(),
-      null as any,
       'nutritionService.create'
     );
+    if (error) throw new Error(error);
     return row ? fromDb(row) : null;
   },
 
   async update(id: string, data: Partial<NutritionRecordInfo>): Promise<NutritionRecordInfo | null> {
     const payload = toDb(data);
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('nutrition').update(payload).eq('id', id).select().single(),
-      null as any,
       'nutritionService.update'
     );
+    if (error) throw new Error(error);
     return row ? fromDb(row) : null;
   },
 

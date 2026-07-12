@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // vitalService — Supabase CRUD for `vital_signs`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined, combineDateAndTime, splitIsoToTanggalJam, isValidUuid, validUuidOrUndefined } from './_common';
+import { supabase, safeQuery, safeInsert, stripUndefined, combineDateAndTime, splitIsoToTanggalJam, isValidUuid, validUuidOrUndefined } from './_common';
 import type { VitalSignRecordInfo } from '@/lib/types';
 
 /**
@@ -47,6 +47,11 @@ function toDb(data: Partial<VitalSignRecordInfo>): Record<string, any> {
   if (data.weight !== undefined) out.bb = data.weight;
   if (data.height !== undefined) out.tb = data.height;
   if (data.bmi !== undefined) out.bmi = data.bmi;
+  // nyeri has a CHECK constraint (0-10). Clamp invalid values.
+  if ((data as any).painScore !== undefined) {
+    const n = Number((data as any).painScore);
+    if (!isNaN(n)) out.nyeri = Math.max(0, Math.min(10, n));
+  }
   if (data.notes !== undefined) out.catatan = data.notes;
   if (data.recordedBy !== undefined) out.input_by = data.recordedBy;
   if (data.recordedAt !== undefined) {
@@ -100,21 +105,21 @@ export const vitalService = {
     }
     const payload = toDb(data);
     console.log('[vitalService.create] payload:', { ...payload, patient_id: data.palliativePatientId });
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('vital_signs').insert(payload).select().single(),
-      null as any,
       'vitalService.create'
     );
+    if (error) throw new Error(error);
     return row ? fromDb(row) : null;
   },
 
   async update(id: string, data: Partial<VitalSignRecordInfo>): Promise<VitalSignRecordInfo | null> {
     const payload = toDb(data);
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('vital_signs').update(payload).eq('id', id).select().single(),
-      null as any,
       'vitalService.update'
     );
+    if (error) throw new Error(error);
     return row ? fromDb(row) : null;
   },
 

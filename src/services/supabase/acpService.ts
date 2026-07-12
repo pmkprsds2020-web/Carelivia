@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // acpService — Supabase CRUD for `acp` (Advance Care Planning)
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined, isValidUuid } from './_common';
+import { supabase, safeQuery, safeInsert, stripUndefined, isValidUuid } from './_common';
 import type { AdvanceCarePlanInfo, ACPRevisionInfo } from '@/lib/types';
 
 function fromDb(row: any): AdvanceCarePlanInfo {
@@ -104,21 +104,21 @@ export const acpService = {
     }
     const payload = toDb(data);
     console.log('[acpService.create] payload:', { patient_id: data.palliativePatientId });
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('acp').insert(payload).select().single(),
-      null as any,
       'acpService.create'
     );
+    if (error) throw new Error(error);
     return row ? fromDb(row) : null;
   },
 
   async update(id: string, data: Partial<AdvanceCarePlanInfo>): Promise<AdvanceCarePlanInfo | null> {
     const payload = toDb(data);
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('acp').update(payload).eq('id', id).select().single(),
-      null as any,
       'acpService.update'
     );
+    if (error) throw new Error(error);
     return row ? fromDb(row) : null;
   },
 

@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // complaintService — Supabase CRUD for `daily_complaints`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined, isValidUuid } from './_common';
+import { supabase, safeQuery, safeInsert, stripUndefined, isValidUuid } from './_common';
 import type { DailyComplaintRecord } from '@/lib/types';
 
 function fromDb(row: any): DailyComplaintRecord {
@@ -75,11 +75,11 @@ export const complaintService = {
     }
     const payload = toDb(data);
     console.log('[complaintService.create] payload:', { patient_id: data.palliativePatientId });
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('daily_complaints').insert(payload).select().single(),
-      null as any,
       'complaintService.create'
     );
+    if (error) throw new Error(error);
     return row ? fromDb(row) : null;
   },
 

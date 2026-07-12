@@ -13,6 +13,7 @@
 export {
   supabase,
   safeQuery,
+  safeInsert,
   snakeToCamelRow,
   camelToSnakeRow,
   UUID_RE,

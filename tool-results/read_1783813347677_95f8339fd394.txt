@@ -1,0 +1,717 @@
+     1→// ───────────────────────────────────────────────────────────────────────────
+     2→// SupabaseSyncProvider — keeps the Zustand store in sync with Supabase.
+     3→//
+     4→// Responsibilities:
+     5→//   1. On mount, load all Monitoring-Paliatif data from Supabase via the 13
+     6→//      service files and populate the Zustand store. Local demo data wins on
+     7→//      conflict — we only replace the store if Supabase returns non-empty
+     8→//      arrays.
+     9→//   2. Subscribe to Supabase Realtime for 12 tables so any DB change is
+    10→//      mirrored into the store immediately (INSERT/UPDATE/DELETE).
+    11→//   3. ALWAYS render children immediately. Supabase loading is fire-and-forget
+    12→//      and never blocks the UI. If Supabase is unreachable (missing tables,
+    13→//      RLS denied, network down), we log a warning and continue with local
+    14→//      Zustand data.
+    15→//   4. NEVER throw — every subscription and load is wrapped in try/catch.
+    16→// ───────────────────────────────────────────────────────────────────────────
+    17→'use client';
+    18→
+    19→import { useEffect, useRef } from 'react';
+    20→import { useStore } from '@/lib/store';
+    21→import { supabase, safeQuery } from '@/services/supabase';
+    22→import * as svc from '@/services/supabase';
+    23→import type {
+    24→  PalliativePatientInfo,
+    25→  VitalSignRecordInfo,
+    26→  PalliativeMedicationInfo,
+    27→  PalliativeScreeningRecordInfo,
+    28→  NutritionRecordInfo,
+    29→  DailyComplaintRecord,
+    30→  SocialAssessmentRecord,
+    31→  AdvanceCarePlanInfo,
+    32→  PalliativeChatMessage,
+    33→  PalliativeClinicalAlert,
+    34→  PalliativeAuditEntry,
+    35→} from '@/lib/types';
+    36→
+    37→interface SupabaseSyncProviderProps {
+    38→  children: React.ReactNode;
+    39→}
+    40→
+    41→// ─── Helpers ───────────────────────────────────────────────────────────────
+    42→
+    43→/** Check whether a row id already exists in a store array. */
+    44→function hasId<T extends { id: string }>(list: T[], id: string): boolean {
+    45→  return list.some((x) => x.id === id);
+    46→}
+    47→
+    48→/** Log a non-fatal sync warning. */
+    49→function warn(label: string, err: unknown) {
+    50→  console.warn(`[SupabaseSync] ${label}:`, err);
+    51→}
+    52→
+    53→// ─── Initial-load handlers ─────────────────────────────────────────────────
+    54→//
+    55→// Each handler is self-contained: it loads data from Supabase, validates it,
+    56→// and dispatches the corresponding Zustand action(s). Wrapped in try/catch by
+    57→// the caller. We ALWAYS replace the store with what Supabase returns — even
+    58→// if it's an empty array — so the UI reflects the database state exactly.
+    59→// (Initial store state is also empty, so there's never stale demo data.)
+    60→
+    61→async function loadPatients(store: ReturnType<typeof useStore.getState>) {
+    62→  const patients = await svc.patientService.getAll();
+    63→  // Always set — even if empty — so UI shows "Tidak ada data pasien" when DB is empty.
+    64→  if (Array.isArray(patients)) {
+    65→    store.setPalliativePatients(patients as PalliativePatientInfo[]);
+    66→  }
+    67→  return patients;
+    68→}
+    69→
+    70→async function loadPatientScopedData(
+    71→  store: ReturnType<typeof useStore.getState>,
+    72→  patients: PalliativePatientInfo[]
+    73→) {
+    74→  for (const patient of patients) {
+    75→    const pid = patient.id;
+    76→
+    77→    // Vitals
+    78→    try {
+    79→      const rows = await svc.vitalService.getAll(pid);
+    80→      if (Array.isArray(rows) && rows.length > 0) {
+    81→        // Replace existing vitals for this patient to avoid stale data,
+    82→        // but keep vitals from other patients intact.
+    83→        const others = store.vitalSignRecords.filter((v) => v.palliativePatientId !== pid);
+    84→        store.setVitalSignRecords([
+    85→          ...others,
+    86→          ...(rows as VitalSignRecordInfo[]),
+    87→        ]);
+    88→      }
+    89→    } catch (e) { warn('vitalService.getAll', e); }
+    90→
+    91→    // Screenings
+    92→    try {
+    93→      const rows = await svc.screeningService.getAll(pid);
+    94→      if (Array.isArray(rows) && rows.length > 0) {
+    95→        const others = store.palliativeScreeningRecords.filter((s) => s.palliativePatientId !== pid);
+    96→        store.setPalliativeScreeningRecords([
+    97→          ...others,
+    98→          ...(rows as PalliativeScreeningRecordInfo[]),
+    99→        ]);
+   100→      }
+   101→    } catch (e) { warn('screeningService.getAll', e); }
+   102→
+   103→    // Medications
+   104→    try {
+   105→      const rows = await svc.medicationService.getAll(pid);
+   106→      if (Array.isArray(rows) && rows.length > 0) {
+   107→        const others = store.palliativeMedications.filter((m) => m.palliativePatientId !== pid);
+   108→        store.setPalliativeMedications([
+   109→          ...others,
+   110→          ...(rows as PalliativeMedicationInfo[]),
+   111→        ]);
+   112→      }
+   113→    } catch (e) { warn('medicationService.getAll', e); }
+   114→
+   115→    // Nutrition
+   116→    try {
+   117→      const rows = await svc.nutritionService.getAll(pid);
+   118→      if (Array.isArray(rows) && rows.length > 0) {
+   119→        const others = store.nutritionRecords.filter((n) => n.palliativePatientId !== pid);
+   120→        store.setNutritionRecords([
+   121→          ...others,
+   122→          ...(rows as NutritionRecordInfo[]),
+   123→        ]);
+   124→      }
+   125→    } catch (e) { warn('nutritionService.getAll', e); }
+   126→
+   127→    // Daily complaints
+   128→    try {
+   129→      const rows = await svc.complaintService.getAll(pid);
+   130→      if (Array.isArray(rows) && rows.length > 0) {
+   131→        const others = store.dailyComplaints.filter((c) => c.palliativePatientId !== pid);
+   132→        store.setDailyComplaints([
+   133→          ...others,
+   134→          ...(rows as DailyComplaintRecord[]),
+   135→        ]);
+   136→      }
+   137→    } catch (e) { warn('complaintService.getAll', e); }
+   138→
+   139→    // Social assessments
+   140→    try {
+   141→      const rows = await svc.socialService.getAll(pid);
+   142→      if (Array.isArray(rows) && rows.length > 0) {
+   143→        const others = store.socialAssessments.filter((s) => s.palliativePatientId !== pid);
+   144→        const fresh = store.socialAssessments.filter((s) => s.palliativePatientId === pid);
+   145→        // Replace this patient's records
+   146→        const next = [...others];
+   147→        for (const r of rows as SocialAssessmentRecord[]) {
+   148→          if (!hasId(fresh, r.id)) next.push(r);
+   149→          else next.push(r); // overwrite in-place
+   150→        }
+   151→        // Use direct set since addSocialAssessment prepends (we want replace)
+   152→        store.socialAssessments = next;
+   153→        // Trigger Zustand update via the official setter (addSocialAssessment
+   154→        // prepends; we want a clean replace per-patient, so set directly):
+   155→        useStore.setState({ socialAssessments: next });
+   156→      }
+   157→    } catch (e) { warn('socialService.getAll', e); }
+   158→
+   159→    // ACP
+   160→    try {
+   161→      const rows = await svc.acpService.getAll(pid);
+   162→      if (Array.isArray(rows) && rows.length > 0) {
+   163→        const others = store.advanceCarePlans.filter((a) => a.palliativePatientId !== pid);
+   164→        store.setAdvanceCarePlans([
+   165→          ...others,
+   166→          ...(rows as AdvanceCarePlanInfo[]),
+   167→        ]);
+   168→      }
+   169→    } catch (e) { warn('acpService.getAll', e); }
+   170→
+   171→    // Clinical alerts — loaded via direct Supabase query (the sibling agent's
+   172→    // notificationService is for user notifications, not clinical alerts).
+   173→    try {
+   174→      const rows = await safeQuery(
+   175→        supabase
+   176→          .from('clinical_alerts')
+   177→          .select('*')
+   178→          .eq('patient_id', pid)
+   179→          .order('created_at', { ascending: false }),
+   180→        [] as any[],
+   181→        'loadPatientScopedData.clinical_alerts'
+   182→      );
+   183→      if (Array.isArray(rows) && rows.length > 0) {
+   184→        for (const r of rows as any[]) {
+   185→          const alert: PalliativeClinicalAlert = {
+   186→            id: r.id,
+   187→            patientId: r.patient_id ?? pid,
+   188→            alertType: r.alert_type ?? 'form_tidak_diisi',
+   189→            severity: r.severity ?? 'kuning',
+   190→            title: r.title ?? '',
+   191→            description: r.description ?? '',
+   192→            values: r.values ?? undefined,
+   193→            isRead: !!r.is_read,
+   194→            createdAt: r.created_at ?? new Date().toISOString(),
+   195→          };
+   196→          if (!hasId(store.palliativeClinicalAlerts, alert.id)) {
+   197→            store.addPalliativeClinicalAlert(alert);
+   198→          }
+   199→        }
+   200→      }
+   201→    } catch (e) { warn('clinical_alerts load', e); }
+   202→
+   203→    // Audit log — same pattern, direct Supabase query.
+   204→    try {
+   205→      const rows = await safeQuery(
+   206→        supabase
+   207→          .from('audit_log')
+   208→          .select('*')
+   209→          .eq('patient_id', pid)
+   210→          .order('created_at', { ascending: false }),
+   211→        [] as any[],
+   212→        'loadPatientScopedData.audit_log'
+   213→      );
+   214→      if (Array.isArray(rows) && rows.length > 0) {
+   215→        for (const r of rows as any[]) {
+   216→          const entry: PalliativeAuditEntry = {
+   217→            id: r.id,
+   218→            patientId: r.patient_id ?? pid,
+   219→            action: r.action ?? 'clinical_action',
+   220→            performedBy: r.performed_by ?? 'system',
+   221→            performedByRole: r.performed_by_role ?? 'system',
+   222→            details: r.details ?? undefined,
+   223→            ipAddress: r.ip_address ?? undefined,
+   224→            device: r.device ?? undefined,
+   225→            createdAt: r.created_at ?? new Date().toISOString(),
+   226→          };
+   227→          if (!hasId(store.palliativeAuditLog, entry.id)) {
+   228→            store.addPalliativeAuditEntry(entry);
+   229→          }
+   230→        }
+   231→      }
+   232→    } catch (e) { warn('audit_log load', e); }
+   233→
+   234→    // Chat messages — the sibling agent's chatService.getMessages takes a
+   235→    // `roomId` (not a patientId). To list messages per patient we'd need to
+   236→    // resolve the room first; the chat panel handles this lazily itself, so
+   237→    // we skip preloading here to avoid a costly N+1 lookup.
+   238→  }
+   239→}
+   240→
+   241→// ─── Realtime handlers ─────────────────────────────────────────────────────
+   242→//
+   243→// Each handler receives a PostgresChangesPayload and dispatches the matching
+   244→// Zustand action. We dedupe by id on INSERT, replace on UPDATE, filter on
+   245→// DELETE. Wrapped in try/catch by the caller so a single bad event can never
+   246→// break the subscription.
+   247→
+   248→type RealtimePayload = {
+   249→  eventType: 'INSERT' | 'UPDATE' | 'DELETE' | '*';
+   250→  new: Record<string, any> | null;
+   251→  old: Record<string, any> | null;
+   252→  errors: string[] | null;
+   253→};
+   254→
+   255→function handlePatientEvent(store: ReturnType<typeof useStore.getState>, p: RealtimePayload) {
+   256→  const row = p.new;
+   257→  const id = (row?.id ?? p.old?.id) as string | undefined;
+   258→  if (!id) return;
+   259→  if (p.eventType === 'DELETE') {
+   260→    if (hasId(store.palliativePatients, id)) store.removePalliativePatient(id);
+   261→    return;
+   262→  }
+   263→  // INSERT or UPDATE — try to load the full record via the service so the
+   264→  // row goes through the proper snake_case → camelCase mapping.
+   265→  svc.patientService
+   266→    .getById(id)
+   267→    .then((fresh: PalliativePatientInfo | null) => {
+   268→      if (!fresh) return;
+   269→      const exists = hasId(useStore.getState().palliativePatients, id);
+   270→      if (exists) {
+   271→        store.updatePalliativePatient(id, fresh);
+   272→      } else {
+   273→        store.addPalliativePatient(fresh);
+   274→      }
+   275→    })
+   276→    .catch((e: unknown) => warn('patient realtime getById', e));
+   277→}
+   278→
+   279→function handleVitalEvent(store: ReturnType<typeof useStore.getState>, p: RealtimePayload) {
+   280→  const row = p.new;
+   281→  const id = (row?.id ?? p.old?.id) as string | undefined;
+   282→  if (!id) return;
+   283→  if (p.eventType === 'DELETE') {
+   284→    useStore.setState((s) => ({
+   285→      vitalSignRecords: s.vitalSignRecords.filter((v) => v.id !== id),
+   286→    }));
+   287→    return;
+   288→  }
+   289→  // Reload via service for proper mapping
+   290→  svc.vitalService
+   291→    .getAll(row?.patient_id as string)
+   292→    .then((rows: VitalSignRecordInfo[]) => {
+   293→      const fresh = rows.find((r) => r.id === id);
+   294→      if (!fresh) return;
+   295→      const state = useStore.getState();
+   296→      const exists = hasId(state.vitalSignRecords, id);
+   297→      if (exists) {
+   298→        useStore.setState({
+   299→          vitalSignRecords: state.vitalSignRecords.map((v) => (v.id === id ? fresh : v)),
+   300→        });
+   301→      } else {
+   302→        store.addVitalSignRecord(fresh);
+   303→      }
+   304→    })
+   305→    .catch((e: unknown) => warn('vital realtime', e));
+   306→}
+   307→
+   308→function handleScreeningEvent(store: ReturnType<typeof useStore.getState>, p: RealtimePayload) {
+   309→  const row = p.new;
+   310→  const id = (row?.id ?? p.old?.id) as string | undefined;
+   311→  if (!id) return;
+   312→  if (p.eventType === 'DELETE') {
+   313→    useStore.setState((s) => ({
+   314→      palliativeScreeningRecords: s.palliativeScreeningRecords.filter((r) => r.id !== id),
+   315→    }));
+   316→    return;
+   317→  }
+   318→  svc.screeningService
+   319→    .getAll(row?.patient_id as string)
+   320→    .then((rows: PalliativeScreeningRecordInfo[]) => {
+   321→      const fresh = rows.find((r) => r.id === id);
+   322→      if (!fresh) return;
+   323→      const state = useStore.getState();
+   324→      const exists = hasId(state.palliativeScreeningRecords, id);
+   325→      if (exists) {
+   326→        useStore.setState({
+   327→          palliativeScreeningRecords: state.palliativeScreeningRecords.map((r) =>
+   328→            r.id === id ? fresh : r
+   329→          ),
+   330→        });
+   331→      } else {
+   332→        store.addPalliativeScreeningRecord(fresh);
+   333→      }
+   334→    })
+   335→    .catch((e: unknown) => warn('screening realtime', e));
+   336→}
+   337→
+   338→function handleMedicationEvent(store: ReturnType<typeof useStore.getState>, p: RealtimePayload) {
+   339→  const row = p.new;
+   340→  const id = (row?.id ?? p.old?.id) as string | undefined;
+   341→  if (!id) return;
+   342→  if (p.eventType === 'DELETE') {
+   343→    // Use the local-Zustand remove action (the store doesn't expose one, so
+   344→    // we filter directly via setState).
+   345→    useStore.setState((s) => ({
+   346→      palliativeMedications: s.palliativeMedications.filter((m) => m.id !== id),
+   347→    }));
+   348→    return;
+   349→  }
+   350→  svc.medicationService
+   351→    .getAll(row?.patient_id as string)
+   352→    .then((rows: PalliativeMedicationInfo[]) => {
+   353→      const fresh = rows.find((m) => m.id === id);
+   354→      if (!fresh) return;
+   355→      const state = useStore.getState();
+   356→      const exists = hasId(state.palliativeMedications, id);
+   357→      if (exists) {
+   358→        store.updatePalliativeMedication(id, fresh);
+   359→      } else {
+   360→        store.addPalliativeMedication(fresh);
+   361→      }
+   362→    })
+   363→    .catch((e: unknown) => warn('medication realtime', e));
+   364→}
+   365→
+   366→function handleNutritionEvent(store: ReturnType<typeof useStore.getState>, p: RealtimePayload) {
+   367→  const row = p.new;
+   368→  const id = (row?.id ?? p.old?.id) as string | undefined;
+   369→  if (!id) return;
+   370→  if (p.eventType === 'DELETE') {
+   371→    useStore.setState((s) => ({
+   372→      nutritionRecords: s.nutritionRecords.filter((n) => n.id !== id),
+   373→    }));
+   374→    return;
+   375→  }
+   376→  svc.nutritionService
+   377→    .getAll(row?.patient_id as string)
+   378→    .then((rows: NutritionRecordInfo[]) => {
+   379→      const fresh = rows.find((n) => n.id === id);
+   380→      if (!fresh) return;
+   381→      const state = useStore.getState();
+   382→      const exists = hasId(state.nutritionRecords, id);
+   383→      if (exists) {
+   384→        useStore.setState({
+   385→          nutritionRecords: state.nutritionRecords.map((n) => (n.id === id ? fresh : n)),
+   386→        });
+   387→      } else {
+   388→        store.addNutritionRecord(fresh);
+   389→      }
+   390→    })
+   391→    .catch((e: unknown) => warn('nutrition realtime', e));
+   392→}
+   393→
+   394→function handleComplaintEvent(store: ReturnType<typeof useStore.getState>, p: RealtimePayload) {
+   395→  const row = p.new;
+   396→  const id = (row?.id ?? p.old?.id) as string | undefined;
+   397→  if (!id) return;
+   398→  if (p.eventType === 'DELETE') {
+   399→    useStore.setState((s) => ({
+   400→      dailyComplaints: s.dailyComplaints.filter((c) => c.id !== id),
+   401→    }));
+   402→    return;
+   403→  }
+   404→  svc.complaintService
+   405→    .getAll(row?.patient_id as string)
+   406→    .then((rows: DailyComplaintRecord[]) => {
+   407→      const fresh = rows.find((c) => c.id === id);
+   408→      if (!fresh) return;
+   409→      const state = useStore.getState();
+   410→      const exists = hasId(state.dailyComplaints, id);
+   411→      if (exists) {
+   412→        useStore.setState({
+   413→          dailyComplaints: state.dailyComplaints.map((c) => (c.id === id ? fresh : c)),
+   414→        });
+   415→      } else {
+   416→        store.addDailyComplaint(fresh);
+   417→      }
+   418→    })
+   419→    .catch((e: unknown) => warn('complaint realtime', e));
+   420→}
+   421→
+   422→function handleSocialEvent(store: ReturnType<typeof useStore.getState>, p: RealtimePayload) {
+   423→  const row = p.new;
+   424→  const id = (row?.id ?? p.old?.id) as string | undefined;
+   425→  if (!id) return;
+   426→  if (p.eventType === 'DELETE') {
+   427→    useStore.setState((s) => ({
+   428→      socialAssessments: s.socialAssessments.filter((a) => a.id !== id),
+   429→    }));
+   430→    return;
+   431→  }
+   432→  svc.socialService
+   433→    ?.getAll?.(row?.patient_id as string)
+   434→    .then((rows: SocialAssessmentRecord[] | undefined) => {
+   435→      if (!Array.isArray(rows)) return;
+   436→      const fresh = rows.find((a) => a.id === id);
+   437→      if (!fresh) return;
+   438→      const state = useStore.getState();
+   439→      const exists = hasId(state.socialAssessments, id);
+   440→      if (exists) {
+   441→        useStore.setState({
+   442→          socialAssessments: state.socialAssessments.map((a) => (a.id === id ? fresh : a)),
+   443→        });
+   444→      } else {
+   445→        store.addSocialAssessment(fresh);
+   446→      }
+   447→    })
+   448→    .catch((e: unknown) => warn('social realtime', e));
+   449→}
+   450→
+   451→function handleAcpEvent(store: ReturnType<typeof useStore.getState>, p: RealtimePayload) {
+   452→  const row = p.new;
+   453→  const id = (row?.id ?? p.old?.id) as string | undefined;
+   454→  if (!id) return;
+   455→  if (p.eventType === 'DELETE') {
+   456→    useStore.setState((s) => ({
+   457→      advanceCarePlans: s.advanceCarePlans.filter((a) => a.id !== id),
+   458→    }));
+   459→    return;
+   460→  }
+   461→  svc.acpService
+   462→    ?.getAll?.(row?.patient_id as string)
+   463→    .then((rows: AdvanceCarePlanInfo[] | undefined) => {
+   464→      if (!Array.isArray(rows)) return;
+   465→      const fresh = rows.find((a) => a.id === id);
+   466→      if (!fresh) return;
+   467→      const state = useStore.getState();
+   468→      const exists = hasId(state.advanceCarePlans, id);
+   469→      if (exists) {
+   470→        store.updateAdvanceCarePlan(id, fresh);
+   471→      } else {
+   472→        store.addAdvanceCarePlan(fresh);
+   473→      }
+   474→    })
+   475→    .catch((e: unknown) => warn('acp realtime', e));
+   476→}
+   477→
+   478→function handleChatRoomEvent(_store: ReturnType<typeof useStore.getState>, _p: RealtimePayload) {
+   479→  // Chat rooms aren't stored separately in Zustand — they're implicit in
+   480→  // `palliativeChatMessages` (keyed by `roomId`). Nothing to dispatch.
+   481→}
+   482→
+   483→function handleMessageEvent(store: ReturnType<typeof useStore.getState>, p: RealtimePayload) {
+   484→  const row = p.new;
+   485→  const id = (row?.id ?? p.old?.id) as string | undefined;
+   486→  if (!id) return;
+   487→  if (p.eventType === 'DELETE') {
+   488→    useStore.setState((s) => ({
+   489→      palliativeChatMessages: s.palliativeChatMessages.filter((m) => m.id !== id),
+   490→    }));
+   491→    return;
+   492→  }
+   493→  // Map the row directly — chatService doesn't expose a getById method, and
+   494→  // the row payload already contains everything we need.
+   495→  try {
+   496→    const formData: any = row?.form_data ?? undefined;
+   497→    const fresh: PalliativeChatMessage = {
+   498→      id,
+   499→      roomId: row?.room_id ?? '',
+   500→      senderId: row?.sender_id ?? '',
+   501→      senderName: row?.sender_name ?? '',
+   502→      senderRole: row?.sender_role ?? 'system',
+   503→      type: row?.type ?? 'text',
+   504→      content: row?.content ?? '',
+   505→      status: row?.status ?? 'sent',
+   506→      formType: row?.form_type ?? undefined,
+   507→      formData,
+   508→      formResponse: row?.form_response ?? undefined,
+   509→      screeningType: row?.screening_type ?? undefined,
+   510→      aiSummary: row?.ai_summary ?? undefined,
+   511→      clinicalAlert: formData?.clinicalAlert ?? undefined,
+   512→      imageUrl: row?.image_url ?? undefined,
+   513→      createdAt: row?.created_at ?? new Date().toISOString(),
+   514→      readAt: row?.read_at ?? undefined,
+   515→    };
+   516→    const state = useStore.getState();
+   517→    const exists = hasId(state.palliativeChatMessages, id);
+   518→    if (exists) {
+   519→      useStore.setState({
+   520→        palliativeChatMessages: state.palliativeChatMessages.map((m) =>
+   521→          m.id === id ? fresh : m
+   522→        ),
+   523→      });
+   524→    } else {
+   525→      store.addPalliativeChatMessage(fresh);
+   526→    }
+   527→  } catch (e) { warn('message mapping', e); }
+   528→}
+   529→
+   530→function handleClinicalAlertEvent(store: ReturnType<typeof useStore.getState>, p: RealtimePayload) {
+   531→  const row = p.new;
+   532→  const id = (row?.id ?? p.old?.id) as string | undefined;
+   533→  if (!id) return;
+   534→  if (p.eventType === 'DELETE') {
+   535→    useStore.setState((s) => ({
+   536→      palliativeClinicalAlerts: s.palliativeClinicalAlerts.filter((a) => a.id !== id),
+   537→    }));
+   538→    return;
+   539→  }
+   540→  // Build a PalliativeClinicalAlert from the row directly (alerts aren't
+   541→  // fetched via a dedicated service method in the loader — we map here).
+   542→  try {
+   543→    const fresh: PalliativeClinicalAlert = {
+   544→      id,
+   545→      patientId: row?.patient_id ?? '',
+   546→      alertType: row?.alert_type ?? 'form_tidak_diisi',
+   547→      severity: row?.severity ?? 'kuning',
+   548→      title: row?.title ?? '',
+   549→      description: row?.description ?? '',
+   550→      values: row?.values ?? undefined,
+   551→      isRead: !!row?.is_read,
+   552→      createdAt: row?.created_at ?? new Date().toISOString(),
+   553→    };
+   554→    const state = useStore.getState();
+   555→    const exists = hasId(state.palliativeClinicalAlerts, id);
+   556→    if (exists) {
+   557→      useStore.setState({
+   558→        palliativeClinicalAlerts: state.palliativeClinicalAlerts.map((a) =>
+   559→          a.id === id ? { ...a, ...fresh } : a
+   560→        ),
+   561→      });
+   562→    } else {
+   563→      store.addPalliativeClinicalAlert(fresh);
+   564→    }
+   565→  } catch (e) { warn('alert mapping', e); }
+   566→}
+   567→
+   568→function handleAuditLogEvent(store: ReturnType<typeof useStore.getState>, p: RealtimePayload) {
+   569→  const row = p.new;
+   570→  const id = (row?.id ?? p.old?.id) as string | undefined;
+   571→  if (!id) return;
+   572→  if (p.eventType === 'DELETE') {
+   573→    useStore.setState((s) => ({
+   574→      palliativeAuditLog: s.palliativeAuditLog.filter((a) => a.id !== id),
+   575→    }));
+   576→    return;
+   577→  }
+   578→  try {
+   579→    const fresh: PalliativeAuditEntry = {
+   580→      id,
+   581→      patientId: row?.patient_id ?? '',
+   582→      action: row?.action ?? 'clinical_action',
+   583→      performedBy: row?.performed_by ?? 'system',
+   584→      performedByRole: row?.performed_by_role ?? 'system',
+   585→      details: row?.details ?? undefined,
+   586→      ipAddress: row?.ip_address ?? undefined,
+   587→      device: row?.device ?? undefined,
+   588→      createdAt: row?.created_at ?? new Date().toISOString(),
+   589→    };
+   590→    const state = useStore.getState();
+   591→    const exists = hasId(state.palliativeAuditLog, id);
+   592→    if (exists) {
+   593→      useStore.setState({
+   594→        palliativeAuditLog: state.palliativeAuditLog.map((a) =>
+   595→          a.id === id ? { ...a, ...fresh } : a
+   596→        ),
+   597→      });
+   598→    } else {
+   599→      store.addPalliativeAuditEntry(fresh);
+   600→    }
+   601→  } catch (e) { warn('audit mapping', e); }
+   602→}
+   603→
+   604→function handleNotificationEvent(_store: ReturnType<typeof useStore.getState>, _p: RealtimePayload) {
+   605→  // Notifications table maps to the global Notification[] (clinicalAlerts in
+   606→  // the store) — but the global notifications are loaded via /api/notifications,
+   607→  // not Supabase. We deliberately skip to avoid double-loading. If you want
+   608→  // Supabase notifications to populate the store, dispatch here.
+   609→}
+   610→
+   611→// ─── Provider ──────────────────────────────────────────────────────────────
+   612→
+   613→export function SupabaseSyncProvider({ children }: SupabaseSyncProviderProps) {
+   614→  const store = useStore();
+   615→  const loadedRef = useRef(false);
+   616→  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+   617→
+   618→  useEffect(() => {
+   619→    if (loadedRef.current) return;
+   620→    loadedRef.current = true;
+   621→
+   622→    // Snapshot the store once — actions on this snapshot remain stable for
+   623→    // the lifetime of the provider, even if the component re-renders.
+   624→    const s = useStore.getState;
+   625→
+   626→    // ── 1. Initial load (fire-and-forget, never blocks UI) ────────────────
+   627→    (async () => {
+   628→      try {
+   629→        const patients = await loadPatients(s());
+   630→        // Always run scoped-data load — even when patients is empty — so any
+   631→        // stale per-patient arrays (vitals, meds, etc.) are cleared.
+   632→        if (Array.isArray(patients)) {
+   633→          await loadPatientScopedData(s(), patients as PalliativePatientInfo[]);
+   634→        }
+   635→        console.log('[SupabaseSync] initial load complete — patients:', patients?.length ?? 0);
+   636→      } catch (e) {
+   637→        warn('initial load skipped', e);
+   638→      }
+   639→    })();
+   640→
+   641→    // ── 2. Realtime subscriptions (best-effort, silently skipped on error) ─
+   642→    try {
+   643→      const channel = supabase.channel('carelivia-realtime');
+   644→      channelRef.current = channel;
+   645→
+   646→      const tableHandlers: Array<[string, (store: ReturnType<typeof s>, p: RealtimePayload) => void]> = [
+   647→        ['patients', handlePatientEvent],
+   648→        ['vital_signs', handleVitalEvent],
+   649→        ['screenings', handleScreeningEvent],
+   650→        ['medications', handleMedicationEvent],
+   651→        ['nutrition', handleNutritionEvent],
+   652→        ['daily_complaints', handleComplaintEvent],
+   653→        ['social_assessments', handleSocialEvent],
+   654→        ['acp', handleAcpEvent],
+   655→        ['chat_rooms', handleChatRoomEvent],
+   656→        ['messages', handleMessageEvent],
+   657→        ['clinical_alerts', handleClinicalAlertEvent],
+   658→        ['audit_log', handleAuditLogEvent],
+   659→        ['notifications', handleNotificationEvent],
+   660→      ];
+   661→
+   662→      let builder = channel;
+   663→      for (const [table, handler] of tableHandlers) {
+   664→        try {
+   665→          builder = builder.on(
+   666→            'postgres_changes',
+   667→            { event: '*', schema: 'public', table },
+   668→            (payload: any) => {
+   669→              try {
+   670→                handler(s(), {
+   671→                  eventType: payload.eventType,
+   672→                  new: payload.new,
+   673→                  old: payload.old,
+   674→                  errors: payload.errors,
+   675→                });
+   676→              } catch (e) {
+   677→                warn(`realtime handler for ${table}`, e);
+   678→              }
+   679→            }
+   680→          );
+   681→        } catch (e) {
+   682→          warn(`subscribe to ${table} skipped`, e);
+   683→        }
+   684→      }
+   685→
+   686→      try {
+   687→        builder.subscribe((status: string) => {
+   688→          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+   689→            warn(`realtime channel status: ${status}`, null);
+   690→          } else {
+   691→            // 'SUBSCRIBED' | 'CLOSED' — both are non-fatal
+   692→          }
+   693→        });
+   694→      } catch (e) {
+   695→        warn('channel.subscribe skipped', e);
+   696→      }
+   697→    } catch (e) {
+   698→      warn('realtime setup skipped', e);
+   699→    }
+   700→
+   701→    // ── 3. Cleanup on unmount ─────────────────────────────────────────────
+   702→    return () => {
+   703→      try {
+   704→        if (channelRef.current) {
+   705→          supabase.removeChannel(channelRef.current);
+   706→          channelRef.current = null;
+   707→        }
+   708→      } catch (e) {
+   709→        warn('removeChannel', e);
+   710→      }
+   711→    };
+   712→  }, []);
+   713→
+   714→  // ALWAYS render children immediately. Supabase loads in the background.
+   715→  return <>{children}</>;
+   716→}
+   717→

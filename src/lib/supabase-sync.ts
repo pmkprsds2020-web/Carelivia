@@ -6,10 +6,14 @@
 // to the appropriate Supabase service. It is imported by `@/lib/store` so
 // every store action persists to Supabase in the background.
 //
-// Every method is fire-and-forget: errors are logged but never thrown, so
-// the Zustand UI update always succeeds even if Supabase is temporarily
-// unreachable. Realtime subscriptions in `SupabaseSyncProvider` will catch
-// up the local state once the write lands in the database.
+// CRITICAL: Every write method now SURFACES errors to the user via toast.
+// Previously, `safeQuery` swallowed errors silently — data appeared in the UI
+// (via the optimistic Zustand update) but never landed in the database. Now
+// the service `create` methods throw on error, and these methods catch the
+// error, log it, AND toast the user so they know the save failed.
+//
+// Realtime subscriptions in `SupabaseSyncProvider` will catch up the local
+// state once a successful write lands in the database.
 // ───────────────────────────────────────────────────────────────────────────
 
 import {
@@ -22,10 +26,30 @@ import {
   socialService,
   acpService,
   chatService,
+  supabase,
+  isValidUuid,
+  validUuidOrUndefined,
 } from '@/services/supabase';
+import { toast } from '@/hooks/use-toast';
 
-function logErr(label: string, err: unknown) {
-  console.error(`[SupabaseSync] ${label}:`, err);
+/** Show a destructive toast for a save failure. */
+function toastSaveError(label: string, err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error(`[SupabaseSync] ${label} FAILED:`, msg);
+  toast({
+    title: 'Gagal menyimpan ke database',
+    description: `${label}: ${msg}`,
+    variant: 'destructive',
+  });
+}
+
+/** Normalize a clinical-alert severity to the DB-allowed enum. */
+function normalizeSeverity(raw: unknown): 'hijau' | 'kuning' | 'merah' {
+  if (typeof raw !== 'string') return 'kuning';
+  const s = raw.toLowerCase();
+  if (s === 'hijau' || s === 'green' || s === 'info' || s === 'low') return 'hijau';
+  if (s === 'merah' || s === 'red' || s === 'high' || s === 'critical') return 'merah';
+  return 'kuning';
 }
 
 export const supabaseSync = {
@@ -48,7 +72,7 @@ export const supabaseSync = {
       }
       return null;
     } catch (err) {
-      logErr('addPatient', err);
+      toastSaveError('Tambah Pasien', err);
       return null;
     }
   },
@@ -57,7 +81,7 @@ export const supabaseSync = {
     try {
       await patientService.update(id, data as any);
     } catch (err) {
-      logErr('updatePatient', err);
+      toastSaveError('Update Pasien', err);
     }
   },
 
@@ -65,7 +89,7 @@ export const supabaseSync = {
     try {
       await patientService.remove(id);
     } catch (err) {
-      logErr('deletePatient', err);
+      toastSaveError('Hapus Pasien', err);
     }
   },
 
@@ -74,7 +98,7 @@ export const supabaseSync = {
     try {
       await vitalService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
-      logErr('addTTV', err);
+      toastSaveError('Simpan TTV', err);
     }
   },
 
@@ -83,7 +107,7 @@ export const supabaseSync = {
     try {
       await medicationService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
-      logErr('addObat', err);
+      toastSaveError('Simpan Obat', err);
     }
   },
 
@@ -91,7 +115,7 @@ export const supabaseSync = {
     try {
       await medicationService.update(medId, data as any);
     } catch (err) {
-      logErr('updateObat', err);
+      toastSaveError('Update Obat', err);
     }
   },
 
@@ -100,7 +124,7 @@ export const supabaseSync = {
     try {
       await acpService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
-      logErr('addACP', err);
+      toastSaveError('Simpan ACP', err);
     }
   },
 
@@ -108,7 +132,7 @@ export const supabaseSync = {
     try {
       await acpService.update(planId, data as any);
     } catch (err) {
-      logErr('updateACP', err);
+      toastSaveError('Update ACP', err);
     }
   },
 
@@ -117,7 +141,7 @@ export const supabaseSync = {
     try {
       await screeningService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
-      logErr('addSkrining', err);
+      toastSaveError('Simpan Skrining', err);
     }
   },
 
@@ -126,22 +150,45 @@ export const supabaseSync = {
     try {
       await nutritionService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
-      logErr('addNutrisi', err);
+      toastSaveError('Simpan Nutrisi', err);
     }
   },
 
   // ── Chat messages ──────────────────────────────────────────────────────
+  /**
+   * Resolve a real chat-room UUID for the (patientId, doctorId) pair, then
+   * send the message. The frontend uses a composite `roomId` string like
+   * `${patientId}_${doctorId}` for local filtering — that's NOT a UUID and
+   * cannot be used as the `room_id` FK. We call `getOrCreateRoom` to get the
+   * real UUID from the `chat_rooms` table.
+   */
   async addChatMessage(patientId: string, data: Record<string, unknown>): Promise<void> {
     try {
-      // Resolve or create a room for this patient + doctor, then send.
-      const doctorId = (data.senderRole === 'doctor' ? data.senderId : undefined) as string | undefined;
-      const roomId = data.roomId as string | undefined;
-      if (!roomId) return;
-      // Use sendMessage directly with the existing roomId — the chat panel
-      // already ensures a room exists before dispatching the store action.
-      await chatService.sendMessage(roomId, data as any);
+      if (!isValidUuid(patientId)) {
+        console.error('[supabaseSync.addChatMessage] ABORTED — patientId is not a valid UUID:', patientId);
+        return;
+      }
+      const localRoomId = data.roomId as string | undefined;
+      const senderRole = data.senderRole as string | undefined;
+      const senderId = data.senderId as string | undefined;
+      // If the doctor is the sender, use their id for the room lookup.
+      const doctorId = senderRole === 'doctor' ? senderId : undefined;
+      const validDoctorId = validUuidOrUndefined(doctorId);
+
+      // Resolve a real UUID room_id. If localRoomId is already a UUID, use it
+      // directly; otherwise get-or-create one.
+      let realRoomId: string | null = null;
+      if (localRoomId && isValidUuid(localRoomId)) {
+        realRoomId = localRoomId;
+      } else {
+        realRoomId = await chatService.getOrCreateRoom(patientId, validDoctorId ?? '');
+      }
+      if (!realRoomId) {
+        throw new Error('Could not resolve or create a chat room');
+      }
+      await chatService.sendMessage(realRoomId, data as any);
     } catch (err) {
-      logErr('addChatMessage', err);
+      toastSaveError('Kirim Pesan Chat', err);
     }
   },
 
@@ -152,44 +199,50 @@ export const supabaseSync = {
         await chatService.markRead(msgId);
       }
     } catch (err) {
-      logErr('updateChatMessage', err);
+      console.error('[SupabaseSync] updateChatMessage:', err);
     }
   },
 
   // ── Clinical alerts ────────────────────────────────────────────────────
   async addClinicalAlert(patientId: string, data: Record<string, unknown>): Promise<void> {
     try {
-      // No dedicated alerts service — write directly via supabase client.
-      const { supabase } = await import('@/services/supabase');
-      await supabase.from('clinical_alerts').insert({
+      if (!isValidUuid(patientId)) {
+        console.error('[supabaseSync.addClinicalAlert] ABORTED — patientId is not a valid UUID:', patientId);
+        return;
+      }
+      const { error } = await supabase.from('clinical_alerts').insert({
         patient_id: patientId,
         alert_type: (data.alertType as string) ?? 'form_tidak_diisi',
-        severity: (data.severity as string) ?? 'kuning',
+        severity: normalizeSeverity(data.severity), // CHECK: hijau|kuning|merah
         title: (data.title as string) ?? '',
         description: (data.description as string) ?? '',
         values: (data.values as any) ?? null,
         is_read: false,
       });
+      if (error) throw new Error(error.message);
     } catch (err) {
-      logErr('addClinicalAlert', err);
+      console.error('[SupabaseSync] addClinicalAlert:', err);
+      // Alerts are non-critical — don't toast to avoid spamming the user.
     }
   },
 
   async markAlertRead(patientId: string, alertId: string): Promise<void> {
     try {
-      const { supabase } = await import('@/services/supabase');
-      await supabase.from('clinical_alerts').update({ is_read: true }).eq('id', alertId);
+      const { error } = await supabase.from('clinical_alerts').update({ is_read: true }).eq('id', alertId);
+      if (error) console.error('[SupabaseSync] markAlertRead:', error.message);
     } catch (err) {
-      logErr('markAlertRead', err);
+      console.error('[SupabaseSync] markAlertRead:', err);
     }
   },
 
   // ── Audit log ──────────────────────────────────────────────────────────
   async addAuditEntry(patientId: string, data: Record<string, unknown>): Promise<void> {
     try {
-      const { supabase } = await import('@/services/supabase');
-      await supabase.from('audit_log').insert({
-        patient_id: patientId,
+      // patient_id is a nullable uuid — only forward if it's a real UUID.
+      // An empty string ("") would cause "invalid input syntax for type uuid".
+      const validPatientId = validUuidOrUndefined(patientId);
+      const { error } = await supabase.from('audit_log').insert({
+        patient_id: validPatientId ?? null,
         action: (data.action as string) ?? 'clinical_action',
         performed_by: (data.performedBy as string) ?? 'system',
         performed_by_role: (data.performedByRole as string) ?? 'system',
@@ -197,8 +250,9 @@ export const supabaseSync = {
         ip_address: (data.ipAddress as string) ?? null,
         device: (data.device as string) ?? null,
       });
+      if (error) console.error('[SupabaseSync] addAuditEntry:', error.message);
     } catch (err) {
-      logErr('addAuditEntry', err);
+      console.error('[SupabaseSync] addAuditEntry:', err);
     }
   },
 
@@ -207,32 +261,62 @@ export const supabaseSync = {
     try {
       await complaintService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
-      logErr('addKeluhan', err);
+      toastSaveError('Simpan Keluhan Harian', err);
     }
   },
 
-  // ── Resume medis ────────────────────────────────────────────────────────
+  // ── Resume medis (palliative_resumes table) ────────────────────────────
+  /**
+   * Insert a resume-medis row into the `palliative_resumes` table.
+   * Previously this incorrectly targeted `patient_documents` with wrong
+   * columns. The correct table is `palliative_resumes` with columns:
+   *   patient_id, document_number, generated_by, generated_by_role,
+   *   generated_at, full_content, version, previous_version_id,
+   *   is_signed, signed_at, download_count, print_count.
+   */
   async addResume(patientId: string, data: Record<string, unknown>): Promise<void> {
     try {
-      const { supabase } = await import('@/services/supabase');
-      await supabase.from('patient_documents').insert({
+      if (!isValidUuid(patientId)) {
+        console.error('[supabaseSync.addResume] ABORTED — patientId is not a valid UUID:', patientId);
+        return;
+      }
+      const { error } = await supabase.from('palliative_resumes').insert({
         patient_id: patientId,
-        document_type: 'resume_medis',
-        title: (data.title as string) ?? 'Resume Medis',
-        content: (data as any),
-        created_by: (data.createdBy as string) ?? null,
+        document_number: (data.documentNumber as string) ?? null,
+        generated_by: (data.generatedBy as string) ?? null,
+        generated_by_role: (data.generatedByRole as string) ?? 'doctor',
+        generated_at: (data.generatedAt as string) ?? new Date().toISOString(),
+        full_content: (data.fullContent as string) ?? JSON.stringify(data),
+        version: (data.version as number) ?? 1,
+        previous_version_id: validUuidOrUndefined(data.previousVersionId) ?? null,
+        is_signed: (data.isSigned as boolean) ?? false,
+        download_count: (data.downloadCount as number) ?? 0,
+        print_count: (data.printCount as number) ?? 0,
       });
+      if (error) throw new Error(error.message);
     } catch (err) {
-      logErr('addResume', err);
+      console.error('[SupabaseSync] addResume:', err);
+      // Resume saves are non-critical for the main flow; log but don't toast
+      // to avoid interrupting the resume-generation UX.
     }
   },
 
   async updateResume(patientId: string, resumeId: string, data: Record<string, unknown>): Promise<void> {
     try {
-      const { supabase } = await import('@/services/supabase');
-      await supabase.from('patient_documents').update({ content: data as any }).eq('id', resumeId);
+      if (!isValidUuid(resumeId)) return;
+      const { error } = await supabase
+        .from('palliative_resumes')
+        .update({
+          full_content: (data.fullContent as string) ?? JSON.stringify(data),
+          is_signed: (data.isSigned as boolean) ?? undefined,
+          signed_at: data.isSigned ? new Date().toISOString() : undefined,
+          download_count: (data.downloadCount as number) ?? undefined,
+          print_count: (data.printCount as number) ?? undefined,
+        })
+        .eq('id', resumeId);
+      if (error) console.error('[SupabaseSync] updateResume:', error.message);
     } catch (err) {
-      logErr('updateResume', err);
+      console.error('[SupabaseSync] updateResume:', err);
     }
   },
 
@@ -241,7 +325,18 @@ export const supabaseSync = {
     try {
       await socialService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
-      logErr('addSosial', err);
+      toastSaveError('Simpan Penilaian Sosial', err);
+    }
+  },
+
+  // ── AI reports ──────────────────────────────────────────────────────────
+  async addAIReport(patientId: string, reportType: string, prompt: string, response: string, metadata?: any): Promise<void> {
+    try {
+      const { aiService } = await import('@/services/supabase');
+      await aiService.save(patientId, reportType, prompt, response, metadata);
+    } catch (err) {
+      console.error('[SupabaseSync] addAIReport:', err);
+      // AI reports are non-critical — don't toast.
     }
   },
 };

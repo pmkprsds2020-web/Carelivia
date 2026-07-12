@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // chatService — Supabase CRUD for `chat_rooms` + `messages`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined, isValidUuid, validUuidOrUndefined } from './_common';
+import { supabase, safeQuery, safeInsert, stripUndefined, isValidUuid, validUuidOrUndefined } from './_common';
 import type { PalliativeChatMessage } from '@/lib/types';
 
 /**
@@ -39,10 +39,26 @@ function messageToDb(data: Partial<PalliativeChatMessage>): Record<string, any> 
   if (data.roomId !== undefined) out.room_id = data.roomId;
   if (data.senderId !== undefined) out.sender_id = data.senderId;
   if (data.senderName !== undefined) out.sender_name = data.senderName;
-  if (data.senderRole !== undefined) out.sender_role = data.senderRole;
-  if (data.type !== undefined) out.type = data.type;
+  // sender_role CHECK constraint: ('doctor','patient','family','system')
+  if (data.senderRole !== undefined) {
+    const sr = String(data.senderRole).toLowerCase();
+    if (['doctor', 'patient', 'family', 'system'].includes(sr)) out.sender_role = sr;
+    else out.sender_role = 'system';
+  }
+  // type CHECK constraint: ('text','education','instruction','form_ttv',
+  // 'form_keluhan','form_screening','form_monitoring_obat','form_response',
+  // 'reminder','image','ai_summary','clinical_alert')
+  if (data.type !== undefined) {
+    const t = String(data.type);
+    const allowed = ['text','education','instruction','form_ttv','form_keluhan','form_screening','form_monitoring_obat','form_response','reminder','image','ai_summary','clinical_alert'];
+    out.type = allowed.includes(t) ? t : 'text';
+  }
   if (data.content !== undefined) out.content = data.content;
-  if (data.status !== undefined) out.status = data.status;
+  // status CHECK constraint: ('sent','delivered','read')
+  if (data.status !== undefined) {
+    const s = String(data.status);
+    out.status = ['sent', 'delivered', 'read'].includes(s) ? s : 'sent';
+  }
   if (data.formType !== undefined) out.form_type = data.formType;
   if (data.screeningType !== undefined) out.screening_type = data.screeningType;
   if (data.aiSummary !== undefined) out.ai_summary = data.aiSummary;
@@ -110,16 +126,15 @@ export const chatService = {
     // Insert new room
     const insertPayload: Record<string, any> = { patient_id: patientId };
     if (validDoctorId) insertPayload.doctor_id = validDoctorId;
-    const inserted = await safeQuery(
+    const { data: inserted, error: insErr } = await safeInsert<any>(
       supabase
         .from('chat_rooms')
         .insert(insertPayload)
         .select('id')
         .single(),
-      null as any,
       'chatService.getOrCreateRoom(insert)'
     );
-    if (inserted && (inserted as any).id) return (inserted as any).id as string;
+    if (inserted && inserted.id) return inserted.id as string;
 
     // Race-condition fallback: someone else inserted between our select & insert
     let retryQ = supabase.from('chat_rooms').select('id').eq('patient_id', patientId);
@@ -149,12 +164,21 @@ export const chatService = {
   },
 
   async sendMessage(roomId: string, data: SendMessageInput): Promise<PalliativeChatMessage | null> {
+    // room_id is a NOT NULL uuid FK. Abort if it's not a real UUID — otherwise
+    // Postgres rejects with "invalid input syntax for type uuid".
+    if (!isValidUuid(roomId)) {
+      console.error(
+        '[chatService.sendMessage] ABORTED — room_id is not a valid UUID.',
+        { received: roomId }
+      );
+      throw new Error('room_id is not a valid UUID — call getOrCreateRoom first');
+    }
     const payload = messageToDb({ roomId, ...data });
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('messages').insert(payload).select().single(),
-      null as any,
       'chatService.sendMessage'
     );
+    if (error) throw new Error(error);
     return row ? messageFromDb(row) : null;
   },
 

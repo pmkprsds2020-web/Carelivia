@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabaseSync as firestoreSync } from '@/lib/supabase-sync';
 import { patientService, isValidUuid } from '@/services/supabase';
+import { toast } from '@/hooks/use-toast';
 import type { 
   User, Consultation, Message, Medicine, CartItem, 
   HomeCareService, HomeCareBooking, Notification, Article,
@@ -616,6 +617,11 @@ export const useStore = create<TelemedicineStore>((set) => ({
       return null;
     } catch (err) {
       console.error('[Store.addPalliativePatient] error creating patient in Supabase:', err);
+      toast({
+        title: 'Gagal menyimpan pasien',
+        description: err instanceof Error ? err.message : 'Pasien tidak tersimpan ke database',
+        variant: 'destructive',
+      });
       return null;
     }
   },
@@ -708,8 +714,23 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setPalliativeChatMessages: (messages) => set({ palliativeChatMessages: messages }),
   addPalliativeChatMessage: (message) => {
     set((state) => ({ palliativeChatMessages: [...state.palliativeChatMessages, message] }));
+    // Resolve patient_id for Supabase persistence. The message may carry
+    // `palliativePatientId` directly, OR we extract it from the `roomId`
+    // (which can be `${patientId}_${doctorId}` or `room-${patientId}`).
+    let pid = (message as any).palliativePatientId as string | undefined;
+    if (!isValidUuid(pid) && message.roomId) {
+      // Try format: ${patientId}_${doctorId}
+      const underscoreParts = message.roomId.split('_');
+      if (underscoreParts.length > 0 && isValidUuid(underscoreParts[0])) {
+        pid = underscoreParts[0];
+      } else {
+        // Try format: room-${patientId}
+        const roomMatch = message.roomId.match(/^room-(.+)$/);
+        if (roomMatch && isValidUuid(roomMatch[1])) pid = roomMatch[1];
+      }
+    }
     // Persist to Firestore
-    firestoreSync.addChatMessage(message.palliativePatientId, { ...message }).catch(err => console.error('[Store] Firestore sync error (addChat):', err));
+    firestoreSync.addChatMessage(pid || '', { ...message, palliativePatientId: pid }).catch(err => console.error('[Store] Firestore sync error (addChat):', err));
   },
   updatePalliativeChatMessage: (msgId, data) => {
     const state = useStore.getState();
@@ -721,7 +742,7 @@ export const useStore = create<TelemedicineStore>((set) => ({
     }));
     // Persist to Firestore
     if (msg) {
-      firestoreSync.updateChatMessage(msg.palliativePatientId, msgId, data).catch(err => console.error('[Store] Firestore sync error (updateChat):', err));
+      firestoreSync.updateChatMessage(msg.palliativePatientId || '', msgId, data).catch(err => console.error('[Store] Firestore sync error (updateChat):', err));
     }
   },
   palliativeClinicalAlerts: [] as PalliativeClinicalAlert[],
@@ -826,6 +847,11 @@ export const useStore = create<TelemedicineStore>((set) => ({
       return created;
     } catch (err) {
       console.error('[Store.markPatientAsPalliative] error:', err);
+      toast({
+        title: 'Gagal menandai pasien paliatif',
+        description: err instanceof Error ? err.message : 'Pasien tidak tersimpan ke database',
+        variant: 'destructive',
+      });
       return null;
     }
   },

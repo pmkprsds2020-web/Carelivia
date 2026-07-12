@@ -1,8 +1,40 @@
 // ───────────────────────────────────────────────────────────────────────────
 // screeningService — Supabase CRUD for `screenings`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined, safeJsonParse, isValidUuid, validUuidOrUndefined } from './_common';
+import { supabase, safeQuery, safeInsert, stripUndefined, safeJsonParse, isValidUuid, validUuidOrUndefined } from './_common';
 import type { PalliativeScreeningRecordInfo } from '@/lib/types';
+
+/**
+ * The DB CHECK constraint on `screenings.jenis_skrining` only allows:
+ *   'esas', 'pps', 'spict', 'distress_thermometer', 'zarit', 'eortc', 'ipos'
+ *
+ * The frontend uses shorter ids (`esas`, `distress`, `spict`, `pps`, `zarit`,
+ * `eortc`). We normalize them here so the insert never violates the CHECK
+ * constraint ("new row for relation screenings violates check constraint").
+ *
+ * Any unknown type is mapped to `esas` as a safe fallback (it's the most
+ * generic symptom-assessment tool).
+ */
+const SCREENING_TYPE_DB_MAP: Record<string, string> = {
+  esas: 'esas',
+  distress: 'distress_thermometer',
+  distress_thermometer: 'distress_thermometer',
+  spict: 'spict',
+  pps: 'pps',
+  zarit: 'zarit',
+  eortc: 'eortc',
+  ipos: 'ipos',
+  // Legacy/alias types used in some chat-form code → map to a valid value.
+  penilaian_nyeri: 'esas',
+  penilaian_sesak: 'esas',
+  penilaian_nutrisi: 'esas',
+};
+
+function normalizeScreeningType(raw: unknown): string {
+  if (typeof raw !== 'string' || !raw) return 'esas';
+  const lower = raw.toLowerCase();
+  return SCREENING_TYPE_DB_MAP[lower] ?? 'esas';
+}
 
 /**
  * Map a DB row → PalliativeScreeningRecordInfo.
@@ -35,10 +67,17 @@ function toDb(data: Partial<PalliativeScreeningRecordInfo>): Record<string, any>
   // doctor_id is a nullable uuid — only forward if it's a real UUID.
   const doctorId = validUuidOrUndefined(data.doctorId);
   if (doctorId) out.doctor_id = doctorId;
-  if (data.screeningType !== undefined) out.jenis_skrining = data.screeningType;
+  if (data.screeningType !== undefined) {
+    // Normalize to a DB-allowed value so we never hit the CHECK constraint.
+    out.jenis_skrining = normalizeScreeningType(data.screeningType);
+  }
   if (data.score !== undefined) out.score = data.score;
   if (data.interpretation !== undefined) out.interpretasi = data.interpretation;
-  if (data.ewsLevel !== undefined) out.ews = data.ewsLevel;
+  // ews must be 'hijau' | 'kuning' | 'merah' (CHECK constraint). Drop anything else.
+  if (data.ewsLevel !== undefined) {
+    const e = String(data.ewsLevel).toLowerCase();
+    if (e === 'hijau' || e === 'kuning' || e === 'merah') out.ews = e;
+  }
   if (data.performedAt !== undefined) out.tanggal = data.performedAt;
 
   // `details` (string) → jawaban (JSONB). Merge scoreLabel in if present.
@@ -83,11 +122,14 @@ export const screeningService = {
       jenis_skrining: payload.jenis_skrining,
       score: payload.score,
     });
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('screenings').insert(payload).select().single(),
-      null as any,
       'screeningService.create'
     );
+    if (error) {
+      // Re-throw so the supabase-sync layer can toast the user.
+      throw new Error(error);
+    }
     return row ? fromDb(row) : null;
   },
 

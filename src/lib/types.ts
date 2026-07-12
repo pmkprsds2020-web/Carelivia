@@ -605,6 +605,8 @@ export type PalliativeChatMsgType = 'text' | 'education' | 'instruction' | 'form
 export interface PalliativeChatMessage {
   id: string;
   roomId: string;
+  /** Patient UUID — used for Supabase persistence (FK to patients.id). */
+  palliativePatientId?: string;
   senderId: string;
   senderName: string;
   senderRole: 'doctor' | 'patient' | 'family' | 'system';
@@ -741,6 +743,8 @@ export interface PalliativeFormResponse {
 export interface PalliativeClinicalAlert {
   id: string;
   patientId: string;
+  /** Patient UUID — used for Supabase persistence (FK to patients.id). */
+  palliativePatientId?: string;
   alertType: 'ttv_abnormal' | 'gejala_berat' | 'distres_tinggi' | 'pps_penurunan' | 'perburukan' | 'obat_tidak_diminum' | 'efek_samping_berat' | 'nyeri_meningkat' | 'sesak_napas' | 'kepatuhan_menurun' | 'form_tidak_diisi';
   severity: 'hijau' | 'kuning' | 'merah';
   title: string;

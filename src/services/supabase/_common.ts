@@ -68,6 +68,36 @@ export async function safeQuery<T>(
 }
 
 /**
+ * Like `safeQuery` but returns `{ data, error }` instead of swallowing the
+ * error. Use this for INSERT/UPDATE/DELETE operations where the caller needs
+ * to react to failures (e.g. show a toast to the user).
+ *
+ * - On success: returns `{ data, error: null }`.
+ * - On error: logs `[Supabase:${label}]` as `console.error` and returns
+ *   `{ data: null, error: <message> }`.
+ *
+ * This is the CRITICAL difference from `safeQuery`: writes must never be
+ * silently swallowed, otherwise data appears in the UI (via the optimistic
+ * Zustand update) but never lands in the database.
+ */
+export async function safeInsert<T>(
+  promise: PromiseLike<{ data: T | null; error: any }>,
+  label: string
+): Promise<{ data: T | null; error: string | null }> {
+  try {
+    const { data, error } = await promise;
+    if (error) {
+      console.error(`[Supabase:${label}] INSERT/UPDATE FAILED:`, error.message);
+      return { data: null, error: error.message };
+    }
+    return { data: data ?? null, error: null };
+  } catch (e: any) {
+    console.error(`[Supabase:${label}] threw`, e?.message ?? e);
+    return { data: null, error: e?.message ?? 'Unknown error' };
+  }
+}
+
+/**
  * Convert a single snake_case DB row into a camelCase TS object.
  * e.g. `{ patient_id: '...' }` → `{ patientId: '...' }`
  *

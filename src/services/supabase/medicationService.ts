@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // medicationService — Supabase CRUD for `medications`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined, isValidUuid } from './_common';
+import { supabase, safeQuery, safeInsert, stripUndefined, isValidUuid } from './_common';
 import type { PalliativeMedicationInfo, MedicationAdherenceInfo } from '@/lib/types';
 
 /**
@@ -26,7 +26,7 @@ function fromDb(row: any): MedicationWithExtras {
     indication: row.indikasi ?? undefined,
     isActive: row.is_active ?? true,
     notes: row.catatan ?? undefined,
-    adherences: (row.kepatuhan as MedicationAdherenceInfo[]) ?? [],
+    adherences: Array.isArray(row.kepatuhan) ? (row.kepatuhan as MedicationAdherenceInfo[]) : [],
     sideEffects: row.efek_samping ?? undefined,
     stock: row.stok ?? undefined,
     createdAt: row.created_at ?? new Date().toISOString(),
@@ -79,21 +79,21 @@ export const medicationService = {
     }
     const payload = toDb(data);
     console.log('[medicationService.create] payload:', { patient_id: data.palliativePatientId, nama_obat: payload.nama_obat });
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('medications').insert(payload).select().single(),
-      null as any,
       'medicationService.create'
     );
+    if (error) throw new Error(error);
     return row ? fromDb(row) : null;
   },
 
   async update(id: string, data: Partial<MedicationWithExtras>): Promise<MedicationWithExtras | null> {
     const payload = toDb(data);
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('medications').update(payload).eq('id', id).select().single(),
-      null as any,
       'medicationService.update'
     );
+    if (error) throw new Error(error);
     return row ? fromDb(row) : null;
   },
 

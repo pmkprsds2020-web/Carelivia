@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // aiService — Supabase CRUD for `ai_reports`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, stripUndefined, isValidUuid } from './_common';
+import { supabase, safeQuery, safeInsert, stripUndefined, isValidUuid } from './_common';
 
 /**
  * A stored AI report — one row per AI generation (analysis, summary, etc.).
@@ -65,11 +65,11 @@ export const aiService = {
     }
     const payload = toDb({ patientId, reportType, prompt, response, metadata, generatedBy });
     console.log('[aiService.save] payload:', { patient_id: patientId, report_type: reportType });
-    const row = await safeQuery(
+    const { data: row, error } = await safeInsert<any>(
       supabase.from('ai_reports').insert(payload).select().single(),
-      null as any,
       'aiService.save'
     );
+    if (error) throw new Error(error);
     return row ? fromDb(row) : null;
   },
 

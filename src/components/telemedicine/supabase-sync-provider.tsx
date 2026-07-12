@@ -78,13 +78,13 @@ async function loadPatientScopedData(
     try {
       const rows = await svc.vitalService.getAll(pid);
       if (Array.isArray(rows) && rows.length > 0) {
-        // Replace existing vitals for this patient to avoid stale data,
-        // but keep vitals from other patients intact.
-        const others = store.vitalSignRecords.filter((v) => v.palliativePatientId !== pid);
-        store.setVitalSignRecords([
-          ...others,
-          ...(rows as VitalSignRecordInfo[]),
-        ]);
+        // Read CURRENT state (not the stale snapshot) so we don't overwrite
+        // other patients' data that was loaded in a previous iteration.
+        const cur = useStore.getState().vitalSignRecords;
+        const others = cur.filter((v) => v.palliativePatientId !== pid);
+        useStore.setState({
+          vitalSignRecords: [...others, ...(rows as VitalSignRecordInfo[])],
+        });
       }
     } catch (e) { warn('vitalService.getAll', e); }
 
@@ -92,11 +92,11 @@ async function loadPatientScopedData(
     try {
       const rows = await svc.screeningService.getAll(pid);
       if (Array.isArray(rows) && rows.length > 0) {
-        const others = store.palliativeScreeningRecords.filter((s) => s.palliativePatientId !== pid);
-        store.setPalliativeScreeningRecords([
-          ...others,
-          ...(rows as PalliativeScreeningRecordInfo[]),
-        ]);
+        const cur = useStore.getState().palliativeScreeningRecords;
+        const others = cur.filter((s) => s.palliativePatientId !== pid);
+        useStore.setState({
+          palliativeScreeningRecords: [...others, ...(rows as PalliativeScreeningRecordInfo[])],
+        });
       }
     } catch (e) { warn('screeningService.getAll', e); }
 
@@ -104,11 +104,11 @@ async function loadPatientScopedData(
     try {
       const rows = await svc.medicationService.getAll(pid);
       if (Array.isArray(rows) && rows.length > 0) {
-        const others = store.palliativeMedications.filter((m) => m.palliativePatientId !== pid);
-        store.setPalliativeMedications([
-          ...others,
-          ...(rows as PalliativeMedicationInfo[]),
-        ]);
+        const cur = useStore.getState().palliativeMedications;
+        const others = cur.filter((m) => m.palliativePatientId !== pid);
+        useStore.setState({
+          palliativeMedications: [...others, ...(rows as PalliativeMedicationInfo[])],
+        });
       }
     } catch (e) { warn('medicationService.getAll', e); }
 
@@ -116,11 +116,11 @@ async function loadPatientScopedData(
     try {
       const rows = await svc.nutritionService.getAll(pid);
       if (Array.isArray(rows) && rows.length > 0) {
-        const others = store.nutritionRecords.filter((n) => n.palliativePatientId !== pid);
-        store.setNutritionRecords([
-          ...others,
-          ...(rows as NutritionRecordInfo[]),
-        ]);
+        const cur = useStore.getState().nutritionRecords;
+        const others = cur.filter((n) => n.palliativePatientId !== pid);
+        useStore.setState({
+          nutritionRecords: [...others, ...(rows as NutritionRecordInfo[])],
+        });
       }
     } catch (e) { warn('nutritionService.getAll', e); }
 
@@ -128,11 +128,11 @@ async function loadPatientScopedData(
     try {
       const rows = await svc.complaintService.getAll(pid);
       if (Array.isArray(rows) && rows.length > 0) {
-        const others = store.dailyComplaints.filter((c) => c.palliativePatientId !== pid);
-        store.setDailyComplaints([
-          ...others,
-          ...(rows as DailyComplaintRecord[]),
-        ]);
+        const cur = useStore.getState().dailyComplaints;
+        const others = cur.filter((c) => c.palliativePatientId !== pid);
+        useStore.setState({
+          dailyComplaints: [...others, ...(rows as DailyComplaintRecord[])],
+        });
       }
     } catch (e) { warn('complaintService.getAll', e); }
 
@@ -140,19 +140,11 @@ async function loadPatientScopedData(
     try {
       const rows = await svc.socialService.getAll(pid);
       if (Array.isArray(rows) && rows.length > 0) {
-        const others = store.socialAssessments.filter((s) => s.palliativePatientId !== pid);
-        const fresh = store.socialAssessments.filter((s) => s.palliativePatientId === pid);
-        // Replace this patient's records
-        const next = [...others];
-        for (const r of rows as SocialAssessmentRecord[]) {
-          if (!hasId(fresh, r.id)) next.push(r);
-          else next.push(r); // overwrite in-place
-        }
-        // Use direct set since addSocialAssessment prepends (we want replace)
-        store.socialAssessments = next;
-        // Trigger Zustand update via the official setter (addSocialAssessment
-        // prepends; we want a clean replace per-patient, so set directly):
-        useStore.setState({ socialAssessments: next });
+        const cur = useStore.getState().socialAssessments;
+        const others = cur.filter((s) => s.palliativePatientId !== pid);
+        useStore.setState({
+          socialAssessments: [...others, ...(rows as SocialAssessmentRecord[])],
+        });
       }
     } catch (e) { warn('socialService.getAll', e); }
 
@@ -160,11 +152,11 @@ async function loadPatientScopedData(
     try {
       const rows = await svc.acpService.getAll(pid);
       if (Array.isArray(rows) && rows.length > 0) {
-        const others = store.advanceCarePlans.filter((a) => a.palliativePatientId !== pid);
-        store.setAdvanceCarePlans([
-          ...others,
-          ...(rows as AdvanceCarePlanInfo[]),
-        ]);
+        const cur = useStore.getState().advanceCarePlans;
+        const others = cur.filter((a) => a.palliativePatientId !== pid);
+        useStore.setState({
+          advanceCarePlans: [...others, ...(rows as AdvanceCarePlanInfo[])],
+        });
       }
     } catch (e) { warn('acpService.getAll', e); }
 
@@ -193,7 +185,7 @@ async function loadPatientScopedData(
             isRead: !!r.is_read,
             createdAt: r.created_at ?? new Date().toISOString(),
           };
-          if (!hasId(store.palliativeClinicalAlerts, alert.id)) {
+          if (!hasId(useStore.getState().palliativeClinicalAlerts, alert.id)) {
             store.addPalliativeClinicalAlert(alert);
           }
         }
@@ -224,7 +216,7 @@ async function loadPatientScopedData(
             device: r.device ?? undefined,
             createdAt: r.created_at ?? new Date().toISOString(),
           };
-          if (!hasId(store.palliativeAuditLog, entry.id)) {
+          if (!hasId(useStore.getState().palliativeAuditLog, entry.id)) {
             store.addPalliativeAuditEntry(entry);
           }
         }
