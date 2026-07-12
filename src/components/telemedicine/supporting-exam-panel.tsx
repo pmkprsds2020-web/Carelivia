@@ -33,6 +33,7 @@ import {
   type USGInput,
   type ECGInput,
   type RadiologyInput,
+  type UploadProgressCb,
 } from '@/services/supabase';
 import {
   JENIS_USG_OPTIONS,
@@ -117,10 +118,15 @@ import {
   Calendar,
   FileText,
   Image as ImageIcon,
+  ImageOff,
   ChevronDown,
   ChevronUp,
   AlertCircle,
   Stethoscope,
+  Download,
+  ExternalLink,
+  ZoomIn,
+  Upload,
 } from 'lucide-react';
 
 // ── Constants & helpers ─────────────────────────────────────────────────────
@@ -357,6 +363,21 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
   const [confirmDelete, setConfirmDelete] = useState<ConfirmDeletePayload | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // ── Upload progress (shared across USG/EKG/Radiologi) ──
+  const [uploadProgress, setUploadProgress] = useState<{
+    active: boolean;
+    phase: 'uploading' | 'inserting' | 'done' | 'error';
+    pct: number;
+    msg?: string;
+  }>({ active: false, phase: 'uploading', pct: 0 });
+
+  const onUploadProgress: UploadProgressCb = (phase, pct, msg) => {
+    setUploadProgress({ active: phase !== 'done' && phase !== 'error', phase, pct, msg });
+  };
+
+  // ── Image preview state (for zoom modal in detail dialog) ──
+  const [zoomImage, setZoomImage] = useState<string | null>(null);
+
   // ── AI analysis ──
   const [aiLoading, setAiLoading] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
@@ -514,6 +535,11 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
   }, [labResults]);
 
   // ── Photo file change handler ─────────────────────────────────────────────
+  // Validates: max 20 MB, allowed types: jpg, jpeg, png, webp, pdf.
+  // Mirrors the server-side validation in /api/supporting-exams/upload.
+  const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
+  const ALLOWED_FILE_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
+
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
     setter: (f: File | null) => void
@@ -532,11 +558,14 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
       e.target.value = '';
       return;
     }
-    const okType = file.type.startsWith('image/') || file.type === 'application/pdf';
-    if (!okType) {
+    // Check both MIME type and file extension (some browsers don't set MIME)
+    const lowerName = file.name.toLowerCase();
+    const extOk = ALLOWED_FILE_EXTS.some((ext) => lowerName.endsWith(ext));
+    const typeOk = ALLOWED_FILE_TYPES.includes(file.type);
+    if (!typeOk && !extOk) {
       toast({
         title: 'Format tidak didukung',
-        description: 'Hanya file gambar atau PDF yang diperbolehkan.',
+        description: 'Hanya file JPG, JPEG, PNG, WEBP, atau PDF yang diperbolehkan.',
         variant: 'destructive',
       });
       e.target.value = '';
@@ -635,13 +664,14 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
       foto: usgFoto ?? undefined,
     };
     setUsgSaving(true);
+    setUploadProgress({ active: true, phase: 'uploading', pct: 0, msg: 'Memulai upload...' });
     try {
       if (editingUsg) {
-        const updated = await supportingExamService.updateUsg(editingUsg.id, input);
+        const updated = await supportingExamService.updateUsg(editingUsg.id, input, onUploadProgress);
         if (!updated) throw new Error('Gagal memperbarui USG');
         toast({ title: 'Berhasil', description: 'Hasil USG berhasil diperbarui.' });
       } else {
-        const created = await supportingExamService.createUsg(input);
+        const created = await supportingExamService.createUsg(input, onUploadProgress);
         if (!created) throw new Error('Gagal menyimpan USG');
         toast({ title: 'Berhasil', description: 'Hasil USG berhasil disimpan.' });
       }
@@ -659,8 +689,9 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
       });
     } finally {
       setUsgSaving(false);
+      setUploadProgress((p) => ({ ...p, active: false }));
     }
-  }, [palliativePatientId, usgForm, usgFoto, editingUsg, currentUser, toast, reloadAll]);
+  }, [palliativePatientId, usgForm, usgFoto, editingUsg, currentUser, toast, reloadAll, onUploadProgress]);
 
   const handleSaveEkg = useCallback(async () => {
     if (!palliativePatientId) return;
@@ -685,13 +716,14 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
       foto: ekgFoto ?? undefined,
     };
     setEkgSaving(true);
+    setUploadProgress({ active: true, phase: 'uploading', pct: 0, msg: 'Memulai upload...' });
     try {
       if (editingEkg) {
-        const updated = await supportingExamService.updateEcg(editingEkg.id, input);
+        const updated = await supportingExamService.updateEcg(editingEkg.id, input, onUploadProgress);
         if (!updated) throw new Error('Gagal memperbarui EKG');
         toast({ title: 'Berhasil', description: 'Hasil EKG berhasil diperbarui.' });
       } else {
-        const created = await supportingExamService.createEcg(input);
+        const created = await supportingExamService.createEcg(input, onUploadProgress);
         if (!created) throw new Error('Gagal menyimpan EKG');
         toast({ title: 'Berhasil', description: 'Hasil EKG berhasil disimpan.' });
       }
@@ -709,8 +741,9 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
       });
     } finally {
       setEkgSaving(false);
+      setUploadProgress((p) => ({ ...p, active: false }));
     }
-  }, [palliativePatientId, ekgForm, ekgFoto, editingEkg, currentUser, toast, reloadAll]);
+  }, [palliativePatientId, ekgForm, ekgFoto, editingEkg, currentUser, toast, reloadAll, onUploadProgress]);
 
   const handleSaveRad = useCallback(async () => {
     if (!palliativePatientId) return;
@@ -736,13 +769,14 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
       foto: radFoto ?? undefined,
     };
     setRadSaving(true);
+    setUploadProgress({ active: true, phase: 'uploading', pct: 0, msg: 'Memulai upload...' });
     try {
       if (editingRad) {
-        const updated = await supportingExamService.updateRadiology(editingRad.id, input);
+        const updated = await supportingExamService.updateRadiology(editingRad.id, input, onUploadProgress);
         if (!updated) throw new Error('Gagal memperbarui Radiologi');
         toast({ title: 'Berhasil', description: 'Hasil radiologi berhasil diperbarui.' });
       } else {
-        const created = await supportingExamService.createRadiology(input);
+        const created = await supportingExamService.createRadiology(input, onUploadProgress);
         if (!created) throw new Error('Gagal menyimpan Radiologi');
         toast({ title: 'Berhasil', description: 'Hasil radiologi berhasil disimpan.' });
       }
@@ -760,8 +794,9 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
       });
     } finally {
       setRadSaving(false);
+      setUploadProgress((p) => ({ ...p, active: false }));
     }
-  }, [palliativePatientId, radForm, radFoto, editingRad, currentUser, toast, reloadAll]);
+  }, [palliativePatientId, radForm, radFoto, editingRad, currentUser, toast, reloadAll, onUploadProgress]);
 
   // ── Delete handler ────────────────────────────────────────────────────────
   const handleConfirmDelete = useCallback(async () => {
@@ -1078,7 +1113,7 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
             <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
             <AlertDialogDescription>
               Yakin ingin menghapus data {confirmDelete ? TYPE_META[confirmDelete.type].label : ''} ini?
-              Tindakan ini tidak dapat dibatalkan.
+              Tindakan ini tidak dapat dibatalkan. File di Storage juga akan dihapus.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1097,6 +1132,9 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Zoom image dialog (full-screen viewer for exam photos) */}
+      <ZoomImageDialog url={zoomImage} onClose={() => setZoomImage(null)} />
 
       {/* AI dialog */}
       <Dialog open={aiDialogOpen} onOpenChange={(o) => !o && !aiLoading && setAiDialogOpen(false)}>
@@ -1720,6 +1758,7 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
                     Simpan
                   </Button>
                 </div>
+                {uploadProgress.active && <UploadProgressBar progress={uploadProgress} />}
               </CardContent>
             </CollapsibleContent>
           </Collapsible>
@@ -1863,6 +1902,7 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
                     Simpan
                   </Button>
                 </div>
+                {uploadProgress.active && <UploadProgressBar progress={uploadProgress} />}
               </CardContent>
             </CollapsibleContent>
           </Collapsible>
@@ -2023,6 +2063,7 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
                     Simpan
                   </Button>
                 </div>
+                {uploadProgress.active && <UploadProgressBar progress={uploadProgress} />}
               </CardContent>
             </CollapsibleContent>
           </Collapsible>
@@ -2201,11 +2242,7 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
       const u = data as USGResult;
       return (
         <div className="space-y-3">
-          {u.fotoUrl && (
-            <a href={u.fotoUrl} target="_blank" rel="noopener noreferrer" className="block">
-              <img src={u.fotoUrl} alt="Foto USG" className="max-h-64 rounded border object-contain" />
-            </a>
-          )}
+          <DetailPhoto fotoUrl={u.fotoUrl} alt="Foto USG" onZoom={setZoomImage} />
           <DetailGrid
             rows={[
               ['Tanggal', formatDate(u.tanggal)],
@@ -2223,11 +2260,7 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
       const e = data as ECGResult;
       return (
         <div className="space-y-3">
-          {e.fotoUrl && (
-            <a href={e.fotoUrl} target="_blank" rel="noopener noreferrer" className="block">
-              <img src={e.fotoUrl} alt="Foto EKG" className="max-h-64 rounded border object-contain" />
-            </a>
-          )}
+          <DetailPhoto fotoUrl={e.fotoUrl} alt="Foto EKG" onZoom={setZoomImage} />
           <DetailGrid
             rows={[
               ['Tanggal', formatDate(e.tanggal)],
@@ -2244,11 +2277,7 @@ export function SupportingExamPanel({ palliativePatientId, patientName }: Suppor
     const r = data as RadiologyResult;
     return (
       <div className="space-y-3">
-        {r.fotoUrl && (
-          <a href={r.fotoUrl} target="_blank" rel="noopener noreferrer" className="block">
-            <img src={r.fotoUrl} alt="Foto Radiologi" className="max-h-64 rounded border object-contain" />
-          </a>
-        )}
+        <DetailPhoto fotoUrl={r.fotoUrl} alt="Foto Radiologi" onZoom={setZoomImage} />
         <DetailGrid
           rows={[
             ['Tanggal', formatDate(r.tanggal)],
@@ -2447,6 +2476,10 @@ function PhotoCard({
 }) {
   const meta = TYPE_META[type];
   const Icon = meta.icon;
+  // Track image load error so we can show an error icon (not "Tidak ada foto")
+  const [imgError, setImgError] = useState(false);
+  const showImg = !!fotoUrl && !imgError;
+
   return (
     <Card className={cn('flex flex-col overflow-hidden', meta.border)}>
       <div className={cn('flex items-center gap-2 px-3 py-2 border-b', meta.bg, meta.border)}>
@@ -2455,17 +2488,27 @@ function PhotoCard({
         <span className="ml-auto text-xs text-muted-foreground">{formatDate(tanggal)}</span>
       </div>
       <CardContent className="p-3 flex-1 space-y-2">
-        {fotoUrl ? (
+        {showImg ? (
           <a href={fotoUrl} target="_blank" rel="noopener noreferrer" className="block">
             <img
               src={fotoUrl}
               alt={`Foto ${meta.label}`}
               className="w-full h-32 object-cover rounded border bg-muted"
               loading="lazy"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = 'none';
-              }}
+              onError={() => setImgError(true)}
             />
+          </a>
+        ) : fotoUrl && imgError ? (
+          // URL exists but failed to load — show error icon, NOT "Tidak ada foto"
+          <a
+            href={fotoUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full h-32 flex flex-col items-center justify-center rounded border bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+            title="Gagal memuat gambar. Klik untuk membuka langsung."
+          >
+            <ImageOff className="w-6 h-6 mb-1" />
+            <span className="text-xs">Gagal memuat — klik untuk buka</span>
           </a>
         ) : (
           <div className="w-full h-32 flex items-center justify-center rounded border bg-muted/40 text-xs text-muted-foreground">
@@ -2526,6 +2569,227 @@ function DetailGrid({ rows }: { rows: [string, string | number | undefined, bool
           </span>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ── Detail photo with zoom / open new tab / download ────────────────────────
+//
+// Renders the exam photo at a larger size than the card thumbnail, with three
+// action buttons overlayed:
+//   🔍 Zoom   — opens a full-screen modal with the image at native resolution
+//   ↗  Open   — opens the raw URL in a new browser tab
+//   ⬇  Download — triggers a browser download of the file
+//
+// If the URL is missing or the image fails to load, shows a clear error
+// banner with a direct link (NOT "Tidak ada foto").
+function DetailPhoto({
+  fotoUrl,
+  alt,
+  onZoom,
+}: {
+  fotoUrl?: string;
+  alt: string;
+  onZoom: (url: string) => void;
+}) {
+  const [imgError, setImgError] = useState(false);
+
+  if (!fotoUrl) {
+    return (
+      <div className="w-full h-40 flex flex-col items-center justify-center rounded border bg-muted/40 text-muted-foreground">
+        <ImageIcon className="w-8 h-8 mb-1" />
+        <span className="text-xs">Tidak ada foto</span>
+      </div>
+    );
+  }
+
+  // URL exists but image failed to load — show error with direct link
+  if (imgError) {
+    return (
+      <div className="w-full p-4 rounded border bg-red-50 text-red-700 flex flex-col items-center gap-2">
+        <ImageOff className="w-8 h-8" />
+        <p className="text-xs text-center">
+          Gagal memuat gambar. URL mungkin tidak dapat diakses publik.
+        </p>
+        <a
+          href={fotoUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs underline text-red-700 hover:text-red-900"
+        >
+          <ExternalLink className="w-3 h-3" /> Buka URL langsung
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative group rounded border overflow-hidden bg-muted">
+      <img
+        src={fotoUrl}
+        alt={alt}
+        className="w-full max-h-80 object-contain bg-black/5"
+        loading="lazy"
+        onError={() => setImgError(true)}
+      />
+      {/* Action buttons overlay */}
+      <div className="absolute top-2 right-2 flex gap-1 opacity-90 group-hover:opacity-100 transition-opacity">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="h-8 w-8 p-0 bg-white/90 hover:bg-white shadow"
+          title="Perbesar (Zoom)"
+          onClick={() => onZoom(fotoUrl)}
+        >
+          <ZoomIn className="w-4 h-4" />
+        </Button>
+        <a
+          href={fotoUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Buka di tab baru"
+          className="inline-flex items-center justify-center h-8 w-8 rounded-md bg-white/90 hover:bg-white shadow text-slate-700"
+        >
+          <ExternalLink className="w-4 h-4" />
+        </a>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="h-8 w-8 p-0 bg-white/90 hover:bg-white shadow"
+          title="Download"
+          onClick={() => {
+            // Trigger download via fetch + blob (avoids navigation)
+            fetch(fotoUrl)
+              .then((r) => r.blob())
+              .then((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = alt.replace(/\s+/g, '_') || 'download';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              })
+              .catch(() => {
+                // Fallback: open in new tab
+                window.open(fotoUrl, '_blank', 'noopener');
+              });
+          }}
+        >
+          <Download className="w-4 h-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Zoom image dialog (full-screen image viewer) ────────────────────────────
+function ZoomImageDialog({ url, onClose }: { url: string | null; onClose: () => void }) {
+  if (!url) return null;
+  return (
+    <Dialog open={!!url} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-4xl p-0 overflow-hidden bg-black/95">
+        <DialogHeader className="p-3 border-b border-white/10">
+          <DialogTitle className="text-white text-sm flex items-center gap-2">
+            <ZoomIn className="w-4 h-4" /> Pratinjau Gambar
+          </DialogTitle>
+        </DialogHeader>
+        <div className="flex items-center justify-center p-4 bg-black min-h-[300px] max-h-[80vh] overflow-auto">
+          <img
+            src={url}
+            alt="Zoom"
+            className="max-w-full max-h-[70vh] object-contain"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        </div>
+        <DialogFooter className="p-3 border-t border-white/10 gap-2">
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white text-xs"
+          >
+            <ExternalLink className="w-3.5 h-3.5" /> Buka Tab Baru
+          </a>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              fetch(url)
+                .then((r) => r.blob())
+                .then((blob) => {
+                  const u = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = u;
+                  a.download = 'pemeriksaan';
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(u);
+                })
+                .catch(() => window.open(url, '_blank', 'noopener'));
+            }}
+          >
+            <Download className="w-3.5 h-3.5 mr-1" /> Download
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            Tutup
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Upload progress bar ─────────────────────────────────────────────────────
+//
+// Shown inside the form when an upload is in progress. Displays:
+//   - A spinner + phase label ("Mengunggah..." / "Menyimpan..." / "Selesai")
+//   - A progress bar (0-100%)
+//   - The current message from the upload API
+function UploadProgressBar({
+  progress,
+}: {
+  progress: { active: boolean; phase: string; pct: number; msg?: string };
+}) {
+  if (!progress.active && progress.pct === 0) return null;
+  const phaseLabel =
+    progress.phase === 'uploading'
+      ? 'Mengunggah...'
+      : progress.phase === 'inserting'
+      ? 'Menyimpan metadata...'
+      : progress.phase === 'done'
+      ? 'Selesai'
+      : 'Gagal';
+  const barColor =
+    progress.phase === 'error'
+      ? 'bg-red-500'
+      : progress.phase === 'done'
+      ? 'bg-emerald-500'
+      : 'bg-amber-500';
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
+      <div className="flex items-center gap-2 text-xs text-amber-800">
+        {progress.phase !== 'done' && progress.phase !== 'error' && (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        )}
+        {progress.phase === 'done' && <span className="text-emerald-600">✓</span>}
+        {progress.phase === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-600" />}
+        <span className="font-medium">{phaseLabel}</span>
+        {progress.msg && <span className="text-amber-700 truncate">— {progress.msg}</span>}
+      </div>
+      <div className="w-full h-2 rounded-full bg-amber-100 overflow-hidden">
+        <div
+          className={cn('h-full transition-all duration-300', barColor)}
+          style={{ width: `${Math.max(0, Math.min(100, progress.pct))}%` }}
+        />
+      </div>
     </div>
   );
 }

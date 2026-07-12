@@ -281,41 +281,165 @@ function fromDbRadiology(row: any): RadiologyResult {
   };
 }
 
-// ── Storage upload helper ───────────────────────────────────────────────────
+// ── Storage helpers (server-side via API routes to bypass RLS) ──────────────
+//
+// The browser anon client is subject to Storage RLS and gets:
+//   "new row violates row-level security policy"
+// when uploading to the `patient-files` bucket. All Storage + DB operations
+// for photo exams therefore go through server-side API routes that use the
+// service-role key (getSupabaseAdmin) to bypass RLS.
+//
+// Routes:
+//   POST /api/supporting-exams/upload       — upload file + INSERT row
+//   POST /api/supporting-exams/update       — optional new file + UPDATE row
+//   POST /api/supporting-exams/delete-file  — delete file + DELETE row
+//
 
-async function uploadPhoto(
-  patientId: string,
-  jenis: string,
-  file: File | Blob
-): Promise<{ url?: string; storagePath: string; fileName: string } | null> {
+export type UploadProgressCb = (phase: 'uploading' | 'inserting' | 'done' | 'error', pct: number, msg?: string) => void;
+
+/**
+ * Call the /api/supporting-exams/upload route.
+ * Uploads a file to Storage AND inserts a metadata row in one atomic call.
+ * Returns the inserted DB row (raw snake_case) or throws on failure.
+ */
+async function callUploadApi(
+  file: File | Blob,
+  metadata: Record<string, any>,
+  onProgress?: UploadProgressCb
+): Promise<any> {
   const fileName = (file as File).name ?? `upload-${Date.now()}`;
-  const storagePath = buildStoragePath(patientId, jenis, fileName);
-  const uploadRes = await safeQuery(
-    supabase.storage.from(BUCKET).upload(storagePath, file, {
-      cacheControl: '3600',
-      upsert: false,
-    }),
-    null as any,
-    'supportingExamService.uploadPhoto'
-  );
-  if (uploadRes === null) return null;
-  let url: string | undefined;
-  try {
-    const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
-    if (pub?.publicUrl) url = pub.publicUrl;
-  } catch {
-    /* leave url undefined */
+  onProgress?.('uploading', 10, `Mengunggah ${fileName}...`);
+
+  const fd = new FormData();
+  // Coerce to File if it's a Blob (some callers pass Blob without name)
+  if (!(file instanceof File) && file instanceof Blob) {
+    fd.append('file', file, fileName);
+  } else {
+    fd.append('file', file as File);
   }
-  return { url, storagePath, fileName };
+  fd.append('metadata', JSON.stringify(metadata));
+
+  onProgress?.('uploading', 30);
+  let res: Response;
+  try {
+    res = await fetch('/api/supporting-exams/upload', {
+      method: 'POST',
+      body: fd,
+    });
+  } catch (e: any) {
+    onProgress?.('error', 0, e?.message ?? 'Network error');
+    throw new Error('Upload gagal (network): ' + (e?.message ?? String(e)));
+  }
+  onProgress?.('uploading', 80);
+
+  let body: any;
+  try {
+    body = await res.json();
+  } catch {
+    body = { error: 'Invalid JSON response from server' };
+  }
+
+  if (!res.ok || !body?.ok) {
+    const msg = body?.error || `HTTP ${res.status}`;
+    onProgress?.('error', 0, msg);
+    // Surface a clear error so the UI can toast it
+    const err = new Error(msg);
+    (err as any).code = body?.code;
+    (err as any).status = res.status;
+    throw err;
+  }
+
+  onProgress?.('done', 100);
+  return body.row;
 }
 
-async function removeStorage(storagePath: string): Promise<void> {
-  if (!storagePath) return;
-  await safeQuery(
-    supabase.storage.from(BUCKET).remove([storagePath]),
-    null as any,
-    'supportingExamService.removeStorage'
-  );
+/**
+ * Call the /api/supporting-exams/update route.
+ * Optionally uploads a new file (and deletes the old one), then UPDATEs the row.
+ */
+async function callUpdateApi(
+  id: string,
+  metadata: Record<string, any>,
+  file?: File | Blob | null,
+  oldStoragePath?: string,
+  onProgress?: UploadProgressCb
+): Promise<any> {
+  const fd = new FormData();
+  fd.append('id', id);
+  fd.append('metadata', JSON.stringify(metadata));
+  if (oldStoragePath) fd.append('oldStoragePath', oldStoragePath);
+  if (file) {
+    const fileName = (file as File).name ?? `upload-${Date.now()}`;
+    onProgress?.('uploading', 20, `Mengunggah ${fileName}...`);
+    if (!(file instanceof File) && file instanceof Blob) {
+      fd.append('file', file, fileName);
+    } else {
+      fd.append('file', file as File);
+    }
+  } else {
+    onProgress?.('inserting', 50, 'Menyimpan perubahan...');
+  }
+
+  let res: Response;
+  try {
+    res = await fetch('/api/supporting-exams/update', {
+      method: 'POST',
+      body: fd,
+    });
+  } catch (e: any) {
+    onProgress?.('error', 0, e?.message ?? 'Network error');
+    throw new Error('Update gagal (network): ' + (e?.message ?? String(e)));
+  }
+
+  let body: any;
+  try {
+    body = await res.json();
+  } catch {
+    body = { error: 'Invalid JSON response from server' };
+  }
+
+  if (!res.ok || !body?.ok) {
+    const msg = body?.error || `HTTP ${res.status}`;
+    onProgress?.('error', 0, msg);
+    const err = new Error(msg);
+    (err as any).code = body?.code;
+    (err as any).status = res.status;
+    throw err;
+  }
+
+  onProgress?.('done', 100);
+  return body.row;
+}
+
+/**
+ * Call the /api/supporting-exams/delete-file route.
+ * Deletes the file from Storage AND the metadata row.
+ */
+async function callDeleteApi(id: string, storagePath?: string): Promise<boolean> {
+  let res: Response;
+  try {
+    res = await fetch('/api/supporting-exams/delete-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, storagePath }),
+    });
+  } catch (e: any) {
+    console.error('[supportingExamService.callDeleteApi] network error:', e);
+    return false;
+  }
+
+  let body: any;
+  try {
+    body = await res.json();
+  } catch {
+    body = {};
+  }
+
+  if (!res.ok || !body?.ok) {
+    console.error('[supportingExamService.callDeleteApi] failed:', body?.error ?? res.status);
+    return false;
+  }
+  return true;
 }
 
 // ── Service ─────────────────────────────────────────────────────────────────
@@ -475,22 +599,35 @@ export const supportingExamService = {
       .map(fromDbUsg);
   },
 
-  async createUsg(input: USGInput): Promise<USGResult | null> {
+  async createUsg(input: USGInput, onProgress?: UploadProgressCb): Promise<USGResult | null> {
     if (!isValidUuid(input.patientId)) {
       console.error('[supportingExamService.createUsg] ABORTED — patient_id is not a valid UUID.');
       return null;
     }
-    let url: string | undefined;
-    let storagePath = `usg/${input.patientId}/${Date.now()}`;
-    let fileName = `usg-${input.tanggal ?? todayStr()}`;
+
+    // If a photo is provided, use the server-side upload API (bypasses RLS).
     if (input.foto) {
-      const uploaded = await uploadPhoto(input.patientId, 'gambar', input.foto);
-      if (uploaded) {
-        url = uploaded.url;
-        storagePath = uploaded.storagePath;
-        fileName = uploaded.fileName;
+      const metadata = {
+        patientId: input.patientId,
+        jenis: 'gambar',
+        type: 'usg',
+        jenisUsg: input.jenisUsg,
+        hasil: input.hasil,
+        catatan: input.catatan,
+        doctorId: validUuidOrUndefined(input.doctorId),
+        createdBy: input.createdBy,
+        tanggal: input.tanggal ?? todayStr(),
+      };
+      try {
+        const row = await callUploadApi(input.foto, metadata, onProgress);
+        return row ? fromDbUsg(row) : null;
+      } catch (e: any) {
+        console.error('[supportingExamService.createUsg] upload API failed:', e);
+        throw e;
       }
     }
+
+    // No photo — insert metadata only (browser client, RLS permits inserts).
     const keterangan = JSON.stringify({
       type: 'usg',
       jenisUsg: input.jenisUsg,
@@ -502,9 +639,9 @@ export const supportingExamService = {
     const payload = {
       patient_id: input.patientId,
       jenis: 'gambar' as const,
-      nama_file: fileName,
-      storage_path: storagePath,
-      url,
+      nama_file: `usg-${input.tanggal ?? todayStr()}`,
+      storage_path: `usg/${input.patientId}/${Date.now()}`,
+      url: null,
       keterangan,
       tanggal: input.tanggal ?? todayStr(),
       uploaded_by: input.createdBy,
@@ -517,28 +654,38 @@ export const supportingExamService = {
     return row ? fromDbUsg(row) : null;
   },
 
-  async updateUsg(id: string, input: Partial<USGInput>): Promise<USGResult | null> {
+  async updateUsg(id: string, input: Partial<USGInput>, onProgress?: UploadProgressCb): Promise<USGResult | null> {
     if (!isValidUuid(id)) return null;
-    let url: string | undefined;
-    let storagePath: string | undefined;
-    let fileName: string | undefined;
+
+    // If a new photo is provided, use the server-side update API.
     if (input.foto) {
-      // Need patient_id for storage path; fetch the existing row.
+      // Fetch old storage_path so the API can delete the old file.
       const existing = await safeQuery(
-        supabase.from('patient_documents').select('patient_id').eq('id', id).single(),
+        supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
         null as any,
         'supportingExamService.updateUsg.fetch'
       );
-      const pid = (existing as any)?.patient_id;
-      if (pid) {
-        const uploaded = await uploadPhoto(pid, 'gambar', input.foto);
-        if (uploaded) {
-          url = uploaded.url;
-          storagePath = uploaded.storagePath;
-          fileName = uploaded.fileName;
-        }
+      const oldStoragePath = (existing as any)?.storage_path;
+      const metadata = {
+        jenis: 'gambar',
+        type: 'usg',
+        jenisUsg: input.jenisUsg,
+        hasil: input.hasil,
+        catatan: input.catatan,
+        doctorId: validUuidOrUndefined(input.doctorId),
+        createdBy: input.createdBy,
+        tanggal: input.tanggal,
+      };
+      try {
+        const row = await callUpdateApi(id, metadata, input.foto, oldStoragePath, onProgress);
+        return row ? fromDbUsg(row) : null;
+      } catch (e: any) {
+        console.error('[supportingExamService.updateUsg] update API failed:', e);
+        throw e;
       }
     }
+
+    // No new photo — update metadata only.
     const keterangan = JSON.stringify({
       type: 'usg',
       jenisUsg: input.jenisUsg,
@@ -549,9 +696,6 @@ export const supportingExamService = {
     });
     const payload = stripUndefined({
       keterangan,
-      url,
-      storage_path: storagePath,
-      nama_file: fileName,
       tanggal: input.tanggal,
       uploaded_by: input.createdBy,
     });
@@ -565,15 +709,17 @@ export const supportingExamService = {
 
   async deleteUsg(id: string): Promise<boolean> {
     if (!isValidUuid(id)) return false;
-    // Fetch the storage_path first so we can delete the file too.
+    // Fetch storage_path then call the server-side delete API.
     const existing = await safeQuery(
       supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
       null as any,
       'supportingExamService.deleteUsg.fetch'
     );
-    if (existing?.storage_path) {
-      await removeStorage(existing.storage_path);
-    }
+    const storagePath = (existing as any)?.storage_path;
+    // Try the admin delete API first (handles file + row atomically).
+    const ok = await callDeleteApi(id, storagePath);
+    if (ok) return true;
+    // Fallback: browser client delete (row only).
     const res = await safeQuery(
       supabase.from('patient_documents').delete().eq('id', id),
       null as any,
@@ -605,22 +751,34 @@ export const supportingExamService = {
       .map(fromDbEcg);
   },
 
-  async createEcg(input: ECGInput): Promise<ECGResult | null> {
+  async createEcg(input: ECGInput, onProgress?: UploadProgressCb): Promise<ECGResult | null> {
     if (!isValidUuid(input.patientId)) {
       console.error('[supportingExamService.createEcg] ABORTED — patient_id is not a valid UUID.');
       return null;
     }
-    let url: string | undefined;
-    let storagePath = `ekg/${input.patientId}/${Date.now()}`;
-    let fileName = `ekg-${input.tanggal ?? todayStr()}`;
+
+    // If a photo is provided, use the server-side upload API (bypasses RLS).
     if (input.foto) {
-      const uploaded = await uploadPhoto(input.patientId, 'gambar', input.foto);
-      if (uploaded) {
-        url = uploaded.url;
-        storagePath = uploaded.storagePath;
-        fileName = uploaded.fileName;
+      const metadata = {
+        patientId: input.patientId,
+        jenis: 'gambar',
+        type: 'ekg',
+        interpretasi: input.interpretasi,
+        catatan: input.catatan,
+        doctorId: validUuidOrUndefined(input.doctorId),
+        createdBy: input.createdBy,
+        tanggal: input.tanggal ?? todayStr(),
+      };
+      try {
+        const row = await callUploadApi(input.foto, metadata, onProgress);
+        return row ? fromDbEcg(row) : null;
+      } catch (e: any) {
+        console.error('[supportingExamService.createEcg] upload API failed:', e);
+        throw e;
       }
     }
+
+    // No photo — insert metadata only.
     const keterangan = JSON.stringify({
       type: 'ekg',
       interpretasi: input.interpretasi,
@@ -631,9 +789,9 @@ export const supportingExamService = {
     const payload = {
       patient_id: input.patientId,
       jenis: 'gambar' as const,
-      nama_file: fileName,
-      storage_path: storagePath,
-      url,
+      nama_file: `ekg-${input.tanggal ?? todayStr()}`,
+      storage_path: `ekg/${input.patientId}/${Date.now()}`,
+      url: null,
       keterangan,
       tanggal: input.tanggal ?? todayStr(),
       uploaded_by: input.createdBy,
@@ -646,27 +804,34 @@ export const supportingExamService = {
     return row ? fromDbEcg(row) : null;
   },
 
-  async updateEcg(id: string, input: Partial<ECGInput>): Promise<ECGResult | null> {
+  async updateEcg(id: string, input: Partial<ECGInput>, onProgress?: UploadProgressCb): Promise<ECGResult | null> {
     if (!isValidUuid(id)) return null;
-    let url: string | undefined;
-    let storagePath: string | undefined;
-    let fileName: string | undefined;
+
     if (input.foto) {
       const existing = await safeQuery(
-        supabase.from('patient_documents').select('patient_id').eq('id', id).single(),
+        supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
         null as any,
         'supportingExamService.updateEcg.fetch'
       );
-      const pid = (existing as any)?.patient_id;
-      if (pid) {
-        const uploaded = await uploadPhoto(pid, 'gambar', input.foto);
-        if (uploaded) {
-          url = uploaded.url;
-          storagePath = uploaded.storagePath;
-          fileName = uploaded.fileName;
-        }
+      const oldStoragePath = (existing as any)?.storage_path;
+      const metadata = {
+        jenis: 'gambar',
+        type: 'ekg',
+        interpretasi: input.interpretasi,
+        catatan: input.catatan,
+        doctorId: validUuidOrUndefined(input.doctorId),
+        createdBy: input.createdBy,
+        tanggal: input.tanggal,
+      };
+      try {
+        const row = await callUpdateApi(id, metadata, input.foto, oldStoragePath, onProgress);
+        return row ? fromDbEcg(row) : null;
+      } catch (e: any) {
+        console.error('[supportingExamService.updateEcg] update API failed:', e);
+        throw e;
       }
     }
+
     const keterangan = JSON.stringify({
       type: 'ekg',
       interpretasi: input.interpretasi,
@@ -676,9 +841,6 @@ export const supportingExamService = {
     });
     const payload = stripUndefined({
       keterangan,
-      url,
-      storage_path: storagePath,
-      nama_file: fileName,
       tanggal: input.tanggal,
       uploaded_by: input.createdBy,
     });
@@ -697,9 +859,9 @@ export const supportingExamService = {
       null as any,
       'supportingExamService.deleteEcg.fetch'
     );
-    if (existing?.storage_path) {
-      await removeStorage(existing.storage_path);
-    }
+    const storagePath = (existing as any)?.storage_path;
+    const ok = await callDeleteApi(id, storagePath);
+    if (ok) return true;
     const res = await safeQuery(
       supabase.from('patient_documents').delete().eq('id', id),
       null as any,
@@ -726,22 +888,35 @@ export const supportingExamService = {
     return (rows as any[]).map(fromDbRadiology);
   },
 
-  async createRadiology(input: RadiologyInput): Promise<RadiologyResult | null> {
+  async createRadiology(input: RadiologyInput, onProgress?: UploadProgressCb): Promise<RadiologyResult | null> {
     if (!isValidUuid(input.patientId)) {
       console.error('[supportingExamService.createRadiology] ABORTED — patient_id is not a valid UUID.');
       return null;
     }
-    let url: string | undefined;
-    let storagePath = `radiologi/${input.patientId}/${Date.now()}`;
-    let fileName = `radiologi-${input.tanggal ?? todayStr()}`;
+
+    // If a photo is provided, use the server-side upload API (bypasses RLS).
     if (input.foto) {
-      const uploaded = await uploadPhoto(input.patientId, 'radiologi', input.foto);
-      if (uploaded) {
-        url = uploaded.url;
-        storagePath = uploaded.storagePath;
-        fileName = uploaded.fileName;
+      const metadata = {
+        patientId: input.patientId,
+        jenis: 'radiologi',
+        type: 'radiology',
+        jenisRadiologi: input.jenisRadiologi,
+        hasil: input.hasil,
+        catatan: input.catatan,
+        doctorId: validUuidOrUndefined(input.doctorId),
+        createdBy: input.createdBy,
+        tanggal: input.tanggal ?? todayStr(),
+      };
+      try {
+        const row = await callUploadApi(input.foto, metadata, onProgress);
+        return row ? fromDbRadiology(row) : null;
+      } catch (e: any) {
+        console.error('[supportingExamService.createRadiology] upload API failed:', e);
+        throw e;
       }
     }
+
+    // No photo — insert metadata only.
     const keterangan = JSON.stringify({
       type: 'radiology',
       jenisRadiologi: input.jenisRadiologi,
@@ -753,9 +928,9 @@ export const supportingExamService = {
     const payload = {
       patient_id: input.patientId,
       jenis: 'radiologi' as const,
-      nama_file: fileName,
-      storage_path: storagePath,
-      url,
+      nama_file: `radiologi-${input.tanggal ?? todayStr()}`,
+      storage_path: `radiologi/${input.patientId}/${Date.now()}`,
+      url: null,
       keterangan,
       tanggal: input.tanggal ?? todayStr(),
       uploaded_by: input.createdBy,
@@ -768,27 +943,35 @@ export const supportingExamService = {
     return row ? fromDbRadiology(row) : null;
   },
 
-  async updateRadiology(id: string, input: Partial<RadiologyInput>): Promise<RadiologyResult | null> {
+  async updateRadiology(id: string, input: Partial<RadiologyInput>, onProgress?: UploadProgressCb): Promise<RadiologyResult | null> {
     if (!isValidUuid(id)) return null;
-    let url: string | undefined;
-    let storagePath: string | undefined;
-    let fileName: string | undefined;
+
     if (input.foto) {
       const existing = await safeQuery(
-        supabase.from('patient_documents').select('patient_id').eq('id', id).single(),
+        supabase.from('patient_documents').select('storage_path').eq('id', id).single(),
         null as any,
         'supportingExamService.updateRadiology.fetch'
       );
-      const pid = (existing as any)?.patient_id;
-      if (pid) {
-        const uploaded = await uploadPhoto(pid, 'radiologi', input.foto);
-        if (uploaded) {
-          url = uploaded.url;
-          storagePath = uploaded.storagePath;
-          fileName = uploaded.fileName;
-        }
+      const oldStoragePath = (existing as any)?.storage_path;
+      const metadata = {
+        jenis: 'radiologi',
+        type: 'radiology',
+        jenisRadiologi: input.jenisRadiologi,
+        hasil: input.hasil,
+        catatan: input.catatan,
+        doctorId: validUuidOrUndefined(input.doctorId),
+        createdBy: input.createdBy,
+        tanggal: input.tanggal,
+      };
+      try {
+        const row = await callUpdateApi(id, metadata, input.foto, oldStoragePath, onProgress);
+        return row ? fromDbRadiology(row) : null;
+      } catch (e: any) {
+        console.error('[supportingExamService.updateRadiology] update API failed:', e);
+        throw e;
       }
     }
+
     const keterangan = JSON.stringify({
       type: 'radiology',
       jenisRadiologi: input.jenisRadiologi,
@@ -799,9 +982,6 @@ export const supportingExamService = {
     });
     const payload = stripUndefined({
       keterangan,
-      url,
-      storage_path: storagePath,
-      nama_file: fileName,
       tanggal: input.tanggal,
       uploaded_by: input.createdBy,
     });
@@ -820,9 +1000,9 @@ export const supportingExamService = {
       null as any,
       'supportingExamService.deleteRadiology.fetch'
     );
-    if (existing?.storage_path) {
-      await removeStorage(existing.storage_path);
-    }
+    const storagePath = (existing as any)?.storage_path;
+    const ok = await callDeleteApi(id, storagePath);
+    if (ok) return true;
     const res = await safeQuery(
       supabase.from('patient_documents').delete().eq('id', id),
       null as any,

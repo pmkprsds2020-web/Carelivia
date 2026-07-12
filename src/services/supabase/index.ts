@@ -71,4 +71,5 @@ export type {
   USGInput,
   ECGInput,
   RadiologyInput,
+  UploadProgressCb,
 } from './supportingExamService';
