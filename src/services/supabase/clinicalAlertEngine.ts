@@ -3,7 +3,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 //
 // Scans a patient's clinical data (TTV, Skrining, Obat, Nutrisi, Keluhan
-// Harian, Sosial) and produces a list of alerts that should be created.
+// Harian, Sosial, Lab) and produces a list of alerts that should be created.
 //
 // The engine is PURE — it does NOT touch Supabase. It returns a list of
 // `AlertCandidate` objects. The caller (store action or UI) passes them to
@@ -16,6 +16,7 @@
 //   Nutrisi: tidak makan >24h, tidak minum >12h, penurunan BB >5%
 //   Keluhan: sesak bertambah, nyeri bertambah, tidak BAB >5 hari, tidak BAK
 //   Sosial:  caregiver burden tinggi, pasien hidup sendiri
+//   Lab:     HbA1c≥9, GDP≥250, GDS≥300, LDL≥190, Kreatinin tinggi, Mikroalbumin positif
 // ───────────────────────────────────────────────────────────────────────────
 import type {
   VitalSignRecordInfo,
@@ -29,6 +30,7 @@ import type {
   ClinicalAlertSource,
 } from '@/lib/types';
 import type { CreateAlertInput } from './clinicalAlertService';
+import type { LabResult } from './supportingExamService';
 
 export type AlertCandidate = CreateAlertInput;
 
@@ -41,6 +43,7 @@ export interface EnginePatientData {
   nutrition: NutritionRecordInfo[];
   dailyComplaints: DailyComplaintRecord[];
   socialAssessments: SocialAssessmentRecord[];
+  labResults?: LabResult[];
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -548,13 +551,127 @@ function evaluateSocial(data: EnginePatientData): AlertCandidate[] {
   return alerts;
 }
 
+// ── Lab Results Rules ───────────────────────────────────────────────────────
+//
+// Triggered when a new lab result is saved. Creates alerts for abnormal values:
+//   HbA1c ≥ 9%      → CRITICAL (kadar gula darah tidak terkontrol berat)
+//   GDP  ≥ 250      → CRITICAL (hiperglikemia berat)
+//   GDS  ≥ 300      → CRITICAL (hiperglikemia berat)
+//   LDL  ≥ 190      → HIGH     (hiperkolesterolemia berat)
+//   Kreatinin > 2.0 → HIGH     (gangguan fungsi ginjal)
+//   Mikroalbumin >30→ MEDIUM   (mikroalbuminuria positif)
+// ───────────────────────────────────────────────────────────────────────────
+
+function evaluateLabResults(data: EnginePatientData): AlertCandidate[] {
+  const alerts: AlertCandidate[] = [];
+  if (!data.labResults || !data.labResults.length) return alerts;
+  const latest = data.labResults[0];
+
+  const hba1c = num(latest.hba1c);
+  const gdp = num(latest.gdp);
+  const gds = num(latest.gds);
+  const ldl = num(latest.ldl);
+  const kreatinin = num(latest.kreatinin);
+  const mikroalbumin = num(latest.mikroalbumin);
+
+  if (hba1c !== null && hba1c >= 9) {
+    alerts.push({
+      patientId: data.patientId,
+      doctorId: data.doctorId,
+      alertType: 'hba1c_tinggi',
+      severityLevel: 'CRITICAL',
+      title: 'HbA1c Tinggi (≥9%)',
+      description: `Hasil lab: HbA1c ${hba1c}% (≥9%). Kadar gula darah tidak terkontrol berat — risiko komplikasi makrovaskular dan mikrovaskular.`,
+      sourceModule: 'laboratory_results',
+      sourceRecordId: latest.id,
+      kategori: 'Metabolik',
+      recommendation: 'Eskalasi terapi anti-diabetes (pertimbangkan insulin), evaluasi pola makan, edukasi pasien, monitoring gula darah lebih sering.',
+    });
+  }
+
+  if (gdp !== null && gdp >= 250) {
+    alerts.push({
+      patientId: data.patientId,
+      doctorId: data.doctorId,
+      alertType: 'gdp_tinggi',
+      severityLevel: 'CRITICAL',
+      title: 'Glukosa Darah Puasa Tinggi (≥250)',
+      description: `Hasil lab: GDP ${gdp} mg/dL (≥250). Hiperglikemia berat — risiko ketoasidosis atau sindrom hiperosmolar.`,
+      sourceModule: 'laboratory_results',
+      sourceRecordId: latest.id,
+      kategori: 'Metabolik',
+      recommendation: 'Evaluasi segera status hidrasi dan keton, pertimbangkan insulin, koreksi penyebab (infeksi, kepatuhan obat).',
+    });
+  }
+
+  if (gds !== null && gds >= 300) {
+    alerts.push({
+      patientId: data.patientId,
+      doctorId: data.doctorId,
+      alertType: 'gds_tinggi',
+      severityLevel: 'CRITICAL',
+      title: 'Glukosa Darah Sewaktu Tinggi (≥300)',
+      description: `Hasil lab: GDS ${gds} mg/dL (≥300). Hiperglikemia berat — risiko komplikasi akut.`,
+      sourceModule: 'laboratory_results',
+      sourceRecordId: latest.id,
+      kategori: 'Metabolik',
+      recommendation: 'Evaluasi segera, pertimbangkan insulin, monitoring keton, koreksi penyebab.',
+    });
+  }
+
+  if (ldl !== null && ldl >= 190) {
+    alerts.push({
+      patientId: data.patientId,
+      doctorId: data.doctorId,
+      alertType: 'ldl_tinggi',
+      severityLevel: 'HIGH',
+      title: 'LDL Kolesterol Tinggi (≥190)',
+      description: `Hasil lab: LDL ${ldl} mg/dL (≥190). Hiperkolesterolemia berat — risiko aterosklerosis dan kejadian kardiovaskular.`,
+      sourceModule: 'laboratory_results',
+      sourceRecordId: latest.id,
+      kategori: 'Kardiovaskular',
+      recommendation: 'Mulai/eskalasi statin, evaluasi risiko kardiovaskular, edukasi diet, pertimbangkan rujukan ke ardiologi.',
+    });
+  }
+
+  if (kreatinin !== null && kreatinin > 2.0) {
+    alerts.push({
+      patientId: data.patientId,
+      doctorId: data.doctorId,
+      alertType: 'kreatinin_tinggi',
+      severityLevel: 'HIGH',
+      title: 'Kreatinin Tinggi (>2.0)',
+      description: `Hasil lab: Kreatinin ${kreatinin} mg/dL (>2.0). Penurunan fungsi ginjal — risiko gagal ginjal akut/kronik.`,
+      sourceModule: 'laboratory_results',
+      sourceRecordId: latest.id,
+      kategori: 'Renal',
+      recommendation: 'Evaluasi penyebab (prarenal, renal, pascarenal), review obat nefrotoksik, monitoring asupan cairan, rujuk ke nefrologi.',
+    });
+  }
+
+  if (mikroalbumin !== null && mikroalbumin > 30) {
+    alerts.push({
+      patientId: data.patientId,
+      doctorId: data.doctorId,
+      alertType: 'mikroalbumin_positif',
+      severityLevel: 'MEDIUM',
+      title: 'Mikroalbuminuria Positif (>30)',
+      description: `Hasil lab: Mikroalbumin ${mikroalbumin} mg/dL (>30). Tanda awal nefropati diabetik/hipertensi.`,
+      sourceModule: 'laboratory_results',
+      sourceRecordId: latest.id,
+      kategori: 'Renal',
+      recommendation: 'Optimasi kontrol gula darah dan tekanan darah, pertimbangkan ACE-inhibitor/ARB, monitoring fungsi ginjal berkala.',
+    });
+  }
+
+  return alerts;
+}
+
 // ── Main engine entry point ─────────────────────────────────────────────────
 
-/**
- * Run all rules against the patient's clinical data and return a list of
- * alert candidates. The caller is responsible for persisting them via
- * `clinicalAlertService.create()` (which deduplicates).
- */
+// Run all rules against the patient's clinical data and return a list of
+// alert candidates. The caller is responsible for persisting them via
+// clinicalAlertService.create() (which deduplicates).
 export function evaluatePatient(data: EnginePatientData): AlertCandidate[] {
   const all: AlertCandidate[] = [];
   all.push(...evaluateVitals(data));
@@ -563,6 +680,7 @@ export function evaluatePatient(data: EnginePatientData): AlertCandidate[] {
   all.push(...evaluateNutrition(data));
   all.push(...evaluateDailyComplaints(data));
   all.push(...evaluateSocial(data));
+  all.push(...evaluateLabResults(data));
   return all;
 }
 

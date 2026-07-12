@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -40,7 +41,19 @@ import {
   TrendingUp,
   AlertCircle,
   CheckCircle2,
+  Plus,
+  Trash2,
+  Eye,
+  Download,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  ArrowUpDown,
+  XCircle,
 } from 'lucide-react';
+import { serviceCatalogService, supabase, type ServiceItem, type ServiceInput, type ServiceStatus } from '@/services/supabase';
+import { SERVICE_CATEGORIES } from '@/services/supabase/serviceCatalogService';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -124,6 +137,15 @@ function formatDate(isoString: string): string {
   });
 }
 
+function escapeHtml(str: string): string {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export function AdminPricingPanel() {
@@ -154,6 +176,33 @@ export function AdminPricingPanel() {
   const [editIsAvailable, setEditIsAvailable] = useState(true);
   const [formError, setFormError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // ─── Layanan (Service Catalog) state ─────────────────────────────────────
+  const [services, setServices] = useState<ServiceItem[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(false);
+  const [showAddServiceDialog, setShowAddServiceDialog] = useState(false);
+  const [editingServiceItem, setEditingServiceItem] = useState<ServiceItem | null>(null);
+  const [viewingService, setViewingService] = useState<ServiceItem | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Layanan form fields
+  const [svcNamaLayanan, setSvcNamaLayanan] = useState('');
+  const [svcKategori, setSvcKategori] = useState<string>('');
+  const [svcHarga, setSvcHarga] = useState('');
+  const [svcDurasi, setSvcDurasi] = useState('');
+  const [svcStatus, setSvcStatus] = useState<ServiceStatus>('Aktif');
+  const [svcDeskripsi, setSvcDeskripsi] = useState('');
+  const [svcFormError, setSvcFormError] = useState('');
+  const [svcSaving, setSvcSaving] = useState(false);
+  const [svcDeleting, setSvcDeleting] = useState(false);
+
+  // Layanan filters & pagination
+  const [svcSearch, setSvcSearch] = useState('');
+  const [svcKategoriFilter, setSvcKategoriFilter] = useState<string>('all');
+  const [svcStatusFilter, setSvcStatusFilter] = useState<string>('all');
+  const [svcSortHarga, setSvcSortHarga] = useState<'asc' | 'desc' | 'none'>('none');
+  const [svcCurrentPage, setSvcCurrentPage] = useState(1);
+  const svcItemsPerPage = 10;
 
   // ─── Filtered data ───────────────────────────────────────────────────────
 
@@ -378,6 +427,267 @@ export function AdminPricingPanel() {
     return map[category] || 'outline';
   };
 
+  // ─── Layanan (Service Catalog) ───────────────────────────────────────────
+
+  const loadServices = useCallback(async () => {
+    setServicesLoading(true);
+    try {
+      const list = await serviceCatalogService.getAll();
+      setServices(list);
+    } catch (err) {
+      console.error('Failed to load services', err);
+    } finally {
+      setServicesLoading(false);
+    }
+  }, []);
+
+  // On mount: load + subscribe to realtime changes
+  useEffect(() => {
+    loadServices();
+    const channel = supabase
+      .channel('service-catalog-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifications', filter: 'user_id=eq.__service_catalog__' },
+        () => { serviceCatalogService.getAll().then(setServices).catch(console.error); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [loadServices]);
+
+  // Reset to page 1 whenever filters/sort change
+  useEffect(() => {
+    setSvcCurrentPage(1);
+  }, [svcSearch, svcKategoriFilter, svcStatusFilter, svcSortHarga]);
+
+  const filteredSvcList = useMemo(() => {
+    let list = services.filter((s) => {
+      const matchesSearch = s.namaLayanan.toLowerCase().includes(svcSearch.toLowerCase());
+      const matchesKategori = svcKategoriFilter === 'all' || s.kategori === svcKategoriFilter;
+      const matchesStatus = svcStatusFilter === 'all' || s.status === svcStatusFilter;
+      return matchesSearch && matchesKategori && matchesStatus;
+    });
+    if (svcSortHarga !== 'none') {
+      list = [...list].sort((a, b) =>
+        svcSortHarga === 'asc' ? a.harga - b.harga : b.harga - a.harga
+      );
+    }
+    return list;
+  }, [services, svcSearch, svcKategoriFilter, svcStatusFilter, svcSortHarga]);
+
+  const svcTotalPages = Math.max(1, Math.ceil(filteredSvcList.length / svcItemsPerPage));
+
+  const svcPaged = useMemo(() => {
+    const start = (svcCurrentPage - 1) * svcItemsPerPage;
+    return filteredSvcList.slice(start, start + svcItemsPerPage);
+  }, [filteredSvcList, svcCurrentPage, svcItemsPerPage]);
+
+  const resetSvcForm = useCallback(() => {
+    setSvcNamaLayanan('');
+    setSvcKategori('');
+    setSvcHarga('');
+    setSvcDurasi('');
+    setSvcStatus('Aktif');
+    setSvcDeskripsi('');
+    setSvcFormError('');
+  }, []);
+
+  const openAddServiceDialog = useCallback(() => {
+    resetSvcForm();
+    setEditingServiceItem(null);
+    setShowAddServiceDialog(true);
+  }, [resetSvcForm]);
+
+  const openEditServiceDialog = useCallback((svc: ServiceItem) => {
+    setEditingServiceItem(svc);
+    setSvcNamaLayanan(svc.namaLayanan);
+    setSvcKategori(svc.kategori);
+    setSvcHarga(String(svc.harga));
+    setSvcDurasi(String(svc.durasi));
+    setSvcStatus(svc.status);
+    setSvcDeskripsi(svc.deskripsi || '');
+    setSvcFormError('');
+    setShowAddServiceDialog(true);
+  }, []);
+
+  const handleSaveServiceForm = useCallback(async () => {
+    const nama = svcNamaLayanan.trim();
+    if (!nama) { setSvcFormError('Nama layanan wajib diisi'); return; }
+    if (!svcKategori) { setSvcFormError('Kategori wajib dipilih'); return; }
+    if (!(SERVICE_CATEGORIES as readonly string[]).includes(svcKategori)) {
+      setSvcFormError('Kategori tidak valid'); return;
+    }
+    const hargaNum = Number(svcHarga);
+    if (!svcHarga || isNaN(hargaNum) || hargaNum <= 0) {
+      setSvcFormError('Harga harus berupa angka lebih dari 0'); return;
+    }
+    const durasiNum = Number(svcDurasi);
+    if (!svcDurasi || isNaN(durasiNum) || durasiNum <= 0 || !Number.isInteger(durasiNum)) {
+      setSvcFormError('Durasi harus berupa bilangan bulat lebih dari 0'); return;
+    }
+    if (svcStatus !== 'Aktif' && svcStatus !== 'Nonaktif') {
+      setSvcFormError('Status tidak valid'); return;
+    }
+
+    const input: ServiceInput = {
+      namaLayanan: nama,
+      kategori: svcKategori,
+      harga: hargaNum,
+      durasi: durasiNum,
+      status: svcStatus,
+      deskripsi: svcDeskripsi.trim() || undefined,
+      createdBy: editingServiceItem?.createdBy || currentUser?.name || 'Admin',
+    };
+
+    setSvcSaving(true);
+    try {
+      if (editingServiceItem) {
+        await serviceCatalogService.update(editingServiceItem.id, input);
+        toast.success('Layanan berhasil diperbarui', {
+          description: nama,
+          icon: <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
+        });
+      } else {
+        await serviceCatalogService.create(input);
+        toast.success('Layanan berhasil ditambahkan', {
+          description: nama,
+          icon: <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
+        });
+      }
+      setShowAddServiceDialog(false);
+      setEditingServiceItem(null);
+      resetSvcForm();
+      // Realtime will refresh the list
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Gagal menyimpan layanan: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setSvcSaving(false);
+    }
+  }, [svcNamaLayanan, svcKategori, svcHarga, svcDurasi, svcStatus, svcDeskripsi, editingServiceItem, currentUser, resetSvcForm]);
+
+  const handleToggleServiceStatus = useCallback(async (svc: ServiceItem) => {
+    try {
+      await serviceCatalogService.toggleStatus(svc.id, svc.status);
+      toast.success(`Layanan ${svc.status === 'Aktif' ? 'dinonaktifkan' : 'diaktifkan'}`, {
+        description: svc.namaLayanan,
+        icon: <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
+      });
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Gagal mengubah status: ' + (err?.message || 'Unknown error'));
+    }
+  }, []);
+
+  const handleDeleteService = useCallback(async () => {
+    if (!confirmDeleteId) return;
+    setSvcDeleting(true);
+    try {
+      const ok = await serviceCatalogService.remove(confirmDeleteId);
+      if (ok) {
+        toast.success('Layanan berhasil dihapus', {
+          icon: <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
+        });
+      } else {
+        toast.error('Gagal menghapus layanan');
+      }
+      setConfirmDeleteId(null);
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Gagal menghapus layanan: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setSvcDeleting(false);
+    }
+  }, [confirmDeleteId]);
+
+  const exportSvcCSV = useCallback(() => {
+    const headers = ['Nama Layanan', 'Kategori', 'Harga', 'Durasi (menit)', 'Status', 'Deskripsi'];
+    const rows = filteredSvcList.map((s) => [
+      s.namaLayanan,
+      s.kategori,
+      String(s.harga),
+      String(s.durasi),
+      s.status,
+      s.deskripsi || '',
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) => row
+        .map((cell) => {
+          const c = String(cell ?? '');
+          if (c.includes(',') || c.includes('"') || c.includes('\n')) {
+            return `"${c.replace(/"/g, '""')}"`;
+          }
+          return c;
+        })
+        .join(','))
+      .join('\n');
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'layanan.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('File CSV berhasil diunduh');
+  }, [filteredSvcList]);
+
+  const exportSvcPDF = useCallback(() => {
+    const win = window.open('', '_blank');
+    if (!win) {
+      toast.error('Gagal membuka jendela cetak. Periksa pengaturan popup browser.');
+      return;
+    }
+    const rowsHtml = filteredSvcList
+      .map((s) => `
+        <tr>
+          <td>${escapeHtml(s.namaLayanan)}</td>
+          <td>${escapeHtml(s.kategori)}</td>
+          <td style="text-align:right">${escapeHtml(formatCurrency(s.harga))}</td>
+          <td style="text-align:center">${s.durasi} mnt</td>
+          <td style="text-align:center">${escapeHtml(s.status)}</td>
+        </tr>`)
+      .join('');
+    win.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Cetak Katalog Layanan</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 24px; color: #1f2937; }
+            h1 { font-size: 18px; margin-bottom: 4px; }
+            .meta { color: #6b7280; font-size: 12px; margin-bottom: 16px; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; }
+            th { background: #f9fafb; font-weight: 600; }
+          </style>
+        </head>
+        <body>
+          <h1>Katalog Layanan</h1>
+          <p class="meta">Dicetak pada ${new Date().toLocaleString('id-ID')}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Nama Layanan</th>
+                <th>Kategori</th>
+                <th style="text-align:right">Harga</th>
+                <th style="text-align:center">Durasi</th>
+                <th style="text-align:center">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml || '<tr><td colspan="5" style="text-align:center;color:#9ca3af">Tidak ada data</td></tr>'}
+            </tbody>
+          </table>
+          <script>window.onload = () => { window.print(); };</script>
+        </body>
+      </html>
+    `);
+    win.document.close();
+    toast.success('Dialog cetak PDF telah dibuka');
+  }, [filteredSvcList]);
+
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
@@ -480,6 +790,10 @@ export function AdminPricingPanel() {
             <TabsTrigger value="doctors" className="flex-1 sm:flex-none">
               <Star className="w-4 h-4 mr-1.5" />
               Tarif Dokter
+            </TabsTrigger>
+            <TabsTrigger value="layanan" className="flex-1 sm:flex-none">
+              <FileText className="w-4 h-4 mr-1.5" />
+              Layanan
             </TabsTrigger>
           </TabsList>
 
@@ -728,6 +1042,272 @@ export function AdminPricingPanel() {
               <Separator orientation="vertical" className="h-4" />
               <span>Menampilkan: <strong className="text-foreground">{filteredDoctors.length}</strong> dari {doctors.length} dokter</span>
             </div>
+          </TabsContent>
+
+          {/* ─── Tab 3: Layanan (Service Catalog) ─────────────────────────── */}
+          <TabsContent value="layanan" className="mt-4 space-y-4">
+            {/* Header with Add + Export buttons */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-teal-600" />
+                  Katalog Layanan
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Kelola daftar layanan yang tersedia di sistem
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={exportSvcCSV}
+                  disabled={services.length === 0}
+                >
+                  <Download className="w-4 h-4 mr-1.5" />
+                  Export Excel
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={exportSvcPDF}
+                  disabled={services.length === 0}
+                >
+                  <FileText className="w-4 h-4 mr-1.5" />
+                  Export PDF
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={openAddServiceDialog}
+                  className="bg-teal-600 hover:bg-teal-700 text-white"
+                >
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  Tambah Layanan
+                </Button>
+              </div>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Cari nama layanan..."
+                  value={svcSearch}
+                  onChange={(e) => setSvcSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select value={svcKategoriFilter} onValueChange={setSvcKategoriFilter}>
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <Filter className="w-4 h-4 mr-2 text-muted-foreground" />
+                  <SelectValue placeholder="Filter kategori" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Kategori</SelectItem>
+                  {SERVICE_CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={svcStatusFilter} onValueChange={setSvcStatusFilter}>
+                <SelectTrigger className="w-full sm:w-[140px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Status</SelectItem>
+                  <SelectItem value="Aktif">Aktif</SelectItem>
+                  <SelectItem value="Nonaktif">Nonaktif</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={svcSortHarga}
+                onValueChange={(v) => setSvcSortHarga(v as 'asc' | 'desc' | 'none')}
+              >
+                <SelectTrigger className="w-full sm:w-[160px]">
+                  <ArrowUpDown className="w-4 h-4 mr-2 text-muted-foreground" />
+                  <SelectValue placeholder="Urutkan harga" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Tidak Diurutkan</SelectItem>
+                  <SelectItem value="asc">Harga Terendah</SelectItem>
+                  <SelectItem value="desc">Harga Tertinggi</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Table */}
+            <Card>
+              <CardContent className="p-0">
+                {servicesLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-5 h-5 animate-spin text-teal-600 mr-2" />
+                    <span className="text-sm text-muted-foreground">Memuat...</span>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs font-semibold">Nama Layanan</TableHead>
+                          <TableHead className="text-xs font-semibold">Kategori</TableHead>
+                          <TableHead className="text-xs font-semibold text-right">Harga</TableHead>
+                          <TableHead className="text-xs font-semibold text-center">Durasi</TableHead>
+                          <TableHead className="text-xs font-semibold text-center">Status</TableHead>
+                          <TableHead className="text-xs font-semibold text-center">Aksi</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredSvcList.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center py-10 text-muted-foreground text-sm">
+                              <div className="flex flex-col items-center gap-2">
+                                <FileText className="w-8 h-8 opacity-30" />
+                                <p>
+                                  Belum ada layanan. Klik{' '}
+                                  <strong className="text-foreground">"+ Tambah Layanan"</strong>{' '}
+                                  untuk menambahkan.
+                                </p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          svcPaged.map((svc) => (
+                            <TableRow key={svc.id} className="hover:bg-accent/50 transition-colors">
+                              <TableCell className="font-medium text-sm">
+                                {svc.namaLayanan}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className="text-[10px]">
+                                  {svc.kategori}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right font-semibold text-sm text-teal-700 dark:text-teal-400">
+                                {formatCurrency(svc.harga)}
+                              </TableCell>
+                              <TableCell className="text-center text-sm text-muted-foreground">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {svc.durasi} mnt
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge
+                                  variant={svc.status === 'Aktif' ? 'default' : 'outline'}
+                                  className={`text-[10px] ${svc.status === 'Aktif' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+                                >
+                                  {svc.status === 'Aktif' ? (
+                                    <>
+                                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                                      Aktif
+                                    </>
+                                  ) : (
+                                    <>
+                                      <XCircle className="w-3 h-3 mr-1" />
+                                      Nonaktif
+                                    </>
+                                  )}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8"
+                                        onClick={() => setViewingService(svc)}
+                                      >
+                                        <Eye className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Lihat detail</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8"
+                                        onClick={() => openEditServiceDialog(svc)}
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Edit layanan</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 text-destructive hover:text-destructive"
+                                        onClick={() => setConfirmDeleteId(svc.id)}
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Hapus layanan</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex items-center justify-center px-1">
+                                        <Switch
+                                          checked={svc.status === 'Aktif'}
+                                          onCheckedChange={() => handleToggleServiceStatus(svc)}
+                                          className="data-[state=checked]:bg-teal-600 scale-75 cursor-pointer"
+                                        />
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {svc.status === 'Aktif' ? 'Nonaktifkan' : 'Aktifkan'}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Pagination */}
+            {filteredSvcList.length > 0 && (
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="text-xs text-muted-foreground">
+                  Total: <strong className="text-foreground">{filteredSvcList.length}</strong> layanan{' '}
+                  {services.length !== filteredSvcList.length && (
+                    <span className="text-muted-foreground/70">(dari {services.length})</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSvcCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={svcCurrentPage <= 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">
+                    Page {svcCurrentPage} of {svcTotalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSvcCurrentPage((p) => Math.min(svcTotalPages, p + 1))}
+                    disabled={svcCurrentPage >= svcTotalPages}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
 
@@ -1044,6 +1624,319 @@ export function AdminPricingPanel() {
                   <>
                     <Save className="w-4 h-4 mr-1.5" />
                     Simpan
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── Add / Edit Layanan Dialog ──────────────────────────────────── */}
+        <Dialog
+          open={showAddServiceDialog}
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowAddServiceDialog(false);
+              setEditingServiceItem(null);
+              resetSvcForm();
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                {editingServiceItem ? (
+                  <>
+                    <Pencil className="w-4 h-4 text-teal-600" />
+                    Edit Layanan
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4 text-teal-600" />
+                    Tambah Layanan
+                  </>
+                )}
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              {/* Nama Layanan */}
+              <div className="space-y-2">
+                <Label htmlFor="svc-nama" className="text-sm font-medium">
+                  Nama Layanan <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="svc-nama"
+                  value={svcNamaLayanan}
+                  onChange={(e) => {
+                    setSvcNamaLayanan(e.target.value);
+                    if (svcFormError) setSvcFormError('');
+                  }}
+                  placeholder="Contoh: Konsultasi Dokter Umum"
+                />
+              </div>
+
+              {/* Kategori */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">
+                  Kategori <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={svcKategori}
+                  onValueChange={(v) => {
+                    setSvcKategori(v);
+                    if (svcFormError) setSvcFormError('');
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih kategori" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SERVICE_CATEGORIES.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Harga & Durasi */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="svc-harga" className="text-sm font-medium">
+                    Harga (Rp) <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">Rp</span>
+                    <Input
+                      id="svc-harga"
+                      type="number"
+                      min="1"
+                      value={svcHarga}
+                      onChange={(e) => {
+                        setSvcHarga(e.target.value);
+                        if (svcFormError) setSvcFormError('');
+                      }}
+                      className="pl-10"
+                      placeholder="0"
+                    />
+                  </div>
+                  {Number(svcHarga) > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Format: {formatCurrency(Number(svcHarga))}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="svc-durasi" className="text-sm font-medium">
+                    Durasi (menit) <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="relative">
+                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="svc-durasi"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={svcDurasi}
+                      onChange={(e) => {
+                        setSvcDurasi(e.target.value);
+                        if (svcFormError) setSvcFormError('');
+                      }}
+                      className="pl-9"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Status */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Status</Label>
+                <Select
+                  value={svcStatus}
+                  onValueChange={(v) => setSvcStatus(v as ServiceStatus)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Aktif">Aktif</SelectItem>
+                    <SelectItem value="Nonaktif">Nonaktif</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Deskripsi */}
+              <div className="space-y-2">
+                <Label htmlFor="svc-deskripsi" className="text-sm font-medium">
+                  Deskripsi{' '}
+                  <span className="text-muted-foreground text-xs font-normal">(opsional)</span>
+                </Label>
+                <Textarea
+                  id="svc-deskripsi"
+                  value={svcDeskripsi}
+                  onChange={(e) => setSvcDeskripsi(e.target.value)}
+                  placeholder="Deskripsi singkat layanan..."
+                  rows={3}
+                />
+              </div>
+
+              {/* Error */}
+              {svcFormError && (
+                <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/5 p-3">
+                  <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
+                  <p className="text-sm text-destructive">{svcFormError}</p>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowAddServiceDialog(false);
+                  setEditingServiceItem(null);
+                  resetSvcForm();
+                }}
+                disabled={svcSaving}
+              >
+                <X className="w-4 h-4 mr-1.5" />
+                Batal
+              </Button>
+              <Button
+                onClick={handleSaveServiceForm}
+                disabled={svcSaving}
+                className="bg-teal-600 hover:bg-teal-700 text-white"
+              >
+                {svcSaving ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Menyimpan...
+                  </div>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-1.5" />
+                    Simpan
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── View Service Detail Dialog ─────────────────────────────────── */}
+        <Dialog
+          open={!!viewingService}
+          onOpenChange={(open) => { if (!open) setViewingService(null); }}
+        >
+          <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Eye className="w-4 h-4 text-teal-600" />
+                Detail Layanan
+              </DialogTitle>
+            </DialogHeader>
+            {viewingService && (
+              <div className="space-y-4 py-2">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Nama Layanan</p>
+                  <p className="text-sm font-medium">{viewingService.namaLayanan}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Kategori</p>
+                    <Badge variant="outline" className="text-[10px]">{viewingService.kategori}</Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Status</p>
+                    <Badge
+                      variant={viewingService.status === 'Aktif' ? 'default' : 'outline'}
+                      className={`text-[10px] ${viewingService.status === 'Aktif' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+                    >
+                      {viewingService.status === 'Aktif' ? 'Aktif' : 'Nonaktif'}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Harga</p>
+                    <p className="text-sm font-semibold text-teal-700 dark:text-teal-400">
+                      {formatCurrency(viewingService.harga)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Durasi</p>
+                    <p className="text-sm font-medium">{viewingService.durasi} mnt</p>
+                  </div>
+                </div>
+                {viewingService.deskripsi && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Deskripsi</p>
+                    <p className="text-sm text-foreground whitespace-pre-wrap p-3 rounded-lg bg-muted">
+                      {viewingService.deskripsi}
+                    </p>
+                  </div>
+                )}
+                <Separator />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-muted-foreground">
+                  <div>
+                    <p>Dibuat oleh</p>
+                    <p className="text-foreground">{viewingService.createdBy || '-'}</p>
+                  </div>
+                  <div>
+                    <p>Dibuat pada</p>
+                    <p className="text-foreground">{formatDate(viewingService.createdAt)}</p>
+                  </div>
+                  <div>
+                    <p>Diperbarui pada</p>
+                    <p className="text-foreground">{formatDate(viewingService.updatedAt)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setViewingService(null)}>
+                Tutup
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── Delete Confirmation Dialog ─────────────────────────────────── */}
+        <Dialog
+          open={!!confirmDeleteId}
+          onOpenChange={(open) => { if (!open) setConfirmDeleteId(null); }}
+        >
+          <DialogContent className="sm:max-w-[420px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <Trash2 className="w-4 h-4" />
+                Konfirmasi Hapus
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground py-2">
+              Yakin ingin menghapus layanan ini? Tindakan tidak dapat dibatalkan.
+            </p>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setConfirmDeleteId(null)}
+                disabled={svcDeleting}
+              >
+                Batal
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteService}
+                disabled={svcDeleting}
+              >
+                {svcDeleting ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Menghapus...
+                  </div>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-1.5" />
+                    Hapus
                   </>
                 )}
               </Button>

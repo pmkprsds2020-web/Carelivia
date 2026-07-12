@@ -149,12 +149,13 @@ import { PalliativeResumeReferralPanel } from './palliative-resume-referral-pane
 import SocialSupportPanel from './social-support-panel';
 import DailyComplaintPanel from './daily-complaint-panel';
 import { ClinicalAlertPanel } from './clinical-alert-panel';
+import { SupportingExamPanel } from './supporting-exam-panel';
 import { useToast } from '@/hooks/use-toast';
 import { isValidUuid, validUuidOrUndefined } from '@/services/supabase';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'nutrition' | 'keluhan' | 'sosial' | 'acp' | 'ai' | 'alerts' | 'chat' | 'dokumen';
+type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'nutrition' | 'keluhan' | 'sosial' | 'acp' | 'ai' | 'alerts' | 'chat' | 'dokumen' | 'supporting-exam';
 
 // ── Helper Functions ─────────────────────────────────────────────────────
 
@@ -3814,7 +3815,7 @@ export function PalliativeMonitoringPanel() {
   };
 
   // ── Main Render ──
-  const needsPatientSelection = ['ttv', 'screening', 'medication', 'nutrition', 'keluhan', 'sosial', 'acp', 'ai', 'alerts', 'chat'].includes(
+  const needsPatientSelection = ['ttv', 'screening', 'medication', 'nutrition', 'keluhan', 'sosial', 'acp', 'ai', 'alerts', 'chat', 'supporting-exam'].includes(
     activeTab
   );
 
@@ -3895,6 +3896,10 @@ export function PalliativeMonitoringPanel() {
             <FileText className="w-4 h-4 mr-1" />
             Dokumen
           </TabsTrigger>
+          <TabsTrigger value="supporting-exam" className="text-xs sm:text-sm">
+            <Stethoscope className="w-4 h-4 mr-1" />
+            Pemeriksaan Penunjang
+          </TabsTrigger>
         </TabsList>
 
         {/* Patient selector for tabs that need it */}
@@ -3925,6 +3930,12 @@ export function PalliativeMonitoringPanel() {
         </TabsContent>
         <TabsContent value="dokumen">
           <PalliativeResumeReferralPanel patient={selectedPatient} />
+        </TabsContent>
+        <TabsContent value="supporting-exam">
+          <SupportingExamPanel
+            palliativePatientId={selectedPalliativePatientId ?? undefined}
+            patientName={selectedPatient?.patientName}
+          />
         </TabsContent>
       </Tabs>
 

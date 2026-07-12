@@ -556,11 +556,137 @@ end$$;
 -- ============================================================================
 
 -- ============================================================================
+-- ============================================================================
+-- 24. SERVICES  [REALTIME]  (Admin: Kelola Harga → Tambah Layanan)
+-- ============================================================================
+-- NOTE: This table is documented here for future migration. The current
+-- implementation reuses the existing `notifications` table (which has a
+-- flexible `data` JSONB column) because DDL access is unavailable in the
+-- runtime environment. See `src/services/supabase/serviceCatalogService.ts`
+-- for the storage mapping (user_id='__service_catalog__', type='service').
+-- ============================================================================
+create table if not exists public.services (
+  id          uuid primary key default gen_random_uuid(),
+  nama_layanan text not null,
+  kategori     text,
+  harga        numeric(12,2) not null default 0,
+  durasi       integer not null default 0,
+  status       text not null default 'Aktif' check (status in ('Aktif','Nonaktif')),
+  deskripsi    text,
+  created_by   uuid,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+create index if not exists services_kategori_idx on public.services(kategori);
+create index if not exists services_status_idx on public.services(status);
+alter table public.services enable row level security;
+create policy "services_all_read"  on public.services for select using (true);
+create policy "services_all_write" on public.services for insert with check (true);
+create policy "services_all_upd"   on public.services for update using (true);
+create policy "services_all_del"   on public.services for delete using (true);
+
+-- ============================================================================
+-- 25. SUPPORTING_EXAMINATIONS  [REALTIME]  (Pemeriksaan Penunjang parent)
+-- ============================================================================
+-- NOTE: Documented for future migration. The current implementation reuses
+-- the existing `patient_documents` table (jenis IN lab/gambar/radiologi)
+-- with structured JSON metadata in the `keterangan` column. See
+-- `src/services/supabase/supportingExamService.ts` for the storage mapping.
+-- ============================================================================
+create table if not exists public.supporting_examinations (
+  id                uuid primary key default gen_random_uuid(),
+  patient_id        uuid not null references public.patients(id) on delete cascade,
+  doctor_id         uuid,
+  jenis_pemeriksaan text not null check (jenis_pemeriksaan in ('laboratorium','usg','ekg','radiologi')),
+  tanggal           date not null default current_date,
+  catatan           text,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+create index if not exists supporting_exams_patient_idx on public.supporting_examinations(patient_id, tanggal desc);
+alter table public.supporting_examinations enable row level security;
+
+-- ============================================================================
+-- 26. LABORATORY_RESULTS  [REALTIME]
+-- ============================================================================
+create table if not exists public.laboratory_results (
+  id                 uuid primary key default gen_random_uuid(),
+  patient_id         uuid not null references public.patients(id) on delete cascade,
+  doctor_id          uuid,
+  tanggal            date not null default current_date,
+  gdp                numeric(6,1),  -- Glukosa Darah Puasa
+  gds                numeric(6,1),  -- Glukosa Darah Sewaktu
+  hba1c              numeric(4,1),  -- HbA1c %
+  ureum              numeric(6,1),
+  kreatinin          numeric(5,2),
+  kolesterol_total   numeric(6,1),
+  hdl                numeric(6,1),
+  ldl                numeric(6,1),
+  trigliserida       numeric(6,1),
+  mikroalbumin       numeric(6,1),
+  catatan            text,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+create index if not exists lab_results_patient_idx on public.laboratory_results(patient_id, tanggal desc);
+alter table public.laboratory_results enable row level security;
+
+-- ============================================================================
+-- 27. ULTRASOUND_RESULTS  [REALTIME]
+-- ============================================================================
+create table if not exists public.ultrasound_results (
+  id          uuid primary key default gen_random_uuid(),
+  patient_id  uuid not null references public.patients(id) on delete cascade,
+  doctor_id   uuid,
+  tanggal     date not null default current_date,
+  jenis_usg   text,
+  hasil       text,
+  foto_url    text,
+  catatan     text,
+  created_at  timestamptz not null default now()
+);
+create index if not exists usg_results_patient_idx on public.ultrasound_results(patient_id, tanggal desc);
+alter table public.ultrasound_results enable row level security;
+
+-- ============================================================================
+-- 28. ECG_RESULTS  [REALTIME]
+-- ============================================================================
+create table if not exists public.ecg_results (
+  id            uuid primary key default gen_random_uuid(),
+  patient_id    uuid not null references public.patients(id) on delete cascade,
+  doctor_id     uuid,
+  tanggal       date not null default current_date,
+  foto_url      text,
+  interpretasi  text,
+  catatan       text,
+  created_at    timestamptz not null default now()
+);
+create index if not exists ecg_results_patient_idx on public.ecg_results(patient_id, tanggal desc);
+alter table public.ecg_results enable row level security;
+
+-- ============================================================================
+-- 29. RADIOLOGY_RESULTS  [REALTIME]
+-- ============================================================================
+create table if not exists public.radiology_results (
+  id              uuid primary key default gen_random_uuid(),
+  patient_id      uuid not null references public.patients(id) on delete cascade,
+  doctor_id       uuid,
+  tanggal         date not null default current_date,
+  jenis_radiologi text check (jenis_radiologi in ('Foto Thorax','CT Scan','MRI','Bone Survey','USG','Mammografi','Lainnya')),
+  foto_url        text,
+  hasil           text,
+  catatan         text,
+  created_at      timestamptz not null default now()
+);
+create index if not exists radiology_results_patient_idx on public.radiology_results(patient_id, tanggal desc);
+alter table public.radiology_results enable row level security;
+
+-- ============================================================================
 -- Done. Next steps:
 -- 1) Open Supabase Dashboard → Database → Replication → Enable realtime for:
 --    patients, vital_signs, screenings, medications, nutrition, daily_complaints,
 --    social_assessments, acp, chat_rooms, messages, clinical_alerts, audit_log,
---    ai_reports, notifications.
+--    ai_reports, notifications, patient_documents.
 -- 2) Open Storage → create buckets:
 --    patient-files, medical-images, radiology, lab-results, documents, acp-files
 -- 3) Set .env vars: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY.

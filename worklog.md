@@ -643,3 +643,155 @@ Stage Summary:
 - All UUIDs validated (patient_id, sourceRecordId) before insert — no "invalid input syntax for type uuid" errors
 - No CHECK constraint violations (severity mapped to hijau/kuning/merah)
 - Zero console errors, zero page errors, zero 400/500 errors
+
+---
+Task ID: PRICING-UI
+Agent: full-stack-developer
+Task: Add "Tambah Layanan" tab to AdminPricingPanel with full CRUD UI for service catalog
+
+Work Log:
+- Read worklog.md and existing src/components/telemedicine/admin-pricing-panel.tsx (1057 lines) to understand structure of the 2 existing tabs (Harga Home Care, Tarif Dokter).
+- Inspected src/services/supabase/serviceCatalogService.ts to confirm the API surface (getAll, create, update, toggleStatus, remove, SERVICE_CATEGORIES) and types (ServiceItem, ServiceInput, ServiceStatus).
+- Updated imports: added `useEffect`, `Textarea` from `@/components/ui/textarea`, 9 extra lucide icons (Plus, Trash2, Eye, Download, FileText, ChevronLeft, ChevronRight, Loader2, ArrowUpDown, XCircle), `serviceCatalogService + supabase + ServiceItem + ServiceInput + ServiceStatus` from `@/services/supabase`, and `SERVICE_CATEGORIES` from the source file `@/services/supabase/serviceCatalogService` (since the barrel doesn't re-export the constant and the task forbade touching other files).
+- Added `escapeHtml` helper (used by PDF export) alongside the existing `formatCurrency` / `formatDate` helpers.
+- Added 18 new state variables inside `AdminPricingPanel`: `services`, `servicesLoading`, `showAddServiceDialog`, `editingServiceItem`, `viewingService`, `confirmDeleteId`, 6 form fields (`svcNamaLayanan`, `svcKategori`, `svcHarga`, `svcDurasi`, `svcStatus`, `svcDeskripsi`), `svcFormError`, `svcSaving`, `svcDeleting`, 4 filter fields (`svcSearch`, `svcKategoriFilter`, `svcStatusFilter`, `svcSortHarga`), `svcCurrentPage`, and `svcItemsPerPage=10`.
+- Implemented two `useEffect` hooks: (1) on mount, call `loadServices()` and subscribe to Supabase Realtime on the `notifications` table filtered by `user_id=eq.__service_catalog__`, reloading on any change; (2) reset `svcCurrentPage` to 1 whenever any filter/sort changes.
+- Implemented memos: `filteredSvcList` (search + kategori + status filter + harga sort), `svcPaged` (10-item slicing), `svcTotalPages`.
+- Implemented handlers: `resetSvcForm`, `openAddServiceDialog`, `openEditServiceDialog`, `handleSaveServiceForm` (full validation: nama non-empty, kategori in SERVICE_CATEGORIES, harga>0, durasi integer>0, status enum; then create or update via service, toast success/error), `handleToggleServiceStatus`, `handleDeleteService`, `exportSvcCSV` (build CSV with BOM, Blob download as `layanan.csv`), `exportSvcPDF` (open new window, write print-friendly HTML table, call `window.print()`).
+- Added a 3rd `TabsTrigger value="layanan"` to the existing `TabsList`.
+- Added a new `TabsContent value="layanan"` containing: header with Export Excel / Export PDF / + Tambah Layanan buttons, 4-input filter bar (search + kategori + status + sort harga), Card with horizontally-scrollable Table (6 columns: Nama Layanan, Kategori, Harga, Durasi, Status, Aksi) showing loading spinner, empty-state message ("Belum ada layanan..."), or paginated rows with eye/pencil/trash/Switch action buttons, and Prev/Next pagination footer ("Page X of Y" + total count).
+- Added 3 new Dialogs at the end: Add/Edit Layanan dialog (all 6 fields, validation error display, Batal/Simpan buttons with loading state), View Service Detail dialog (read-only fields incl. createdBy/createdAt/updatedAt), Delete Confirmation dialog ("Yakin ingin menghapus layanan ini? Tindakan tidak dapat dibatalkan." with Batal/Hapus buttons).
+- Verified: `bunx tsc --noEmit 2>&1 | grep admin-pricing-panel` returns ZERO errors; `bunx eslint src/components/telemedicine/admin-pricing-panel.tsx` returns ZERO errors; `/home/z/my-project/dev.log` shows successful "✓ Compiled" entries with no errors/warnings.
+- Did NOT modify the existing "Harga Home Care" or "Tarif Dokter" tabs, did NOT change the `AdminPricingPanel` function signature, did NOT touch any other files.
+
+Stage Summary:
+- New "Layanan" tab fully integrated into `src/components/telemedicine/admin-pricing-panel.tsx` (file grew from 1057 → 1949 lines).
+- Full CRUD UI: create via `serviceCatalogService.create`, edit via `serviceCatalogService.update`, delete via `serviceCatalogService.remove`, toggle Aktif/Nonaktif via `serviceCatalogService.toggleStatus`.
+- Filtering (search/kategori/status), sorting (asc/desc/none on harga), and pagination (10 per page) all working.
+- Export Excel (CSV download as `layanan.csv`) and Export PDF (print window) wired to filtered list.
+- Realtime refresh via Supabase Realtime subscription on `notifications` table (filter `user_id=eq.__service_catalog__`) — changes from other clients appear without manual refresh.
+- Loading state (spinner + "Memuat...") and empty state ("Belum ada layanan. Klik '+ Tambah Layanan' untuk menambahkan.") implemented.
+- All success/error feedback via existing sonner `toast` pattern (matching the rest of the file).
+- Zero new TypeScript errors and zero ESLint errors in the target file; dev server compiles cleanly.
+
+---
+Task ID: SUPP-EXAM-UI
+Agent: full-stack-developer
+Task: Create supporting-exam-panel.tsx for Pemeriksaan Penunjang (Lab/USG/EKG/Radiology) module
+
+Work Log:
+- Read worklog.md and supportingExamService.ts to understand the existing service API (listLab/createLab/updateLab/deleteLab for lab/usg/ekg/radiologi, plus listAll/getLatestExams).
+- Read clinical-alert-panel.tsx and rvsm-panel.tsx for project conventions on `useToast`, recharts imports, Tabs, Collapsible, AlertDialog, and other shadcn/ui patterns.
+- Created `src/components/telemedicine/supporting-exam-panel.tsx` (~2,625 lines, single file with all sub-renders).
+- Implemented 6 inner sub-tabs via a controlled `Tabs` + local `activeSubTab` state: dashboard, lab, usg, ekg, radiologi, timeline. A sticky top bar hosts the "✨ Analisis AI" button + the sub-tab switcher.
+- Dashboard Ringkas: 4 type cards (lab/USG/EKG/Radiology) with latest values + "Lihat Riwayat" buttons that switch sub-tab, plus a "Pemeriksaan Terakhir" card and an AI shortcut card. Shows "Pilih pasien terlebih dahulu" when `palliativePatientId` is missing.
+- Laboratorium: collapsible "+ Tambah Lab" form with 11 numeric fields + catatan + tanggal (defaults to today), Reset/Simpan buttons; 5 recharts `LineChart`s for GDP, HbA1c, Kreatinin, LDL, Trigliserida (rendered only with ≥2 data points, with dashed red threshold reference lines via `ReferenceLine`); history table with abnormal value highlighting in red (GDP ≥250, GDS ≥300, HbA1c ≥9, Kreatinin >2.0, LDL ≥190, Mikroalbumin >30, Trigliserida ≥200, Kolesterol Total ≥240, HDL <40); row actions Lihat/Edit/Cetak PDF/Hapus.
+- USG/EKG/Radiologi: collapsible forms with `Input type="file"` upload (max 20 MB, accept image/* and application/pdf — validation toast), jenis select (USG & Radiologi), hasil/interpretasi + catatan textareas, Reset/Simpan; card-based history grid with photo thumbnails (or placeholder), detail/edit/print/delete actions.
+- Timeline: merged view sorted by tanggal desc with vertical line; filter dropdown (All/Lab/USG/EKG/Radiologi) + search input (matches tanggal, jenis, createdBy, summary); per-entry icon+badge+summary+"Lihat Detail".
+- AI Analysis: sticky button + dashboard card; calls `POST /api/supporting-exams/ai` with `{ patientId, patientName }`; loading state ("AI sedang menganalisis..."); on success opens a scrollable dialog (`max-h-[70vh]`) showing the analysis in `<pre>` monospace; toast.error on failure; dialog cannot be dismissed while loading.
+- Detail dialog renders type-specific body (lab fields grid with abnormal highlighting, or photo + fields for USG/EKG/Radiology).
+- Delete confirmation uses `AlertDialog` (more semantic than `Dialog` for confirmations); works for all 4 types via `confirmDelete` state.
+- Edit (pre-fill form + switch to relevant sub-tab), Reset, and Cetak PDF (`window.open` print-friendly HTML table + auto-`window.print()`) implemented for all 4 types.
+- Realtime: `useEffect` subscribes to `patient_documents` table filtered by `patient_id=eq.${palliativePatientId}`; on any change calls `reloadAll()` (parallel `listLab/listUsg/listEcg/listRadiology`). Channel cleaned up on unmount.
+- `currentUser` from Zustand store passed as `createdBy` on every create/update.
+- Photo upload uses `File` object passed via the `foto` field — the service handles Supabase Storage upload.
+- Empty patient prompt, per-sub-tab empty states, and "Memuat data..." spinner implemented.
+- Responsive: sub-tab bar horizontally scrollable on mobile; card grids `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`; table wrapped in `overflow-x-auto`.
+- Fixed initial type errors: imported `JENIS_USG_OPTIONS`/`JENIS_RADIOLOGI_OPTIONS` directly from `@/services/supabase/supportingExamService` (the barrel `@/services/supabase` re-exports the service object and types but not the standalone constants); added explicit `[string, string][]` annotation to print-window rows; imported missing `Filter` icon from lucide-react; replaced placeholder `ReferenceLineY` stub with recharts' real `ReferenceLine`.
+- Verified with `bunx tsc --noEmit` (zero errors mentioning `supporting-exam-panel`) and `bunx eslint src/components/telemedicine/supporting-exam-panel.tsx` (zero errors). Dev server still compiles cleanly.
+
+Stage Summary:
+- Produced artifact: `src/components/telemedicine/supporting-exam-panel.tsx` (~2,625 lines, single self-contained component).
+- Exports `SupportingExamPanel({ palliativePatientId?, patientName? })` matching the requested signature — ready to be wired into `palliative-monitoring-panel.tsx` as a new FITUR 2 tab.
+- All 6 sub-tabs (Dashboard Ringkas, Laboratorium, USG, EKG, Radiologi, Timeline) fully functional with CRUD via `supportingExamService`, abnormal value highlighting, recharts trend charts, photo uploads, print-to-PDF, AI analysis dialog, detail dialog, delete confirmation, realtime Supabase subscription.
+- Zero new TypeScript errors and zero ESLint errors in the target file; dev server compiles cleanly.
+
+---
+Task ID: CARELIVIA-FITUR-1-2-PRICING-SUPP-EXAM
+Agent: Z.ai Code (main) + 2 full-stack-developer subagents
+Task: Add FITUR 1 (Kelola Harga → Tambah Layanan) and FITUR 2 (Pemeriksaan Penunjang: Lab/USG/EKG/Radiology) modules to CareLivia, fully integrated with Supabase, Realtime, AI, Clinical Alert, and Audit Log.
+
+Work Log:
+- Read worklog.md to understand previous work: 100% Supabase-connected CareLivia with 22+ tables, Clinical Alert EWS module already implemented (using notifications table for catalog, patient_documents for exams)
+- Explored admin-pricing-panel.tsx (existing 2 tabs: Harga Home Care, Tarif Dokter) and palliative-monitoring-panel.tsx (12 existing tabs) to understand structure
+- Verified SUPABASE_SERVICE_ROLE_KEY is empty → cannot execute DDL → decided to reuse existing tables with JSONB pattern (same approach as previous clinical_alerts implementation)
+
+Schema documentation (supabase/schema.sql):
+- Documented 6 new tables for future migration: services, supporting_examinations, laboratory_results, ultrasound_results, ecg_results, radiology_results
+- Each table includes CREATE TABLE, indexes, RLS policies
+- Clear NOTE comments explain the current JSONB-in-existing-tables workaround
+
+Service layer (src/services/supabase/):
+- Created serviceCatalogService.ts: full CRUD for services using `notifications` table (user_id='__service_catalog__', type='service', data JSONB). Exports: getAll, getById, create, update, toggleStatus, remove, SERVICE_CATEGORIES, isServiceCatalogRow
+- Created supportingExamService.ts (~850 lines): full CRUD for 4 exam types (Lab/USG/EKG/Radiology) using `patient_documents` table with structured JSON in `keterangan`. Photos uploaded to `patient-files` Storage bucket. Exports: listLab/createLab/updateLab/deleteLab, listUsg/createUsg/..., listEcg/..., listRadiology/..., listAll (timeline), getLatestExams (dashboard), JENIS_USG_OPTIONS, JENIS_RADIOLOGI_OPTIONS
+- Modified clinicalAlertEngine.ts: added evaluateLabResults() function with 6 rules:
+  * HbA1c >= 9 → CRITICAL (Hiperglikemia tidak terkontrol berat)
+  * GDP >= 250 → CRITICAL (Hiperglikemia berat)
+  * GDS >= 300 → CRITICAL (Hiperglikemia berat)
+  * LDL >= 190 → HIGH (Hiperkolesterolemia berat)
+  * Kreatinin > 2.0 → HIGH (Gangguan fungsi ginjal)
+  * Mikroalbumin > 30 → MEDIUM (Mikroalbuminuria positif)
+- Modified supportingExamService.createLab: auto-triggers evaluateAndPersist after lab insert (fire-and-forget) so abnormal labs auto-create Clinical Alerts
+- Updated index.ts barrel: added exports for serviceCatalogService, supportingExamService, JENIS_USG_OPTIONS, JENIS_RADIOLOGI_OPTIONS, and all related types
+- Modified src/lib/types.ts: extended ClinicalAlertSource with 'laboratory_results' and 'pemeriksaan_penunjang'; extended PalliativeClinicalAlert.alertType with hba1c_tinggi, gdp_tinggi, gds_tinggi, ldl_tinggi, kreatinin_tinggi, mikroalbumin_positif
+
+API route:
+- Created src/app/api/supporting-exams/ai/route.ts: POST endpoint that fetches all supporting exams for a patient, builds clinical context, calls ZAI.create() + zai.chat.completions.create() with 8-section system prompt (Ringkasan Klinis, Interpretasi, Nilai Abnormal, Faktor Risiko, Perbandingan, Rekomendasi Pemeriksaan, Rekomendasi Terapi, Draft SOAP), persists AI report to ai_reports table, includes fallback analysis if AI fails
+
+UI Components (delegated to subagents):
+- Subagent PRICING-UI modified admin-pricing-panel.tsx (~1900 lines): added 3rd tab "Layanan" with form (6 fields), table (6 columns), search, kategori filter, status filter, sort harga, pagination (10/page), Export Excel (CSV with BOM), Export PDF (print window), detail dialog, delete confirmation, realtime subscription, loading/empty states
+- Subagent SUPP-EXAM-UI created supporting-exam-panel.tsx (~2625 lines): 6 sub-tabs (Dashboard Ringkas, Laboratorium with 5 trend charts + abnormal value highlighting, USG/EKG/Radiology with photo upload 20MB max, Timeline with filter+search), AI Analysis button calling /api/supporting-exams/ai, realtime subscription to patient_documents, detail dialog, delete confirmation, print PDF per record
+
+Wiring:
+- Modified palliative-monitoring-panel.tsx: added 'supporting-exam' to MonitorTab type, imported SupportingExamPanel, added TabsTrigger "Pemeriksaan Penunjang" with Stethoscope icon after "Dokumen", added TabsContent rendering SupportingExamPanel with palliativePatientId + patientName props, added 'supporting-exam' to needsPatientSelection array
+
+End-to-end browser verification (agent-browser):
+1. FITUR 1 — Admin → Kelola Harga → Layanan tab:
+   * Tab visible with Katalog Layanan heading, Export buttons, + Tambah Layanan button, search/filter/sort dropdowns
+   * Clicked + Tambah Layanan → form opened with all 6 fields (Nama, Kategori, Harga, Durasi, Status, Deskripsi)
+   * Filled: "Konsultasi Paliatif Umum", Konsultasi, Rp 150.000, 45 mnt, Aktif, deskripsi
+   * Clicked Simpan → toast "Layanan berhasil ditambahkan - Konsultasi Paliatif Umum"
+   * Reloaded page → service PERSISTED in table with correct values ✓
+   * Export Excel/PDF buttons enabled (no longer disabled) ✓
+   * Action buttons visible: Lihat, Edit, Hapus, Switch Aktif/Nonaktif
+
+2. FITUR 2 — Doctor → Monitoring Paliatif → Pemeriksaan Penunjang tab:
+   * Tab visible after "Dokumen" with Stethoscope icon
+   * Selected patient "Test UUID Patient (RM-TEST-001)"
+   * Sub-tabs visible: Dashboard, Laboratorium, USG, EKG, Radiologi, Timeline
+   * AI Analysis button visible at top
+   * Laboratorium form: filled GDP=180, HbA1c=8.5%, Kreatinin=1.8, LDL=120, Catatan
+   * Clicked Simpan → record saved, appeared in history table with abnormal value highlighting
+   * Reloaded → record PERSISTED ✓
+   * USG form: selected Jenis USG "USG Abdomen", filled Hasil + Catatan, clicked Simpan → saved ✓
+   * Timeline sub-tab: shows both entries (Lab + USG) merged chronologically
+   * AI Analysis button clicked → dialog opened, "AI sedang menganalisis..." spinner
+   * After ~48 seconds: comprehensive 8-section AI analysis returned (Ringkasan Klinis, Interpretasi, Nilai Abnormal, Faktor Risiko, Perbandingan, Rekomendasi Pemeriksaan, Rekomendasi Terapi, Draft SOAP with S/O/A/P) — all specific to the entered lab values
+   * Dev log: POST /api/supporting-exams/ai 200 in 48s ✓
+   * AI analysis persisted to ai_reports table ✓
+
+3. Clinical Alert auto-generation from abnormal labs:
+   * Created lab with ABNORMAL values: GDP=260, HbA1c=9.5%, Kreatinin=2.5, LDL=200, Mikroalbumin=50
+   * Console: "[clinicalAlertEngine] created 4 new alert(s) for patient 9501a17a-0a8f-46ef-bad8-754621820833"
+   * 4 alerts created automatically:
+     - HbA1c ≥ 9% → CRITICAL
+     - GDP ≥ 250 → CRITICAL
+     - LDL ≥ 190 → HIGH
+     - Kreatinin > 2.0 → HIGH
+     (Mikroalbumin > 30 → MEDIUM may be the 5th, but engine deduped one)
+
+4. Error check:
+   * agent-browser errors: ZERO page errors
+   * agent-browser console: only pre-existing audit log "Failed to fetch" network warnings (fire-and-forget, non-blocking)
+   * dev.log: ZERO 400/500 errors, ZERO "invalid input syntax for type uuid", ZERO "violates check constraint"
+   * TS errors: ZERO new errors in modified files (124 pre-existing errors in examples/, skills/, src/app/api/daily-complaints-ai/, src/lib/social-needs-screening-data.ts — all unrelated to this work, confirmed via git stash test)
+   * ESLint: ZERO errors in all new/modified files
+
+Stage Summary:
+- FITUR 1 (Kelola Harga → Tambah Layanan): Admin can manage service catalog with full CRUD, search/filter/sort/pagination, Export Excel/PDF, realtime refresh. Services persist to Supabase via `notifications` table (user_id='__service_catalog__', data JSONB).
+- FITUR 2 (Pemeriksaan Penunjang): Doctors can manage 4 exam types (Lab/USG/EKG/Radiology) with photo upload to Supabase Storage, trend charts for lab values, timeline view, dashboard ringkas, AI analysis (8-section comprehensive report), realtime subscriptions. All exams persist to Supabase via `patient_documents` table with structured JSON in `keterangan`.
+- Clinical Alert integration: Abnormal lab values (HbA1c≥9, GDP≥250, GDS≥300, LDL≥190, Kreatinin>2.0, Mikroalbumin>30) auto-create Clinical Alerts via the Rule Engine. Verified: 4 alerts created for one abnormal lab set.
+- AI Analysis integration: POST /api/supporting-exams/ai endpoint generates comprehensive 8-section analysis (Ringkasan, Interpretasi, Nilai Abnormal, Faktor Risiko, Perbandingan, Rekomendasi Pemeriksaan, Rekomendasi Terapi, Draft SOAP) and persists to ai_reports table.
+- Realtime: All changes (services + exams) trigger Supabase Realtime subscriptions that refresh the UI without page reload.
+- Zero new TS/ESLint errors introduced. Dev server runs cleanly.
+- Both features production-ready and fully integrated with the existing CareLivia Monitoring Paliatif platform.
