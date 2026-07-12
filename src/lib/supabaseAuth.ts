@@ -39,8 +39,37 @@ export interface AuthResult {
 }
 
 // ── Map Supabase error messages to friendly Indonesian ─────────────────────
-function translateError(message: string): { text: string; needsConfirm?: boolean } {
+// `status` is the HTTP status code Supabase returns on Auth errors (e.g. 429).
+// `code` is the Supabase error code (e.g. "over_email_send_rate_limit").
+function translateError(
+  message: string,
+  status?: number,
+  code?: string
+): { text: string; needsConfirm?: boolean } {
   const m = (message || "").toLowerCase();
+  const c = (code || "").toLowerCase();
+
+  // ── Rate-limit / 429 (MUST be checked first — Supabase returns 429 with
+  //    codes like "over_email_send_rate_limit" and "over_request_rate_limit",
+  //    neither of which contains the literal substring "rate limit".) ──
+  if (status === 429) {
+    return { text: "Terlalu banyak percobaan. Silakan tunggu beberapa menit sebelum mencoba lagi." };
+  }
+  if (
+    c.includes("rate_limit") ||
+    c.includes("over_email_send_rate_limit") ||
+    c.includes("over_request_rate_limit") ||
+    m.includes("rate limit") ||
+    m.includes("rate_limit") ||
+    m.includes("too many requests") ||
+    m.includes("over_email_send_rate_limit") ||
+    m.includes("over_request_rate_limit") ||
+    m.includes("for security purposes") ||
+    /after \d+ seconds/i.test(message || "")
+  ) {
+    return { text: "Terlalu banyak percobaan. Silakan tunggu beberapa menit sebelum mencoba lagi." };
+  }
+
   if (m.includes("invalid login credentials")) {
     return { text: "Email atau password salah." };
   }
@@ -55,9 +84,6 @@ function translateError(message: string): { text: string; needsConfirm?: boolean
   }
   if (m.includes("unable to validate email address") || m.includes("invalid email")) {
     return { text: "Format email tidak valid." };
-  }
-  if (m.includes("rate limit") || m.includes("too many requests")) {
-    return { text: "Terlalu banyak percobaan. Coba lagi beberapa saat." };
   }
   if (m.includes("network") || m.includes("failed to fetch")) {
     return { text: "Gagal terhubung ke server. Periksa koneksi internet." };
@@ -107,7 +133,17 @@ async function createProfileRow(input: {
 }
 
 // ── SIGN UP ────────────────────────────────────────────────────────────────
+let __signupCallCount = 0;
 export async function signUpWithEmail(input: SignUpInput): Promise<AuthResult> {
+  __signupCallCount += 1;
+  const callId = __signupCallCount;
+  const t0 = Date.now();
+  console.info("[auth] signUpWithEmail CALLED", {
+    callId,
+    email: input.email,
+    role: input.role,
+    ts: new Date().toISOString(),
+  });
   try {
     const { data, error } = await supabase.auth.signUp({
       email: input.email,
@@ -121,9 +157,19 @@ export async function signUpWithEmail(input: SignUpInput): Promise<AuthResult> {
         },
       },
     });
+    console.info("[auth] signUpWithEmail RESULT", {
+      callId,
+      ok: !error,
+      hasUser: !!data?.user,
+      hasSession: !!data?.session,
+      errorStatus: error?.status,
+      errorCode: error?.code,
+      errorMessage: error?.message,
+      ms: Date.now() - t0,
+    });
 
     if (error) {
-      const t = translateError(error.message);
+      const t = translateError(error.message, error.status, error.code);
       return { ok: false, error: t.text, needsEmailConfirm: t.needsConfirm };
     }
 
@@ -163,20 +209,40 @@ export async function signUpWithEmail(input: SignUpInput): Promise<AuthResult> {
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error("[auth] signUpWithEmail THREW", { callId, msg });
     return { ok: false, error: translateError(msg).text };
   }
 }
 
 // ── SIGN IN ────────────────────────────────────────────────────────────────
+let __signinCallCount = 0;
 export async function signInWithEmail(input: SignInInput): Promise<AuthResult> {
+  __signinCallCount += 1;
+  const callId = __signinCallCount;
+  const t0 = Date.now();
+  console.info("[auth] signInWithEmail CALLED", {
+    callId,
+    email: input.email,
+    ts: new Date().toISOString(),
+  });
   try {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: input.email,
       password: input.password,
     });
+    console.info("[auth] signInWithEmail RESULT", {
+      callId,
+      ok: !error,
+      hasUser: !!data?.user,
+      hasSession: !!data?.session,
+      errorStatus: error?.status,
+      errorCode: error?.code,
+      errorMessage: error?.message,
+      ms: Date.now() - t0,
+    });
 
     if (error) {
-      const t = translateError(error.message);
+      const t = translateError(error.message, error.status, error.code);
       if (!t.needsConfirm) {
         logAudit("LOGIN_FAILED", { email: input.email, details: error.message });
       }
@@ -213,6 +279,7 @@ export async function signInWithEmail(input: SignInInput): Promise<AuthResult> {
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error("[auth] signInWithEmail THREW", { callId, msg });
     return { ok: false, error: translateError(msg).text };
   }
 }

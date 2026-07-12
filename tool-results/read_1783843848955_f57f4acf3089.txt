@@ -1,0 +1,871 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { useState } from 'react';
+     4→     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→     5→import { useStore } from '@/lib/store';
+     6→     6→import type { User } from '@/lib/types';
+     7→     7→import { Badge } from '@/components/ui/badge';
+     8→     8→import { Stethoscope, Heart, Shield, ChevronRight, ArrowLeft, Lock, Mail, Phone, User as UserIcon, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2, Briefcase } from 'lucide-react';
+     9→     9→import Image from 'next/image';
+    10→    10→import { useToast } from '@/hooks/use-toast';
+    11→    11→import {
+    12→    12→  signUpWithEmail,
+    13→    13→  signInWithEmail,
+    14→    14→  roleToUserRole,
+    15→    15→  roleToActivePanel,
+    16→    16→  type CareLiviaRole,
+    17→    17→} from '@/lib/supabaseAuth';
+    18→    18→
+    19→    19→type RoleType = 'dokter' | 'pasien' | 'admin';
+    20→    20→
+    21→    21→interface DemoAccount {
+    22→    22→  id: string;
+    23→    23→  name: string;
+    24→    24→  email: string;
+    25→    25→  role: User['role'];
+    26→    26→  specialization?: string;
+    27→    27→  consultationFee?: number;
+    28→    28→  phone?: string;
+    29→    29→  gender?: string;
+    30→    30→}
+    31→    31→
+    32→    32→const roleConfig: Record<RoleType, {
+    33→    33→  label: string;
+    34→    34→  description: string;
+    35→    35→  icon: React.ElementType;
+    36→    36→  gradient: string;
+    37→    37→  accentColor: string;
+    38→    38→  hoverShadow: string;
+    39→    39→  careliviaRole: CareLiviaRole;
+    40→    40→}> = {
+    41→    41→  dokter: {
+    42→    42→    label: 'Dokter',
+    43→    43→    description: 'Kelola pasien dan layanan paliatif',
+    44→    44→    icon: Stethoscope,
+    45→    45→    gradient: 'from-[#2D8C7A] to-[#1F6B5C]',
+    46→    46→    accentColor: '#2D8C7A',
+    47→    47→    hoverShadow: '0 8px 30px rgba(45,140,122,0.25)',
+    48→    48→    careliviaRole: 'Dokter',
+    49→    49→  },
+    50→    50→  pasien: {
+    51→    51→    label: 'Pasien',
+    52→    52→    description: 'Akses layanan kesehatan dan pendampingan',
+    53→    53→    icon: Heart,
+    54→    54→    gradient: 'from-[#6DB8A8] to-[#2D8C7A]',
+    55→    55→    accentColor: '#6DB8A8',
+    56→    56→    hoverShadow: '0 8px 30px rgba(109,184,168,0.25)',
+    57→    57→    careliviaRole: 'Pasien',
+    58→    58→  },
+    59→    59→  admin: {
+    60→    60→    label: 'Admin',
+    61→    61→    description: 'Kelola sistem dan laporan',
+    62→    62→    icon: Shield,
+    63→    63→    gradient: 'from-[#D9B26F] to-[#C49A52]',
+    64→    64→    accentColor: '#D9B26F',
+    65→    65→    hoverShadow: '0 8px 30px rgba(217,178,111,0.25)',
+    66→    66→    careliviaRole: 'Admin',
+    67→    67→  },
+    68→    68→};
+    69→    69→
+    70→    70→// Demo accounts kept for backward-compat (used by quick-login button)
+    71→    71→const demoAccounts: Record<RoleType, DemoAccount[]> = {
+    72→    72→  dokter: [
+    73→    73→    { id: 'doc-sarah', name: 'dr. Sarah Wijaya', email: 'sarah@carelivia.id', role: 'doctor', specialization: 'umum', consultationFee: 150000, gender: 'Perempuan' },
+    74→    74→    { id: 'doc-ahmad', name: 'dr. Ahmad Rizki', email: 'ahmad@carelivia.id', role: 'doctor', specialization: 'anak', consultationFee: 175000, gender: 'Laki-laki' },
+    75→    75→    { id: 'doc-lisa', name: 'dr. Lisa Permata', email: 'lisa@carelivia.id', role: 'doctor', specialization: 'penyakit_dalam', consultationFee: 200000, gender: 'Perempuan' },
+    76→    76→    { id: 'doc-dewi', name: 'dr. Dewi Sartika', email: 'dewi@carelivia.id', role: 'doctor', specialization: 'kebidanan', consultationFee: 175000, gender: 'Perempuan' },
+    77→    77→    { id: 'doc-budi', name: 'drg. Budi Santoso', email: 'budi@carelivia.id', role: 'doctor', specialization: 'gigi', consultationFee: 200000, gender: 'Laki-laki' },
+    78→    78→  ],
+    79→    79→  pasien: [
+    80→    80→    { id: 'pat-rina', name: 'Rina Wulandari', email: 'rina@mail.com', role: 'patient', phone: '081234567890', gender: 'Perempuan' },
+    81→    81→    { id: 'pat-doni', name: 'Doni Pratama', email: 'doni@mail.com', role: 'patient', phone: '081234567891', gender: 'Laki-laki' },
+    82→    82→    { id: 'pat-maya', name: 'Maya Sari', email: 'maya@mail.com', role: 'patient', phone: '081234567892', gender: 'Perempuan' },
+    83→    83→    { id: 'pat-siti', name: 'Siti Aminah', email: 'siti@mail.com', role: 'patient', phone: '081234567893', gender: 'Perempuan' },
+    84→    84→    { id: 'pat-joko', name: 'Joko Widodo', email: 'joko@mail.com', role: 'patient', phone: '081234567894', gender: 'Laki-laki' },
+    85→    85→  ],
+    86→    86→  admin: [
+    87→    87→    { id: 'admin-carelivia', name: 'Admin CareLivia', email: 'admin@carelivia.id', role: 'admin', phone: '081200000000', gender: 'Laki-laki' },
+    88→    88→  ],
+    89→    89→};
+    90→    90→
+    91→    91→const specializationLabels: Record<string, string> = {
+    92→    92→  umum: 'Dokter Umum',
+    93→    93→  anak: 'Spesialis Anak',
+    94→    94→  penyakit_dalam: 'Spesialis Penyakit Dalam',
+    95→    95→  kebidanan: 'Spesialis Kebidanan',
+    96→    96→  gigi: 'Dokter Gigi',
+    97→    97→};
+    98→    98→
+    99→    99→// Extra roles available in the Sign Up form (beyond the 3 main cards)
+   100→   100→const ALL_SIGNUP_ROLES: { value: CareLiviaRole; label: string }[] = [
+   101→   101→  { value: 'Dokter', label: 'Dokter' },
+   102→   102→  { value: 'Perawat', label: 'Perawat' },
+   103→   103→  { value: 'Caregiver', label: 'Caregiver' },
+   104→   104→  { value: 'Pasien', label: 'Pasien' },
+   105→   105→  { value: 'Admin', label: 'Admin' },
+   106→   106→];
+   107→   107→
+   108→   108→export function LoginPage() {
+   109→   109→  const { setCurrentUser, setActivePanel } = useStore();
+   110→   110→  const { toast } = useToast();
+   111→   111→  const [selectedRole, setSelectedRole] = useState<RoleType | null>(null);
+   112→   112→
+   113→   113→  // Auth form state
+   114→   114→  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+   115→   115→  const [isLoading, setIsLoading] = useState(false);
+   116→   116→  const [authError, setAuthError] = useState<string | null>(null);
+   117→   117→  const [authInfo, setAuthInfo] = useState<string | null>(null);
+   118→   118→  const [showPassword, setShowPassword] = useState(false);
+   119→   119→  const [showConfirm, setShowConfirm] = useState(false);
+   120→   120→
+   121→   121→  // Sign In fields
+   122→   122→  const [signinEmail, setSigninEmail] = useState('');
+   123→   123→  const [signinPassword, setSigninPassword] = useState('');
+   124→   124→
+   125→   125→  // Sign Up fields
+   126→   126→  const [signupName, setSignupName] = useState('');
+   127→   127→  const [signupEmail, setSignupEmail] = useState('');
+   128→   128→  const [signupPhone, setSignupPhone] = useState('');
+   129→   129→  const [signupProfession, setSignupProfession] = useState('');
+   130→   130→  const [signupRole, setSignupRole] = useState<CareLiviaRole>('Pasien');
+   131→   131→  const [signupPassword, setSignupPassword] = useState('');
+   132→   132→  const [signupConfirm, setSignupConfirm] = useState('');
+   133→   133→
+   134→   134→  // ── Demo quick-login (preserved for dev convenience) ───────────────────
+   135→   135→  const handleDemoLogin = (account: DemoAccount) => {
+   136→   136→    setIsLoading(true);
+   137→   137→    const now = new Date().toISOString();
+   138→   138→    const user: User = {
+   139→   139→      id: account.id,
+   140→   140→      email: account.email,
+   141→   141→      phone: account.phone,
+   142→   142→      name: account.name,
+   143→   143→      role: account.role,
+   144→   144→      avatar: '',
+   145→   145→      isVerified: true,
+   146→   146→      isActive: true,
+   147→   147→      createdAt: now,
+   148→   148→      updatedAt: now,
+   149→   149→      gender: account.gender,
+   150→   150→    };
+   151→   151→    setTimeout(() => {
+   152→   152→      setCurrentUser(user);
+   153→   153→      toast({ title: `Selamat datang, ${account.name}` });
+   154→   154→    }, 400);
+   155→   155→  };
+   156→   156→
+   157→   157→  // ── Validation helpers ─────────────────────────────────────────────────
+   158→   158→  const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+   159→   159→
+   160→   160→  const validateSignIn = (): string | null => {
+   161→   161→    if (!signinEmail.trim()) return 'Email wajib diisi.';
+   162→   162→    if (!isValidEmail(signinEmail)) return 'Format email tidak valid.';
+   163→   163→    if (!signinPassword) return 'Password wajib diisi.';
+   164→   164→    return null;
+   165→   165→  };
+   166→   166→
+   167→   167→  const validateSignUp = (): string | null => {
+   168→   168→    if (!signupName.trim()) return 'Nama lengkap wajib diisi.';
+   169→   169→    if (!signupEmail.trim()) return 'Email wajib diisi.';
+   170→   170→    if (!isValidEmail(signupEmail)) return 'Format email tidak valid.';
+   171→   171→    if (signupPassword.length < 8) return 'Password minimal 8 karakter.';
+   172→   172→    if (signupPassword !== signupConfirm) return 'Konfirmasi password tidak sama.';
+   173→   173→    if (!signupRole) return 'Role wajib dipilih.';
+   174→   174→    return null;
+   175→   175→  };
+   176→   176→
+   177→   177→  // ── Apply successful auth → store + redirect by role ───────────────────
+   178→   178→  const applyAuthSuccess = (
+   179→   179→    authUser: { id: string; email: string; fullName: string; role: CareLiviaRole; phone?: string; profession?: string },
+   180→   180→    welcomeTitle: string
+   181→   181→  ) => {
+   182→   182→    const now = new Date().toISOString();
+   183→   183→    const storeUser: User = {
+   184→   184→      id: authUser.id,
+   185→   185→      email: authUser.email,
+   186→   186→      phone: authUser.phone,
+   187→   187→      name: authUser.fullName,
+   188→   188→      role: roleToUserRole(authUser.role),
+   189→   189→      avatar: '',
+   190→   190→      isVerified: true,
+   191→   191→      isActive: true,
+   192→   192→      createdAt: now,
+   193→   193→      updatedAt: now,
+   194→   194→    } as User;
+   195→   195→    setCurrentUser(storeUser);
+   196→   196→    // Single-route app: "redirect" = switch activePanel based on role
+   197→   197→    setActivePanel(roleToActivePanel(authUser.role));
+   198→   198→    toast({ title: welcomeTitle });
+   199→   199→  };
+   200→   200→
+   201→   201→  // ── Sign In submit ─────────────────────────────────────────────────────
+   202→   202→  const handleSignIn = async () => {
+   203→   203→    setAuthError(null);
+   204→   204→    setAuthInfo(null);
+   205→   205→    const v = validateSignIn();
+   206→   206→    if (v) { setAuthError(v); return; }
+   207→   207→    setIsLoading(true);
+   208→   208→    try {
+   209→   209→      const res = await signInWithEmail({ email: signinEmail.trim(), password: signinPassword });
+   210→   210→      if (!res.ok || !res.user) {
+   211→   211→        setAuthError(res.error ?? 'Login gagal.');
+   212→   212→        setIsLoading(false);
+   213→   213→        return;
+   214→   214→      }
+   215→   215→      applyAuthSuccess(res.user, `Selamat datang kembali, ${res.user.fullName}.`);
+   216→   216→    } catch (err) {
+   217→   217→      setAuthError('Terjadi kesalahan. Silakan coba lagi.');
+   218→   218→      setIsLoading(false);
+   219→   219→    }
+   220→   220→  };
+   221→   221→
+   222→   222→  // ── Sign Up submit ─────────────────────────────────────────────────────
+   223→   223→  const handleSignUp = async () => {
+   224→   224→    setAuthError(null);
+   225→   225→    setAuthInfo(null);
+   226→   226→    const v = validateSignUp();
+   227→   227→    if (v) { setAuthError(v); return; }
+   228→   228→    setIsLoading(true);
+   229→   229→    try {
+   230→   230→      const res = await signUpWithEmail({
+   231→   231→        email: signupEmail.trim(),
+   232→   232→        password: signupPassword,
+   233→   233→        fullName: signupName.trim(),
+   234→   234→        role: signupRole,
+   235→   235→        phone: signupPhone.trim() || undefined,
+   236→   236→        profession: signupProfession.trim() || undefined,
+   237→   237→      });
+   238→   238→      if (!res.ok) {
+   239→   239→        setAuthError(res.error ?? 'Registrasi gagal.');
+   240→   240→        setIsLoading(false);
+   241→   241→        return;
+   242→   242→      }
+   243→   243→      if (res.needsEmailConfirm) {
+   244→   244→        // Email confirmation required — don't auto-login. Show success message.
+   245→   245→        setAuthInfo('Registrasi berhasil. Silakan cek email untuk verifikasi akun.');
+   246→   246→        toast({ title: 'Registrasi berhasil', description: 'Silakan cek email untuk verifikasi akun.' });
+   247→   247→        // Switch to sign-in mode so the user can login after confirming
+   248→   248→        setAuthMode('signin');
+   249→   249→        setSigninEmail(signupEmail.trim());
+   250→   250→        setSigninPassword('');
+   251→   251→      } else {
+   252→   252→        // No email confirmation required → auto-login
+   253→   253→        if (res.user) {
+   254→   254→          applyAuthSuccess(res.user, `Selamat datang, ${res.user.fullName}.`);
+   255→   255→        } else {
+   256→   256→          setAuthInfo('Registrasi berhasil. Silakan masuk.');
+   257→   257→          setAuthMode('signin');
+   258→   258→          setSigninEmail(signupEmail.trim());
+   259→   259→        }
+   260→   260→      }
+   261→   261→      // Clear signup form
+   262→   262→      setSignupName(''); setSignupEmail(''); setSignupPhone(''); setSignupProfession(''); setSignupPassword(''); setSignupConfirm('');
+   263→   263→    } catch (err) {
+   264→   264→      setAuthError('Terjadi kesalahan. Silakan coba lagi.');
+   265→   265→    } finally {
+   266→   266→      setIsLoading(false);
+   267→   267→    }
+   268→   268→  };
+   269→   269→
+   270→   270→  const handleBack = () => {
+   271→   271→    setSelectedRole(null);
+   272→   272→    setAuthError(null);
+   273→   273→    setAuthInfo(null);
+   274→   274→    setAuthMode('signin');
+   275→   275→  };
+   276→   276→
+   277→   277→  // When a role card is clicked, pre-fill the signup role + switch to sign-in mode
+   278→   278→  const handleRoleSelect = (role: RoleType) => {
+   279→   279→    setSelectedRole(role);
+   280→   280→    setSignupRole(roleConfig[role].careliviaRole);
+   281→   281→    setAuthMode('signin');
+   282→   282→    setAuthError(null);
+   283→   283→    setAuthInfo(null);
+   284→   284→  };
+   285→   285→
+   286→   286→  return (
+   287→   287→    <div className="min-h-screen flex flex-col relative overflow-hidden">
+   288→   288→      {/* ═══ BACKGROUND LAYERS ═══ */}
+   289→   289→
+   290→   290→      {/* Layer 1: Sage green gradient base */}
+   291→   291→      <div className="absolute inset-0 bg-gradient-to-br from-[#1B6B5A] via-[#2D8C7A] to-[#1A5C4F]" />
+   292→   292→
+   293→   293→      {/* Layer 2: AI-generated nature/family illustration */}
+   294→   294→      <div className="absolute inset-0 opacity-25">
+   295→   295→        <Image
+   296→   296→          src="/carelivia-bg.png"
+   297→   297→          alt=""
+   298→   298→          fill
+   299→   299→          className="object-cover"
+   300→   300→          priority
+   301→   301→        />
+   302→   302→      </div>
+   303→   303→
+   304→   304→      {/* Layer 3: Gradient overlay for readability */}
+   305→   305→      <div
+   306→   306→        className="absolute inset-0"
+   307→   307→        style={{
+   308→   308→          background: 'linear-gradient(rgba(45,140,122,0.45), rgba(109,184,168,0.35))',
+   309→   309→        }}
+   310→   310→      />
+   311→   311→
+   312→   312→      {/* Layer 4: Decorative botanical leaves */}
+   313→   313→      <svg
+   314→   314→        className="absolute top-0 left-0 w-full h-full leaf-decoration pointer-events-none"
+   315→   315→        viewBox="0 0 1440 900"
+   316→   316→        fill="none"
+   317→   317→        xmlns="http://www.w3.org/2000/svg"
+   318→   318→      >
+   319→   319→        {/* Top-left leaf cluster */}
+   320→   320→        <g className="animate-leaf-sway">
+   321→   321→          <path d="M0 0C120 60 200 140 220 290C160 210 90 120 0 80V0Z" fill="white" />
+   322→   322→          <path d="M25 12C100 50 160 105 180 210C135 140 80 70 25 48V12Z" fill="white" opacity="0.4" />
+   323→   323→        </g>
+   324→   324→        {/* Bottom-right leaf cluster */}
+   325→   325→        <g className="animate-leaf-sway" style={{ animationDelay: '-4s' }}>
+   326→   326→          <path d="M1440 900C1320 840 1240 760 1220 610C1280 690 1350 780 1440 820V900Z" fill="white" />
+   327→   327→          <path d="M1415 888C1340 850 1280 795 1260 690C1305 760 1360 830 1415 852V888Z" fill="white" opacity="0.4" />
+   328→   328→        </g>
+   329→   329→        {/* Top-right small leaf */}
+   330→   330→        <g className="animate-leaf-sway" style={{ animationDelay: '-8s' }}>
+   331→   331→          <path d="M1440 0C1390 25 1350 75 1340 150C1360 100 1400 45 1440 25V0Z" fill="white" />
+   332→   332→        </g>
+   333→   333→        {/* Bottom-left small leaf */}
+   334→   334→        <g className="animate-leaf-sway" style={{ animationDelay: '-2s' }}>
+   335→   335→          <path d="M0 900C50 875 90 825 100 750C70 800 35 850 0 875V900Z" fill="white" />
+   336→   336→        </g>
+   337→   337→        {/* Center subtle leaf detail */}
+   338→   338→        <g className="animate-leaf-sway" style={{ animationDelay: '-6s' }}>
+   339→   339→          <path d="M720 0C740 40 745 90 730 140C725 95 715 45 720 0Z" fill="white" opacity="0.15" />
+   340→   340→        </g>
+   341→   341→      </svg>
+   342→   342→
+   343→   343→      {/* Layer 5: Floating ambient orbs */}
+   344→   344→      <motion.div
+   345→   345→        className="absolute top-[-10%] right-[-5%] w-[450px] h-[450px] rounded-full bg-white/4 blur-3xl"
+   346→   346→        animate={{ scale: [1, 1.1, 1], opacity: [0.15, 0.3, 0.15] }}
+   347→   347→        transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut' }}
+   348→   348→      />
+   349→   349→      <motion.div
+   350→   350→        className="absolute bottom-[-12%] left-[-6%] w-[550px] h-[550px] rounded-full bg-[#6DB8A8]/6 blur-3xl"
+   351→   351→        animate={{ scale: [1.06, 1, 1.06], opacity: [0.08, 0.2, 0.08] }}
+   352→   352→        transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
+   353→   353→      />
+   354→   354→      <motion.div
+   355→   355→        className="absolute top-[30%] right-[15%] w-[180px] h-[180px] rounded-full bg-[#D9B26F]/5 blur-2xl"
+   356→   356→        animate={{ y: [-12, 12, -12], opacity: [0.06, 0.15, 0.06] }}
+   357→   357→        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+   358→   358→      />
+   359→   359→
+   360→   360→      {/* ═══ MAIN CONTENT ═══ */}
+   361→   361→      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-6 sm:py-8">
+   362→   362→
+   363→   363→        {/* ── HERO: Logo + Branding ── */}
+   364→   364→        <motion.div
+   365→   365→          className="text-center mb-5 sm:mb-7"
+   366→   366→          initial={{ opacity: 0, y: -25 }}
+   367→   367→          animate={{ opacity: 1, y: 0 }}
+   368→   368→          transition={{ duration: 0.9, ease: 'easeOut' }}
+   369→   369→        >
+   370→   370→          {/* Logo with floating effect */}
+   371→   371→          <motion.div
+   372→   372→            className="mx-auto mb-4 w-20 h-20 sm:w-24 sm:h-24 relative"
+   373→   373→            initial={{ scale: 0, rotate: -180 }}
+   374→   374→            animate={{ scale: 1, rotate: 0 }}
+   375→   375→            transition={{ type: 'spring', stiffness: 180, damping: 14, delay: 0.2 }}
+   376→   376→          >
+   377→   377→            <motion.div
+   378→   378→              className="w-full h-full relative"
+   379→   379→              animate={{ y: [0, -4, 0] }}
+   380→   380→              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+   381→   381→            >
+   382→   382→              <div className="w-full h-full rounded-3xl overflow-hidden shadow-2xl shadow-black/20">
+   383→   383→                <Image
+   384→   384→                  src="/carelivia-icon.png"
+   385→   385→                  alt="CareLivia"
+   386→   386→                  width={96}
+   387→   387→                  height={96}
+   388→   388→                  className="w-full h-full object-contain"
+   389→   389→                  priority
+   390→   390→                />
+   391→   391→              </div>
+   392→   392→            </motion.div>
+   393→   393→          </motion.div>
+   394→   394→
+   395→   395→          {/* Brand Name — Dominant */}
+   396→   396→          <motion.h1
+   397→   397→            className="text-4xl sm:text-5xl md:text-6xl font-bold text-white tracking-tight"
+   398→   398→            initial={{ opacity: 0, y: 10 }}
+   399→   399→            animate={{ opacity: 1, y: 0 }}
+   400→   400→            transition={{ delay: 0.4, duration: 0.7 }}
+   401→   401→          >
+   402→   402→            Care<span className="text-[#6DB8A8]">Livia</span>
+   403→   403→          </motion.h1>
+   404→   404→
+   405→   405→          {/* Subtitle — Lighter, smaller */}
+   406→   406→          <motion.p
+   407→   407→            className="mt-2.5 text-xs sm:text-sm text-white/55 font-light max-w-md mx-auto leading-relaxed"
+   408→   408→            initial={{ opacity: 0 }}
+   409→   409→            animate={{ opacity: 1 }}
+   410→   410→            transition={{ delay: 0.6, duration: 0.6 }}
+   411→   411→          >
+   412→   412→            Perawatan Paliatif Digital untuk Meningkatkan Kualitas Hidup Pasien dan Keluarga
+   413→   413→          </motion.p>
+   414→   414→
+   415→   415→          {/* Tagline — Italic gold with letter spacing */}
+   416→   416→          <motion.p
+   417→   417→            className="mt-2.5 text-sm sm:text-base font-medium italic tracking-wider"
+   418→   418→            style={{ color: '#D9B26F' }}
+   419→   419→            initial={{ opacity: 0 }}
+   420→   420→            animate={{ opacity: 1 }}
+   421→   421→            transition={{ delay: 0.8, duration: 0.6 }}
+   422→   422→          >
+   423→   423→            &ldquo;Caring for Life, Preserving Human Dignity&rdquo;
+   424→   424→          </motion.p>
+   425→   425→        </motion.div>
+   426→   426→
+   427→   427→        {/* ── GLASS CONTAINER ── */}
+   428→   428→        <motion.div
+   429→   429→          className="w-full max-w-[900px]"
+   430→   430→          initial={{ opacity: 0, y: 30 }}
+   431→   431→          animate={{ opacity: 1, y: 0 }}
+   432→   432→          transition={{ delay: 0.5, duration: 0.8, ease: 'easeOut' }}
+   433→   433→        >
+   434→   434→          <div
+   435→   435→            className="p-6"
+   436→   436→            style={{
+   437→   437→              background: 'rgba(255, 255, 255, 0.12)',
+   438→   438→              backdropFilter: 'blur(10px)',
+   439→   439→              WebkitBackdropFilter: 'blur(10px)',
+   440→   440→              border: '1px solid rgba(255, 255, 255, 0.15)',
+   441→   441→              borderRadius: '24px',
+   442→   442→              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
+   443→   443→            }}
+   444→   444→          >
+   445→   445→            {/* Section header */}
+   446→   446→            <AnimatePresence mode="wait">
+   447→   447→              {selectedRole ? (
+   448→   448→                <motion.div
+   449→   449→                  key="account-header"
+   450→   450→                  initial={{ opacity: 0, x: -15 }}
+   451→   451→                  animate={{ opacity: 1, x: 0 }}
+   452→   452→                  exit={{ opacity: 0, x: 15 }}
+   453→   453→                  transition={{ duration: 0.3 }}
+   454→   454→                  className="flex items-center gap-3 mb-5"
+   455→   455→                >
+   456→   456→                  <button
+   457→   457→                    onClick={handleBack}
+   458→   458→                    className="shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors duration-200"
+   459→   459→                  >
+   460→   460→                    <ArrowLeft className="w-4 h-4" />
+   461→   461→                  </button>
+   462→   462→                  <div>
+   463→   463→                    <h2 className="text-sm font-semibold text-white">
+   464→   464→                      {authMode === 'signin' ? `Masuk sebagai ${roleConfig[selectedRole].label}` : `Daftar akun ${roleConfig[selectedRole].label}`}
+   465→   465→                    </h2>
+   466→   466→                    <p className="text-[11px] text-white/40">
+   467→   467→                      {authMode === 'signin' ? 'Masuk dengan email & password' : 'Lengkapi data untuk membuat akun'}
+   468→   468→                    </p>
+   469→   469→                  </div>
+   470→   470→                  {/* Mode toggle */}
+   471→   471→                  <div className="ml-auto flex items-center gap-1 p-0.5 rounded-full bg-white/5 border border-white/8">
+   472→   472→                    <button
+   473→   473→                      onClick={() => { setAuthMode('signin'); setAuthError(null); setAuthInfo(null); }}
+   474→   474→                      className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-colors ${authMode === 'signin' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/60'}`}
+   475→   475→                    >
+   476→   476→                      Masuk
+   477→   477→                    </button>
+   478→   478→                    <button
+   479→   479→                      onClick={() => { setAuthMode('signup'); setAuthError(null); setAuthInfo(null); }}
+   480→   480→                      className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-colors ${authMode === 'signup' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/60'}`}
+   481→   481→                    >
+   482→   482→                      Daftar
+   483→   483→                    </button>
+   484→   484→                  </div>
+   485→   485→                </motion.div>
+   486→   486→              ) : (
+   487→   487→                <motion.div
+   488→   488→                  key="role-header"
+   489→   489→                  initial={{ opacity: 0 }}
+   490→   490→                  animate={{ opacity: 1 }}
+   491→   491→                  exit={{ opacity: 0 }}
+   492→   492→                  transition={{ duration: 0.3 }}
+   493→   493→                  className="text-center mb-5"
+   494→   494→                >
+   495→   495→                  <p className="text-[13px] text-white/40 font-light tracking-wide">
+   496→   496→                    Pilih peran untuk melanjutkan
+   497→   497→                  </p>
+   498→   498→                </motion.div>
+   499→   499→              )}
+   500→   500→            </AnimatePresence>
+   501→   501→
+   502→   502→            {/* ── ROLE CARDS ── */}
+   503→   503→            <motion.div
+   504→   504→              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 justify-items-center"
+   505→   505→              layout
+   506→   506→            >
+   507→   507→              {(['dokter', 'pasien', 'admin'] as RoleType[]).map((role, index) => {
+   508→   508→                const config = roleConfig[role];
+   509→   509→                const Icon = config.icon;
+   510→   510→                const isSelected = selectedRole === role;
+   511→   511→                const accountCount = demoAccounts[role].length;
+   512→   512→
+   513→   513→                return (
+   514→   514→                  <motion.div
+   515→   515→                    key={role}
+   516→   516→                    initial={{ opacity: 0, y: 20 }}
+   517→   517→                    animate={{ opacity: 1, y: 0 }}
+   518→   518→                    transition={{ delay: 0.6 + index * 0.12, duration: 0.5 }}
+   519→   519→                    whileHover={{
+   520→   520→                      scale: 1.03,
+   521→   521→                      y: -3,
+   522→   522→                      transition: { duration: 0.3, ease: 'easeOut' },
+   523→   523→                    }}
+   524→   524→                    whileTap={{ scale: 0.97 }}
+   525→   525→                    className="cursor-pointer w-full max-w-[220px]"
+   526→   526→                    onClick={() => {
+   527→   527→                      if (isSelected) {
+   528→   528→                        handleBack();
+   529→   529→                      } else {
+   530→   530→                        handleRoleSelect(role);
+   531→   531→                      }
+   532→   532→                    }}
+   533→   533→                  >
+   534→   534→                    <div
+   535→   535→                      className={`flex flex-col items-center justify-center text-center gap-3 p-5 h-[180px] transition-all duration-300 ${
+   536→   536→                        isSelected
+   537→   537→                          ? 'border-[rgba(255,255,255,0.35)]'
+   538→   538→                          : 'border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.2)]'
+   539→   539→                      }`}
+   540→   540→                      style={{
+   541→   541→                        background: isSelected
+   542→   542→                          ? 'rgba(255, 255, 255, 0.18)'
+   543→   543→                          : 'rgba(255, 255, 255, 0.12)',
+   544→   544→                        backdropFilter: 'blur(10px)',
+   545→   545→                        WebkitBackdropFilter: 'blur(10px)',
+   546→   546→                        borderRadius: '20px',
+   547→   547→                        border: isSelected
+   548→   548→                          ? `1px solid rgba(255,255,255,0.35)`
+   549→   549→                          : undefined,
+   550→   550→                        boxShadow: isSelected
+   551→   551→                          ? `0 0 25px ${config.accentColor}20, inset 0 1px 0 rgba(255,255,255,0.15)`
+   552→   552→                          : `inset 0 1px 0 rgba(255,255,255,0.06)`,
+   553→   553→                      }}
+   554→   554→                      onMouseEnter={(e) => {
+   555→   555→                        if (!isSelected) {
+   556→   556→                          e.currentTarget.style.boxShadow = config.hoverShadow;
+   557→   557→                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.18)';
+   558→   558→                          e.currentTarget.style.border = `1px solid ${config.accentColor}40`;
+   559→   559→                        }
+   560→   560→                      }}
+   561→   561→                      onMouseLeave={(e) => {
+   562→   562→                        if (!isSelected) {
+   563→   563→                          e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.06)';
+   564→   564→                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+   565→   565→                          e.currentTarget.style.border = '1px solid rgba(255,255,255,0.08)';
+   566→   566→                        }
+   567→   567→                      }}
+   568→   568→                    >
+   569→   569→                      {/* Icon */}
+   570→   570→                      <div
+   571→   571→                        className={`w-14 h-14 rounded-xl bg-gradient-to-br ${config.gradient} flex items-center justify-center shadow-lg`}
+   572→   572→                        style={{ boxShadow: `0 4px 15px ${config.accentColor}30` }}
+   573→   573→                      >
+   574→   574→                        <Icon className="w-7 h-7 text-white" />
+   575→   575→                      </div>
+   576→   576→
+   577→   577→                      {/* Label + Description */}
+   578→   578→                      <div>
+   579→   579→                        <h3 className="font-semibold text-white text-sm tracking-wide">
+   580→   580→                          {config.label}
+   581→   581→                        </h3>
+   582→   582→                        <p className="text-[11px] text-white/45 mt-0.5 leading-tight max-w-[160px]">
+   583→   583→                          {config.description}
+   584→   584→                        </p>
+   585→   585→                      </div>
+   586→   586→
+   587→   587→                      {/* Account count */}
+   588→   588→                      <span className="text-[10px] text-white/30 font-medium">
+   589→   589→                        {accountCount} akun
+   590→   590→                      </span>
+   591→   591→                    </div>
+   592→   592→                  </motion.div>
+   593→   593→                );
+   594→   594→              })}
+   595→   595→            </motion.div>
+   596→   596→
+   597→   597→            {/* ── AUTH FORM / ACCOUNT LIST ── */}
+   598→   598→            <AnimatePresence mode="wait">
+   599→   599→              {selectedRole && (
+   600→   600→                <motion.div
+   601→   601→                  key={`auth-${selectedRole}-${authMode}`}
+   602→   602→                  initial={{ opacity: 0, height: 0 }}
+   603→   603→                  animate={{ opacity: 1, height: 'auto' }}
+   604→   604→                  exit={{ opacity: 0, height: 0 }}
+   605→   605→                  transition={{ duration: 0.4, ease: 'easeInOut' }}
+   606→   606→                  className="overflow-hidden"
+   607→   607→                >
+   608→   608→                  <div className="mt-5 pt-5 border-t border-white/8">
+   609→   609→                    {/* ── SIGN IN FORM ── */}
+   610→   610→                    {authMode === 'signin' && (
+   611→   611→                      <div className="space-y-3 max-w-md mx-auto">
+   612→   612→                        {/* Email */}
+   613→   613→                        <div className="relative">
+   614→   614→                          <Mail className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+   615→   615→                          <input
+   616→   616→                            type="email"
+   617→   617→                            autoComplete="email"
+   618→   618→                            placeholder="Email"
+   619→   619→                            value={signinEmail}
+   620→   620→                            onChange={(e) => { setSigninEmail(e.target.value); setAuthError(null); }}
+   621→   621→                            onKeyDown={(e) => { if (e.key === 'Enter') handleSignIn(); }}
+   622→   622→                            className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+   623→   623→                            disabled={isLoading}
+   624→   624→                          />
+   625→   625→                        </div>
+   626→   626→                        {/* Password */}
+   627→   627→                        <div className="relative">
+   628→   628→                          <Lock className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+   629→   629→                          <input
+   630→   630→                            type={showPassword ? 'text' : 'password'}
+   631→   631→                            autoComplete="current-password"
+   632→   632→                            placeholder="Password"
+   633→   633→                            value={signinPassword}
+   634→   634→                            onChange={(e) => { setSigninPassword(e.target.value); setAuthError(null); }}
+   635→   635→                            onKeyDown={(e) => { if (e.key === 'Enter') handleSignIn(); }}
+   636→   636→                            className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+   637→   637→                            disabled={isLoading}
+   638→   638→                          />
+   639→   639→                          <button
+   640→   640→                            type="button"
+   641→   641→                            onClick={() => setShowPassword(!showPassword)}
+   642→   642→                            className="absolute right-3 top-3 text-white/30 hover:text-white/60 transition-colors"
+   643→   643→                            tabIndex={-1}
+   644→   644→                          >
+   645→   645→                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+   646→   646→                          </button>
+   647→   647→                        </div>
+   648→   648→
+   649→   649→                        {/* Error / Info banner */}
+   650→   650→                        <AuthBanner error={authError} info={authInfo} />
+   651→   651→
+   652→   652→                        {/* Submit */}
+   653→   653→                        <button
+   654→   654→                          onClick={handleSignIn}
+   655→   655→                          disabled={isLoading}
+   656→   656→                          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#2D8C7A] to-[#1F6B5C] text-white text-sm font-semibold shadow-lg hover:shadow-xl hover:brightness-110 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+   657→   657→                        >
+   658→   658→                          {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Memproses...</> : <>Masuk <ChevronRight className="w-4 h-4" /></>}
+   659→   659→                        </button>
+   660→   660→
+   661→   661→                        {/* Switch to signup */}
+   662→   662→                        <p className="text-center text-[11px] text-white/40 pt-1">
+   663→   663→                          Belum punya akun?{' '}
+   664→   664→                          <button onClick={() => { setAuthMode('signup'); setAuthError(null); setAuthInfo(null); }} className="text-white/70 hover:text-white underline underline-offset-2">
+   665→   665→                            Daftar di sini
+   666→   666→                          </button>
+   667→   667→                        </p>
+   668→   668→                      </div>
+   669→   669→                    )}
+   670→   670→
+   671→   671→                    {/* ── SIGN UP FORM ── */}
+   672→   672→                    {authMode === 'signup' && (
+   673→   673→                      <div className="space-y-3 max-w-md mx-auto">
+   674→   674→                        {/* Full Name */}
+   675→   675→                        <div className="relative">
+   676→   676→                          <UserIcon className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+   677→   677→                          <input
+   678→   678→                            type="text"
+   679→   679→                            placeholder="Nama Lengkap"
+   680→   680→                            value={signupName}
+   681→   681→                            onChange={(e) => { setSignupName(e.target.value); setAuthError(null); }}
+   682→   682→                            className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+   683→   683→                            disabled={isLoading}
+   684→   684→                          />
+   685→   685→                        </div>
+   686→   686→                        {/* Email */}
+   687→   687→                        <div className="relative">
+   688→   688→                          <Mail className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+   689→   689→                          <input
+   690→   690→                            type="email"
+   691→   691→                            autoComplete="email"
+   692→   692→                            placeholder="Email"
+   693→   693→                            value={signupEmail}
+   694→   694→                            onChange={(e) => { setSignupEmail(e.target.value); setAuthError(null); }}
+   695→   695→                            className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+   696→   696→                            disabled={isLoading}
+   697→   697→                          />
+   698→   698→                        </div>
+   699→   699→                        {/* Phone + Profession */}
+   700→   700→                        <div className="grid grid-cols-2 gap-2">
+   701→   701→                          <div className="relative">
+   702→   702→                            <Phone className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+   703→   703→                            <input
+   704→   704→                              type="tel"
+   705→   705→                              placeholder="No. HP"
+   706→   706→                              value={signupPhone}
+   707→   707→                              onChange={(e) => setSignupPhone(e.target.value)}
+   708→   708→                              className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+   709→   709→                              disabled={isLoading}
+   710→   710→                            />
+   711→   711→                          </div>
+   712→   712→                          <div className="relative">
+   713→   713→                            <Briefcase className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+   714→   714→                            <input
+   715→   715→                              type="text"
+   716→   716→                              placeholder="Profesi"
+   717→   717→                              value={signupProfession}
+   718→   718→                              onChange={(e) => setSignupProfession(e.target.value)}
+   719→   719→                              className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+   720→   720→                              disabled={isLoading}
+   721→   721→                            />
+   722→   722→                          </div>
+   723→   723→                        </div>
+   724→   724→                        {/* Role selector (all 5 roles) */}
+   725→   725→                        <div className="relative">
+   726→   726→                          <Shield className="absolute left-3 top-3 w-4 h-4 text-white/30 pointer-events-none" />
+   727→   727→                          <select
+   728→   728→                            value={signupRole}
+   729→   729→                            onChange={(e) => setSignupRole(e.target.value as CareLiviaRole)}
+   730→   730→                            disabled={isLoading}
+   731→   731→                            className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors appearance-none cursor-pointer [&>option]:text-black"
+   732→   732→                          >
+   733→   733→                            {ALL_SIGNUP_ROLES.map((r) => (
+   734→   734→                              <option key={r.value} value={r.value}>{r.label}</option>
+   735→   735→                            ))}
+   736→   736→                          </select>
+   737→   737→                        </div>
+   738→   738→                        {/* Password */}
+   739→   739→                        <div className="relative">
+   740→   740→                          <Lock className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+   741→   741→                          <input
+   742→   742→                            type={showPassword ? 'text' : 'password'}
+   743→   743→                            autoComplete="new-password"
+   744→   744→                            placeholder="Password (min. 8 karakter)"
+   745→   745→                            value={signupPassword}
+   746→   746→                            onChange={(e) => { setSignupPassword(e.target.value); setAuthError(null); }}
+   747→   747→                            className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+   748→   748→                            disabled={isLoading}
+   749→   749→                          />
+   750→   750→                          <button
+   751→   751→                            type="button"
+   752→   752→                            onClick={() => setShowPassword(!showPassword)}
+   753→   753→                            className="absolute right-3 top-3 text-white/30 hover:text-white/60 transition-colors"
+   754→   754→                            tabIndex={-1}
+   755→   755→                          >
+   756→   756→                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+   757→   757→                          </button>
+   758→   758→                        </div>
+   759→   759→                        {/* Confirm Password */}
+   760→   760→                        <div className="relative">
+   761→   761→                          <Lock className="absolute left-3 top-3 w-4 h-4 text-white/30" />
+   762→   762→                          <input
+   763→   763→                            type={showConfirm ? 'text' : 'password'}
+   764→   764→                            autoComplete="new-password"
+   765→   765→                            placeholder="Konfirmasi Password"
+   766→   766→                            value={signupConfirm}
+   767→   767→                            onChange={(e) => { setSignupConfirm(e.target.value); setAuthError(null); }}
+   768→   768→                            onKeyDown={(e) => { if (e.key === 'Enter') handleSignUp(); }}
+   769→   769→                            className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white/8 border border-white/10 text-white placeholder:text-white/35 text-sm focus:outline-none focus:border-white/30 focus:bg-white/12 transition-colors"
+   770→   770→                            disabled={isLoading}
+   771→   771→                          />
+   772→   772→                          <button
+   773→   773→                            type="button"
+   774→   774→                            onClick={() => setShowConfirm(!showConfirm)}
+   775→   775→                            className="absolute right-3 top-3 text-white/30 hover:text-white/60 transition-colors"
+   776→   776→                            tabIndex={-1}
+   777→   777→                          >
+   778→   778→                            {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+   779→   779→                          </button>
+   780→   780→                        </div>
+   781→   781→
+   782→   782→                        {/* Error / Info banner */}
+   783→   783→                        <AuthBanner error={authError} info={authInfo} />
+   784→   784→
+   785→   785→                        {/* Submit */}
+   786→   786→                        <button
+   787→   787→                          onClick={handleSignUp}
+   788→   788→                          disabled={isLoading}
+   789→   789→                          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#2D8C7A] to-[#1F6B5C] text-white text-sm font-semibold shadow-lg hover:shadow-xl hover:brightness-110 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+   790→   790→                        >
+   791→   791→                          {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Mendaftarkan...</> : <>Daftar <ChevronRight className="w-4 h-4" /></>}
+   792→   792→                        </button>
+   793→   793→
+   794→   794→                        {/* Switch to signin */}
+   795→   795→                        <p className="text-center text-[11px] text-white/40 pt-1">
+   796→   796→                          Sudah punya akun?{' '}
+   797→   797→                          <button onClick={() => { setAuthMode('signin'); setAuthError(null); setAuthInfo(null); }} className="text-white/70 hover:text-white underline underline-offset-2">
+   798→   798→                            Masuk di sini
+   799→   799→                          </button>
+   800→   800→                        </p>
+   801→   801→                      </div>
+   802→   802→                    )}
+   803→   803→
+   804→   804→                    {/* Demo hint */}
+   805→   805→                    <motion.div
+   806→   806→                      className="mt-3 p-2.5 rounded-xl border border-white/6"
+   807→   807→                      style={{ background: 'rgba(255,255,255,0.03)' }}
+   808→   808→                      initial={{ opacity: 0 }}
+   809→   809→                      animate={{ opacity: 1 }}
+   810→   810→                      transition={{ delay: 0.3 }}
+   811→   811→                    >
+   812→   812→                      <div className="flex items-center gap-2 text-[11px] text-white/30">
+   813→   813→                        <Lock className="w-3 h-3 shrink-0" />
+   814→   814→                        <span>
+   815→   815→                          <strong className="text-white/45">Supabase Auth</strong> — Autentikasi aman dengan email & password
+   816→   816→                        </span>
+   817→   817→                      </div>
+   818→   818→                    </motion.div>
+   819→   819→                  </div>
+   820→   820→                </motion.div>
+   821→   821→              )}
+   822→   822→            </AnimatePresence>
+   823→   823→          </div>
+   824→   824→        </motion.div>
+   825→   825→
+   826→   826→        {/* ── FOOTER ── */}
+   827→   827→        <motion.footer
+   828→   828→          className="mt-5 sm:mt-7 text-center"
+   829→   829→          initial={{ opacity: 0 }}
+   830→   830→          animate={{ opacity: 1 }}
+   831→   831→          transition={{ delay: 1.2, duration: 0.7 }}
+   832→   832→        >
+   833→   833→          <p className="text-[11px] text-white/30 font-medium">
+   834→   834→            &copy; 2025 CareLivia
+   835→   835→          </p>
+   836→   836→          <p className="text-[9px] text-white/20 mt-0.5">
+   837→   837→            Telepalliative Care Platform
+   838→   838→          </p>
+   839→   839→          <p className="text-[9px] text-white/15 mt-0.5 italic">
+   840→   840→            Caring for Life, Preserving Human Dignity
+   841→   841→          </p>
+   842→   842→        </motion.footer>
+   843→   843→      </div>
+   844→   844→    </div>
+   845→   845→  );
+   846→   846→}
+   847→   847→
+   848→   848→// ── Auth error/info banner (glass style, matches UI) ────────────────────────
+   849→   849→function AuthBanner({ error, info }: { error: string | null; info: string | null }) {
+   850→   850→  if (!error && !info) return null;
+   851→   851→  return (
+   852→   852→    <AnimatePresence>
+   853→   853→      {(error || info) && (
+   854→   854→        <motion.div
+   855→   855→          initial={{ opacity: 0, y: -4 }}
+   856→   856→          animate={{ opacity: 1, y: 0 }}
+   857→   857→          exit={{ opacity: 0, y: -4 }}
+   858→   858→          className={`flex items-start gap-2 p-2.5 rounded-xl text-[11px] leading-relaxed ${
+   859→   859→            error
+   860→   860→              ? 'bg-red-500/15 border border-red-400/30 text-red-100'
+   861→   861→              : 'bg-green-500/15 border border-green-400/30 text-green-100'
+   862→   862→          }`}
+   863→   863→        >
+   864→   864→          {error ? <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /> : <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+   865→   865→          <span>{error ?? info}</span>
+   866→   866→        </motion.div>
+   867→   867→      )}
+   868→   868→    </AnimatePresence>
+   869→   869→  );
+   870→   870→}
+   871→   871→

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '@/lib/store';
 import type { User } from '@/lib/types';
@@ -113,6 +113,12 @@ export function LoginPage() {
   // Auth form state
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [isLoading, setIsLoading] = useState(false);
+  // ── SYNCHRONOUS double-click guard ──────────────────────────────────────
+  // React state (`isLoading`) is async — clicking twice in the same React tick
+  // would fire two auth requests before the button gets disabled. This ref is
+  // flipped synchronously on the first click so the second click is a no-op.
+  // This is the PRIMARY fix for the Supabase 429 (Too Many Requests) issue.
+  const isSubmittingRef = useRef(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authInfo, setAuthInfo] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -200,31 +206,71 @@ export function LoginPage() {
 
   // ── Sign In submit ─────────────────────────────────────────────────────
   const handleSignIn = async () => {
+    // SYNCHRONOUS guard: blocks duplicate clicks that happen before React
+    // has a chance to re-render with `disabled={isLoading}`. This is what
+    // stops the second `/auth/v1/token` request that was triggering Supabase 429.
+    if (isSubmittingRef.current) {
+      console.warn('[auth][handleSignIn] duplicate click BLOCKED by ref guard');
+      return;
+    }
+    isSubmittingRef.current = true;
+    console.info('[auth][handleSignIn] click', {
+      email: signinEmail.trim(),
+      ts: new Date().toISOString(),
+    });
+
     setAuthError(null);
     setAuthInfo(null);
     const v = validateSignIn();
-    if (v) { setAuthError(v); return; }
+    if (v) {
+      setAuthError(v);
+      isSubmittingRef.current = false;
+      return;
+    }
     setIsLoading(true);
     try {
       const res = await signInWithEmail({ email: signinEmail.trim(), password: signinPassword });
       if (!res.ok || !res.user) {
         setAuthError(res.error ?? 'Login gagal.');
-        setIsLoading(false);
         return;
       }
       applyAuthSuccess(res.user, `Selamat datang kembali, ${res.user.fullName}.`);
     } catch (err) {
+      console.error('[auth][handleSignIn] threw', err);
       setAuthError('Terjadi kesalahan. Silakan coba lagi.');
+    } finally {
+      // Reset BOTH the async state and the sync ref so the next legitimate
+      // submit can proceed. (On success the component unmounts anyway, but
+      // resetting here is safe and defensive.)
       setIsLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 
   // ── Sign Up submit ─────────────────────────────────────────────────────
   const handleSignUp = async () => {
+    // SYNCHRONOUS guard: blocks duplicate clicks that happen before React
+    // has a chance to re-render with `disabled={isLoading}`. This is what
+    // stops the second `/auth/v1/signup` request that was triggering Supabase 429.
+    if (isSubmittingRef.current) {
+      console.warn('[auth][handleSignUp] duplicate click BLOCKED by ref guard');
+      return;
+    }
+    isSubmittingRef.current = true;
+    console.info('[auth][handleSignUp] click', {
+      email: signupEmail.trim(),
+      role: signupRole,
+      ts: new Date().toISOString(),
+    });
+
     setAuthError(null);
     setAuthInfo(null);
     const v = validateSignUp();
-    if (v) { setAuthError(v); return; }
+    if (v) {
+      setAuthError(v);
+      isSubmittingRef.current = false;
+      return;
+    }
     setIsLoading(true);
     try {
       const res = await signUpWithEmail({
@@ -237,7 +283,6 @@ export function LoginPage() {
       });
       if (!res.ok) {
         setAuthError(res.error ?? 'Registrasi gagal.');
-        setIsLoading(false);
         return;
       }
       if (res.needsEmailConfirm) {
@@ -261,9 +306,14 @@ export function LoginPage() {
       // Clear signup form
       setSignupName(''); setSignupEmail(''); setSignupPhone(''); setSignupProfession(''); setSignupPassword(''); setSignupConfirm('');
     } catch (err) {
+      console.error('[auth][handleSignUp] threw', err);
       setAuthError('Terjadi kesalahan. Silakan coba lagi.');
     } finally {
+      // Reset BOTH the async state and the sync ref so the next legitimate
+      // submit can proceed. (On success the component unmounts anyway, but
+      // resetting here is safe and defensive.)
       setIsLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 
