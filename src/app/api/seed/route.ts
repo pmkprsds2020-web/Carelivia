@@ -3,6 +3,13 @@ import { db } from "@/lib/db";
 
 export async function GET() {
   try {
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        { success: false, message: "Seed disabled in production" },
+        { status: 403 }
+      );
+    }
+
     // Check if data already exists
     const userCount = await db.user.count();
     if (userCount > 0) {
