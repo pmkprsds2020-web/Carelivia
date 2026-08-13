@@ -2,10 +2,12 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useStore } from '@/lib/store';
+import { isValidUuid } from '@/services/supabase';
 import type {
   PatientTransportRequest,
   PatientCareUpdate,
   PatientPaliatifChatMessage,
+  PalliativeChatMessage,
   PatientTransportRequestType,
   PatientConditionStatus,
 } from '@/lib/types';
@@ -165,18 +167,20 @@ export function PatientPaliatifPanel() {
     addPatientTransportRequest,
     patientCareUpdates,
     addPatientCareUpdate,
-    patientPaliatifMessages,
-    addPatientPaliatifMessage,
+    palliativeChatMessages,
+    addPalliativeChatMessage,
   } = useStore();
 
-  // For demo, match current user (patient-1) to palliative patient pp-1
-  const palliativePatient = palliativePatients.find(p => p.patientId === 'patient-1');
-  const patientId = palliativePatient?.id || 'pp-1';
+  // Resolve the palliative-patient record for whoever is actually logged in,
+  // not a hardcoded demo id — this was the root cause of the patient side
+  // never lining up with the doctor's Monitoring Paliatif data for the same person.
+  const palliativePatient = palliativePatients.find(p => p.patientId === currentUser?.id);
+  const patientId = palliativePatient?.id || '';
 
   // Filter data for this patient
   const myTransportRequests = patientTransportRequests.filter(r => r.palliativePatientId === patientId);
   const myCareUpdates = patientCareUpdates.filter(u => u.palliativePatientId === patientId);
-  const myMessages = patientPaliatifMessages.filter(m => m.roomId === `${patientId}_doc-sarah`);
+  const myMessages = palliativeChatMessages.filter(m => m.palliativePatientId === patientId || m.roomId === `room-${patientId}`);
   const myMeetings = familyMeetings.filter(m => m.palliativePatientId === patientId);
   // Edu materials bersifat katalog umum (tidak per-pasien)
   const myEduMaterials = eduMaterials;
@@ -245,7 +249,7 @@ export function PatientPaliatifPanel() {
         </TabsContent>
 
         <TabsContent value="chat">
-          <ChatTab patientId={patientId} messages={myMessages} onSend={addPatientPaliatifMessage} currentUser={currentUser} />
+          <ChatTab patientId={patientId} messages={myMessages} onSend={addPalliativeChatMessage} currentUser={currentUser} />
         </TabsContent>
       </Tabs>
     </div>
@@ -267,7 +271,7 @@ function DashboardTab({
   palliativePatient: typeof useStore extends { getState: () => { palliativePatients: (infer T)[] } } ? T | undefined : never;
   myTransportRequests: PatientTransportRequest[];
   myCareUpdates: PatientCareUpdate[];
-  myMessages: PatientPaliatifChatMessage[];
+  myMessages: PalliativeChatMessage[];
   myMeetings: { id: string; title: string; scheduledAt: string; status: string }[];
   myEduMaterials: { id: string }[];
   myEmergencyContacts: { id: string }[];
@@ -1068,13 +1072,12 @@ function ChatTab({
   currentUser,
 }: {
   patientId: string;
-  messages: PatientPaliatifChatMessage[];
-  onSend: (message: PatientPaliatifChatMessage) => void;
+  messages: PalliativeChatMessage[];
+  onSend: (message: PalliativeChatMessage) => void;
   currentUser: { id: string; name: string } | null;
 }) {
   const [inputMessage, setInputMessage] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [doctorOnline] = useState(true);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -1082,13 +1085,42 @@ function ChatTab({
     }
   }, [messages]);
 
+  // Load real message history from Supabase on mount / when patientId changes —
+  // same pattern used by the doctor's Monitoring Paliatif chat (palliative-chat-panel.tsx).
+  // Without this, only messages sent *after* this component mounted (via realtime)
+  // would show up; history from a prior session would be missing.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadMessages() {
+      if (!patientId || !isValidUuid(patientId)) return;
+      try {
+        const { chatService } = await import('@/services/supabase');
+        const roomUuid = await chatService.getOrCreateRoom(patientId, '');
+        if (!roomUuid || cancelled) return;
+        const msgs = await chatService.getMessages(roomUuid);
+        if (cancelled) return;
+        useStore.setState((s) => ({
+          palliativeChatMessages: [
+            ...s.palliativeChatMessages.filter((m) => m.palliativePatientId !== patientId),
+            ...msgs,
+          ],
+        }));
+      } catch (e) {
+        console.error('[patient-paliatif ChatTab] loadMessages failed:', e);
+      }
+    }
+    loadMessages();
+    return () => { cancelled = true; };
+  }, [patientId]);
+
   const handleSend = () => {
-    if (!inputMessage.trim()) return;
-    const message: PatientPaliatifChatMessage = {
+    if (!inputMessage.trim() || !patientId) return;
+    const message: PalliativeChatMessage = {
       id: genId('ppm'),
-      roomId: `${patientId}_doc-sarah`,
-      senderId: currentUser?.id || 'patient-1',
-      senderName: currentUser?.name || 'Siti Rahayu',
+      roomId: `room-${patientId}`,
+      palliativePatientId: patientId,
+      senderId: currentUser?.id || 'patient',
+      senderName: currentUser?.name || 'Pasien',
       senderRole: 'patient',
       content: inputMessage.trim(),
       type: 'text',
@@ -1098,6 +1130,15 @@ function ChatTab({
     onSend(message);
     setInputMessage('');
   };
+
+  const { onlineDoctors } = useStore();
+
+  // This is a shared "Tim Paliatif" room, not a 1:1 chat with a single fixed
+  // doctor — so derive the displayed name/status from whoever actually sent
+  // the most recent non-patient message, instead of hardcoding a person.
+  const lastStaffMessage = [...messages].reverse().find((m) => m.senderRole !== 'patient');
+  const staffDisplayName = lastStaffMessage?.senderName || 'Tim Paliatif';
+  const staffOnline = lastStaffMessage ? onlineDoctors.includes(lastStaffMessage.senderId) : false;
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -1116,9 +1157,9 @@ function ChatTab({
           <Stethoscope className="w-5 h-5 text-teal-600" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium">dr. Sarah Wijaya</p>
+          <p className="text-sm font-medium">{staffDisplayName}</p>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            {doctorOnline ? (
+            {staffOnline ? (
               <>
                 <Wifi className="w-3 h-3 text-green-500" />
                 <span className="text-green-600">Online</span>
@@ -1144,7 +1185,7 @@ function ChatTab({
         )}
         {messages.map((msg) => {
           const isPatient = msg.senderRole === 'patient';
-          const isForm = msg.type !== 'text' && msg.type !== 'system';
+          const isForm = msg.type !== 'text';
 
           return (
             <div key={msg.id} className={`flex ${isPatient ? 'justify-end' : 'justify-start'}`}>
