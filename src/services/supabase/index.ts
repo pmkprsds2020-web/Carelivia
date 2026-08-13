@@ -83,7 +83,7 @@ export type { DoctorRecord, DoctorFilters } from './doctorService';
 export { medicineService } from './medicineService';
 export type { MedicineRecord, MedicineFilters } from './medicineService';
 export { consultationService } from './consultationService';
-export type { ConsultationRecord, ConsultationFilters } from './consultationService';
+export type { ConsultationFilters } from './consultationService';
 export { homecareService } from './homecareService';
 export type { HomecareServiceRecord, HomecareBookingRecord } from './homecareService';
 export { adminDashboardService } from './adminDashboardService';
