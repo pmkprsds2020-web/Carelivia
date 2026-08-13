@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { medicineService } from "@/services/supabase";
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,32 +7,37 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") ?? "";
     const category = searchParams.get("category") ?? "";
 
-    const where: Record<string, unknown> = {
-      isActive: true,
-    };
-
-    if (search) {
-      where.OR = [
-        { name: { contains: search } },
-        { genericName: { contains: search } },
-        { manufacturer: { contains: search } },
-      ];
-    }
-
-    if (category) {
-      where.category = category;
-    }
-
-    const medicines = await db.medicine.findMany({
-      where,
-      orderBy: { name: "asc" },
+    const medicines = await medicineService.getAll({
+      search: search || undefined,
+      category: category || undefined,
     });
 
     return NextResponse.json({ medicines });
   } catch (error) {
     console.error("Medicines fetch error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch medicines", details: error instanceof Error ? error.message : "Unknown error" },
+      { success: false, error: "Failed to fetch medicines", details: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { name, category, price } = body ?? {};
+    if (!name || !category || price === undefined) {
+      return NextResponse.json(
+        { success: false, error: "name, category, and price are required" },
+        { status: 400 }
+      );
+    }
+    const medicine = await medicineService.create(body);
+    return NextResponse.json({ medicine }, { status: 201 });
+  } catch (error) {
+    console.error("Medicine create error:", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to create medicine", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     );
   }
