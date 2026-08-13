@@ -133,6 +133,8 @@ export interface Medicine {
   manufacturer?: string;
   image?: string;
   isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Order {
@@ -167,6 +169,8 @@ export interface HomeCareService {
   duration?: number;
   image?: string;
   isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface HomeCareBooking {
@@ -396,7 +400,9 @@ export interface PalliativeScreeningForm {
   status: ScreeningStatus;
   instructions?: string;
   selectedTools: PalliativeToolType[];
-  toolAnswers: Record<string, number | string | string[]>;
+  // Per-tool answers: bisa datar (jawaban per pertanyaan) atau nested
+  // (record jawaban per tool saat skrining inline dari chat).
+  toolAnswers: Record<string, number | string | string[] | Record<string, number | string | string[]>>;
   toolResults: Record<PalliativeToolType, {
     score: number;
     scoreLabel: string;
@@ -722,6 +728,169 @@ export interface DailyComplaintFormInput {
   sumberPengisian?: DailyComplaintSource;
 }
 
+// ── Daily Complaint AI Classification (Analisis Keluhan Harian via Chat AI) ──
+export type DailyComplaintCategory =
+  | 'nyeri'
+  | 'sesak_napas'
+  | 'mual'
+  | 'muntah'
+  | 'nafsu_makan_menurun'
+  | 'kelelahan'
+  | 'gangguan_tidur'
+  | 'konstipasi'
+  | 'diare'
+  | 'batuk'
+  | 'kecemasan'
+  | 'depresi'
+  | 'masalah_spiritual'
+  | 'masalah_sosial'
+  | 'keluhan_lainnya';
+/** Keparahan keluhan versi AI chat (ringan/sedang/berat) — berbeda dari
+ *  `DailyComplaintSeverity` (hijau/kuning/merah) milik form monitoring. */
+export type DailyComplaintAISeverity = 'ringan' | 'sedang' | 'berat';
+export type DailyComplaintImpact =
+  | 'tidak_mengganggu'
+  | 'sedikit_mengganggu'
+  | 'mengganggu_aktivitas'
+  | 'sangat_mengganggu';
+export type DailyComplaintFollowUpStatus =
+  | 'belum_ditindaklanjuti'
+  | 'sedang_diproses'
+  | 'selesai';
+export type DailyAlertLevel = 'hijau' | 'kuning' | 'merah';
+export type DailyComplaintInputSource = 'pasien' | 'keluarga' | 'dokter' | 'perawat';
+export type DailyComplaintDataSource = 'chat' | 'manual' | 'ai_classification';
+
+export interface DailyComplaintEntry {
+  id: string;
+  patientId: string;
+  patientName: string;
+  medicalRecordNumber: string;
+  date: string;
+  time: string;
+  category: DailyComplaintCategory;
+  severity: DailyComplaintAISeverity;
+  severityScore: number;
+  description: string;
+  impact: DailyComplaintImpact;
+  inputSource: DailyComplaintInputSource;
+  dataSource: DailyComplaintDataSource;
+  followUpStatus: DailyComplaintFollowUpStatus;
+  clinicalNote?: string;
+  validatedBy?: string;
+  chatMessageId?: string;
+  alertLevel: DailyAlertLevel;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type DailyComplaintTrend = { date: string } & Partial<
+  Record<DailyComplaintCategory, number>
+>;
+
+export interface DailyComplaintAlert {
+  id: string;
+  complaintId: string;
+  patientId: string;
+  patientName: string;
+  alertLevel: DailyAlertLevel;
+  title: string;
+  description: string;
+  triggerReason: string;
+  createdAt: string;
+  isRead: boolean;
+  isResolved: boolean;
+}
+
+export interface DailyComplaintAIResult {
+  category: DailyComplaintCategory;
+  severityScore: number;
+  severity: DailyComplaintAISeverity;
+  impact: DailyComplaintImpact;
+  extractedComplaints: string[];
+  additionalNotes: string;
+  alertLevel: DailyAlertLevel;
+  suggestedFollowUp: string;
+}
+
+// ── Social Needs Screening (Skrining Kebutuhan Sosial) ──────────────────────
+export type SocialNeedsCategory =
+  | 'dukungan_keluarga'
+  | 'caregiver'
+  | 'tempat_tinggal'
+  | 'akses_layanan'
+  | 'ekonomi'
+  | 'transportasi'
+  | 'interaksi_sosial'
+  | 'kebutuhan_informasi'
+  | 'pertanyaan_terbuka';
+export type SocialNeedsRiskLevel = 'rendah' | 'sedang' | 'tinggi' | 'sangat_tinggi';
+export type SocialNeedsQuestionType = 'single_choice' | 'multiple_choice' | 'text_area';
+
+export interface SocialNeedsQuestionOption {
+  label: string;
+  value: string;
+  score: number;
+  tooltip?: string;
+}
+
+export interface SocialNeedsQuestion {
+  id: string;
+  category: SocialNeedsCategory;
+  categoryLabel: string;
+  questionNumber: number;
+  questionText: string;
+  type: SocialNeedsQuestionType;
+  required?: boolean;
+  hasTooltip?: boolean;
+  options?: SocialNeedsQuestionOption[];
+}
+
+export interface SocialNeedsCategoryScore {
+  category: SocialNeedsCategory;
+  categoryLabel: string;
+  totalScore: number;
+  maxScore: number;
+  percentage: number;
+  riskLevel: SocialNeedsRiskLevel;
+}
+
+export interface SocialNeedsScreeningResult {
+  totalScore: number;
+  maxScore: number;
+  overallPercentage: number;
+  overallRiskLevel: SocialNeedsRiskLevel;
+  categoryScores: SocialNeedsCategoryScore[];
+  completedAt: string;
+}
+
+export interface SocialNeedsAIRecommendation {
+  priority: number;
+  action: string;
+  reason: string;
+  category: string;
+}
+
+export interface SocialNeedsEarlyWarning {
+  type: string;
+  severity: 'warning' | 'critical';
+  title: string;
+  description: string;
+}
+
+export interface SocialNeedsAIResult {
+  familySupportScore: SocialNeedsRiskLevel;
+  socialRiskScore: SocialNeedsRiskLevel;
+  caregiverBurnoutScore: SocialNeedsRiskLevel;
+  accessToCareScore: SocialNeedsRiskLevel;
+  financialRiskScore: SocialNeedsRiskLevel;
+  socialIsolationScore: SocialNeedsRiskLevel;
+  recommendations: SocialNeedsAIRecommendation[];
+  analysisSummary: string;
+  earlyWarnings: SocialNeedsEarlyWarning[];
+  generatedAt: string;
+}
+
 export interface PalliativeFormResponse {
   formId: string;
   formType: PalliativeFormType;
@@ -998,6 +1167,8 @@ export interface WearableVitalData {
   apneaEpisode?: boolean;
   // Oxygenation
   oxygenSat?: number;
+  // Body weight (kg)
+  weight?: number;
   // Activity
   steps?: number;
   distance?: number; // meters

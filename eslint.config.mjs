@@ -19,6 +19,11 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     // React rules
     "react-hooks/exhaustive-deps": "off",
     "react-hooks/purity": "off",
+    // React Compiler family rules (react-hooks v7) — project tidak memakai
+    // React Compiler; pola shadcn/ui & panel existing memicu aturan ini.
+    "react-hooks/set-state-in-effect": "off",
+    "react-hooks/static-components": "off",
+    "react-hooks/immutability": "off",
     "react/no-unescaped-entities": "off",
     "react/display-name": "off",
     "react/prop-types": "off",
@@ -44,7 +49,7 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "run.js", "server-runner.js", "server-monitor.js", "debug-server.sh", "keep-alive.sh", "seed-palliative.cjs"]
+  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "run.js", "server-runner.js", "server-monitor.js", "debug-server.sh", "keep-alive.sh", "seed-palliative.cjs", "seed-palliative.js"]
 }];
 
 export default eslintConfig;

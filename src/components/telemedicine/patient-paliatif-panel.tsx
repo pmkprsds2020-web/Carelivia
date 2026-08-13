@@ -178,7 +178,8 @@ export function PatientPaliatifPanel() {
   const myCareUpdates = patientCareUpdates.filter(u => u.palliativePatientId === patientId);
   const myMessages = patientPaliatifMessages.filter(m => m.roomId === `${patientId}_doc-sarah`);
   const myMeetings = familyMeetings.filter(m => m.palliativePatientId === patientId);
-  const myEduMaterials = eduMaterials.filter(m => m.palliativePatientId === patientId);
+  // Edu materials bersifat katalog umum (tidak per-pasien)
+  const myEduMaterials = eduMaterials;
   const myEmergencyContacts = emergencyContacts.filter(c => c.palliativePatientId === patientId);
 
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -263,7 +264,7 @@ function DashboardTab({
   myEmergencyContacts,
   onNavigate,
 }: {
-  palliativePatient: typeof useStore extends { getState: () => { palliativePatients: (infer T)[] } } ? T : never;
+  palliativePatient: typeof useStore extends { getState: () => { palliativePatients: (infer T)[] } } ? T | undefined : never;
   myTransportRequests: PatientTransportRequest[];
   myCareUpdates: PatientCareUpdate[];
   myMessages: PatientPaliatifChatMessage[];

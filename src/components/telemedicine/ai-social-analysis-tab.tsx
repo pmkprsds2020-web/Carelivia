@@ -291,12 +291,12 @@ export default function AISocialAnalysisTab({ palliativePatientId }: AISocialAna
           tasks: c.tasks,
         })),
         financialData: patientFinancials.length > 0 ? {
-          bpjsStatus: patientFinancials[0].bpjsMembershipStatus,
-          insuranceStatus: patientFinancials[0].healthInsuranceStatus,
-          assistanceNeeds: patientFinancials[0].socialAssistanceNeeds,
+          bpjsStatus: patientFinancials[0].bpjsNumber ? 'Terdaftar' : 'Tidak terdaftar',
+          insuranceStatus: patientFinancials[0].insuranceStatus,
+          assistanceNeeds: patientFinancials[0].recommendedPrograms?.join(', '),
         } : null,
         transportData: patientTransport.length > 0 ? {
-          transportNeeds: patientTransport[0].transportNeedType,
+          transportNeeds: patientTransport[0].type,
           mobilityBarriers: patientTransport[0].notes,
         } : null,
         meetingData: {

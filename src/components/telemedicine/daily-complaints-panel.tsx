@@ -21,7 +21,7 @@ import {
 } from '@/lib/daily-complaints-data';
 import type {
   DailyComplaintCategory,
-  DailyComplaintSeverity,
+  DailyComplaintAISeverity,
   DailyComplaintImpact,
   DailyComplaintInputSource,
   DailyComplaintDataSource,
@@ -199,7 +199,7 @@ export default function DailyComplaintsPanel({ embedded = false }: DailyComplain
   // Timeline filters
   const [dateFilter, setDateFilter] = useState<'today' | '7days' | '30days' | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<DailyComplaintCategory | 'all'>('all');
-  const [severityFilter, setSeverityFilter] = useState<DailyComplaintSeverity | 'all'>('all');
+  const [severityFilter, setSeverityFilter] = useState<DailyComplaintAISeverity | 'all'>('all');
   const [followUpFilter, setFollowUpFilter] = useState<DailyComplaintFollowUpStatus | 'all'>('all');
 
   // Dialog states
@@ -660,7 +660,7 @@ export default function DailyComplaintsPanel({ embedded = false }: DailyComplain
         {/* Severity Filter */}
         <div className="space-y-1">
           <Label className="text-xs">Tingkat Keparahan</Label>
-          <Select value={severityFilter} onValueChange={(v) => setSeverityFilter(v as DailyComplaintSeverity | 'all')}>
+          <Select value={severityFilter} onValueChange={(v) => setSeverityFilter(v as DailyComplaintAISeverity | 'all')}>
             <SelectTrigger className="h-8 text-xs">
               <SelectValue />
             </SelectTrigger>

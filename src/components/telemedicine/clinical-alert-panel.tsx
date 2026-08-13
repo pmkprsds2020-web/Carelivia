@@ -845,7 +845,7 @@ function StatCard({
 
 interface AlertCardProps {
   alert: PalliativeClinicalAlert;
-  patient?: { patientName: string; rmNumber?: string };
+  patient?: { patientName?: string; rmNumber?: string };
   selected: boolean;
   onSelect: (alert: PalliativeClinicalAlert) => void;
 }
@@ -939,7 +939,7 @@ function AlertCard({ alert, patient, selected, onSelect }: AlertCardProps) {
 
 interface AlertDetailProps {
   alert: PalliativeClinicalAlert;
-  patient?: { patientName: string; rmNumber?: string };
+  patient?: { patientName?: string; rmNumber?: string };
   noteText: string;
   setNoteText: (v: string) => void;
   onAcknowledge: () => void;
@@ -1003,7 +1003,7 @@ function AlertDetail({
       {patient && (
         <div className="flex items-center gap-2 text-sm p-2.5 rounded-lg bg-muted/50">
           <User className="w-4 h-4 text-muted-foreground" />
-          <span className="font-medium">{patient.patientName}</span>
+          <span className="font-medium">{patient.patientName || '-'}</span>
           {patient.rmNumber && (
             <span className="text-muted-foreground">({patient.rmNumber})</span>
           )}

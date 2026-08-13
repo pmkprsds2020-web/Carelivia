@@ -825,8 +825,8 @@ function generateFallbackAnalysis(params: {
         : 'Tidak ada terapi psikotropika yang tercatat.')
     : 'Tidak Ada Data';
 
-  const domainSosial = additionalData.socialAssessmentRecords?.length > 0
-    ? `Terdapat ${additionalData.socialAssessmentRecords.length} catatan penilaian sosial.`
+  const domainSosial = (additionalData.socialAssessmentRecords ?? []).length > 0
+    ? `Terdapat ${(additionalData.socialAssessmentRecords ?? []).length} catatan penilaian sosial.`
     : 'Tidak Ada Data penilaian sosial.';
 
   const domainSpiritual = acpDocuments.length > 0
@@ -840,24 +840,24 @@ function generateFallbackAnalysis(params: {
     'Edukasi manajemen gejala paliatif',
   ].join('; ');
 
-  const bebanCaregiver = additionalData.caregivers?.length > 0
-    ? `Terdapat ${additionalData.caregivers.length} caregiver yang tercatat.`
+  const bebanCaregiver = (additionalData.caregivers ?? []).length > 0
+    ? `Terdapat ${(additionalData.caregivers ?? []).length} caregiver yang tercatat.`
     : screeningRecords.filter(s => s.screeningType === 'zarit').length > 0
       ? `Skrining Zarit: ${screeningRecords.filter(s => s.screeningType === 'zarit').map(s => `skor ${s.score ?? '-'} (${s.interpretation ?? '-'})`).join('; ')}.`
       : 'Tidak Ada Data';
 
   // ── Ringkasan Nutrisi ──
-  const ringkasanNutrisi = additionalData.nutritionRecords?.length > 0
-    ? `Terdapat ${additionalData.nutritionRecords.length} catatan nutrisi. ${params.dailyComplaints.length > 0 ? `Keluhan terkait makan/minum: ${params.dailyComplaints.filter(c => c.makanMinum === 'tidak').length} dari ${params.dailyComplaints.length} laporan menunjukkan masalah asupan.` : ''}`
+  const ringkasanNutrisi = (additionalData.nutritionRecords ?? []).length > 0
+    ? `Terdapat ${(additionalData.nutritionRecords ?? []).length} catatan nutrisi. ${params.dailyComplaints.length > 0 ? `Keluhan terkait makan/minum: ${params.dailyComplaints.filter(c => c.makanMinum === 'tidak').length} dari ${params.dailyComplaints.length} laporan menunjukkan masalah asupan.` : ''}`
     : params.dailyComplaints.length > 0
       ? `Berdasarkan keluhan harian: ${params.dailyComplaints.filter(c => c.makanMinum === 'tidak').length} dari ${params.dailyComplaints.length} laporan menunjukkan masalah asupan makan/minum.`
       : 'Tidak Ada Data nutrisi';
 
   // ── Ringkasan Sosial ──
   const ringkasanSosial = [
-    additionalData.socialAssessmentRecords?.length > 0 ? `Terdapat ${additionalData.socialAssessmentRecords.length} penilaian sosial.` : '',
-    additionalData.familyMeetings?.length > 0 ? `Terdapat ${additionalData.familyMeetings.length} pertemuan keluarga.` : '',
-    additionalData.financialSupportRecords?.length > 0 ? `Terdapat ${additionalData.financialSupportRecords.length} catatan dukungan keuangan.` : '',
+    (additionalData.socialAssessmentRecords ?? []).length > 0 ? `Terdapat ${(additionalData.socialAssessmentRecords ?? []).length} penilaian sosial.` : '',
+    (additionalData.familyMeetings ?? []).length > 0 ? `Terdapat ${(additionalData.familyMeetings ?? []).length} pertemuan keluarga.` : '',
+    (additionalData.financialSupportRecords ?? []).length > 0 ? `Terdapat ${(additionalData.financialSupportRecords ?? []).length} catatan dukungan keuangan.` : '',
     params.patient.primaryDiagnosis ? '' : '',
   ].filter(Boolean).join(' ') || 'Tidak Ada Data sosial';
 

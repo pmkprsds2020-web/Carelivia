@@ -550,7 +550,15 @@ export function PalliativeScreeningPanel() {
     if (effectiveActiveFormId && isPatient) {
       const form = palliativeScreeningForms.find(f => f.id === effectiveActiveFormId);
       if (form && Object.keys(form.toolAnswers).length > 0) {
-        setAnswers({ ...form.toolAnswers });
+        // Hanya ambil jawaban datar (string/number/string[]); abaikan
+        // jawaban nested dari skrining inline chat agar form tetap valid.
+        const flatAnswers: Record<string, number | string | string[]> = {};
+        for (const [k, v] of Object.entries(form.toolAnswers)) {
+          if (typeof v === 'string' || typeof v === 'number' || Array.isArray(v)) {
+            flatAnswers[k] = v;
+          }
+        }
+        setAnswers(flatAnswers);
       } else {
         setAnswers({});
       }

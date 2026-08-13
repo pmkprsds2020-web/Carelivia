@@ -1746,7 +1746,6 @@ function DoctorMedicalRecordsView() {
             const scoredModules = (Object.keys(form.moduleScores) as ScreeningModuleId[])
               .map((modId) => ({
                 id: modId,
-                label: MODULE_LABELS[modId] || modId,
                 icon: MODULE_ICON_MAP[modId] || <ClipboardCheck className="w-4 h-4" />,
                 ...form.moduleScores[modId],
               }));
@@ -3277,7 +3276,6 @@ function PatientScreeningTimeline() {
             const scoredModules = (Object.keys(selectedForm.moduleScores) as ScreeningModuleId[])
               .map((modId) => ({
                 id: modId,
-                label: MODULE_LABELS[modId] || modId,
                 icon: MODULE_ICON_MAP[modId] || <ClipboardCheck className="w-4 h-4" />,
                 ...selectedForm.moduleScores[modId],
               }))

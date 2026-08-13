@@ -30,26 +30,30 @@ export async function POST(req: NextRequest) {
 
     let aiAnalysis: string;
     try {
-      const { generateText } = await import('z-ai-web-dev-sdk');
-      const result = await generateText({
-        prompt: clinicalContext,
-        system: [
-          'Anda adalah asisten klinis AI yang ahli dalam perawatan paliatif.',
-          'Analisis data pasien berikut dan berikan:',
-          '1. RINGKASAN KONDISI PASIEN',
-          '2. ANALISIS TREN TTV SERIAL',
-          '3. PERBANDINGAN HASIL SKRINING',
-          '4. IDENTIFIKASI PERBURUKAN KONDISI',
-          '5. FAKTOR RISIKO UTAMA',
-          '6. REKOMENDASI TINDAK LANJUT (berdasarkan pedoman paliatif)',
-          '7. SOAP NOTE OTOMATIS',
-          '8. PERINGATAN DINI',
-          '',
-          'Format respons Anda dengan heading yang jelas untuk setiap bagian.',
-          'Gunakan bahasa Indonesia. Berikan analisis yang spesifik berdasarkan data, bukan umum.',
-        ].join('\n'),
+      const { default: ZAI } = await import('z-ai-web-dev-sdk');
+      const zai = await ZAI.create();
+      const systemPrompt = [
+        'Anda adalah asisten klinis AI yang ahli dalam perawatan paliatif.',
+        'Analisis data pasien berikut dan berikan:',
+        '1. RINGKASAN KONDISI PASIEN',
+        '2. ANALISIS TREN TTV SERIAL',
+        '3. PERBANDINGAN HASIL SKRINING',
+        '4. IDENTIFIKASI PERBURUKAN KONDISI',
+        '5. FAKTOR RISIKO UTAMA',
+        '6. REKOMENDASI TINDAK LANJUT (berdasarkan pedoman paliatif)',
+        '7. SOAP NOTE OTOMATIS',
+        '8. PERINGATAN DINI',
+        '',
+        'Format respons Anda dengan heading yang jelas untuk setiap bagian.',
+        'Gunakan bahasa Indonesia. Berikan analisis yang spesifik berdasarkan data, bukan umum.',
+      ].join('\n');
+      const result = await zai.chat.completions.create({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: clinicalContext },
+        ],
       });
-      aiAnalysis = result.text || result.content || '';
+      aiAnalysis = result?.choices?.[0]?.message?.content || '';
     } catch {
       aiAnalysis = generateLocalAnalysis(patient, user);
     }

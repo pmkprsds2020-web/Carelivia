@@ -387,7 +387,7 @@ export async function GET() {
       { name: "Fisioterapi", description: "Layanan fisioterapi di rumah untuk pemulihan cedera dan rehabilitasi.", category: "fisioterapi", price: 300000, duration: 60 },
     ];
 
-    const homeCareServices = [];
+    const homeCareServices: any[] = [];
     for (const svc of homeCareServicesData) {
       homeCareServices.push(await db.homeCareService.create({ data: svc }));
     }
@@ -461,7 +461,7 @@ export async function GET() {
       { patientId: patients[4].id, doctorId: drLisaProfile.id, type: "chat", status: "completed", startTime: new Date("2025-02-17T09:00:00"), endTime: new Date("2025-02-17T09:35:00"), notes: "Konsultasi GERD", rating: 4, review: "Saran sangat bermanfaat" },
     ];
 
-    const consultations = [];
+    const consultations: any[] = [];
     for (const c of consultationData) {
       consultations.push(await db.consultation.create({ data: c }));
     }

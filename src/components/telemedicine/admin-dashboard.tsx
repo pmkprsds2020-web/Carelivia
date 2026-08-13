@@ -328,7 +328,7 @@ export function AdminDashboard() {
                     {recentConsultations.map((consultation) => (
                       <TableRow key={consultation.id}>
                         <TableCell className="text-xs font-medium">
-                          {(consultation.patient as Record<string, unknown> & { name?: string })?.name || 'N/A'}
+                          {consultation.patient?.name || 'N/A'}
                         </TableCell>
                         <TableCell className="text-xs">
                           {(() => {

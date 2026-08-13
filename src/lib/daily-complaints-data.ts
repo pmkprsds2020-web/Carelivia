@@ -1,6 +1,6 @@
 import type {
   DailyComplaintCategory,
-  DailyComplaintSeverity,
+  DailyComplaintAISeverity,
   DailyComplaintImpact,
   DailyComplaintFollowUpStatus,
   DailyAlertLevel,
@@ -36,7 +36,7 @@ export const COMPLAINT_CATEGORIES: Record<
 // ─── Severity Configuration ────────────────────────────────────────────────────
 
 export const SEVERITY_CONFIG: Record<
-  DailyComplaintSeverity,
+  DailyComplaintAISeverity,
   { label: string; color: string; bgColor: string; borderColor: string }
 > = {
   ringan: { label: 'Ringan', color: '#16A34A', bgColor: 'bg-green-50', borderColor: 'border-green-200' },
@@ -80,7 +80,7 @@ export const ALERT_LEVEL_CONFIG: Record<
 
 // ─── Helper Functions ──────────────────────────────────────────────────────────
 
-export function getSeverityFromScore(score: number): DailyComplaintSeverity {
+export function getSeverityFromScore(score: number): DailyComplaintAISeverity {
   if (score === 0) return 'ringan';
   if (score >= 1 && score <= 3) return 'ringan';
   if (score >= 4 && score <= 6) return 'sedang';
@@ -97,7 +97,7 @@ export function getComplaintCategoryLabel(category: DailyComplaintCategory): str
   return COMPLAINT_CATEGORIES[category]?.label ?? category;
 }
 
-export function getSeverityLabel(severity: DailyComplaintSeverity): string {
+export function getSeverityLabel(severity: DailyComplaintAISeverity): string {
   return SEVERITY_CONFIG[severity]?.label ?? severity;
 }
 

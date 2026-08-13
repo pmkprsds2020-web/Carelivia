@@ -1031,7 +1031,7 @@ export function ChatPanel() {
     updatePalliativeScreeningForm(inlineScreeningFormId, {
       toolAnswers: { ...currentForm?.toolAnswers, [inlineScreeningType]: answers },
       toolResults: {
-        ...currentForm?.toolResults,
+        ...(currentForm?.toolResults ?? ({} as PalliativeScreeningForm['toolResults'])),
         [inlineScreeningType]: {
           score: result.score,
           scoreLabel: result.scoreLabel,

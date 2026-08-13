@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     // Try to use AI SDK for analysis
     let aiAnalysis: string;
     try {
-      const { z } = await import('z-ai-web-dev-sdk');
+      const { default: ZAI } = await import('z-ai-web-dev-sdk');
       const prompt = `Anda adalah asisten klinis AI yang mengkhususkan diri dalam perawatan paliatif dan monitoring obat. Analisis data monitoring obat pasien berikut dan berikan rekomendasi klinis.
 
 DATA PASIEN:
@@ -37,7 +37,8 @@ Berikan analisis dalam format berikut:
 4. REKOMENDASI TINDAK LANJUT: Langkah-langkah yang direkomendasikan
 5. SOAP NOTE: Catatan SOAP berdasarkan data monitoring obat`;
 
-      const result = await z.chat({
+      const zai = await ZAI.create();
+      const result = await zai.chat.completions.create({
         model: 'default',
         messages: [{ role: 'user', content: prompt }],
       });

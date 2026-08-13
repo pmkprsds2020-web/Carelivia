@@ -3,7 +3,7 @@ import ZAI from 'z-ai-web-dev-sdk';
 import type {
   DailyComplaintAIResult,
   DailyComplaintCategory,
-  DailyComplaintSeverity,
+  DailyComplaintAISeverity,
   DailyComplaintImpact,
   DailyAlertLevel,
 } from '@/lib/types';
@@ -171,7 +171,7 @@ const VALID_CATEGORIES: DailyComplaintCategory[] = [
   'kecemasan', 'depresi', 'masalah_spiritual', 'masalah_sosial', 'keluhan_lainnya',
 ];
 
-const VALID_SEVERITIES: DailyComplaintSeverity[] = ['ringan', 'sedang', 'berat'];
+const VALID_SEVERITIES: DailyComplaintAISeverity[] = ['ringan', 'sedang', 'berat'];
 const VALID_IMPACTS: DailyComplaintImpact[] = ['tidak_mengganggu', 'sedikit_mengganggu', 'mengganggu_aktivitas', 'sangat_mengganggu'];
 const VALID_ALERT_LEVELS: DailyAlertLevel[] = ['hijau', 'kuning', 'merah'];
 
@@ -189,9 +189,9 @@ function validateSeverityScore(value: unknown): number {
   return 5;
 }
 
-function validateSeverity(value: unknown): DailyComplaintSeverity {
-  if (typeof value === 'string' && VALID_SEVERITIES.includes(value as DailyComplaintSeverity)) {
-    return value as DailyComplaintSeverity;
+function validateSeverity(value: unknown): DailyComplaintAISeverity {
+  if (typeof value === 'string' && VALID_SEVERITIES.includes(value as DailyComplaintAISeverity)) {
+    return value as DailyComplaintAISeverity;
   }
   return 'sedang';
 }
@@ -254,7 +254,7 @@ function localKeywordAnalysis(messageText: string): DailyComplaintAIResult {
 
   // Default severity: sedang (5), default impact: sedikit_mengganggu
   const severityScore = 5;
-  const severity: DailyComplaintSeverity = 'sedang';
+  const severity: DailyComplaintAISeverity = 'sedang';
   const impact: DailyComplaintImpact = 'sedikit_mengganggu';
 
   // Determine alert level based on some urgency keywords
