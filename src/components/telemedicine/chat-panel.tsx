@@ -1785,7 +1785,7 @@ export function ChatPanel() {
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <h3 className="font-semibold text-sm text-foreground truncate">{otherUser?.name || 'User'}</h3>
+            <h3 className="font-semibold text-sm text-foreground truncate">{otherUser?.name || (isDoctor ? 'Pasien belum ditentukan' : 'Dokter belum ditentukan')}</h3>
             {activeConsultation && palliativePatients.some(p => p.patientId === activeConsultation.patientId) && (
               <Badge className="text-[9px] bg-rose-100 text-rose-700 border border-rose-300 gap-1 shrink-0">
                 <HeartPulse className="w-2.5 h-2.5" />

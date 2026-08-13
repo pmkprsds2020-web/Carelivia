@@ -79,14 +79,18 @@ export default function TelemedicineApp() {
         fetch('/api/notifications?userId=default').then(r => r.json()),
         fetch('/api/consultations').then(r => r.json()),
         fetch('/api/homecare?type=bookings').then(r => r.json()),
+        fetch('/api/doctors').then(r => r.json()),
       ]);
 
-      const [dashData, medData, hcData, notifData, consultData, hcBookings] = results.map(r => 
+      const [dashData, medData, hcData, notifData, consultData, hcBookings, doctorsData] = results.map(r => 
         r.status === 'fulfilled' ? r.value : null
       );
 
       if (dashData?.stats) setDashboardStats(dashData.stats);
-      if (dashData?.doctors && dashData.doctors.length > 0) setDoctors(dashData.doctors);
+      // Real doctors from the database always replace the placeholder list below,
+      // including replacing it with an empty list if there are genuinely no doctors yet.
+      // Never fall back to demo doctor data in place of the live API result.
+      if (Array.isArray(doctorsData?.doctors)) setDoctors(doctorsData.doctors);
       if (dashData?.articles && dashData.articles.length > 0) setArticles(dashData.articles);
       if (medData?.medicines && medData.medicines.length > 0) setMedicines(medData.medicines);
       if (hcData?.services && hcData.services.length > 0) setHomeCareServices(hcData.services);

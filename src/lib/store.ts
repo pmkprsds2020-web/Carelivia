@@ -333,115 +333,16 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setDashboardStats: (stats) => set({ dashboardStats: stats }),
   
   // Doctors
-  doctors: [
-    {
-      id: 'doc-sarah',
-      email: 'sarah@carelivia.id',
-      name: 'dr. Sarah Wijaya',
-      role: 'doctor' as const,
-      avatar: '',
-      isVerified: true,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      doctorProfile: {
-        id: 'dp-doc-sarah',
-        userId: 'doc-sarah',
-        specialization: 'umum',
-        rating: 4.9,
-        reviewCount: 156,
-        consultationFee: 150000,
-        isOnline: true,
-        isAvailable: true,
-      }
-    },
-    {
-      id: 'doc-ahmad',
-      email: 'ahmad@carelivia.id',
-      name: 'dr. Ahmad Rizki',
-      role: 'doctor' as const,
-      avatar: '',
-      isVerified: true,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      doctorProfile: {
-        id: 'dp-doc-ahmad',
-        userId: 'doc-ahmad',
-        specialization: 'anak',
-        rating: 4.8,
-        reviewCount: 98,
-        consultationFee: 175000,
-        isOnline: true,
-        isAvailable: true,
-      }
-    },
-    {
-      id: 'doc-lisa',
-      email: 'lisa@carelivia.id',
-      name: 'dr. Lisa Permata',
-      role: 'doctor' as const,
-      avatar: '',
-      isVerified: true,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      doctorProfile: {
-        id: 'dp-doc-lisa',
-        userId: 'doc-lisa',
-        specialization: 'penyakit_dalam',
-        rating: 4.7,
-        reviewCount: 73,
-        consultationFee: 200000,
-        isOnline: true,
-        isAvailable: true,
-      }
-    },
-    {
-      id: 'doc-dewi',
-      email: 'dewi@carelivia.id',
-      name: 'dr. Dewi Sartika',
-      role: 'doctor' as const,
-      avatar: '',
-      isVerified: true,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      doctorProfile: {
-        id: 'dp-doc-dewi',
-        userId: 'doc-dewi',
-        specialization: 'kebidanan',
-        rating: 4.9,
-        reviewCount: 112,
-        consultationFee: 175000,
-        isOnline: false,
-        isAvailable: true,
-      }
-    },
-    {
-      id: 'doc-budi',
-      email: 'budi@carelivia.id',
-      name: 'drg. Budi Santoso',
-      role: 'doctor' as const,
-      avatar: '',
-      isVerified: true,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      doctorProfile: {
-        id: 'dp-doc-budi',
-        userId: 'doc-budi',
-        specialization: 'gigi',
-        rating: 4.6,
-        reviewCount: 45,
-        consultationFee: 200000,
-        isOnline: true,
-        isAvailable: true,
-      }
-    }
-  ] as User[],
+  // NOTE: previously seeded with hardcoded demo doctors (Sarah Wijaya, Ahmad Rizki, etc).
+  // That array was never being replaced by real data because /api/dashboard doesn't
+  // return a `doctors` field and /api/doctors was never fetched in page.tsx — so every
+  // patient's Chat Dokter showed these fake names regardless of who was actually
+  // registered. Real doctors now load via /api/doctors in page.tsx's loadDataInBackground.
+  // Do not reintroduce hardcoded doctors here as a "fallback" — an empty list with a
+  // loading state is correct; a fake doctor name is not.
+  doctors: [] as User[],
   setDoctors: (doctors) => set({ doctors }),
-  onlineDoctors: ['doc-sarah', 'doc-ahmad', 'doc-lisa', 'doc-budi'],
+  onlineDoctors: [] as string[],
   setOnlineDoctors: (ids) => set({ onlineDoctors: ids }),
   
   // Consultations

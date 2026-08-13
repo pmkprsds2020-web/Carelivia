@@ -19,7 +19,14 @@ export async function GET(request: NextRequest) {
       where.patientId = patientId;
     }
     if (doctorId) {
-      where.doctorId = doctorId;
+      // `doctorId` param is the doctor's User.id (Supabase Auth UUID), but
+      // Consultation.doctorId is a foreign key to DoctorProfile.id — resolve first.
+      const doctorProfile = await db.doctorProfile.findUnique({
+        where: { userId: doctorId },
+        select: { id: true },
+      });
+      // No matching profile → this user has no consultations as a doctor.
+      where.doctorId = doctorProfile?.id ?? "__no_match__";
     }
     if (type) {
       where.type = type;
@@ -78,9 +85,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify doctor profile exists
+    // `doctorId` here is the doctor's User.id (matches Supabase Auth UUID and
+    // what /api/doctors returns as each doctor's public `id`). Consultation.doctorId
+    // is a foreign key to DoctorProfile.id, which is a different id — so resolve via
+    // the userId column rather than assuming the caller already knows DoctorProfile.id.
     const doctorProfile = await db.doctorProfile.findUnique({
-      where: { id: doctorId },
+      where: { userId: doctorId },
     });
     if (!doctorProfile) {
       return NextResponse.json(
@@ -92,7 +102,7 @@ export async function POST(request: NextRequest) {
     const consultation = await db.consultation.create({
       data: {
         patientId,
-        doctorId,
+        doctorId: doctorProfile.id,
         type: type ?? "chat",
         status: "waiting",
         notes: notes ?? null,
