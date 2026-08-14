@@ -7,6 +7,18 @@
 // ───────────────────────────────────────────────────────────────────────────
 import { supabase, safeQuery, safeInsert, isValidUuid } from './_common';
 import { notificationService } from './notificationService';
+import { getSupabaseAdmin } from '@/supabaseClient';
+
+// Prefer the service-role admin client when available (this service is only
+// ever called from server-side API routes). Without it, the embedded
+// `profiles(...)` joins below come back null — `profiles` RLS only grants
+// SELECT `to authenticated`, but a server route using the anon key with no
+// forwarded user session is neither anon-exempt nor authenticated — so
+// doctor/patient names would silently disappear from consultation lists.
+// See doctorService.ts for the identical issue/fix.
+async function dbClient() {
+  return (await getSupabaseAdmin()) ?? supabase;
+}
 
 interface PersonRow {
   id?: string;
@@ -97,7 +109,8 @@ export interface ConsultationFilters {
 
 export const consultationService = {
   async getAll(filters: ConsultationFilters = {}): Promise<any[]> {
-    let q = supabase
+    const client = await dbClient();
+    let q = client
       .from('consultations')
       .select(LIST_SELECT)
       // Only the most recent message per consultation is needed for a preview.
@@ -120,8 +133,9 @@ export const consultationService = {
     type?: string;
     notes?: string;
   }): Promise<any> {
+    const client = await dbClient();
     const { data: row, error } = await safeInsert<any>(
-      supabase
+      client
         .from('consultations')
         .insert({
           patient_id: input.patientId,
@@ -151,8 +165,9 @@ export const consultationService = {
 
   async getById(id: string): Promise<{ id: string; patientId: string; doctorId: string } | null> {
     if (!isValidUuid(id)) return null;
+    const client = await dbClient();
     const row = await safeQuery(
-      supabase.from('consultations').select('id, patient_id, doctor_id').eq('id', id).single(),
+      client.from('consultations').select('id, patient_id, doctor_id').eq('id', id).single(),
       null as any,
       'consultationService.getById'
     );
@@ -161,8 +176,9 @@ export const consultationService = {
 
   async getMessages(consultationId: string) {
     if (!isValidUuid(consultationId)) return [];
+    const client = await dbClient();
     const rows = await safeQuery(
-      supabase
+      client
         .from('consultation_messages')
         .select('*, profiles(id, full_name, email, phone, status)')
         .eq('consultation_id', consultationId)
@@ -180,9 +196,10 @@ export const consultationService = {
     fileUrl?: string;
   }) {
     if (!isValidUuid(consultationId)) throw new Error('consultationId is not a valid UUID');
+    const client = await dbClient();
 
     const consult = await safeQuery(
-      supabase.from('consultations').select('id, patient_id, doctor_id').eq('id', consultationId).single(),
+      client.from('consultations').select('id, patient_id, doctor_id').eq('id', consultationId).single(),
       null as any,
       'consultationService.sendMessage(lookup)'
     );
@@ -191,7 +208,7 @@ export const consultationService = {
     if (!isParticipant) throw new Error('Not a participant in this consultation');
 
     const { data: row, error } = await safeInsert<any>(
-      supabase
+      client
         .from('consultation_messages')
         .insert({
           consultation_id: consultationId,

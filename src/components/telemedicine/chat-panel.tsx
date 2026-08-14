@@ -241,6 +241,12 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 }
 
+// Real Supabase rows have UUID ids; only fetch server-side data for those
+// (a brand-new, not-yet-persisted consultation would have a local-only id).
+function isValidId(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
 function generateRmNumber(): string {
   const now = new Date();
   const y = now.getFullYear();
@@ -298,6 +304,7 @@ export function ChatPanel() {
   const [messageInput, setMessageInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const isSendingRef = useRef(false);
   const [showChatArea, setShowChatArea] = useState(false);
   const [creatingConsultation, setCreatingConsultation] = useState<string | null>(null);
 
@@ -395,6 +402,41 @@ export function ChatPanel() {
     (c) => c.doctorId === currentUser?.id && (c.status === 'active' || c.status === 'waiting' || c.status === 'completed')
   );
 
+  // ── Keep the consultation list fresh from Supabase ───────────────────────
+  // Consultations are created/updated from other browsers/devices (a patient
+  // starting a new chat, a doctor replying elsewhere), so the list loaded
+  // once at app start-up can go stale. Refetch whenever this panel is open,
+  // and poll periodically so a doctor sees a newly-started consultation
+  // without needing a full page reload.
+  useEffect(() => {
+    if (!currentUser) return;
+    let cancelled = false;
+
+    const refetch = async () => {
+      try {
+        // Deliberately unfiltered (matches the initial load in page.tsx) —
+        // other panels (medical records, admin stats) also read the same
+        // global `consultations` list, so narrowing it here would hide data
+        // from those views. Doctor/patient-specific filtering already
+        // happens client-side (see `doctorConsultations` above).
+        const res = await fetch('/api/consultations');
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data?.consultations)) {
+          setConsultations(data.consultations);
+        }
+      } catch (err) {
+        console.warn('[chat-panel] failed to refresh consultations:', err);
+      }
+    };
+
+    refetch();
+    const interval = setInterval(refetch, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [currentUser, isDoctor]);
+
   // ── Auto-scroll ──────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -408,9 +450,38 @@ export function ChatPanel() {
     autoPrescriptionSentRef.current = false;
   }, [activeConsultation?.id]);
 
+  // ── Poll for new messages in the open conversation ───────────────────────
+  // Lightweight near-real-time chat: while a conversation is open, refetch
+  // its message history periodically so a reply from the other side (sent
+  // from a different device/browser) shows up without a manual refresh.
+  useEffect(() => {
+    const consultationId = activeConsultation?.id;
+    if (!consultationId || !isValidId(consultationId)) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      if (isSendingRef.current) return; // don't clobber an in-flight optimistic send
+      try {
+        const res = await fetch(`/api/consultations/${consultationId}/messages`);
+        const data = await res.json();
+        if (!cancelled && res.ok && Array.isArray(data?.messages)) {
+          setMessages(data.messages);
+        }
+      } catch (err) {
+        console.warn('[chat-panel] message poll failed:', err);
+      }
+    };
+
+    const interval = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeConsultation?.id]);
+
   // ── Start a chat with a doctor (Patient) ──────────────────────────────
 
-  const handleStartChat = (doctor: DoctorWithProfile) => {
+  const handleStartChat = async (doctor: DoctorWithProfile) => {
     if (!currentUser) return;
 
     const existing = getConsultationForDoctor(doctor.id);
@@ -419,12 +490,12 @@ export function ChatPanel() {
       return;
     }
 
+    if (creatingConsultation) return; // guard against double-click
     setCreatingConsultation(doctor.id);
 
-    const consultationId = generateId();
     const welcomeMessage: Message = {
       id: generateId(),
-      consultationId,
+      consultationId: '',
       senderId: 'system',
       content: "Selamat datang di CareLivia! Dokter akan segera merespons pesan Anda.",
       type: 'text',
@@ -432,59 +503,93 @@ export function ChatPanel() {
       createdAt: new Date().toISOString(),
     };
 
-    const newConsultation: Consultation = {
-      id: consultationId,
-      patientId: currentUser.id,
-      doctorId: doctor.id,
-      type: 'chat',
-      status: 'active',
-      startTime: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      patient: currentUser,
-      doctor: doctor,
-      messages: [welcomeMessage],
-    };
+    try {
+      const res = await fetch('/api/consultations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientId: currentUser.id, doctorId: doctor.id, type: 'chat' }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.consultation) {
+        throw new Error(data?.details || data?.error || 'Gagal membuat konsultasi');
+      }
 
-    setConsultations([newConsultation, ...consultations]);
-    setActiveConsultation(newConsultation);
-    setMessages([welcomeMessage]);
+      const saved = data.consultation;
+      welcomeMessage.consultationId = saved.id;
+      const newConsultation: Consultation = {
+        ...saved,
+        patient: saved.patient ?? currentUser,
+        doctor: saved.doctor ?? doctor,
+        messages: [welcomeMessage],
+      };
 
-    patientMessageCountRef.current = 0;
-    autoPrescriptionSentRef.current = false;
+      setConsultations([newConsultation, ...consultations]);
+      setActiveConsultation(newConsultation);
+      setMessages([welcomeMessage]);
 
-    setShowChatArea(true);
-    setCreatingConsultation(null);
+      patientMessageCountRef.current = 0;
+      autoPrescriptionSentRef.current = false;
+
+      setShowChatArea(true);
+    } catch (err) {
+      console.error('[chat-panel] handleStartChat failed:', err);
+      toast({
+        title: 'Gagal memulai konsultasi',
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        variant: 'destructive',
+      });
+    } finally {
+      setCreatingConsultation(null);
+    }
   };
 
   // ── Open an existing consultation ──────────────────────────────────────
 
-  const openConsultation = (consultation: Consultation) => {
+  const openConsultation = async (consultation: Consultation) => {
     setActiveConsultation(consultation);
-
-    // Load existing messages
-    const existingMessages = consultation.messages || [];
-    setMessages(existingMessages);
-
-    patientMessageCountRef.current = existingMessages.filter(
-      (m) => m.senderId === consultation.patientId
-    ).length;
-    autoPrescriptionSentRef.current = false;
-
     setShowChatArea(true);
+
+    // The consultations list only embeds the single most-recent message
+    // (for preview purposes) — fetch the full history for the chat view.
+    const previewMessages = consultation.messages || [];
+    setMessages(previewMessages);
+
+    if (isValidId(consultation.id)) {
+      try {
+        const res = await fetch(`/api/consultations/${consultation.id}/messages`);
+        const data = await res.json();
+        if (res.ok && Array.isArray(data?.messages)) {
+          setMessages(data.messages);
+          patientMessageCountRef.current = data.messages.filter(
+            (m: Message) => m.senderId === consultation.patientId
+          ).length;
+        }
+      } catch (err) {
+        console.warn('[chat-panel] failed to load full message history:', err);
+      }
+    }
+
+    autoPrescriptionSentRef.current = false;
   };
 
   // ── Send a message ─────────────────────────────────────────────────────
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!messageInput.trim() || !activeConsultation || !currentUser) return;
+    if (!isValidId(activeConsultation.id)) {
+      toast({ title: 'Konsultasi belum tersimpan', description: 'Silakan tunggu sebentar lalu coba lagi.', variant: 'destructive' });
+      return;
+    }
 
     const content = messageInput.trim();
     setMessageInput('');
     setIsSending(true);
+    isSendingRef.current = true;
 
-    const newMessage: Message = {
-      id: generateId(),
+    // Optimistic local message so the UI feels instant.
+    const optimisticId = generateId();
+    const optimisticMessage: Message = {
+      id: optimisticId,
       consultationId: activeConsultation.id,
       senderId: currentUser.id,
       content,
@@ -492,63 +597,49 @@ export function ChatPanel() {
       status: 'sent',
       createdAt: new Date().toISOString(),
     };
+    addMessage(optimisticMessage);
 
-    addMessage(newMessage);
-
-    // Update consultation with new message
-    const updatedMessages = [...messages, newMessage];
-    const updatedConsultation = {
-      ...activeConsultation,
-      messages: updatedMessages,
-      updatedAt: new Date().toISOString(),
-    };
-    updateConsultation(activeConsultation.id, updatedConsultation);
-
-    // Clear typing timeout
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    setIsSending(false);
-    messageInputRef.current?.focus();
-
-    // If patient is sending, simulate doctor auto-reply
-    if (isPatient) {
-      patientMessageCountRef.current += 1;
-
-      // Show typing indicator
-      setTimeout(() => setIsTyping(true), 500);
-
-      const doctorUser = doctors.find((d) => d.id === activeConsultation.doctorId);
-      const specialization = doctorUser?.doctorProfile?.specialization || 'umum';
-      const replies = DOCTOR_AUTO_REPLIES[specialization] || DOCTOR_AUTO_REPLIES.umum;
-      const randomReply = replies[Math.floor(Math.random() * replies.length)];
-
-      setTimeout(() => {
-        setIsTyping(false);
-        const doctorReply: Message = {
-          id: generateId(),
-          consultationId: activeConsultation.id,
-          senderId: activeConsultation.doctorId,
-          content: randomReply,
-          type: 'text',
-          status: 'delivered',
-          createdAt: new Date().toISOString(),
-        };
-        addMessage(doctorReply);
-        updateConsultation(activeConsultation.id, {
-          messages: [...updatedMessages, doctorReply],
-          updatedAt: new Date().toISOString(),
-        });
-      }, 1500 + Math.random() * 2000);
-
-      // Auto-send e-prescription after 3+ patient messages
-      if (patientMessageCountRef.current >= 3 && !autoPrescriptionSentRef.current) {
-        autoPrescriptionSentRef.current = true;
-        setTimeout(() => {
-          handleAutoPrescription(activeConsultation, specialization);
-        }, 4000 + Math.random() * 2000);
+    try {
+      const res = await fetch(`/api/consultations/${activeConsultation.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ senderId: currentUser.id, content, type: 'text' }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.message) {
+        throw new Error(data?.details || data?.error || 'Gagal mengirim pesan');
       }
+
+      // Replace the optimistic message with the real, persisted one. Read
+      // fresh from the store (not the stale `messages` closure) since
+      // `addMessage` mutated the store directly, and other messages may
+      // have arrived in the meantime.
+      const savedMessage: Message = data.message;
+      const updatedMessages = [
+        ...useStore.getState().messages.filter((m) => m.id !== optimisticId && m.id !== savedMessage.id),
+        savedMessage,
+      ];
+      setMessages(updatedMessages);
+      updateConsultation(activeConsultation.id, {
+        messages: updatedMessages,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('[chat-panel] handleSendMessage failed:', err);
+      toast({
+        title: 'Pesan gagal terkirim',
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        variant: 'destructive',
+      });
+      // Roll back the optimistic message on failure. Read the store's
+      // CURRENT messages (not the stale `messages` from this closure) since
+      // `addMessage` above already mutated the store directly.
+      setMessages(useStore.getState().messages.filter((m) => m.id !== optimisticId));
+    } finally {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      setIsSending(false);
+      isSendingRef.current = false;
+      messageInputRef.current?.focus();
     }
   };
 
