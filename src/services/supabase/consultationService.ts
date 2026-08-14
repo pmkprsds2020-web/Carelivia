@@ -20,6 +20,33 @@ async function dbClient() {
   return (await getSupabaseAdmin()) ?? supabase;
 }
 
+// PostgREST can only embed `profiles(...)` on `consultation_messages` once
+// the `sender_id` foreign key exists (see
+// supabase/migration_consultation_messages_fk.sql). Older/not-yet-migrated
+// databases return an explicit "Could not find a relationship..." error for
+// that embed. Detect it so callers can fall back gracefully instead of
+// failing the whole send/read (and losing the message the user just typed).
+function isMissingRelationshipError(error: any): boolean {
+  const msg = (error?.message ?? String(error ?? '')).toLowerCase();
+  return msg.includes('could not find a relationship');
+}
+
+// Best-effort: look up a handful of sender names directly (no FK/embed
+// needed) so messages still show a name even before the migration runs.
+async function fetchSenderNames(client: any, senderIds: string[]): Promise<Map<string, PersonRow>> {
+  const ids = Array.from(new Set(senderIds)).filter(isValidUuid);
+  const map = new Map<string, PersonRow>();
+  if (ids.length === 0) return map;
+  const rows = await safeQuery(
+    client.from('profiles').select('id, full_name, email, phone, status').in('id', ids),
+    [] as any[],
+    'consultationService.fetchSenderNames'
+  );
+  for (const r of rows as any[]) map.set(r.id, r);
+  return map;
+}
+
+
 interface PersonRow {
   id?: string;
   full_name?: string;
@@ -177,16 +204,31 @@ export const consultationService = {
   async getMessages(consultationId: string) {
     if (!isValidUuid(consultationId)) return [];
     const client = await dbClient();
-    const rows = await safeQuery(
-      client
-        .from('consultation_messages')
-        .select('*, profiles(id, full_name, email, phone, status)')
-        .eq('consultation_id', consultationId)
-        .order('created_at', { ascending: true }),
-      [] as any[],
-      'consultationService.getMessages'
-    );
-    return (rows as any[]).map(messageFromDb);
+
+    const { data, error } = await client
+      .from('consultation_messages')
+      .select('*, profiles(id, full_name, email, phone, status)')
+      .eq('consultation_id', consultationId)
+      .order('created_at', { ascending: true });
+
+    if (error && isMissingRelationshipError(error)) {
+      // Fallback path: FK not migrated yet — fetch plain rows + names separately.
+      console.warn('[consultationService.getMessages] embed unavailable, using fallback:', error.message);
+      const plainRows = await safeQuery(
+        client.from('consultation_messages').select('*').eq('consultation_id', consultationId).order('created_at', { ascending: true }),
+        [] as any[],
+        'consultationService.getMessages(fallback)'
+      );
+      const rows = plainRows as any[];
+      const names = await fetchSenderNames(client, rows.map((r) => r.sender_id));
+      return rows.map((r) => messageFromDb({ ...r, profiles: names.get(r.sender_id) }));
+    }
+
+    if (error) {
+      console.warn('[consultationService.getMessages]', error.message);
+      return [];
+    }
+    return ((data ?? []) as any[]).map(messageFromDb);
   },
 
   async sendMessage(consultationId: string, input: {
@@ -207,22 +249,42 @@ export const consultationService = {
     const isParticipant = input.senderId === (consult as any).patient_id || input.senderId === (consult as any).doctor_id;
     if (!isParticipant) throw new Error('Not a participant in this consultation');
 
-    const { data: row, error } = await safeInsert<any>(
-      client
+    const insertPayload = {
+      consultation_id: consultationId,
+      sender_id: input.senderId,
+      content: input.content,
+      type: input.type ?? 'text',
+      file_url: input.fileUrl ?? null,
+      status: 'sent',
+    };
+
+    let row: any = null;
+    const { data: withEmbed, error: embedError } = await client
+      .from('consultation_messages')
+      .insert(insertPayload)
+      .select('*, profiles(id, full_name, email, phone, status)')
+      .single();
+
+    if (embedError && isMissingRelationshipError(embedError)) {
+      // Fallback: insert already happened only if the whole statement failed
+      // before the write — with PostgREST, a select-embed error on an
+      // insert...select rolls back nothing already committed, but to be
+      // safe we retry as a plain insert (no embed) rather than assume.
+      console.warn('[consultationService.sendMessage] embed unavailable, using fallback:', embedError.message);
+      const { data: plain, error: plainError } = await client
         .from('consultation_messages')
-        .insert({
-          consultation_id: consultationId,
-          sender_id: input.senderId,
-          content: input.content,
-          type: input.type ?? 'text',
-          file_url: input.fileUrl ?? null,
-          status: 'sent',
-        })
-        .select('*, profiles(id, full_name, email, phone, status)')
-        .single(),
-      'consultationService.sendMessage'
-    );
-    if (error) throw new Error(error);
+        .insert(insertPayload)
+        .select('*')
+        .single();
+      if (plainError) throw new Error(plainError.message);
+      const names = await fetchSenderNames(client, [input.senderId]);
+      row = { ...plain, profiles: names.get(input.senderId) };
+    } else if (embedError) {
+      throw new Error(embedError.message);
+    } else {
+      row = withEmbed;
+    }
+
     if (!row) return null;
 
     const recipientId = input.senderId === (consult as any).patient_id ? (consult as any).doctor_id : (consult as any).patient_id;
