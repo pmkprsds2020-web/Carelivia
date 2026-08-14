@@ -3,6 +3,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { isValidUuid } from '@/services/supabase';
+import { getToolLabel, type ScreeningScoreResult } from '@/lib/palliative-screening-data';
+import { InlineScreeningForm } from '@/components/telemedicine/inline-screening-form';
+import { MedicationMonitoringForm } from '@/components/telemedicine/medication-monitoring-form';
 import type {
   PatientTransportRequest,
   PatientCareUpdate,
@@ -15,6 +18,8 @@ import type {
   VitalSignRecordInfo,
   PalliativeClinicalAlert,
   DailyComplaintRecord,
+  PalliativeScreeningRecordInfo,
+  MedicationMonitoringFormAnswers,
 } from '@/lib/types';
 import { TTVForm, checkTTVAlerts } from '@/components/telemedicine/ttv-form';
 import { DailyComplaintForm } from '@/components/telemedicine/daily-complaint-panel';
@@ -1097,7 +1102,16 @@ function ChatTab({
   // Harian). Clicking a "Form TTV"/"Form Keluhan" bubble sets this; the
   // dialog closes it again once the patient submits.
   const [activeFormMsg, setActiveFormMsg] = useState<PalliativeChatMessage | null>(null);
-  const { addVitalSignRecord, addPalliativeClinicalAlert, addPalliativeAuditEntry, updatePalliativeChatMessage } = useStore();
+  const {
+    addVitalSignRecord,
+    addPalliativeClinicalAlert,
+    addPalliativeAuditEntry,
+    updatePalliativeChatMessage,
+    addPalliativeScreeningRecord,
+    addMedicationMonitoringAlert,
+    addMedicationMonitoringAuditEntry,
+    palliativeMedications,
+  } = useStore();
 
   const genFormId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
@@ -1247,6 +1261,213 @@ function ChatTab({
 
     setActiveFormMsg(null);
   };
+
+  const handleScreeningSubmit = (result: ScreeningScoreResult, answers: Record<string, number | string | string[]>) => {
+    if (!patient || !activeFormMsg || !activeFormMsg.screeningType) return;
+    const roomId = activeFormMsg.roomId || `room-${patientId}`;
+    const screeningType = activeFormMsg.screeningType;
+
+    onSend({
+      id: genFormId('ppm'),
+      roomId,
+      palliativePatientId: patient.id,
+      senderId: currentUser?.id || patient.patientId || patient.id,
+      senderName: currentUser?.name || patient.patientName || 'Pasien',
+      senderRole: 'patient',
+      type: 'form_response',
+      content: `Skrining ${getToolLabel(screeningType)} telah diisi.`,
+      formType: 'screening',
+      formResponse: {
+        formId: activeFormMsg.formData?.id || genFormId('form'),
+        formType: 'screening',
+        screeningType,
+        screeningAnswers: answers,
+        screeningResult: {
+          score: result.score,
+          scoreLabel: result.scoreLabel,
+          interpretation: result.interpretation,
+          ewsLevel: result.ewsLevel,
+        },
+        submittedAt: new Date().toISOString(),
+      },
+      status: 'delivered',
+      createdAt: new Date().toISOString(),
+    });
+    markFormSubmitted(activeFormMsg);
+
+    const screeningRecord: PalliativeScreeningRecordInfo = {
+      id: genFormId('sr'),
+      palliativePatientId: patient.id,
+      screeningType,
+      score: result.score,
+      scoreLabel: result.scoreLabel,
+      interpretation: result.interpretation,
+      ewsLevel: result.ewsLevel,
+      details: JSON.stringify(result.details),
+      performedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    addPalliativeScreeningRecord(screeningRecord);
+
+    if (result.ewsLevel === 'merah') {
+      const alert: PalliativeClinicalAlert = {
+        id: genFormId('alert'),
+        patientId: patient.id,
+        alertType: 'perburukan',
+        severity: 'merah',
+        title: `Skrining ${getToolLabel(screeningType)} Kritis`,
+        description: `Hasil skrining ${getToolLabel(screeningType)} menunjukkan kondisi kritis: ${result.scoreLabel}. ${result.interpretation}`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
+      addPalliativeClinicalAlert(alert);
+
+      onSend({
+        id: genFormId('ppm'),
+        roomId,
+        palliativePatientId: patient.id,
+        senderId: 'system',
+        senderName: 'Sistem',
+        senderRole: 'system',
+        type: 'clinical_alert',
+        content: `Peringatan: Skrining ${getToolLabel(screeningType)} menunjukkan kondisi kritis (${result.scoreLabel})`,
+        clinicalAlert: alert,
+        status: 'delivered',
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    addPalliativeAuditEntry({
+      id: genFormId('audit'),
+      patientId: patient.id,
+      action: 'form_submitted',
+      performedBy: currentUser?.id || patient.patientId || patient.id,
+      performedByRole: 'patient',
+      details: `Pasien mengirimkan hasil Skrining ${getToolLabel(screeningType)}: ${result.scoreLabel}`,
+      createdAt: new Date().toISOString(),
+    });
+
+    setActiveFormMsg(null);
+  };
+
+  const handleMedMonitoringSubmit = (answers: MedicationMonitoringFormAnswers) => {
+    if (!patient || !activeFormMsg) return;
+    const roomId = activeFormMsg.roomId || `room-${patientId}`;
+
+    onSend({
+      id: genFormId('ppm'),
+      roomId,
+      palliativePatientId: patient.id,
+      senderId: currentUser?.id || patient.patientId || patient.id,
+      senderName: currentUser?.name || patient.patientName || 'Pasien',
+      senderRole: 'patient',
+      type: 'form_response',
+      content: 'Form Monitoring Obat Paliatif telah diisi.',
+      formType: 'monitoring_obat',
+      formResponse: {
+        formId: activeFormMsg.formData?.id || genFormId('form'),
+        formType: 'monitoring_obat',
+        medicationMonitoringAnswers: answers,
+        submittedAt: new Date().toISOString(),
+      },
+      status: 'delivered',
+      createdAt: new Date().toISOString(),
+    });
+    markFormSubmitted(activeFormMsg);
+
+    // The Medication Monitoring Dashboard reads adherence stats straight out
+    // of `form_response` chat messages (see medication-monitoring-dashboard.tsx),
+    // so sending that message above is what actually makes this show up there
+    // — there's no separate table to write to. We still raise local alerts
+    // here, matching the doctor-side behavior.
+    const notConsumedMeds = answers.medications.filter(m => m.consumptionStatus === 'tidak_diminum');
+    const severeSideEffects = answers.medications.filter(m =>
+      m.hasComplaints && ((m.complaintSeverity !== undefined && m.complaintSeverity >= 7) ||
+        m.sideEffects?.includes('reaksi_alergi') ||
+        m.sideEffects?.includes('sesak_napas'))
+    );
+
+    for (const med of notConsumedMeds) {
+      addMedicationMonitoringAlert({
+        id: genFormId('mmalert'),
+        patientId: patient.id,
+        alertType: 'obat_tidak_diminum',
+        severity: 'warning',
+        title: `Obat Tidak Diminum: ${med.medicineName}`,
+        description: `Pasien tidak meminum ${med.medicineName}. Alasan: ${med.notConsumedReason || 'tidak disebutkan'}. ${med.notConsumedExplanation || ''}`,
+        medicationName: med.medicineName,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    for (const med of severeSideEffects) {
+      addMedicationMonitoringAlert({
+        id: genFormId('mmalert'),
+        patientId: patient.id,
+        alertType: 'efek_samping_berat',
+        severity: 'critical',
+        title: `Efek Samping Berat: ${med.medicineName}`,
+        description: `Pasien melaporkan efek samping berat setelah minum ${med.medicineName}. Keparahan: ${med.complaintSeverity}/10. Efek samping: ${(med.sideEffects || []).join(', ')}`,
+        medicationName: med.medicineName,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
+
+      const alert: PalliativeClinicalAlert = {
+        id: genFormId('alert'),
+        patientId: patient.id,
+        alertType: 'obat_tidak_diminum',
+        severity: 'merah',
+        title: `Efek Samping Obat Berat: ${med.medicineName}`,
+        description: `Keparahan ${med.complaintSeverity}/10. Efek: ${(med.sideEffects || []).join(', ')}. ${med.complaintNotes || ''}`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
+      addPalliativeClinicalAlert(alert);
+
+      onSend({
+        id: genFormId('ppm'),
+        roomId,
+        palliativePatientId: patient.id,
+        senderId: 'system',
+        senderName: 'Sistem',
+        senderRole: 'system',
+        type: 'clinical_alert',
+        content: `Peringatan: Efek samping berat dilaporkan untuk ${med.medicineName} (keparahan ${med.complaintSeverity}/10)`,
+        clinicalAlert: alert,
+        status: 'delivered',
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    const takenCount = answers.medications.filter(m => m.consumptionStatus === 'sudah_diminum').length;
+    const missedCount = answers.medications.filter(m => m.consumptionStatus === 'belum_diminum').length;
+    const notConsumedCount = notConsumedMeds.length;
+
+    addMedicationMonitoringAuditEntry({
+      id: genFormId('mmaudit'),
+      patientId: patient.id,
+      action: 'form_submitted',
+      performedBy: currentUser?.id || patient.patientId || patient.id,
+      performedByRole: 'patient',
+      details: `Form Monitoring Obat disubmit: ${takenCount} diminum, ${missedCount} belum, ${notConsumedCount} tidak`,
+      createdAt: new Date().toISOString(),
+    });
+
+    addPalliativeAuditEntry({
+      id: genFormId('audit'),
+      patientId: patient.id,
+      action: 'form_submitted',
+      performedBy: currentUser?.id || patient.patientId || patient.id,
+      performedByRole: 'patient',
+      details: 'Pasien mengirimkan hasil Form Monitoring Obat Paliatif',
+      createdAt: new Date().toISOString(),
+    });
+
+    setActiveFormMsg(null);
+  };
+
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1356,9 +1577,8 @@ function ChatTab({
         {messages.map((msg) => {
           const isPatient = msg.senderRole === 'patient';
           const isForm = msg.type !== 'text';
-          // Fillable form types the patient can tap to open. Screening /
-          // med-monitoring forms aren't wired up on the patient side yet.
-          const isFillableForm = msg.type === 'form_ttv' || msg.type === 'form_keluhan';
+          // Fillable form types the patient can tap to open.
+          const isFillableForm = msg.type === 'form_ttv' || msg.type === 'form_keluhan' || msg.type === 'form_screening' || msg.type === 'form_monitoring_obat';
           const formStatus = msg.formData?.status;
           const isOpenable = isFillableForm && formStatus !== 'submitted';
           const isSubmitted = isFillableForm && formStatus === 'submitted';
@@ -1446,6 +1666,20 @@ function ChatTab({
                 source="chat"
                 compact
                 onSubmitSuccess={handleKeluhanSubmit}
+              />
+            )}
+            {activeFormMsg.type === 'form_screening' && activeFormMsg.screeningType && (
+              <InlineScreeningForm
+                screeningType={activeFormMsg.screeningType}
+                onSubmit={handleScreeningSubmit}
+                onSaveDraft={() => {}}
+              />
+            )}
+            {activeFormMsg.type === 'form_monitoring_obat' && patient && (
+              <MedicationMonitoringForm
+                medications={palliativeMedications.filter(m => m.palliativePatientId === patient.id && m.isActive)}
+                onSubmit={handleMedMonitoringSubmit}
+                onSaveDraft={() => {}}
               />
             )}
           </DialogContent>

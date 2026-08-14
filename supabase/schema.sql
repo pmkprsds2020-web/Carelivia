@@ -364,6 +364,7 @@ create table if not exists public.messages (
   image_url     text,
   attachment_url text,
   read_at       timestamptz,
+  updated_at    timestamptz not null default now(),
   created_at    timestamptz not null default now()
 );
 create index if not exists messages_room_idx on public.messages(room_id, created_at asc);
