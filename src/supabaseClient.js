@@ -45,7 +45,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
   },
 });
 
-export default supabase;
+export const SUPABASE_URL_EXPORT = SUPABASE_URL;
+export const SUPABASE_ANON_KEY_EXPORT = SUPABASE_PUBLIC_KEY;
 
 // ── Server-only admin client (uses service-role key, bypasses RLS) ──────────
 // ⚠️  Only import this from server-side code (API routes, server actions).

@@ -106,6 +106,10 @@ function logAudit(
 }
 
 // ── Profile creation helper (best-effort) ──────────────────────────────────
+// Also used as a self-heal: passing the caller's own access_token lets the
+// server write `profiles`/`doctor_profiles` via RLS (`id = auth.uid()`) even
+// when SUPABASE_SERVICE_ROLE_KEY isn't configured on the deployment — see
+// /api/auth/create-profile for the fallback logic.
 async function createProfileRow(input: {
   userId: string;
   email: string;
@@ -113,6 +117,7 @@ async function createProfileRow(input: {
   role: CareLiviaRole;
   phone?: string;
   profession?: string;
+  accessToken?: string;
 }): Promise<void> {
   try {
     await fetch("/api/auth/create-profile", {
@@ -125,6 +130,7 @@ async function createProfileRow(input: {
         role: input.role,
         phone: input.phone,
         profession: input.profession,
+        accessToken: input.accessToken,
       }),
     });
   } catch {
@@ -178,7 +184,8 @@ export async function signUpWithEmail(input: SignUpInput): Promise<AuthResult> {
       return { ok: false, error: "Registrasi gagal. Silakan coba lagi." };
     }
 
-    // Best-effort: create profile row server-side (bypasses RLS via admin key).
+    // Best-effort: create profile row server-side (bypasses RLS via admin key,
+    // or falls back to this user's own session token — see createProfileRow).
     await createProfileRow({
       userId: user.id,
       email: input.email,
@@ -186,6 +193,7 @@ export async function signUpWithEmail(input: SignUpInput): Promise<AuthResult> {
       role: input.role,
       phone: input.phone,
       profession: input.profession,
+      accessToken: data.session?.access_token,
     });
 
     logAudit("SIGNUP", {
@@ -388,5 +396,42 @@ export function roleToUserRole(role: CareLiviaRole): "patient" | "doctor" | "pha
     case "Pasien":
     default:
       return "patient";
+  }
+}
+
+// ── Self-heal: sync the CURRENT session's profile into the DB ──────────────
+// Fixes accounts created before profile persistence worked correctly (e.g.
+// doctors who signed up while SUPABASE_SERVICE_ROLE_KEY was unset and ended
+// up with no `profiles`/`doctor_profiles` row at all, which made them
+// invisible in every patient's "Chat Dokter" list). Call this after any
+// successful sign-in / session restore — it's cheap, idempotent (upsert),
+// and silently no-ops if the profile is already correct.
+let __lastSyncedUserId: string | null = null;
+export async function syncProfileToDatabase(): Promise<void> {
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData.session;
+    const user = session?.user;
+    if (!user) return;
+
+    // Avoid re-syncing the same user repeatedly within one page session.
+    if (__lastSyncedUserId === user.id) return;
+    __lastSyncedUserId = user.id;
+
+    const meta = user.user_metadata ?? {};
+    const role = (meta.role as CareLiviaRole) || "Pasien";
+    const fullName = (meta.full_name as string) || user.email?.split("@")[0] || "Pengguna";
+
+    await createProfileRow({
+      userId: user.id,
+      email: user.email ?? "",
+      fullName,
+      role,
+      phone: meta.phone || undefined,
+      profession: meta.profession || undefined,
+      accessToken: session?.access_token,
+    });
+  } catch {
+    /* best-effort — never blocks the UI */
   }
 }

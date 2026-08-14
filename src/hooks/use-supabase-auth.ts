@@ -8,6 +8,7 @@ import {
   roleToUserRole,
   roleToActivePanel,
   signOutFromSupabase,
+  syncProfileToDatabase,
   type CareLiviaRole,
 } from '@/lib/supabaseAuth';
 import type { User } from '@/lib/types';
@@ -37,12 +38,16 @@ export function useSupabaseAuth() {
       if (result.ok && result.user) {
         const storeUser = authUserToStoreUser(result.user);
         setCurrentUser(storeUser);
+        // Self-heal: make sure this account has a profiles/doctor_profiles
+        // row in the DB. Fire-and-forget — never blocks rendering.
+        syncProfileToDatabase();
       }
 
       // 2) Subscribe to future auth changes
       unsub = onAuthChange((event, user) => {
         if (event === 'SIGNED_IN' && user) {
           setCurrentUser(authUserToStoreUser(user));
+          syncProfileToDatabase();
         } else if (event === 'SIGNED_OUT') {
           setCurrentUser(null);
           setActivePanel('home');

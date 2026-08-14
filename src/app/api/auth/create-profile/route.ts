@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/supabaseClient";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin, SUPABASE_URL_EXPORT as SUPABASE_URL, SUPABASE_ANON_KEY_EXPORT as SUPABASE_PUBLIC_KEY } from "@/supabaseClient";
 
 /**
  * POST /api/auth/create-profile
@@ -25,7 +26,7 @@ import { getSupabaseAdmin } from "@/supabaseClient";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
-    const { userId, email, full_name, role, phone, profession } = body ?? {};
+    const { userId, email, full_name, role, phone, profession, accessToken } = body ?? {};
 
     if (!userId || !email || !full_name || !role) {
       return NextResponse.json(
@@ -42,15 +43,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Pick the best available client for this request ────────────────────
+    // 1) service-role admin client — bypasses RLS entirely (preferred).
+    // 2) a request-scoped client authenticated as the calling user (via the
+    //    access_token their own browser session already has). This makes
+    //    profile creation work correctly even when SUPABASE_SERVICE_ROLE_KEY
+    //    was never configured in Vercel — the `profiles_insert_own` RLS
+    //    policy (`to authenticated with check (id = auth.uid())`) allows a
+    //    user to insert their OWN row, which is exactly what's happening here.
     const admin = await getSupabaseAdmin();
-    if (!admin) {
+    let client: SupabaseClient | null = admin;
+    let usedAuthedFallback = false;
+    if (!client && accessToken) {
+      client = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
+        global: { headers: { Authorization: `Bearer ${accessToken}` } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      usedAuthedFallback = true;
+    }
+
+    if (!client) {
       return NextResponse.json(
-        { ok: false, warning: "SUPABASE_SERVICE_ROLE_KEY not set. Profile not persisted; using auth metadata only." },
+        {
+          ok: false,
+          warning:
+            "SUPABASE_SERVICE_ROLE_KEY not set and no access token provided. Profile not persisted; using auth metadata only.",
+        },
         { status: 200 }
       );
     }
 
-    const { error } = await admin.from("profiles").upsert(
+    const { error } = await client.from("profiles").upsert(
       {
         id: userId,
         email,
@@ -64,10 +87,11 @@ export async function POST(req: NextRequest) {
     );
 
     if (error) {
-      // `profiles` table may not exist yet on the live DB. Degrade gracefully.
-      console.warn("[auth/create-profile] upsert failed:", error.message);
+      // `profiles` table may not exist yet on the live DB, or (in the
+      // authed-fallback path) RLS rejected the write for some other reason.
+      console.warn("[auth/create-profile] upsert failed:", error.message, { usedAuthedFallback });
       return NextResponse.json(
-        { ok: false, warning: "Profile table unavailable. Auth metadata still stored.", detail: error.message },
+        { ok: false, warning: "Profile write failed.", detail: error.message, usedAuthedFallback },
         { status: 200 }
       );
     }
@@ -75,7 +99,7 @@ export async function POST(req: NextRequest) {
     // ── Doctors also need a `doctor_profiles` row (see comment above) ──────
     let doctorProfileWarning: string | null = null;
     if (role === "Dokter") {
-      const { error: dpError } = await admin.from("doctor_profiles").upsert(
+      const { error: dpError } = await client.from("doctor_profiles").upsert(
         {
           id: userId,
           specialization: mapProfessionToSpecialization(profession),
@@ -93,7 +117,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, doctorProfileWarning });
+    return NextResponse.json({ ok: true, doctorProfileWarning, usedAuthedFallback });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     console.error("[auth/create-profile] fatal:", msg);
