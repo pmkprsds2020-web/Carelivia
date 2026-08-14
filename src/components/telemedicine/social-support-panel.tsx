@@ -30,6 +30,9 @@ import type {
   TransportNeedType,
   TransportStatus,
   FamilyCoordinationNote,
+  FamilySupportMaterial,
+  FamilySupportMaterialCategory,
+  FamilySupportMaterialStatus,
 } from '@/lib/types';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -118,8 +121,13 @@ const transportStatusBadge = (s: TransportStatus) => {
     dalam_perjalanan: { label: 'Dalam Perjalanan', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
     selesai: { label: 'Selesai', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
     dibatalkan: { label: 'Dibatalkan', cls: 'bg-red-100 text-red-800 border-red-300' },
+    // Patient-request approval states (from "Ajukan Permintaan Transportasi")
+    menunggu_konfirmasi: { label: 'Menunggu Konfirmasi', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+    disetujui: { label: 'Disetujui', cls: 'bg-teal-100 text-teal-800 border-teal-300' },
+    dijadwalkan: { label: 'Dijadwalkan', cls: 'bg-sky-100 text-sky-800 border-sky-300' },
+    ditolak: { label: 'Ditolak', cls: 'bg-red-100 text-red-800 border-red-300' },
   };
-  const m = map[s];
+  const m = map[s] ?? { label: s, cls: 'bg-slate-100 text-slate-600 border-slate-300' };
   return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
 };
 
@@ -130,8 +138,36 @@ const transportTypeBadge = (t: TransportNeedType) => {
     kendaraan_pribadi: { label: 'Kendaraan Pribadi', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
     transportasi_medis: { label: 'Transportasi Medis', cls: 'bg-teal-100 text-teal-800 border-teal-300' },
     lainnya: { label: 'Lainnya', cls: 'bg-slate-100 text-slate-600 border-slate-300' },
+    // Patient-request types (from "Ajukan Permintaan Transportasi")
+    kontrol_faskes: { label: 'Kontrol Faskes', cls: 'bg-teal-100 text-teal-800 border-teal-300' },
+    kunjungan_rumah: { label: 'Kunjungan Rumah', cls: 'bg-sky-100 text-sky-800 border-sky-300' },
+    transportasi_darurat: { label: 'Transportasi Darurat', cls: 'bg-red-200 text-red-900 border-red-400' },
+    pengambilan_obat: { label: 'Pengambilan Obat', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
   };
-  const m = map[t];
+  const m = map[t] ?? { label: t, cls: 'bg-slate-100 text-slate-600 border-slate-300' };
+  return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
+};
+
+const FAMILY_SUPPORT_CATEGORY_LABELS: Record<FamilySupportMaterialCategory, string> = {
+  edukasi_perawatan: 'Edukasi Perawatan',
+  perawatan_rumah: 'Perawatan di Rumah',
+  obat: 'Obat',
+  nutrisi: 'Nutrisi',
+  perawatan_paliatif: 'Perawatan Paliatif',
+  caregiver: 'Caregiver',
+  psikososial: 'Psikososial',
+  komunikasi_keluarga: 'Komunikasi Keluarga',
+  tanda_bahaya: 'Tanda Bahaya',
+  lainnya: 'Lainnya',
+};
+
+const familySupportStatusBadge = (s: FamilySupportMaterialStatus) => {
+  const map: Record<FamilySupportMaterialStatus, { label: string; cls: string }> = {
+    draft: { label: 'Draft', cls: 'bg-slate-100 text-slate-600 border-slate-300' },
+    published: { label: 'Diterbitkan', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+    archived: { label: 'Diarsipkan', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+  };
+  const m = map[s];
   return <Badge className={`${m.cls} border`}>{m.label}</Badge>;
 };
 
@@ -362,6 +398,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
     caregivers, addCaregiver, updateCaregiver, removeCaregiver,
     familyMeetings, addFamilyMeeting, updateFamilyMeeting,
     eduMaterials, logEduMaterialAccess,
+    familySupportMaterials, addFamilySupportMaterial, updateFamilySupportMaterial, removeFamilySupportMaterial,
     familyCoordinationNotes, addFamilyCoordinationNote, updateFamilyCoordinationNote,
     emergencyContacts, addEmergencyContact, updateEmergencyContact, removeEmergencyContact,
     financialSupportRecords, addFinancialSupportRecord, updateFinancialSupportRecord,
@@ -1337,24 +1374,81 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
 
   const EduToolsTab = () => {
     const [categoryFilter, setCategoryFilter] = useState<string>('all');
+    const [showDialog, setShowDialog] = useState(false);
+    const [editMaterialId, setEditMaterialId] = useState<string | null>(null);
+    const [matForm, setMatForm] = useState({
+      title: '', category: 'edukasi_perawatan' as FamilySupportMaterialCategory,
+      content: '', instructions: '',
+    });
+
+    const patientMaterials = useMemo(
+      () => familySupportMaterials.filter(m => m.palliativePatientId === palliativePatientId),
+      [familySupportMaterials, palliativePatientId]
+    );
 
     const filtered = useMemo(() => {
-      const active = eduMaterials.filter(m => m.isActive);
-      if (categoryFilter === 'all') return active;
-      return active.filter(m => m.category === categoryFilter);
-    }, [eduMaterials, categoryFilter]);
+      if (categoryFilter === 'all') return patientMaterials;
+      return patientMaterials.filter(m => m.category === categoryFilter);
+    }, [patientMaterials, categoryFilter]);
 
-    const categories: EduMaterialCategory[] = [
-      'perawatan_rumah', 'panduan_caregiver', 'video_edukasi',
-      'dukungan_psikososial', 'gawat_darurat', 'end_of_life', 'faq',
-    ];
+    const resetForm = () => {
+      setMatForm({ title: '', category: 'edukasi_perawatan', content: '', instructions: '' });
+      setEditMaterialId(null);
+    };
+
+    const openEdit = (m: FamilySupportMaterial) => {
+      setMatForm({ title: m.title, category: m.category, content: m.content, instructions: m.instructions || '' });
+      setEditMaterialId(m.id);
+      setShowDialog(true);
+    };
+
+    const saveMaterial = (status: FamilySupportMaterialStatus) => {
+      if (!matForm.title || !matForm.content) {
+        toast({ title: 'Judul dan isi materi wajib diisi', variant: 'destructive' });
+        return;
+      }
+      const now = new Date().toISOString();
+      if (editMaterialId) {
+        updateFamilySupportMaterial(editMaterialId, {
+          title: matForm.title, category: matForm.category,
+          content: matForm.content, instructions: matForm.instructions || undefined,
+          status,
+        });
+        toast({ title: status === 'published' ? 'Materi diterbitkan' : 'Materi disimpan sebagai draft' });
+      } else {
+        addFamilySupportMaterial({
+          id: genId('fsm'),
+          palliativePatientId: palliativePatientId!,
+          doctorId: isValidUuid(currentUser?.id) ? currentUser!.id : undefined,
+          doctorName: currentUser?.name || 'Dokter',
+          title: matForm.title,
+          category: matForm.category,
+          content: matForm.content,
+          instructions: matForm.instructions || undefined,
+          status,
+          createdAt: now,
+          updatedAt: now,
+        });
+        toast({ title: status === 'published' ? 'Materi berhasil diterbitkan' : 'Materi disimpan sebagai draft' });
+      }
+      setShowDialog(false);
+      resetForm();
+    };
+
+    const categoryOptions = Object.entries(FAMILY_SUPPORT_CATEGORY_LABELS) as [FamilySupportMaterialCategory, string][];
 
     return (
       <div className="space-y-4">
-        <h3 className="text-sm font-semibold flex items-center gap-2">
-          <BookOpen className="h-4 w-4 text-teal-600" />
-          Materi Edukasi & Dukungan
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <BookOpen className="h-4 w-4 text-teal-600" />
+            Dukungan Keluarga — Materi untuk Pasien Ini
+          </h3>
+          <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white"
+            onClick={() => { resetForm(); setShowDialog(true); }}>
+            <Plus className="h-4 w-4 mr-1" /> Tambah Materi
+          </Button>
+        </div>
 
         {/* Category filter */}
         <div className="flex flex-wrap gap-1">
@@ -1363,42 +1457,114 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
             onClick={() => setCategoryFilter('all')}>
             Semua
           </Button>
-          {categories.map(c => (
-            <Button key={c} size="sm" variant={categoryFilter === c ? 'default' : 'outline'}
-              className={`text-xs h-7 ${categoryFilter === c ? 'bg-teal-600 hover:bg-teal-700 text-white' : ''}`}
-              onClick={() => setCategoryFilter(c)}>
-              {categoryLabel(c)}
+          {categoryOptions.map(([value, label]) => (
+            <Button key={value} size="sm" variant={categoryFilter === value ? 'default' : 'outline'}
+              className={`text-xs h-7 ${categoryFilter === value ? 'bg-teal-600 hover:bg-teal-700 text-white' : ''}`}
+              onClick={() => setCategoryFilter(value)}>
+              {label}
             </Button>
           ))}
         </div>
 
-        {/* Material Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Material list */}
+        <div className="space-y-3">
           {filtered.map(mat => (
-            <Card key={mat.id} className="p-4 cursor-pointer hover:border-teal-300 transition-colors"
-              onClick={() => {
-                logEduMaterialAccess(mat.id, currentUser?.name || 'Pengguna');
-                toast({ title: `Materi "${mat.title}" dibuka` });
-              }}>
-              <div className="flex items-start gap-3">
-                <div className="h-10 w-10 rounded-lg bg-teal-50 flex items-center justify-center flex-shrink-0 text-teal-600">
-                  {typeIcon(mat.type)}
+            <Card key={mat.id} className="p-4">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="outline" className="text-[10px]">{FAMILY_SUPPORT_CATEGORY_LABELS[mat.category]}</Badge>
+                  {familySupportStatusBadge(mat.status)}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium mb-1">{mat.title}</p>
-                  <p className="text-xs text-slate-500 line-clamp-2">{mat.description}</p>
-                  <div className="flex items-center gap-2 mt-2">
-                    {categoryBadge(mat.category)}
-                    <span className="text-xs text-slate-400">{mat.accessCount}x diakses</span>
-                  </div>
+                <div className="flex gap-1 shrink-0">
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(mat)}>
+                    <Edit className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500"
+                    onClick={() => removeFamilySupportMaterial(mat.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
+              </div>
+              <p className="text-sm font-medium mb-1">{mat.title}</p>
+              <p className="text-xs text-slate-600 line-clamp-3 whitespace-pre-line">{mat.content}</p>
+              {mat.instructions && (
+                <p className="text-xs text-slate-500 mt-1 italic">Instruksi: {mat.instructions}</p>
+              )}
+              <p className="text-[10px] text-slate-400 mt-2">
+                Oleh {mat.doctorName || 'Dokter'} · {fmtDateTime(mat.updatedAt)}
+              </p>
+              <div className="flex gap-1 mt-2">
+                {mat.status !== 'published' && (
+                  <Button size="sm" variant="outline" className="text-xs h-7 text-teal-600"
+                    onClick={() => updateFamilySupportMaterial(mat.id, { status: 'published' })}>
+                    Terbitkan
+                  </Button>
+                )}
+                {mat.status === 'published' && (
+                  <Button size="sm" variant="outline" className="text-xs h-7 text-amber-600"
+                    onClick={() => updateFamilySupportMaterial(mat.id, { status: 'archived' })}>
+                    Arsipkan
+                  </Button>
+                )}
+                {mat.status === 'archived' && (
+                  <Button size="sm" variant="outline" className="text-xs h-7 text-slate-600"
+                    onClick={() => updateFamilySupportMaterial(mat.id, { status: 'draft' })}>
+                    Jadikan Draft
+                  </Button>
+                )}
               </div>
             </Card>
           ))}
           {filtered.length === 0 && (
-            <p className="text-sm text-slate-400 col-span-2 text-center py-8">Tidak ada materi untuk kategori ini</p>
+            <p className="text-sm text-slate-400 text-center py-8">
+              Belum ada materi dukungan keluarga untuk pasien ini.
+            </p>
           )}
         </div>
+
+        <Dialog open={showDialog} onOpenChange={setShowDialog}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{editMaterialId ? 'Edit Materi' : 'Tambah Materi Dukungan Keluarga'}</DialogTitle>
+              <DialogDescription>Materi hanya terlihat oleh pasien setelah diterbitkan.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs">Judul Materi</Label>
+                <Input value={matForm.title} onChange={e => setMatForm(p => ({ ...p, title: e.target.value }))}
+                  placeholder="Contoh: Cara Merawat Pasien di Rumah" />
+              </div>
+              <div>
+                <Label className="text-xs">Kategori</Label>
+                <Select value={matForm.category} onValueChange={v => setMatForm(p => ({ ...p, category: v as FamilySupportMaterialCategory }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {categoryOptions.map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Isi Materi</Label>
+                <Textarea rows={5} value={matForm.content} onChange={e => setMatForm(p => ({ ...p, content: e.target.value }))}
+                  placeholder="Tulis isi edukasi/materi di sini..." />
+              </div>
+              <div>
+                <Label className="text-xs">Instruksi untuk Pasien/Keluarga (opsional)</Label>
+                <Textarea rows={2} value={matForm.instructions} onChange={e => setMatForm(p => ({ ...p, instructions: e.target.value }))}
+                  placeholder="Contoh: Lakukan 2x sehari, hubungi dokter jika..." />
+              </div>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setShowDialog(false)}>Batal</Button>
+              <Button variant="outline" onClick={() => saveMaterial('draft')}>Simpan Draft</Button>
+              <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={() => saveMaterial('published')}>
+                Terbitkan
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   };
@@ -2386,6 +2552,7 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
         palliativePatientId: palliativePatientId!,
         type: transForm.type,
         status: 'belum_dipesan',
+        source: 'doctor',
         scheduledAt: transForm.scheduledAt || undefined,
         origin: transForm.origin,
         destination: transForm.destination,
@@ -2407,6 +2574,23 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
       toast({ title: `Status transportasi diperbarui: ${status.replace(/_/g, ' ')}` });
     };
 
+    // Respond to a patient-submitted request (see "Ajukan Permintaan
+    // Transportasi" on the patient side). Unlike updateTransportStatus above,
+    // this also records who confirmed/rejected it and when, and — because
+    // toDb() rebuilds the notes-extras blob from only what's passed in a
+    // given update() call — spreads the existing record first so earlier
+    // extras (requestedTime, source, etc.) aren't dropped.
+    const respondToPatientRequest = (record: TransportRecord, status: TransportStatus, rejectionReason?: string) => {
+      updateTransportRecord(record.id, {
+        ...record,
+        status,
+        confirmedBy: currentUser?.name || 'Dokter',
+        confirmedAt: new Date().toISOString(),
+        ...(rejectionReason ? { rejectionReason } : {}),
+      });
+      toast({ title: `Permintaan transportasi pasien: ${status.replace(/_/g, ' ')}` });
+    };
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -2425,9 +2609,14 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
             {patientTransport.map(t => (
               <Card key={t.id} className="p-4">
                 <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {transportTypeBadge(t.type)}
                     {transportStatusBadge(t.status)}
+                    {t.source === 'patient' && (
+                      <Badge variant="outline" className="text-[10px] border-teal-300 text-teal-700">
+                        Diajukan Pasien
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-sm mb-2">
@@ -2436,6 +2625,11 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
                   <span className="font-medium">{t.destination}</span>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-slate-500 mb-2">
+                  {t.requestedTime && (
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" /> {fmtDateTime(t.requestedTime)}
+                    </span>
+                  )}
                   {t.scheduledAt && (
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" /> {fmtDateTime(t.scheduledAt)}
@@ -2448,32 +2642,72 @@ export default function SocialSupportPanel({ palliativePatientId }: SocialSuppor
                   )}
                 </div>
                 {t.notes && <p className="text-xs text-slate-500 mb-2">{t.notes}</p>}
+                {t.rejectionReason && (
+                  <p className="text-xs text-red-600 mb-2">Alasan penolakan: {t.rejectionReason}</p>
+                )}
                 <p className="text-xs text-slate-400">Diminta oleh: {t.requestedBy}</p>
+                {t.confirmedBy && (
+                  <p className="text-xs text-slate-400">
+                    Dikonfirmasi oleh {t.confirmedBy}{t.confirmedAt ? ` · ${fmtDateTime(t.confirmedAt)}` : ''}
+                  </p>
+                )}
 
-                <div className="flex gap-1 mt-2">
-                  {t.status === 'belum_dipesan' && (
-                    <Button size="sm" variant="outline" className="text-xs h-7 text-teal-600"
-                      onClick={() => updateTransportStatus(t.id, 'dipesan')}>
-                      Pesan
-                    </Button>
-                  )}
-                  {t.status === 'dipesan' && (
-                    <Button size="sm" variant="outline" className="text-xs h-7 text-amber-600"
-                      onClick={() => updateTransportStatus(t.id, 'dalam_perjalanan')}>
-                      Dalam Perjalanan
-                    </Button>
-                  )}
-                  {t.status === 'dalam_perjalanan' && (
-                    <Button size="sm" variant="outline" className="text-xs h-7 text-emerald-600"
-                      onClick={() => updateTransportStatus(t.id, 'selesai')}>
-                      Selesai
-                    </Button>
-                  )}
-                  {(t.status === 'belum_dipesan' || t.status === 'dipesan') && (
-                    <Button size="sm" variant="outline" className="text-xs h-7 text-red-600"
-                      onClick={() => updateTransportStatus(t.id, 'dibatalkan')}>
-                      Batalkan
-                    </Button>
+                <div className="flex gap-1 mt-2 flex-wrap">
+                  {t.source === 'patient' ? (
+                    <>
+                      {t.status === 'menunggu_konfirmasi' && (
+                        <>
+                          <Button size="sm" variant="outline" className="text-xs h-7 text-teal-600"
+                            onClick={() => respondToPatientRequest(t, 'disetujui')}>
+                            Setujui
+                          </Button>
+                          <Button size="sm" variant="outline" className="text-xs h-7 text-sky-600"
+                            onClick={() => respondToPatientRequest(t, 'dijadwalkan')}>
+                            Jadwalkan
+                          </Button>
+                          <Button size="sm" variant="outline" className="text-xs h-7 text-red-600"
+                            onClick={() => {
+                              const reason = window.prompt('Alasan penolakan (opsional):') || undefined;
+                              respondToPatientRequest(t, 'ditolak', reason);
+                            }}>
+                            Tolak
+                          </Button>
+                        </>
+                      )}
+                      {(t.status === 'disetujui' || t.status === 'dijadwalkan') && (
+                        <Button size="sm" variant="outline" className="text-xs h-7 text-emerald-600"
+                          onClick={() => updateTransportStatus(t.id, 'selesai')}>
+                          Selesai
+                        </Button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {t.status === 'belum_dipesan' && (
+                        <Button size="sm" variant="outline" className="text-xs h-7 text-teal-600"
+                          onClick={() => updateTransportStatus(t.id, 'dipesan')}>
+                          Pesan
+                        </Button>
+                      )}
+                      {t.status === 'dipesan' && (
+                        <Button size="sm" variant="outline" className="text-xs h-7 text-amber-600"
+                          onClick={() => updateTransportStatus(t.id, 'dalam_perjalanan')}>
+                          Dalam Perjalanan
+                        </Button>
+                      )}
+                      {t.status === 'dalam_perjalanan' && (
+                        <Button size="sm" variant="outline" className="text-xs h-7 text-emerald-600"
+                          onClick={() => updateTransportStatus(t.id, 'selesai')}>
+                          Selesai
+                        </Button>
+                      )}
+                      {(t.status === 'belum_dipesan' || t.status === 'dipesan') && (
+                        <Button size="sm" variant="outline" className="text-xs h-7 text-red-600"
+                          onClick={() => updateTransportStatus(t.id, 'dibatalkan')}>
+                          Batalkan
+                        </Button>
+                      )}
+                    </>
                   )}
                 </div>
               </Card>

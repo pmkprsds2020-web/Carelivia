@@ -12,6 +12,7 @@ import type {
   PatientPaliatifChatMessage,
   PalliativeChatMessage,
   PatientTransportRequestType,
+  PatientTransportRequestStatus,
   PatientConditionStatus,
   PalliativePatientInfo,
   TTVFormAnswers,
@@ -20,6 +21,8 @@ import type {
   DailyComplaintRecord,
   PalliativeScreeningRecordInfo,
   MedicationMonitoringFormAnswers,
+  TransportRecord,
+  FamilySupportMaterial,
 } from '@/lib/types';
 import { TTVForm, checkTTVAlerts } from '@/components/telemedicine/ttv-form';
 import { DailyComplaintForm } from '@/components/telemedicine/daily-complaint-panel';
@@ -140,6 +143,49 @@ const STATUS_BADGE_MAP: Record<string, { label: string; className: string }> = {
   ditolak: { label: 'Ditolak', className: 'bg-red-100 text-red-800 border-red-200' },
 };
 
+// ── TransportRecord ⇄ PatientTransportRequest adapters ────────────────────
+// The patient's "Ajukan Permintaan Transportasi" form used to write into a
+// local-only store slice (`patientTransportRequests`) that was never synced
+// to Supabase — that's why requests never showed up on the doctor's side.
+// It now persists through the same `transport_records` table (and
+// `transportRecords` store slice) the doctor's "Dukungan Transportasi" tab
+// already reads from, via `addTransportRecord`. These two helpers translate
+// between the two shapes so this panel's UI can stay unchanged.
+function transportRecordToPatientRequest(r: TransportRecord): PatientTransportRequest {
+  const [reqDate, reqTime] = (() => {
+    if (r.requestedTime) {
+      // requestedTime stores the combined date/time input from the form.
+      return [r.requestedTime.slice(0, 10), r.requestedTime.slice(11, 16)];
+    }
+    if (r.scheduledAt) {
+      const d = new Date(r.scheduledAt);
+      if (!isNaN(d.getTime())) {
+        return [d.toISOString().slice(0, 10), d.toTimeString().slice(0, 5)];
+      }
+    }
+    return ['', ''];
+  })();
+  return {
+    id: r.id,
+    palliativePatientId: r.palliativePatientId,
+    requestType: (['kontrol_faskes', 'kunjungan_rumah', 'transportasi_darurat', 'pengambilan_obat', 'lainnya'] as const)
+      .includes(r.type as any) ? (r.type as PatientTransportRequestType) : 'lainnya',
+    requestDate: reqDate,
+    requestTime: reqTime,
+    pickupLocation: r.origin,
+    destination: r.destination,
+    notes: r.notes,
+    status: (['menunggu_konfirmasi', 'disetujui', 'dijadwalkan', 'selesai', 'ditolak'] as const)
+      .includes(r.status as any) ? (r.status as PatientTransportRequestStatus) : 'menunggu_konfirmasi',
+    requestedBy: r.requestedBy,
+    confirmedBy: r.confirmedBy,
+    confirmedAt: r.confirmedAt,
+    rejectionReason: r.rejectionReason,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  };
+}
+
 const MEETING_STATUS_BADGE: Record<string, { label: string; className: string }> = {
   dijadwalkan: { label: 'Dijadwalkan', className: 'bg-sky-100 text-sky-800 border-sky-200' },
   berlangsung: { label: 'Berlangsung', className: 'bg-teal-100 text-teal-800 border-teal-200' },
@@ -173,6 +219,19 @@ const EDU_CATEGORY_LABELS: Record<string, string> = {
   faq: 'FAQ',
 };
 
+const FAMILY_SUPPORT_CATEGORY_LABELS: Record<string, string> = {
+  edukasi_perawatan: 'Edukasi Perawatan',
+  perawatan_rumah: 'Perawatan di Rumah',
+  obat: 'Obat',
+  nutrisi: 'Nutrisi',
+  perawatan_paliatif: 'Perawatan Paliatif',
+  caregiver: 'Caregiver',
+  psikososial: 'Psikososial',
+  komunikasi_keluarga: 'Komunikasi Keluarga',
+  tanda_bahaya: 'Tanda Bahaya',
+  lainnya: 'Lainnya',
+};
+
 // ── Main Component ────────────────────────────────────────────────────────
 
 export function PatientPaliatifPanel() {
@@ -182,8 +241,9 @@ export function PatientPaliatifPanel() {
     familyMeetings,
     eduMaterials,
     emergencyContacts,
-    patientTransportRequests,
-    addPatientTransportRequest,
+    transportRecords,
+    addTransportRecord,
+    familySupportMaterials,
     patientCareUpdates,
     addPatientCareUpdate,
     palliativeChatMessages,
@@ -196,13 +256,24 @@ export function PatientPaliatifPanel() {
   const palliativePatient = palliativePatients.find(p => p.patientId === currentUser?.id);
   const patientId = palliativePatient?.id || '';
 
-  // Filter data for this patient
-  const myTransportRequests = patientTransportRequests.filter(r => r.palliativePatientId === patientId);
+  // Filter data for this patient. Transport requests now read from the
+  // Supabase-backed `transportRecords` slice (shared with the doctor's
+  // "Dukungan Transportasi" tab) instead of the old local-only
+  // `patientTransportRequests` slice, so a request the patient submits
+  // actually reaches the doctor.
+  const myTransportRequests = transportRecords
+    .filter(r => r.palliativePatientId === patientId)
+    .map(transportRecordToPatientRequest);
   const myCareUpdates = patientCareUpdates.filter(u => u.palliativePatientId === patientId);
   const myMessages = palliativeChatMessages.filter(m => m.palliativePatientId === patientId || m.roomId === `room-${patientId}`);
   const myMeetings = familyMeetings.filter(m => m.palliativePatientId === patientId);
   // Edu materials bersifat katalog umum (tidak per-pasien)
   const myEduMaterials = eduMaterials;
+  // Materi Dukungan Keluarga yang dibuat dokter khusus untuk pasien ini —
+  // draft tidak ditampilkan, hanya materi yang sudah diterbitkan.
+  const myFamilySupportMaterials = familySupportMaterials.filter(
+    m => m.palliativePatientId === patientId && m.status === 'published'
+  );
   const myEmergencyContacts = emergencyContacts.filter(c => c.palliativePatientId === patientId);
 
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -242,6 +313,7 @@ export function PatientPaliatifPanel() {
             myMessages={myMessages}
             myMeetings={myMeetings}
             myEduMaterials={myEduMaterials}
+            myFamilySupportMaterials={myFamilySupportMaterials}
             myEmergencyContacts={myEmergencyContacts}
             onNavigate={setActiveTab}
           />
@@ -252,7 +324,13 @@ export function PatientPaliatifPanel() {
         </TabsContent>
 
         <TabsContent value="education">
-          <EducationTab materials={myEduMaterials} />
+          <div className="space-y-6">
+            <FamilySupportMaterialsTab materials={myFamilySupportMaterials} />
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground mb-2">Materi Umum</h4>
+              <EducationTab materials={myEduMaterials} />
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="care">
@@ -264,7 +342,30 @@ export function PatientPaliatifPanel() {
         </TabsContent>
 
         <TabsContent value="transport">
-          <TransportTab patientId={patientId} requests={myTransportRequests} onSubmit={addPatientTransportRequest} />
+          <TransportTab
+            patientId={patientId}
+            requests={myTransportRequests}
+            currentUserName={currentUser?.name}
+            onSubmit={(request) => {
+              const now = new Date().toISOString();
+              addTransportRecord({
+                id: genId('tr'),
+                palliativePatientId: patientId,
+                type: request.requestType,
+                status: 'menunggu_konfirmasi',
+                origin: request.pickupLocation,
+                destination: request.destination,
+                notes: request.notes,
+                requestedBy: request.requestedBy,
+                requestedTime: request.requestDate && request.requestTime
+                  ? `${request.requestDate}T${request.requestTime}`
+                  : undefined,
+                source: 'patient',
+                createdAt: now,
+                updatedAt: now,
+              } as TransportRecord);
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="chat">
@@ -284,6 +385,7 @@ function DashboardTab({
   myMessages,
   myMeetings,
   myEduMaterials,
+  myFamilySupportMaterials,
   myEmergencyContacts,
   onNavigate,
 }: {
@@ -293,6 +395,7 @@ function DashboardTab({
   myMessages: PalliativeChatMessage[];
   myMeetings: { id: string; title: string; scheduledAt: string; status: string }[];
   myEduMaterials: { id: string }[];
+  myFamilySupportMaterials: { id: string }[];
   myEmergencyContacts: { id: string }[];
   onNavigate: (tab: string) => void;
 }) {
@@ -386,8 +489,8 @@ function DashboardTab({
         />
         <SummaryCard
           icon={<BookOpen className="w-5 h-5" />}
-          label="Materi Edukasi Baru"
-          value={`${myEduMaterials.length} materi`}
+          label="Materi dari Dokter"
+          value={`${myFamilySupportMaterials.length} materi`}
           onClick={() => onNavigate('education')}
           color="amber"
         />
@@ -621,6 +724,89 @@ function FamilyMeetingTab({ meetings }: { meetings: { id: string; title: string;
 }
 
 // ── Education Tab (Read-Only) ─────────────────────────────────────────────
+
+// ── Dukungan Keluarga Tab (doctor-authored, per-patient) ───────────────────
+
+function FamilySupportMaterialsTab({ materials }: { materials: FamilySupportMaterial[] }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const openMaterial = materials.find(m => m.id === openId) || null;
+
+  if (materials.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-10 text-center">
+          <BookOpen className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">Belum ada materi dari dokter untuk Anda</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <h4 className="text-sm font-medium">Materi dari Dokter</h4>
+      </div>
+      <div className="grid gap-3">
+        {[...materials].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).map((mat) => (
+          <Card key={mat.id}>
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{mat.title}</p>
+                  <Badge variant="outline" className="mt-1 text-[10px]">
+                    {FAMILY_SUPPORT_CATEGORY_LABELS[mat.category] || mat.category}
+                  </Badge>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Diberikan oleh Dokter {mat.doctorName || '-'} · {formatDate(mat.createdAt)}
+                  </p>
+                </div>
+                <Button size="sm" className="shrink-0 text-xs bg-teal-600 hover:bg-teal-700 text-white"
+                  onClick={() => setOpenId(mat.id)}>
+                  Buka Materi
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Dialog open={!!openMaterial} onOpenChange={(v) => !v && setOpenId(null)}>
+        <DialogContent className="max-w-lg">
+          {openMaterial && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{openMaterial.title}</DialogTitle>
+                <DialogDescription>
+                  {FAMILY_SUPPORT_CATEGORY_LABELS[openMaterial.category] || openMaterial.category} · Diberikan oleh Dokter {openMaterial.doctorName || '-'} · {formatDate(openMaterial.createdAt)}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Isi Materi</p>
+                  <p className="text-sm whitespace-pre-line">{openMaterial.content}</p>
+                </div>
+                {openMaterial.instructions && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Instruksi</p>
+                    <p className="text-sm whitespace-pre-line">{openMaterial.instructions}</p>
+                  </div>
+                )}
+                {openMaterial.attachmentUrl && (
+                  <Button variant="outline" size="sm" className="text-xs" asChild>
+                    <a href={openMaterial.attachmentUrl} target="_blank" rel="noopener noreferrer">
+                      <Download className="w-3 h-3 mr-1" /> Lihat/Unduh Lampiran
+                    </a>
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
 
 function EducationTab({ materials }: { materials: { id: string; title: string; category?: string; type?: string; description?: string; fileUrl?: string }[] }) {
   if (materials.length === 0) {
@@ -926,10 +1112,12 @@ function TransportTab({
   patientId,
   requests,
   onSubmit,
+  currentUserName,
 }: {
   patientId: string;
   requests: PatientTransportRequest[];
   onSubmit: (request: PatientTransportRequest) => void;
+  currentUserName?: string;
 }) {
   const [requestType, setRequestType] = useState<PatientTransportRequestType>('kontrol_faskes');
   const [requestDate, setRequestDate] = useState('');
@@ -951,7 +1139,7 @@ function TransportTab({
       destination,
       notes: notes.trim() || undefined,
       status: 'menunggu_konfirmasi',
-      requestedBy: 'Siti Rahayu',
+      requestedBy: currentUserName || 'Pasien',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

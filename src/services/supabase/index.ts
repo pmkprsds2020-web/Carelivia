@@ -47,6 +47,7 @@ export { familyCoordinationNoteService } from './familyCoordinationNoteService';
 export { emergencyContactService } from './emergencyContactService';
 export { financialSupportService } from './financialSupportService';
 export { transportRecordService } from './transportRecordService';
+export { familySupportMaterialService } from './familySupportMaterialService';
 export { referralLetterService } from './referralLetterService';
 export { palliativeResumeService } from './palliativeResumeService';
 // ── Clinical Alert EWS module ───────────────────────────────────────────────

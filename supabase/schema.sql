@@ -297,6 +297,30 @@ create table if not exists public.transport_records (
 alter table public.transport_records enable row level security;
 
 -- ============================================================================
+-- 13b. FAMILY_SUPPORT_MATERIALS  [REALTIME]
+-- ============================================================================
+-- Doctor-authored education/support material for a specific patient's family
+-- (see "Dukungan Keluarga" under Monitoring Paliatif → Sosial on the doctor
+-- side, and "Dukungan Keluarga" on the patient side). A material is only
+-- visible to the patient once its status is 'published' — 'draft' materials
+-- are doctor-only.
+create table if not exists public.family_support_materials (
+  id             uuid primary key default gen_random_uuid(),
+  patient_id     uuid not null references public.patients(id) on delete cascade,
+  doctor_id      uuid,
+  doctor_name    text,
+  title          text not null,
+  category       text,
+  content        text not null,
+  instructions   text,
+  attachment_url text,
+  status         text not null default 'draft',
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+alter table public.family_support_materials enable row level security;
+
+-- ============================================================================
 -- 14. ACP (Advance Care Planning)  [REALTIME]
 -- ============================================================================
 create table if not exists public.acp (
@@ -698,6 +722,10 @@ begin
     'orders','order_items','payments'
   ])
   loop
+    execute format('drop policy if exists "%I_all_read"  on public.%I;', t, t);
+    execute format('drop policy if exists "%I_all_write" on public.%I;', t, t);
+    execute format('drop policy if exists "%I_all_upd"   on public.%I;', t, t);
+    execute format('drop policy if exists "%I_all_del"   on public.%I;', t, t);
     execute format('create policy "%I_all_read"  on public.%I for select using (true);', t, t);
     execute format('create policy "%I_all_write" on public.%I for insert with check (true);', t, t);
     execute format('create policy "%I_all_upd"   on public.%I for update using (true);', t, t);
@@ -723,7 +751,7 @@ begin
     'patients','vital_signs','screenings','medications','nutrition',
     'daily_complaints','social_assessments','caregivers','family_meetings',
     'family_coordination_notes','emergency_contacts','financial_support',
-    'transport_records','acp','chat_rooms','messages','clinical_alerts',
+    'transport_records','family_support_materials','acp','chat_rooms','messages','clinical_alerts',
     'audit_log','ai_reports','notifications','patient_documents',
     'palliative_resumes','referral_letters','services',
     'consultations','consultation_messages','homecare_bookings'
@@ -745,6 +773,10 @@ end$$;
 -- In production, restrict these by auth.uid() and role.
 
 -- Patients: anyone authenticated can read; only doctors/admins can write.
+drop policy if exists "patients_read"  on public.patients;
+drop policy if exists "patients_write" on public.patients;
+drop policy if exists "patients_upd"   on public.patients;
+drop policy if exists "patients_del"   on public.patients;
 create policy "patients_read"  on public.patients for select using (true);
 create policy "patients_write" on public.patients for insert with check (true);
 create policy "patients_upd"   on public.patients for update using (true);
@@ -757,11 +789,15 @@ begin
   for t in select unnest(array[
     'vital_signs','screenings','medications','nutrition','daily_complaints',
     'social_assessments','caregivers','family_meetings','family_coordination_notes',
-    'emergency_contacts','financial_support','transport_records','acp',
+    'emergency_contacts','financial_support','transport_records','family_support_materials','acp',
     'chat_rooms','messages','clinical_alerts','audit_log','ai_reports',
     'notifications','patient_documents','palliative_resumes','referral_letters'
   ])
   loop
+    execute format('drop policy if exists "%I_all_read"  on public.%I;', t, t);
+    execute format('drop policy if exists "%I_all_write" on public.%I;', t, t);
+    execute format('drop policy if exists "%I_all_upd"   on public.%I;', t, t);
+    execute format('drop policy if exists "%I_all_del"   on public.%I;', t, t);
     execute format('create policy "%I_all_read"  on public.%I for select using (true);', t, t);
     execute format('create policy "%I_all_write" on public.%I for insert with check (true);', t, t);
     execute format('create policy "%I_all_upd"   on public.%I for update using (true);', t, t);
@@ -840,6 +876,10 @@ create table if not exists public.services (
 create index if not exists services_kategori_idx on public.services(kategori);
 create index if not exists services_status_idx on public.services(status);
 alter table public.services enable row level security;
+drop policy if exists "services_all_read"  on public.services;
+drop policy if exists "services_all_write" on public.services;
+drop policy if exists "services_all_upd"   on public.services;
+drop policy if exists "services_all_del"   on public.services;
 create policy "services_all_read"  on public.services for select using (true);
 create policy "services_all_write" on public.services for insert with check (true);
 create policy "services_all_upd"   on public.services for update using (true);

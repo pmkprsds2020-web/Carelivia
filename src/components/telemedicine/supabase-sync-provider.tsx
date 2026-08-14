@@ -232,6 +232,18 @@ async function loadPatientScopedData(
       }
     } catch (e) { warn('transportRecordService.getAll', e); }
 
+    // Family support materials
+    try {
+      const rows = await svc.familySupportMaterialService.getAll(pid);
+      if (Array.isArray(rows)) {
+        const cur = useStore.getState().familySupportMaterials;
+        const others = cur.filter((m) => m.palliativePatientId !== pid);
+        useStore.setState({
+          familySupportMaterials: [...others, ...(rows as any[])],
+        });
+      }
+    } catch (e) { warn('familySupportMaterialService.getAll', e); }
+
     // Palliative resumes
     try {
       const rows = await svc.palliativeResumeService.getAll(pid);
@@ -884,6 +896,13 @@ const handleTransportRecordEvent = makeGenericHandler({
   reload: (pid) => svc.transportRecordService.getAll(pid) as Promise<any[]>,
 });
 
+const handleFamilySupportMaterialEvent = makeGenericHandler({
+  label: 'family_support_materials',
+  getState: () => useStore.getState().familySupportMaterials as any[],
+  setState: (updater) => useStore.setState((s) => ({ familySupportMaterials: updater(s.familySupportMaterials as any[]) as any })),
+  reload: (pid) => svc.familySupportMaterialService.getAll(pid) as Promise<any[]>,
+});
+
 const handlePalliativeResumeEvent = makeGenericHandler({
   label: 'palliative_resumes',
   getState: () => useStore.getState().palliativeResumes as any[],
@@ -1001,6 +1020,7 @@ export function SupabaseSyncProvider({ children }: SupabaseSyncProviderProps) {
         ['emergency_contacts', handleEmergencyContactEvent],
         ['financial_support', handleFinancialSupportEvent],
         ['transport_records', handleTransportRecordEvent],
+        ['family_support_materials', handleFamilySupportMaterialEvent],
         ['palliative_resumes', handlePalliativeResumeEvent],
         ['referral_letters', handleReferralLetterEvent],
         ['patient_documents', handlePatientDocumentEvent],

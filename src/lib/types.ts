@@ -1699,6 +1699,28 @@ export interface FamilyMeetingParticipant {
   attended: boolean;
 }
 
+export type FamilySupportMaterialCategory =
+  | 'edukasi_perawatan' | 'perawatan_rumah' | 'obat' | 'nutrisi'
+  | 'perawatan_paliatif' | 'caregiver' | 'psikososial'
+  | 'komunikasi_keluarga' | 'tanda_bahaya' | 'lainnya';
+
+export type FamilySupportMaterialStatus = 'draft' | 'published' | 'archived';
+
+export interface FamilySupportMaterial {
+  id: string;
+  palliativePatientId: string;
+  doctorId?: string;
+  doctorName?: string;
+  title: string;
+  category: FamilySupportMaterialCategory;
+  content: string;
+  instructions?: string;
+  attachmentUrl?: string;
+  status: FamilySupportMaterialStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type EduMaterialCategory = 'perawatan_rumah' | 'panduan_caregiver' | 'video_edukasi' | 'dukungan_psikososial' | 'gawat_darurat' | 'end_of_life' | 'faq';
 
 export interface EduMaterialAccessLog {
@@ -1770,8 +1792,19 @@ export interface FinancialSupportRecord {
   updatedAt: string;
 }
 
-export type TransportNeedType = 'ambulans' | 'ambulans_darurat' | 'kendaraan_pribadi' | 'transportasi_medis' | 'lainnya';
-export type TransportStatus = 'belum_dipesan' | 'dipesan' | 'dalam_perjalanan' | 'selesai' | 'dibatalkan';
+// NOTE: 'kontrol_faskes' | 'kunjungan_rumah' | 'transportasi_darurat' | 'pengambilan_obat'
+// are patient-submitted request types (from the "Ajukan Permintaan Transportasi"
+// form) — they share the same `transport_records` table/column as the
+// doctor-initiated types above it, so both flows are visible to both roles.
+export type TransportNeedType =
+  | 'ambulans' | 'ambulans_darurat' | 'kendaraan_pribadi' | 'transportasi_medis' | 'lainnya'
+  | 'kontrol_faskes' | 'kunjungan_rumah' | 'transportasi_darurat' | 'pengambilan_obat';
+// 'menunggu_konfirmasi' | 'disetujui' | 'dijadwalkan' | 'ditolak' are the
+// patient-request approval states (doctor confirms/rejects/schedules a
+// request the patient submitted); the others are the doctor-initiated flow.
+export type TransportStatus =
+  | 'belum_dipesan' | 'dipesan' | 'dalam_perjalanan' | 'selesai' | 'dibatalkan'
+  | 'menunggu_konfirmasi' | 'disetujui' | 'dijadwalkan' | 'ditolak';
 
 export interface TransportRecord {
   id: string;
@@ -1786,6 +1819,13 @@ export interface TransportRecord {
   requestedBy: string;
   createdAt: string;
   updatedAt: string;
+  // ── Patient-request fields (populated when this record originated from
+  // the patient's "Ajukan Permintaan Transportasi" form) ──────────────────
+  source?: 'patient' | 'doctor';
+  requestedTime?: string;
+  confirmedBy?: string;
+  confirmedAt?: string;
+  rejectionReason?: string;
 }
 
 export interface SocialMonitoringAlert {

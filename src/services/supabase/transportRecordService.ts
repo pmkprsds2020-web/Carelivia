@@ -15,9 +15,19 @@ import type { TransportRecord } from '@/lib/types';
 
 const EXTRAS_PREFIX = '__EXTRAS__:';
 
+interface TransportExtras {
+  completedAt?: string;
+  requestedBy?: string;
+  source?: 'patient' | 'doctor';
+  requestedTime?: string;
+  confirmedBy?: string;
+  confirmedAt?: string;
+  rejectionReason?: string;
+}
+
 function fromDb(row: any): TransportRecord {
   const rawNotes: string = row.notes ?? '';
-  let extras: { completedAt?: string; requestedBy?: string } = {};
+  let extras: TransportExtras = {};
   let notes: string | undefined = rawNotes;
   if (rawNotes.startsWith(EXTRAS_PREFIX)) {
     extras = safeJsonParse<any>(rawNotes.slice(EXTRAS_PREFIX.length), {});
@@ -36,6 +46,11 @@ function fromDb(row: any): TransportRecord {
     requestedBy: extras.requestedBy ?? '',
     createdAt: row.created_at ?? new Date().toISOString(),
     updatedAt: row.created_at ?? new Date().toISOString(),
+    source: extras.source,
+    requestedTime: extras.requestedTime,
+    confirmedBy: extras.confirmedBy,
+    confirmedAt: extras.confirmedAt,
+    rejectionReason: extras.rejectionReason,
   };
 }
 
@@ -50,11 +65,17 @@ function toDb(data: Partial<TransportRecord>): Record<string, any> {
   if (data.destination !== undefined) out.destination = data.destination;
   if (data.scheduledAt !== undefined) out.scheduled_at = data.scheduledAt;
 
-  // Encode extra TS-only fields (completedAt, requestedBy) into `notes`.
-  if (data.completedAt !== undefined || data.requestedBy !== undefined || data.notes !== undefined) {
+  // Encode extra TS-only fields (not columns of their own) into `notes`,
+  // prefixed so fromDb() can tell it apart from a genuine free-text note.
+  const extraKeys: (keyof TransportExtras)[] = [
+    'completedAt', 'requestedBy', 'source', 'requestedTime', 'confirmedBy', 'confirmedAt', 'rejectionReason',
+  ];
+  const touchesExtras = extraKeys.some((k) => (data as any)[k] !== undefined) || data.notes !== undefined;
+  if (touchesExtras) {
     const extras: Record<string, any> = {};
-    if (data.completedAt !== undefined) extras.completedAt = data.completedAt;
-    if (data.requestedBy !== undefined) extras.requestedBy = data.requestedBy;
+    for (const k of extraKeys) {
+      if ((data as any)[k] !== undefined) extras[k] = (data as any)[k];
+    }
     const userNotes = data.notes ?? '';
     out.notes = Object.keys(extras).length > 0
       ? `${EXTRAS_PREFIX}${JSON.stringify(extras)}${userNotes ? ' ' + userNotes : ''}`

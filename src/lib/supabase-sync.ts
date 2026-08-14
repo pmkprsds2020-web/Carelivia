@@ -32,6 +32,7 @@ import {
   emergencyContactService,
   financialSupportService,
   transportRecordService,
+  familySupportMaterialService,
   referralLetterService,
   palliativeResumeService,
   supabase,
@@ -402,11 +403,12 @@ export const supabaseSync = {
    * obat, nutrisi, sosial, acp, aiAnalysis, etc.) into the `full_content`
    * column as a JSON envelope so they survive the round-trip.
    */
-  async addResume(patientId: string, data: Record<string, unknown>): Promise<void> {
+  async addResume(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
-      await palliativeResumeService.create({ ...(data as any), palliativePatientId: patientId });
+      return await palliativeResumeService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
       toastSaveError('Simpan Resume Medis', err);
+      return null;
     }
   },
 
@@ -419,11 +421,12 @@ export const supabaseSync = {
   },
 
   // ── Referral letters (referral_letters table) ──────────────────────────
-  async addReferralLetter(patientId: string, data: Record<string, unknown>): Promise<void> {
+  async addReferralLetter(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
-      await referralLetterService.create({ ...(data as any), palliativePatientId: patientId });
+      return await referralLetterService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
       toastSaveError('Simpan Surat Rujukan', err);
+      return null;
     }
   },
 
@@ -436,11 +439,17 @@ export const supabaseSync = {
   },
 
   // ── Caregivers (caregivers table) ──────────────────────────────────────
-  async addCaregiver(patientId: string, data: Record<string, unknown>): Promise<void> {
+  // NOTE: returns the DB-persisted row (with its real Supabase UUID `id`) so
+  // the caller can reconcile the optimistic client-side record. Returning
+  // `void` here previously left the store holding a locally-generated id
+  // (e.g. "cg-1786...") that never matched the server id, which caused the
+  // realtime INSERT handler to treat the row as new and append a duplicate.
+  async addCaregiver(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
-      await caregiverService.create({ ...(data as any), palliativePatientId: patientId });
+      return await caregiverService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
       toastSaveError('Simpan Caregiver', err);
+      return null;
     }
   },
 
@@ -461,11 +470,15 @@ export const supabaseSync = {
   },
 
   // ── Family meetings (family_meetings table) ────────────────────────────
-  async addFamilyMeeting(patientId: string, data: Record<string, unknown>): Promise<void> {
+  // Returns the DB row so the store can reconcile the temp id → real id
+  // (see addCaregiver note above — this is also what fixes the
+  // "invalid input syntax for type uuid" error on subsequent updates).
+  async addFamilyMeeting(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
-      await familyMeetingService.create({ ...(data as any), palliativePatientId: patientId });
+      return await familyMeetingService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
       toastSaveError('Simpan Pertemuan Keluarga', err);
+      return null;
     }
   },
 
@@ -478,11 +491,14 @@ export const supabaseSync = {
   },
 
   // ── Family coordination notes (family_coordination_notes table) ────────
-  async addFamilyCoordinationNote(patientId: string, data: Record<string, unknown>): Promise<void> {
+  // Returns the DB row so the store can reconcile the temp id → real id
+  // (this is the fix for the "beli obat generik" duplicate-row bug).
+  async addFamilyCoordinationNote(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
-      await familyCoordinationNoteService.create({ ...(data as any), palliativePatientId: patientId });
+      return await familyCoordinationNoteService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
       toastSaveError('Simpan Catatan Koordinasi', err);
+      return null;
     }
   },
 
@@ -495,11 +511,12 @@ export const supabaseSync = {
   },
 
   // ── Emergency contacts (emergency_contacts table) ──────────────────────
-  async addEmergencyContact(patientId: string, data: Record<string, unknown>): Promise<void> {
+  async addEmergencyContact(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
-      await emergencyContactService.create({ ...(data as any), palliativePatientId: patientId });
+      return await emergencyContactService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
       toastSaveError('Simpan Kontak Darurat', err);
+      return null;
     }
   },
 
@@ -520,11 +537,12 @@ export const supabaseSync = {
   },
 
   // ── Financial support (financial_support table) ────────────────────────
-  async addFinancialSupport(patientId: string, data: Record<string, unknown>): Promise<void> {
+  async addFinancialSupport(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
-      await financialSupportService.create({ ...(data as any), palliativePatientId: patientId });
+      return await financialSupportService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
       toastSaveError('Simpan Dukungan Finansial', err);
+      return null;
     }
   },
 
@@ -537,11 +555,12 @@ export const supabaseSync = {
   },
 
   // ── Transport records (transport_records table) ────────────────────────
-  async addTransportRecord(patientId: string, data: Record<string, unknown>): Promise<void> {
+  async addTransportRecord(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
-      await transportRecordService.create({ ...(data as any), palliativePatientId: patientId });
+      return await transportRecordService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
       toastSaveError('Simpan Record Transport', err);
+      return null;
     }
   },
 
@@ -550,6 +569,32 @@ export const supabaseSync = {
       await transportRecordService.update(recordId, data as any);
     } catch (err) {
       toastSaveError('Update Record Transport', err);
+    }
+  },
+
+  // ── Family support materials (family_support_materials table) ─────────
+  async addFamilySupportMaterial(patientId: string, data: Record<string, unknown>): Promise<any | null> {
+    try {
+      return await familySupportMaterialService.create({ ...(data as any), palliativePatientId: patientId });
+    } catch (err) {
+      toastSaveError('Simpan Materi Dukungan Keluarga', err);
+      return null;
+    }
+  },
+
+  async updateFamilySupportMaterial(patientId: string, materialId: string, data: Record<string, unknown>): Promise<void> {
+    try {
+      await familySupportMaterialService.update(materialId, data as any);
+    } catch (err) {
+      toastSaveError('Update Materi Dukungan Keluarga', err);
+    }
+  },
+
+  async removeFamilySupportMaterial(patientId: string, materialId: string): Promise<void> {
+    try {
+      await familySupportMaterialService.remove(materialId);
+    } catch (err) {
+      console.error('[SupabaseSync] removeFamilySupportMaterial:', err);
     }
   },
 

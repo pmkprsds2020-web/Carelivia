@@ -26,7 +26,7 @@ import type {
   NutritionCalculationResult,
   SocialAssessmentRecord, CaregiverInfo, FamilyMeetingRecord,
   EduMaterial, FamilyCoordinationNote, EmergencyContact,
-  FinancialSupportRecord, TransportRecord, SocialMonitoringAlert,
+  FinancialSupportRecord, TransportRecord, FamilySupportMaterial, SocialMonitoringAlert,
   AISocialAnalysisResult, AISocialAnalysisRecord, AISocialPopulationStats,
   PatientTransportRequest, PatientCareUpdate, PatientPaliatifChatMessage,
   DailyComplaintRecord
@@ -292,6 +292,11 @@ interface TelemedicineStore {
   setTransportRecords: (records: TransportRecord[]) => void;
   addTransportRecord: (record: TransportRecord) => void;
   updateTransportRecord: (id: string, data: Partial<TransportRecord>) => void;
+  familySupportMaterials: FamilySupportMaterial[];
+  setFamilySupportMaterials: (materials: FamilySupportMaterial[]) => void;
+  addFamilySupportMaterial: (material: FamilySupportMaterial) => void;
+  updateFamilySupportMaterial: (id: string, data: Partial<FamilySupportMaterial>) => void;
+  removeFamilySupportMaterial: (id: string) => void;
   socialAlerts: SocialMonitoringAlert[];
   addSocialAlert: (alert: SocialMonitoringAlert) => void;
   markSocialAlertRead: (alertId: string) => void;
@@ -315,6 +320,43 @@ interface TelemedicineStore {
   markCareUpdateViewed: (id: string) => void;
   patientPaliatifMessages: PatientPaliatifChatMessage[];
   addPatientPaliatifMessage: (message: PatientPaliatifChatMessage) => void;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// reconcileOptimisticRecord
+// ─────────────────────────────────────────────────────────────────────────
+// Several store slices (caregivers, family meetings, family coordination
+// notes, emergency contacts, financial support, transport records, resumes,
+// referral letters) add a record to the UI optimistically with a locally
+// generated id (e.g. "fcn-1786722...") BEFORE the Supabase insert resolves.
+// Supabase assigns its own UUID `id` on insert, and that UUID is what the
+// realtime subscription later delivers back to every client (including this
+// one). If we never swap the local temp id for the real DB id, the realtime
+// handler doesn't recognize the incoming row as "the one we just added" (the
+// ids don't match) and appends a second, duplicate row — this is the root
+// cause of the "beli obat generik" showing up twice. It's also why an update
+// shortly after creation could throw `invalid input syntax for type uuid`:
+// the temp id was sent straight into a Supabase `.eq('id', ...)` filter.
+//
+// Call this right after firing the optimistic `set()` + persist call: once
+// the persist promise resolves with the DB row, we replace the temp record
+// (matched by its temp id) with the real one. If the persist failed (the
+// service layer catches its own errors and resolves `null`), we roll back
+// the optimistic record instead of leaving unsynced phantom data in the UI.
+function reconcileOptimisticRecord<T extends { id: string }>(
+  key: keyof TelemedicineStore,
+  tempId: string,
+  pending: Promise<T | null>
+) {
+  pending.then((saved) => {
+    useStore.setState((state: any) => {
+      const list = state[key] as T[];
+      if (saved && saved.id) {
+        return { [key]: list.map((x) => (x.id === tempId ? saved : x)) };
+      }
+      return { [key]: list.filter((x) => x.id !== tempId) };
+    });
+  });
 }
 
 export const useStore = create<TelemedicineStore>((set) => ({
@@ -1071,8 +1113,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setPalliativeResumes: (resumes) => set({ palliativeResumes: resumes }),
   addPalliativeResume: (resume) => {
     set((state) => ({ palliativeResumes: [...state.palliativeResumes, resume] }));
-    // Persist to Firestore
-    firestoreSync.addResume(resume.palliativePatientId, { ...resume }).catch(err => console.error('[Store] Firestore sync error (addResume):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('palliativeResumes', resume.id,
+      firestoreSync.addResume(resume.palliativePatientId, { ...resume }));
   },
   updatePalliativeResume: (resumeId, data) => {
     const state = useStore.getState();
@@ -1091,8 +1134,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setPalliativeReferralLetters: (letters) => set({ palliativeReferralLetters: letters }),
   addPalliativeReferralLetter: (letter) => {
     set((state) => ({ palliativeReferralLetters: [...state.palliativeReferralLetters, letter] }));
-    // Persist to Supabase
-    firestoreSync.addReferralLetter(letter.palliativePatientId, { ...letter }).catch(err => console.error('[Store] Firestore sync error (addReferralLetter):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('palliativeReferralLetters', letter.id,
+      firestoreSync.addReferralLetter(letter.palliativePatientId, { ...letter }));
   },
   updatePalliativeReferralLetter: (letterId, data) => {
     const existing = useStore.getState().palliativeReferralLetters.find(l => l.id === letterId);
@@ -1131,8 +1175,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setCaregivers: (caregivers) => set({ caregivers }),
   addCaregiver: (caregiver) => {
     set((state) => ({ caregivers: [...state.caregivers, caregiver] }));
-    // Persist to Supabase
-    firestoreSync.addCaregiver(caregiver.palliativePatientId, { ...caregiver }).catch(err => console.error('[Store] Firestore sync error (addCaregiver):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('caregivers', caregiver.id,
+      firestoreSync.addCaregiver(caregiver.palliativePatientId, { ...caregiver }));
   },
   updateCaregiver: (id, data) => {
     const existing = useStore.getState().caregivers.find(c => c.id === id);
@@ -1156,8 +1201,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setFamilyMeetings: (meetings) => set({ familyMeetings: meetings }),
   addFamilyMeeting: (meeting) => {
     set((state) => ({ familyMeetings: [...state.familyMeetings, meeting] }));
-    // Persist to Supabase
-    firestoreSync.addFamilyMeeting(meeting.palliativePatientId, { ...meeting }).catch(err => console.error('[Store] Firestore sync error (addFamilyMeeting):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('familyMeetings', meeting.id,
+      firestoreSync.addFamilyMeeting(meeting.palliativePatientId, { ...meeting }));
   },
   updateFamilyMeeting: (id, data) => {
     const existing = useStore.getState().familyMeetings.find(m => m.id === id);
@@ -1194,8 +1240,10 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setFamilyCoordinationNotes: (notes) => set({ familyCoordinationNotes: notes }),
   addFamilyCoordinationNote: (note) => {
     set((state) => ({ familyCoordinationNotes: [...state.familyCoordinationNotes, note] }));
-    // Persist to Supabase
-    firestoreSync.addFamilyCoordinationNote(note.palliativePatientId, { ...note }).catch(err => console.error('[Store] Firestore sync error (addFamilyCoordinationNote):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id (this is
+    // the fix for the duplicate "beli obat generik" row bug).
+    reconcileOptimisticRecord('familyCoordinationNotes', note.id,
+      firestoreSync.addFamilyCoordinationNote(note.palliativePatientId, { ...note }));
   },
   updateFamilyCoordinationNote: (id, data) => {
     const existing = useStore.getState().familyCoordinationNotes.find(n => n.id === id);
@@ -1211,8 +1259,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setEmergencyContacts: (contacts) => set({ emergencyContacts: contacts }),
   addEmergencyContact: (contact) => {
     set((state) => ({ emergencyContacts: [...state.emergencyContacts, contact] }));
-    // Persist to Supabase
-    firestoreSync.addEmergencyContact(contact.palliativePatientId, { ...contact }).catch(err => console.error('[Store] Firestore sync error (addEmergencyContact):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('emergencyContacts', contact.id,
+      firestoreSync.addEmergencyContact(contact.palliativePatientId, { ...contact }));
   },
   updateEmergencyContact: (id, data) => {
     const existing = useStore.getState().emergencyContacts.find(c => c.id === id);
@@ -1236,8 +1285,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setFinancialSupportRecords: (records) => set({ financialSupportRecords: records }),
   addFinancialSupportRecord: (record) => {
     set((state) => ({ financialSupportRecords: [...state.financialSupportRecords, record] }));
-    // Persist to Supabase
-    firestoreSync.addFinancialSupport(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addFinancialSupport):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('financialSupportRecords', record.id,
+      firestoreSync.addFinancialSupport(record.palliativePatientId, { ...record }));
   },
   updateFinancialSupportRecord: (id, data) => {
     const existing = useStore.getState().financialSupportRecords.find(r => r.id === id);
@@ -1253,8 +1303,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setTransportRecords: (records) => set({ transportRecords: records }),
   addTransportRecord: (record) => {
     set((state) => ({ transportRecords: [...state.transportRecords, record] }));
-    // Persist to Supabase
-    firestoreSync.addTransportRecord(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addTransportRecord):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('transportRecords', record.id,
+      firestoreSync.addTransportRecord(record.palliativePatientId, { ...record }));
   },
   updateTransportRecord: (id, data) => {
     const existing = useStore.getState().transportRecords.find(r => r.id === id);
@@ -1264,6 +1315,32 @@ export const useStore = create<TelemedicineStore>((set) => ({
     // Persist to Supabase
     if (existing) {
       firestoreSync.updateTransportRecord(existing.palliativePatientId, id, data).catch(err => console.error('[Store] Firestore sync error (updateTransportRecord):', err));
+    }
+  },
+  familySupportMaterials: [] as FamilySupportMaterial[],
+  setFamilySupportMaterials: (materials) => set({ familySupportMaterials: materials }),
+  addFamilySupportMaterial: (material) => {
+    set((state) => ({ familySupportMaterials: [...state.familySupportMaterials, material] }));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('familySupportMaterials', material.id,
+      firestoreSync.addFamilySupportMaterial(material.palliativePatientId, { ...material }));
+  },
+  updateFamilySupportMaterial: (id, data) => {
+    const existing = useStore.getState().familySupportMaterials.find(m => m.id === id);
+    set((state) => ({
+      familySupportMaterials: state.familySupportMaterials.map(m => m.id === id ? { ...m, ...data, updatedAt: new Date().toISOString() } : m),
+    }));
+    // Persist to Supabase
+    if (existing) {
+      firestoreSync.updateFamilySupportMaterial(existing.palliativePatientId, id, data).catch(err => console.error('[Store] Firestore sync error (updateFamilySupportMaterial):', err));
+    }
+  },
+  removeFamilySupportMaterial: (id) => {
+    const existing = useStore.getState().familySupportMaterials.find(m => m.id === id);
+    set((state) => ({ familySupportMaterials: state.familySupportMaterials.filter(m => m.id !== id) }));
+    // Persist to Supabase
+    if (existing) {
+      firestoreSync.removeFamilySupportMaterial(existing.palliativePatientId, id).catch(err => console.error('[Store] Firestore sync error (removeFamilySupportMaterial):', err));
     }
   },
   socialAlerts: [] as SocialMonitoringAlert[],
