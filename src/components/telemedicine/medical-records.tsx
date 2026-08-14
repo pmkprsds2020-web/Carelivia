@@ -15,7 +15,7 @@ import type {
   RiskCategory,
   TriageLevel,
 } from '@/lib/types';
-import { AnamnesisSistemPanel } from './anamnesis-sistem-panel';
+import { AnamnesisSistemPanel, RosPatientSummaryView } from './anamnesis-sistem-panel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -2708,7 +2708,7 @@ function PatientMedicalRecordsView() {
         {/* Main Content */}
         <div className="lg:col-span-3">
           <Tabs defaultValue="consultations" className="w-full">
-            <TabsList className="grid w-full grid-cols-4 mb-4">
+            <TabsList className="grid w-full grid-cols-5 mb-4">
               <TabsTrigger value="consultations" className="flex items-center gap-1.5">
                 <FileText className="w-4 h-4" />
                 <span className="hidden sm:inline">Riwayat Konsultasi</span>
@@ -2718,6 +2718,11 @@ function PatientMedicalRecordsView() {
                 <ClipboardCheck className="w-4 h-4" />
                 <span className="hidden sm:inline">Skrining Kesehatan</span>
                 <span className="sm:hidden">Skrining</span>
+              </TabsTrigger>
+              <TabsTrigger value="anamnesis-sistem" className="flex items-center gap-1.5">
+                <Stethoscope className="w-4 h-4" />
+                <span className="hidden sm:inline">Pengkajian Dokter</span>
+                <span className="sm:hidden">Pengkajian</span>
               </TabsTrigger>
               <TabsTrigger value="lab" className="flex items-center gap-1.5">
                 <FlaskConical className="w-4 h-4" />
@@ -2838,6 +2843,10 @@ function PatientMedicalRecordsView() {
             {/* Tab 2: Skrining Kesehatan */}
             <TabsContent value="screening" className="space-y-3 mt-0">
               <PatientScreeningTimeline />
+            </TabsContent>
+
+            <TabsContent value="anamnesis-sistem" className="space-y-3 mt-0">
+              <RosPatientSummaryView patientId={currentPatientId} />
             </TabsContent>
 
             {/* Tab 3: Hasil Lab */}

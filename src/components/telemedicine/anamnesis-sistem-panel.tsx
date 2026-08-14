@@ -72,6 +72,7 @@ import {
   Loader2,
   Copy,
   Sparkles,
+  Bot,
 } from 'lucide-react';
 
 function generateEncounterId(): string {
@@ -117,6 +118,8 @@ export function AnamnesisSistemPanel({ patientId, patientName, doctorId, doctorN
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [saveLabel, setSaveLabel] = useState<'idle' | 'saved'>('idle');
+  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   // Reset the form whenever the doctor switches patients.
   useEffect(() => {
@@ -126,6 +129,7 @@ export function AnamnesisSistemPanel({ patientId, patientName, doctorId, doctorN
     setItems(buildDefaultRosItems(patientId, newEncounterId, newDate, doctorId));
     setView('form');
     setSaveLabel('idle');
+    setAiAnalysis(null);
   }, [patientId, doctorId]);
 
   const loadHistory = useCallback(async () => {
@@ -178,6 +182,7 @@ export function AnamnesisSistemPanel({ patientId, patientName, doctorId, doctorN
     setEncounterId(newEncounterId);
     setItems(buildDefaultRosItems(patientId, newEncounterId, newDate, doctorId));
     setSaveLabel('idle');
+    setAiAnalysis(null);
     setView('form');
   };
 
@@ -186,6 +191,7 @@ export function AnamnesisSistemPanel({ patientId, patientName, doctorId, doctorN
     const map: Record<string, RosItemRecord> = {};
     for (const item of encounter.items) map[item.symptomCode] = item;
     setItems(map);
+    setAiAnalysis(null);
     setView('form');
   };
 
@@ -239,6 +245,25 @@ export function AnamnesisSistemPanel({ patientId, patientName, doctorId, doctorN
       toast({ title: 'Ringkasan disalin', description: 'Tempelkan ke bagian Subjective SOAP Anda.' });
     } catch {
       toast({ title: 'Tidak dapat menyalin', description: 'Salin manual dari kotak ringkasan.', variant: 'destructive' });
+    }
+  };
+
+  const handleAiAssist = async () => {
+    setAiLoading(true);
+    setAiAnalysis(null);
+    try {
+      const res = await fetch('/api/medical-system-review/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientId, patientName, encounterId, items: itemList }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Gagal memuat bantuan AI');
+      setAiAnalysis(data.analysis);
+    } catch (e: any) {
+      toast({ title: 'Bantuan AI gagal dimuat', description: e?.message, variant: 'destructive' });
+    } finally {
+      setAiLoading(false);
     }
   };
 
@@ -441,11 +466,34 @@ export function AnamnesisSistemPanel({ patientId, patientName, doctorId, doctorN
             </CardHeader>
             <CardContent>
               <p className="text-sm text-foreground/90 leading-relaxed">{summaryText}</p>
-              <Button size="sm" variant="ghost" className="mt-2 -ml-2" onClick={handleCopySummary}>
-                <Copy className="w-3.5 h-3.5 mr-1.5" /> Salin Ringkasan untuk SOAP
-              </Button>
+              <div className="flex items-center gap-1 mt-2 -ml-2">
+                <Button size="sm" variant="ghost" onClick={handleCopySummary}>
+                  <Copy className="w-3.5 h-3.5 mr-1.5" /> Salin Ringkasan untuk SOAP
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleAiAssist} disabled={aiLoading}>
+                  {aiLoading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Bot className="w-3.5 h-3.5 mr-1.5" />}
+                  Bantuan AI Clinical Assistant
+                </Button>
+              </div>
             </CardContent>
           </Card>
+
+          {aiAnalysis && (
+            <Card className="border border-violet-200 bg-violet-50/60 dark:bg-violet-950/20 dark:border-violet-900">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2 text-violet-700 dark:text-violet-300">
+                  <Bot className="w-4 h-4" /> Bantuan AI — memerlukan verifikasi dokter
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-violet-700/80 dark:text-violet-300/80 mb-2">
+                  Hasil di bawah dibuat oleh AI berdasarkan data yang Anda isi. Tinjau dan verifikasi sebelum
+                  digunakan dalam rekam medis — AI tidak menetapkan diagnosis pasti.
+                </p>
+                <div className="text-sm whitespace-pre-wrap leading-relaxed text-foreground/90">{aiAnalysis}</div>
+              </CardContent>
+            </Card>
+          )}
 
           <div className="flex items-center justify-end gap-2 pb-2">
             {saveLabel === 'saved' && (
@@ -470,6 +518,108 @@ export function AnamnesisSistemPanel({ patientId, patientName, doctorId, doctorN
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detail Anamnesis Sistem</DialogTitle>
+            <DialogDescription>
+              {viewingEncounter ? formatDate(viewingEncounter.assessmentDate) : ''}
+              {viewingEncounter?.doctorName ? ` · ${viewingEncounter.doctorName}` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          {viewingEncounter && (
+            <div className="space-y-3">
+              <p className="text-sm text-foreground/90 bg-primary/5 rounded-md p-3">
+                {generateRosSummary(viewingEncounter.items)}
+              </p>
+              {ROS_SYSTEMS.map((system) => {
+                const findings = viewingEncounter.items.filter((i) => i.systemName === system.id && i.status === 'positive');
+                if (findings.length === 0) return null;
+                return (
+                  <div key={system.id}>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">{system.label}</p>
+                    <ul className="text-sm list-disc list-inside space-y-0.5">
+                      {findings.map((f) => (
+                        <li key={f.symptomCode}>
+                          {f.symptomName}
+                          {f.detail ? <span className="text-muted-foreground"> — {f.detail}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// RosPatientSummaryView — read-only view for the PATIENT side.
+//
+// Per spec §20: patients may see a doctor-authored summary, but never the
+// editing form, and can never edit/delete/change anything here.
+// ───────────────────────────────────────────────────────────────────────────
+export interface RosPatientSummaryViewProps {
+  patientId: string;
+}
+
+export function RosPatientSummaryView({ patientId }: RosPatientSummaryViewProps) {
+  const [loading, setLoading] = useState(true);
+  const [history, setHistory] = useState<RosEncounterSummary[]>([]);
+  const [viewingEncounter, setViewingEncounter] = useState<RosEncounterSummary | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    medicalSystemReviewService.getHistory(patientId).then((rows) => {
+      if (!cancelled) {
+        setHistory(rows.filter((r) => r.reviewStatus === 'completed'));
+        setLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [patientId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-10 text-sm text-muted-foreground gap-2">
+        <Loader2 className="w-4 h-4 animate-spin" /> Memuat ringkasan pengkajian dokter...
+      </div>
+    );
+  }
+
+  if (history.length === 0) {
+    return (
+      <Card className="border-0">
+        <CardContent className="p-8 text-center">
+          <ClipboardList className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">Belum ada Ringkasan Pengkajian Dokter untuk Anda.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {history.map((enc) => (
+        <Card key={enc.encounterId} className="border-0 hover:shadow-sm transition-shadow cursor-pointer" onClick={() => setViewingEncounter(enc)}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Ringkasan Pengkajian Dokter</p>
+                <p className="text-xs text-muted-foreground">{formatDate(enc.assessmentDate)}{enc.doctorName ? ` · ${enc.doctorName}` : ''}</p>
+              </div>
+              <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 text-[10px]">Selesai</Badge>
+            </div>
+            <p className="text-sm text-foreground/80 mt-2 line-clamp-2">{generateRosSummary(enc.items)}</p>
+          </CardContent>
+        </Card>
+      ))}
+
+      <Dialog open={!!viewingEncounter} onOpenChange={(open) => !open && setViewingEncounter(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Ringkasan Pengkajian Dokter</DialogTitle>
             <DialogDescription>
               {viewingEncounter ? formatDate(viewingEncounter.assessmentDate) : ''}
               {viewingEncounter?.doctorName ? ` · ${viewingEncounter.doctorName}` : ''}
