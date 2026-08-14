@@ -15,6 +15,7 @@ import type {
   RiskCategory,
   TriageLevel,
 } from '@/lib/types';
+import { AnamnesisSistemPanel } from './anamnesis-sistem-panel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -1001,7 +1002,7 @@ function DoctorMedicalRecordsView() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-4">
+        <TabsList className="grid w-full grid-cols-5 mb-4">
           <TabsTrigger value="records-list" className="flex items-center gap-1.5">
             <ClipboardList className="w-4 h-4" />
             <span className="hidden sm:inline">Daftar Rekam Medis</span>
@@ -1021,6 +1022,11 @@ function DoctorMedicalRecordsView() {
             <ClipboardCheck className="w-4 h-4" />
             <span className="hidden sm:inline">Skrining Komprehensif</span>
             <span className="sm:hidden">Skrining</span>
+          </TabsTrigger>
+          <TabsTrigger value="anamnesis-sistem" className="flex items-center gap-1.5">
+            <Stethoscope className="w-4 h-4" />
+            <span className="hidden sm:inline">Anamnesis Sistem</span>
+            <span className="sm:hidden">Anamnesis</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1487,6 +1493,71 @@ function DoctorMedicalRecordsView() {
               </div>
             );
           })()}
+        </TabsContent>
+
+        {/* ================================================================= */}
+        {/* Tab 5: Anamnesis Sistem (Review of Systems)                       */}
+        {/* ================================================================= */}
+        <TabsContent value="anamnesis-sistem" className="mt-0">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Reuse the same patient list used by the Timeline Pasien tab */}
+            <div className="md:col-span-1 space-y-2">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                Daftar Pasien
+              </h3>
+              <div className="max-h-[calc(100vh-360px)] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                {timelinePatients.map((patient) => (
+                  <Card
+                    key={patient.patientId}
+                    className={cn(
+                      'border-0 cursor-pointer transition-all',
+                      selectedTimelinePatientId === patient.patientId
+                        ? 'ring-2 ring-primary shadow-md'
+                        : 'hover:shadow-sm',
+                    )}
+                    onClick={() => setSelectedTimelinePatientId(patient.patientId)}
+                  >
+                    <CardContent className="p-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <User className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm text-foreground truncate">
+                            {patient.patientName}
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+                {timelinePatients.length === 0 && (
+                  <p className="text-xs text-muted-foreground px-1">Belum ada pasien dengan rekam medis.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="md:col-span-2">
+              {!selectedTimelinePatient ? (
+                <Card className="border-0">
+                  <CardContent className="p-8 text-center">
+                    <Users className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-sm text-muted-foreground">
+                      Pilih pasien untuk mengisi Anamnesis Sistem
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <AnamnesisSistemPanel
+                  key={selectedTimelinePatient.patientId}
+                  patientId={selectedTimelinePatient.patientId}
+                  patientName={selectedTimelinePatient.patientName}
+                  doctorId={currentUser?.id}
+                  doctorName={currentUser?.name}
+                />
+              )}
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 

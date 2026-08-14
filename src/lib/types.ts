@@ -921,6 +921,7 @@ export type ClinicalAlertSource =
   | 'social_assessments'
   | 'laboratory_results'
   | 'pemeriksaan_penunjang'
+  | 'medical_system_review'
   | 'ai'
   | 'manual';
 
@@ -929,7 +930,7 @@ export interface PalliativeClinicalAlert {
   patientId: string;
   /** Patient UUID — used for Supabase persistence (FK to patients.id). */
   palliativePatientId?: string;
-  alertType: 'ttv_abnormal' | 'gejala_berat' | 'distres_tinggi' | 'pps_penurunan' | 'perburukan' | 'obat_tidak_diminum' | 'efek_samping_berat' | 'nyeri_meningkat' | 'sesak_napas' | 'kepatuhan_menurun' | 'form_tidak_diisi' | 'hipoksemia' | 'distres_pernapasan' | 'krisis_hipertensi' | 'hipotensi' | 'takikardia' | 'demam_tinggi' | 'nyeri_berat' | 'sesak_berat' | 'distres_psikologis' | 'penurunan_fungsi' | 'spict_positif' | 'obat_hampir_habis' | 'risiko_malnutrisi' | 'risiko_dehidrasi' | 'penurunan_bb' | 'konstipasi_berat' | 'retensi_urin' | 'risiko_burnout_caregiver' | 'risiko_dukungan_sosial' | 'high_risk_deterioration' | 'hba1c_tinggi' | 'gdp_tinggi' | 'gds_tinggi' | 'ldl_tinggi' | 'kreatinin_tinggi' | 'mikroalbumin_positif' | 'clinical_alert';
+  alertType: 'ttv_abnormal' | 'gejala_berat' | 'distres_tinggi' | 'pps_penurunan' | 'perburukan' | 'obat_tidak_diminum' | 'efek_samping_berat' | 'nyeri_meningkat' | 'sesak_napas' | 'kepatuhan_menurun' | 'form_tidak_diisi' | 'hipoksemia' | 'distres_pernapasan' | 'krisis_hipertensi' | 'hipotensi' | 'takikardia' | 'demam_tinggi' | 'nyeri_berat' | 'sesak_berat' | 'distres_psikologis' | 'penurunan_fungsi' | 'spict_positif' | 'obat_hampir_habis' | 'risiko_malnutrisi' | 'risiko_dehidrasi' | 'penurunan_bb' | 'konstipasi_berat' | 'retensi_urin' | 'risiko_burnout_caregiver' | 'risiko_dukungan_sosial' | 'high_risk_deterioration' | 'hba1c_tinggi' | 'gdp_tinggi' | 'gds_tinggi' | 'ldl_tinggi' | 'kreatinin_tinggi' | 'mikroalbumin_positif' | 'risiko_bunuh_diri' | 'clinical_alert';
   severity: 'hijau' | 'kuning' | 'merah';
   title: string;
   description: string;
@@ -2005,4 +2006,39 @@ export interface PatientPaliatifChatMessage {
   documentUrl?: string;
   createdAt: string;
   readAt?: string;
+}
+
+// ── Anamnesis Sistem / Review of Systems (ROS) ─────────────────────────────
+// See supabase/migration_medical_system_review.sql for the DB table this
+// maps to, and src/lib/ros-data.ts for the 12-system question catalog.
+
+export type RosStatus = 'negative' | 'positive' | 'not_asked' | 'unable_to_assess';
+export type RosReviewStatus = 'draft' | 'completed';
+
+/** One symptom item within one encounter's Anamnesis Sistem. */
+export interface RosItemRecord {
+  id?: string;
+  patientId: string;
+  doctorId?: string;
+  /** Groups every item filled in during a single assessment session. */
+  encounterId: string;
+  assessmentDate: string;
+  systemName: string;   // e.g. 'kardiovaskular' — matches RosSystem.id
+  symptomCode: string;  // e.g. 'CV_PALPITASI'    — matches RosSymptom.code
+  symptomName: string;  // e.g. 'Berdebar'
+  status: RosStatus;
+  detail?: string;      // only meaningful when status === 'positive'
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** One saved Anamnesis Sistem session, grouped by encounter, for history views. */
+export interface RosEncounterSummary {
+  encounterId: string;
+  patientId: string;
+  doctorId?: string;
+  doctorName?: string;
+  assessmentDate: string;
+  reviewStatus: RosReviewStatus;
+  items: RosItemRecord[];
 }

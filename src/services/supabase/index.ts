@@ -28,6 +28,7 @@ export { medicationService } from './medicationService';
 export type { MedicationWithExtras } from './medicationService';
 export { nutritionService } from './nutritionService';
 export { complaintService } from './complaintService';
+export { medicalSystemReviewService } from './medicalSystemReviewService';
 export { socialService } from './socialService';
 export { acpService } from './acpService';
 export { chatService } from './chatService';
