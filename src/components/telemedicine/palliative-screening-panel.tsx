@@ -368,6 +368,7 @@ export function PalliativeScreeningPanel() {
     palliativeScreeningRecords, addPalliativeScreeningRecord,
     screeningNavigationFrom, setScreeningNavigationFrom,
     screeningPreselectedPatientId, setScreeningPreselectedPatientId,
+    setMonitoringReturnTab,
     setActivePanel,
     addPalliativeAuditEntry,
   } = useStore();
@@ -2068,6 +2069,9 @@ export function PalliativeScreeningPanel() {
                   onClick={() => {
                     setScreeningNavigationFrom(null);
                     setScreeningPreselectedPatientId(null);
+                    // Resume the "Skrining" tab in Monitoring Paliatif instead
+                    // of resetting to its default 'dashboard' tab.
+                    setMonitoringReturnTab('screening');
                     setActivePanel('palliative-monitoring');
                   }}
                 >
@@ -2307,6 +2311,9 @@ export function PalliativeScreeningPanel() {
                       setTimeout(() => {
                         setScreeningNavigationFrom(null);
                         setScreeningPreselectedPatientId(null);
+                        // Resume the "Skrining" tab in Monitoring Paliatif
+                        // instead of resetting to its default 'dashboard' tab.
+                        setMonitoringReturnTab('screening');
                         setActivePanel('palliative-monitoring');
                       }, 300);
                     }}>
@@ -2348,6 +2355,9 @@ export function PalliativeScreeningPanel() {
               onClick={() => {
                 setScreeningNavigationFrom(null);
                 setScreeningPreselectedPatientId(null);
+                // Resume the "Skrining" tab in Monitoring Paliatif instead
+                // of resetting to its default 'dashboard' tab.
+                setMonitoringReturnTab('screening');
                 setActivePanel('palliative-monitoring');
               }}
             >

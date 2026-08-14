@@ -103,20 +103,22 @@ export const supabaseSync = {
   },
 
   // ── Vital signs (TTV) ──────────────────────────────────────────────────
-  async addTTV(patientId: string, data: Record<string, unknown>): Promise<void> {
+  async addTTV(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
-      await vitalService.create({ ...(data as any), palliativePatientId: patientId });
+      return await vitalService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
       toastSaveError('Simpan TTV', err);
+      return null;
     }
   },
 
   // ── Medications (Obat) ─────────────────────────────────────────────────
-  async addObat(patientId: string, data: Record<string, unknown>): Promise<void> {
+  async addObat(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
-      await medicationService.create({ ...(data as any), palliativePatientId: patientId });
+      return await medicationService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
       toastSaveError('Simpan Obat', err);
+      return null;
     }
   },
 
@@ -129,11 +131,12 @@ export const supabaseSync = {
   },
 
   // ── Advance Care Planning (ACP) ────────────────────────────────────────
-  async addACP(patientId: string, data: Record<string, unknown>): Promise<void> {
+  async addACP(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
-      await acpService.create({ ...(data as any), palliativePatientId: patientId });
+      return await acpService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
       toastSaveError('Simpan ACP', err);
+      return null;
     }
   },
 
@@ -146,20 +149,22 @@ export const supabaseSync = {
   },
 
   // ── Screenings (Skrining) ──────────────────────────────────────────────
-  async addSkrining(patientId: string, data: Record<string, unknown>): Promise<void> {
+  async addSkrining(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
-      await screeningService.create({ ...(data as any), palliativePatientId: patientId });
+      return await screeningService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
       toastSaveError('Simpan Skrining', err);
+      return null;
     }
   },
 
   // ── Nutrition (Nutrisi) ────────────────────────────────────────────────
-  async addNutrisi(patientId: string, data: Record<string, unknown>): Promise<void> {
+  async addNutrisi(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
-      await nutritionService.create({ ...(data as any), palliativePatientId: patientId });
+      return await nutritionService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
       toastSaveError('Simpan Nutrisi', err);
+      return null;
     }
   },
 
@@ -171,11 +176,11 @@ export const supabaseSync = {
    * cannot be used as the `room_id` FK. We call `getOrCreateRoom` to get the
    * real UUID from the `chat_rooms` table.
    */
-  async addChatMessage(patientId: string, data: Record<string, unknown>): Promise<void> {
+  async addChatMessage(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
       if (!isValidUuid(patientId)) {
         console.error('[supabaseSync.addChatMessage] ABORTED — patientId is not a valid UUID:', patientId);
-        return;
+        return null;
       }
       const localRoomId = data.roomId as string | undefined;
       const senderRole = data.senderRole as string | undefined;
@@ -204,9 +209,10 @@ export const supabaseSync = {
         palliativePatientId: patientId, // → patient_id column (uuid)
         doctorId: validDoctorId,        // → doctor_id column (nullable uuid)
       };
-      await chatService.sendMessage(realRoomId, enrichedData as any);
+      return await chatService.sendMessage(realRoomId, enrichedData as any);
     } catch (err) {
       toastSaveError('Kirim Pesan Chat', err);
+      return null;
     }
   },
 
@@ -366,12 +372,12 @@ export const supabaseSync = {
   },
 
   // ── Audit log ──────────────────────────────────────────────────────────
-  async addAuditEntry(patientId: string, data: Record<string, unknown>): Promise<void> {
+  async addAuditEntry(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
       // patient_id is a nullable uuid — only forward if it's a real UUID.
       // An empty string ("") would cause "invalid input syntax for type uuid".
       const validPatientId = validUuidOrUndefined(patientId);
-      const { error } = await supabase.from('audit_log').insert({
+      const { data: row, error } = await supabase.from('audit_log').insert({
         patient_id: validPatientId ?? null,
         action: (data.action as string) ?? 'clinical_action',
         performed_by: (data.performedBy as string) ?? 'system',
@@ -379,10 +385,26 @@ export const supabaseSync = {
         details: (data.details as any) ?? null,
         ip_address: (data.ipAddress as string) ?? null,
         device: (data.device as string) ?? null,
-      });
-      if (error) console.error('[SupabaseSync] addAuditEntry:', error.message);
+      }).select().single();
+      if (error) {
+        console.error('[SupabaseSync] addAuditEntry:', error.message);
+        return null;
+      }
+      if (!row) return null;
+      return {
+        id: row.id,
+        patientId: row.patient_id ?? '',
+        action: row.action ?? 'clinical_action',
+        performedBy: row.performed_by ?? 'system',
+        performedByRole: row.performed_by_role ?? 'system',
+        details: row.details ?? undefined,
+        ipAddress: row.ip_address ?? undefined,
+        device: row.device ?? undefined,
+        createdAt: row.created_at ?? new Date().toISOString(),
+      };
     } catch (err) {
       console.error('[SupabaseSync] addAuditEntry:', err);
+      return null;
     }
   },
 
@@ -599,11 +621,12 @@ export const supabaseSync = {
   },
 
   // ── Social assessments (Sosial) ─────────────────────────────────────────
-  async addSosial(patientId: string, data: Record<string, unknown>): Promise<void> {
+  async addSosial(patientId: string, data: Record<string, unknown>): Promise<any | null> {
     try {
-      await socialService.create({ ...(data as any), palliativePatientId: patientId });
+      return await socialService.create({ ...(data as any), palliativePatientId: patientId });
     } catch (err) {
       toastSaveError('Simpan Penilaian Sosial', err);
+      return null;
     }
   },
 

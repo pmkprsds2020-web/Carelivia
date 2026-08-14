@@ -800,7 +800,13 @@ function handleAuditLogEvent(store: ReturnType<typeof useStore.getState>, p: Rea
         ),
       });
     } else {
-      store.addPalliativeAuditEntry(fresh);
+      // Use setState directly (not store.addPalliativeAuditEntry) to avoid
+      // triggering a duplicate Supabase insert for realtime-delivered rows
+      // (this previously re-persisted every incoming audit row right back
+      // to Supabase, since addPalliativeAuditEntry itself calls addAuditEntry).
+      useStore.setState((s) => ({
+        palliativeAuditLog: [...s.palliativeAuditLog, fresh],
+      }));
     }
   } catch (e) { warn('audit mapping', e); }
 }

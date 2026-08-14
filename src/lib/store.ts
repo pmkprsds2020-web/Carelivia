@@ -200,6 +200,11 @@ interface TelemedicineStore {
   setScreeningNavigationFrom: (from: 'monitoring' | null) => void;
   screeningPreselectedPatientId: string | null;
   setScreeningPreselectedPatientId: (id: string | null) => void;
+  // Which tab Monitoring Paliatif should open on next time it mounts — used
+  // to resume the "Skrining" tab after finishing a screening deep-linked
+  // from Monitoring Paliatif, instead of always resetting to 'dashboard'.
+  monitoringReturnTab: string | null;
+  setMonitoringReturnTab: (tab: string | null) => void;
 
   // Palliative Program Completion
   palliativeProgramCompletions: PalliativeProgramCompletion[];
@@ -606,8 +611,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setVitalSignRecords: (records) => set({ vitalSignRecords: records }),
   addVitalSignRecord: (record) => {
     set((state) => ({ vitalSignRecords: [...state.vitalSignRecords, record] }));
-    // Persist to Firestore
-    firestoreSync.addTTV(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addTTV):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('vitalSignRecords', record.id,
+      firestoreSync.addTTV(record.palliativePatientId, { ...record }));
     // Run Clinical Alert Rule Engine for this patient (fire-and-forget)
     if (record.palliativePatientId) {
       useStore.getState().runClinicalAlertEngine(record.palliativePatientId).catch(() => {});
@@ -617,8 +623,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setPalliativeMedications: (meds) => set({ palliativeMedications: meds }),
   addPalliativeMedication: (med) => {
     set((state) => ({ palliativeMedications: [...state.palliativeMedications, med] }));
-    // Persist to Firestore
-    firestoreSync.addObat(med.palliativePatientId, { ...med }).catch(err => console.error('[Store] Firestore sync error (addObat):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('palliativeMedications', med.id,
+      firestoreSync.addObat(med.palliativePatientId, { ...med }));
     // Run Clinical Alert Rule Engine for this patient (fire-and-forget)
     if (med.palliativePatientId) {
       useStore.getState().runClinicalAlertEngine(med.palliativePatientId).catch(() => {});
@@ -641,8 +648,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setAdvanceCarePlans: (plans) => set({ advanceCarePlans: plans }),
   addAdvanceCarePlan: (plan) => {
     set((state) => ({ advanceCarePlans: [...state.advanceCarePlans, plan] }));
-    // Persist to Firestore
-    firestoreSync.addACP(plan.palliativePatientId, { ...plan }).catch(err => console.error('[Store] Firestore sync error (addACP):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('advanceCarePlans', plan.id,
+      firestoreSync.addACP(plan.palliativePatientId, { ...plan }));
   },
   updateAdvanceCarePlan: (planId, data) => {
     const state = useStore.getState();
@@ -661,8 +669,10 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setPalliativeScreeningRecords: (records) => set({ palliativeScreeningRecords: records }),
   addPalliativeScreeningRecord: (record) => {
     set((state) => ({ palliativeScreeningRecords: [...state.palliativeScreeningRecords, record] }));
-    // Persist to Firestore
-    firestoreSync.addSkrining(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addSkrining):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id (this is
+    // the fix for the duplicate screening-history-row bug).
+    reconcileOptimisticRecord('palliativeScreeningRecords', record.id,
+      firestoreSync.addSkrining(record.palliativePatientId, { ...record }));
     // Run Clinical Alert Rule Engine for this patient (fire-and-forget)
     if (record.palliativePatientId) {
       useStore.getState().runClinicalAlertEngine(record.palliativePatientId).catch(() => {});
@@ -674,8 +684,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setNutritionRecords: (records) => set({ nutritionRecords: records }),
   addNutritionRecord: (record) => {
     set((state) => ({ nutritionRecords: [...state.nutritionRecords, record] }));
-    // Persist to Firestore
-    firestoreSync.addNutrisi(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addNutrisi):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('nutritionRecords', record.id,
+      firestoreSync.addNutrisi(record.palliativePatientId, { ...record }));
     // Run Clinical Alert Rule Engine for this patient (fire-and-forget)
     if (record.palliativePatientId) {
       useStore.getState().runClinicalAlertEngine(record.palliativePatientId).catch(() => {});
@@ -704,8 +715,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
         if (roomMatch && isValidUuid(roomMatch[1])) pid = roomMatch[1];
       }
     }
-    // Persist to Firestore
-    firestoreSync.addChatMessage(pid || '', { ...message, palliativePatientId: pid }).catch(err => console.error('[Store] Firestore sync error (addChat):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('palliativeChatMessages', message.id,
+      firestoreSync.addChatMessage(pid || '', { ...message, palliativePatientId: pid }));
   },
   updatePalliativeChatMessage: (msgId, data) => {
     const state = useStore.getState();
@@ -918,8 +930,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   palliativeAuditLog: [] as PalliativeAuditEntry[],
   addPalliativeAuditEntry: (entry) => {
     set((state) => ({ palliativeAuditLog: [...state.palliativeAuditLog, entry] }));
-    // Persist to Firestore
-    firestoreSync.addAuditEntry(entry.patientId || '', { ...entry }).catch(err => console.error('[Store] Firestore sync error (addAudit):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('palliativeAuditLog', entry.id,
+      firestoreSync.addAuditEntry(entry.patientId || '', { ...entry }));
   },
 
   // Palliative Monitoring Integration
@@ -1019,6 +1032,8 @@ export const useStore = create<TelemedicineStore>((set) => ({
   // Screening Navigation state
   screeningNavigationFrom: null as 'monitoring' | null,
   setScreeningNavigationFrom: (from) => set({ screeningNavigationFrom: from }),
+  monitoringReturnTab: null as string | null,
+  setMonitoringReturnTab: (tab) => set({ monitoringReturnTab: tab }),
   screeningPreselectedPatientId: null as string | null,
   setScreeningPreselectedPatientId: (id) => set({ screeningPreselectedPatientId: id }),
 
@@ -1158,8 +1173,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setSocialAssessments: (records) => set({ socialAssessments: records }),
   addSocialAssessment: (record) => {
     set((state) => ({ socialAssessments: [...state.socialAssessments, record] }));
-    // Persist to Firestore
-    firestoreSync.addSosial(record.palliativePatientId, { ...record }).catch(err => console.error('[Store] Firestore sync error (addSosial):', err));
+    // Persist to Supabase, then reconcile the temp id → real DB id.
+    reconcileOptimisticRecord('socialAssessments', record.id,
+      firestoreSync.addSosial(record.palliativePatientId, { ...record }));
   },
   updateSocialAssessment: (id, data) => {
     set((state) => ({

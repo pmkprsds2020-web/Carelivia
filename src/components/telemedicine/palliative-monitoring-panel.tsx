@@ -287,7 +287,20 @@ function calcBmi(weight?: number, height?: number): number | undefined {
 
 export function PalliativeMonitoringPanel() {
   // ── State ──
-  const [activeTab, setActiveTab] = useState<MonitorTab>('dashboard');
+  // Initialize on the tab Monitoring Paliatif was told to resume on (e.g.
+  // 'screening' after finishing a screening deep-linked from here) instead
+  // of always defaulting to 'dashboard' — see setMonitoringReturnTab in
+  // palliative-screening-panel.tsx's "Kembali ke Monitoring" buttons.
+  const [activeTab, setActiveTab] = useState<MonitorTab>(() => {
+    const returnTab = useStore.getState().monitoringReturnTab;
+    if (returnTab) {
+      // Consume the flag immediately so it doesn't affect the next normal
+      // visit to this panel (it should only apply this one time).
+      useStore.setState({ monitoringReturnTab: null });
+      return returnTab as MonitorTab;
+    }
+    return 'dashboard';
+  });
   const [showAddPatient, setShowAddPatient] = useState(false);
   const [showAddVital, setShowAddVital] = useState(false);
   const [showAddMedication, setShowAddMedication] = useState(false);
