@@ -251,4 +251,19 @@ export const chatService = {
     );
     return res !== null;
   },
+
+  /**
+   * Patch just the `form_data` JSONB column of an existing message — used to
+   * flip a sent form (e.g. Form TTV) to status='submitted' once the patient
+   * fills it in, so the "✓ Sudah diisi" badge survives a refresh and shows
+   * up on the other party's screen via Realtime, not just locally.
+   */
+  async updateFormData(messageId: string, formData: PalliativeChatMessage['formData']): Promise<boolean> {
+    const res = await safeQuery(
+      supabase.from('messages').update({ form_data: formData }).eq('id', messageId),
+      null as any,
+      'chatService.updateFormData'
+    );
+    return res !== null;
+  },
 };

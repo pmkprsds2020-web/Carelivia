@@ -211,9 +211,14 @@ export const supabaseSync = {
 
   async updateChatMessage(patientId: string, msgId: string, data: Record<string, unknown>): Promise<void> {
     try {
-      // chatService doesn't expose update; we mark read instead if applicable.
       if ('status' in data && data.status === 'read') {
         await chatService.markRead(msgId);
+      }
+      // Persist form status changes (e.g. sent → submitted once the patient
+      // fills a Form TTV / Form Keluhan) — without this the badge only
+      // updates in the local session and reverts on refresh.
+      if ('formData' in data && data.formData) {
+        await chatService.updateFormData(msgId, data.formData as any);
       }
     } catch (err) {
       console.error('[SupabaseSync] updateChatMessage:', err);

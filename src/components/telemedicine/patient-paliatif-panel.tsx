@@ -10,7 +10,21 @@ import type {
   PalliativeChatMessage,
   PatientTransportRequestType,
   PatientConditionStatus,
+  PalliativePatientInfo,
+  TTVFormAnswers,
+  VitalSignRecordInfo,
+  PalliativeClinicalAlert,
+  DailyComplaintRecord,
 } from '@/lib/types';
+import { TTVForm, checkTTVAlerts } from '@/components/telemedicine/ttv-form';
+import { DailyComplaintForm } from '@/components/telemedicine/daily-complaint-panel';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -249,7 +263,7 @@ export function PatientPaliatifPanel() {
         </TabsContent>
 
         <TabsContent value="chat">
-          <ChatTab patientId={patientId} messages={myMessages} onSend={addPalliativeChatMessage} currentUser={currentUser} />
+          <ChatTab patient={palliativePatient} patientId={patientId} messages={myMessages} onSend={addPalliativeChatMessage} currentUser={currentUser} />
         </TabsContent>
       </Tabs>
     </div>
@@ -1066,17 +1080,173 @@ function TransportTab({
 // ── Chat Paliatif Tab ─────────────────────────────────────────────────────
 
 function ChatTab({
+  patient,
   patientId,
   messages,
   onSend,
   currentUser,
 }: {
+  patient: PalliativePatientInfo | undefined;
   patientId: string;
   messages: PalliativeChatMessage[];
   onSend: (message: PalliativeChatMessage) => void;
   currentUser: { id: string; name: string } | null;
 }) {
   const [inputMessage, setInputMessage] = useState('');
+  // The form message currently open in the fill-in dialog (TTV / Keluhan
+  // Harian). Clicking a "Form TTV"/"Form Keluhan" bubble sets this; the
+  // dialog closes it again once the patient submits.
+  const [activeFormMsg, setActiveFormMsg] = useState<PalliativeChatMessage | null>(null);
+  const { addVitalSignRecord, addPalliativeClinicalAlert, addPalliativeAuditEntry, updatePalliativeChatMessage } = useStore();
+
+  const genFormId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+  const handleOpenForm = (msg: PalliativeChatMessage) => {
+    const status = msg.formData?.status;
+    if (status === 'sent' || status === 'opened' || status === 'in_progress' || status === undefined) {
+      setActiveFormMsg(msg);
+    }
+  };
+
+  const markFormSubmitted = (msg: PalliativeChatMessage) => {
+    if (!msg.formData) return;
+    updatePalliativeChatMessage(msg.id, {
+      formData: { ...msg.formData, status: 'submitted' },
+    });
+  };
+
+  const handleTTVSubmit = (answers: TTVFormAnswers) => {
+    if (!patient || !activeFormMsg) return;
+    const roomId = activeFormMsg.roomId || `room-${patientId}`;
+
+    const responseMsg: PalliativeChatMessage = {
+      id: genFormId('ppm'),
+      roomId,
+      palliativePatientId: patient.id,
+      senderId: currentUser?.id || patient.patientId || patient.id,
+      senderName: currentUser?.name || patient.patientName || 'Pasien',
+      senderRole: 'patient',
+      type: 'form_response',
+      content: 'Form TTV telah diisi.',
+      formType: 'ttv',
+      formResponse: {
+        formId: activeFormMsg.formData?.id || genFormId('form'),
+        formType: 'ttv',
+        ttvAnswers: answers,
+        submittedAt: new Date().toISOString(),
+      },
+      status: 'delivered',
+      createdAt: new Date().toISOString(),
+    };
+    onSend(responseMsg);
+    markFormSubmitted(activeFormMsg);
+
+    const vitalRecord: VitalSignRecordInfo = {
+      id: genFormId('vs'),
+      palliativePatientId: patient.id,
+      recordedBy: 'patient',
+      systolicBP: answers.systolicBP,
+      diastolicBP: answers.diastolicBP,
+      heartRate: answers.heartRate,
+      respiratoryRate: answers.respiratoryRate,
+      temperature: answers.temperature,
+      oxygenSat: answers.oxygenSat,
+      weight: answers.weight,
+      notes: answers.notes,
+      recordedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    addVitalSignRecord(vitalRecord);
+
+    const alertCheck = checkTTVAlerts(answers);
+    if (alertCheck.alert) {
+      const alert: PalliativeClinicalAlert = {
+        id: genFormId('alert'),
+        patientId: patient.id,
+        alertType: 'ttv_abnormal',
+        severity: alertCheck.severity,
+        title: alertCheck.severity === 'merah' ? 'TTV Kritis' : 'TTV Abnormal',
+        description: alertCheck.messages.join('. '),
+        values: { systolicBP: answers.systolicBP, diastolicBP: answers.diastolicBP, heartRate: answers.heartRate, respiratoryRate: answers.respiratoryRate, temperature: answers.temperature, oxygenSat: answers.oxygenSat },
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
+      addPalliativeClinicalAlert(alert);
+
+      onSend({
+        id: genFormId('ppm'),
+        roomId,
+        palliativePatientId: patient.id,
+        senderId: 'system',
+        senderName: 'Sistem',
+        senderRole: 'system',
+        type: 'clinical_alert',
+        content: `Peringatan: ${alertCheck.messages.join('. ')}`,
+        clinicalAlert: alert,
+        status: 'delivered',
+        createdAt: new Date().toISOString(),
+      });
+      addPalliativeAuditEntry({
+        id: genFormId('audit'),
+        patientId: patient.id,
+        action: 'alert_triggered',
+        performedBy: 'system',
+        performedByRole: 'system',
+        details: `Alert: ${alertCheck.messages.join(', ')}`,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    addPalliativeAuditEntry({
+      id: genFormId('audit'),
+      patientId: patient.id,
+      action: 'form_submitted',
+      performedBy: currentUser?.id || patient.patientId || patient.id,
+      performedByRole: 'patient',
+      details: 'Pasien mengirimkan hasil Form TTV',
+      createdAt: new Date().toISOString(),
+    });
+
+    setActiveFormMsg(null);
+  };
+
+  const handleKeluhanSubmit = (complaint: DailyComplaintRecord) => {
+    if (!patient || !activeFormMsg) return;
+    const roomId = activeFormMsg.roomId || `room-${patientId}`;
+
+    onSend({
+      id: genFormId('ppm'),
+      roomId,
+      palliativePatientId: patient.id,
+      senderId: currentUser?.id || patient.patientId || patient.id,
+      senderName: currentUser?.name || patient.patientName || 'Pasien',
+      senderRole: 'patient',
+      type: 'form_response',
+      content: 'Form Keluhan Harian telah diisi.',
+      formType: 'keluhan',
+      formResponse: {
+        formId: activeFormMsg.formData?.id || genFormId('form'),
+        formType: 'keluhan',
+        submittedAt: new Date().toISOString(),
+        dailyComplaint: complaint,
+      },
+      status: 'delivered',
+      createdAt: new Date().toISOString(),
+    });
+    markFormSubmitted(activeFormMsg);
+
+    addPalliativeAuditEntry({
+      id: genFormId('audit'),
+      patientId: patient.id,
+      action: 'form_submitted',
+      performedBy: currentUser?.id || patient.patientId || patient.id,
+      performedByRole: 'patient',
+      details: `Pasien mengirimkan hasil Form Keluhan Harian (via Chat) - Status: ${complaint.severityLevel}`,
+      createdAt: new Date().toISOString(),
+    });
+
+    setActiveFormMsg(null);
+  };
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1186,6 +1356,12 @@ function ChatTab({
         {messages.map((msg) => {
           const isPatient = msg.senderRole === 'patient';
           const isForm = msg.type !== 'text';
+          // Fillable form types the patient can tap to open. Screening /
+          // med-monitoring forms aren't wired up on the patient side yet.
+          const isFillableForm = msg.type === 'form_ttv' || msg.type === 'form_keluhan';
+          const formStatus = msg.formData?.status;
+          const isOpenable = isFillableForm && formStatus !== 'submitted';
+          const isSubmitted = isFillableForm && formStatus === 'submitted';
 
           return (
             <div key={msg.id} className={`flex ${isPatient ? 'justify-end' : 'justify-start'}`}>
@@ -1193,20 +1369,35 @@ function ChatTab({
                 {!isPatient && (
                   <p className="text-[10px] font-medium text-muted-foreground mb-1 ml-1">{msg.senderName}</p>
                 )}
-                <div className={`rounded-xl px-3 py-2 ${
-                  isPatient
-                    ? 'bg-teal-600 text-white rounded-br-sm'
-                    : isForm
-                    ? 'bg-amber-50 border border-amber-200 text-amber-900 rounded-bl-sm'
-                    : 'bg-muted rounded-bl-sm'
-                }`}>
+                <div
+                  className={`rounded-xl px-3 py-2 ${
+                    isPatient
+                      ? 'bg-teal-600 text-white rounded-br-sm'
+                      : isForm
+                      ? 'bg-amber-50 border border-amber-200 text-amber-900 rounded-bl-sm'
+                      : 'bg-muted rounded-bl-sm'
+                  } ${isOpenable ? 'cursor-pointer hover:opacity-90' : ''}`}
+                  onClick={() => { if (isOpenable) handleOpenForm(msg); }}
+                >
                   {isForm ? (
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-amber-600 shrink-0" />
-                      <div>
-                        <p className="text-xs font-medium">{FORM_TYPE_LABELS[msg.type] || msg.type}</p>
-                        <p className="text-[10px] mt-0.5 opacity-80">{msg.content}</p>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-amber-600 shrink-0" />
+                        <div>
+                          <p className="text-xs font-medium">{FORM_TYPE_LABELS[msg.type] || msg.type}</p>
+                          <p className="text-[10px] mt-0.5 opacity-80">{msg.content}</p>
+                        </div>
                       </div>
+                      {isOpenable && isFillableForm && (
+                        <Button variant="outline" size="sm" className="text-xs h-7 w-full mt-1 bg-white">
+                          <FileText className="w-3 h-3 mr-1" /> Klik untuk mengisi form
+                        </Button>
+                      )}
+                      {isSubmitted && (
+                        <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200">
+                          <CheckCircle2 className="w-3 h-3 mr-1" /> Sudah diisi
+                        </Badge>
+                      )}
                     </div>
                   ) : (
                     <p className="text-sm">{msg.content}</p>
@@ -1237,6 +1428,29 @@ function ChatTab({
           </Button>
         </div>
       </div>
+
+      {/* Fill-in dialog — opened by tapping a Form TTV / Form Keluhan bubble */}
+      {activeFormMsg && (
+        <Dialog open={!!activeFormMsg} onOpenChange={(open) => { if (!open) setActiveFormMsg(null); }}>
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()} onPointerDownOutside={(e) => e.preventDefault()}>
+            <DialogHeader>
+              <DialogTitle>Isi Formulir</DialogTitle>
+              <DialogDescription>Silakan isi formulir yang dikirim oleh dokter</DialogDescription>
+            </DialogHeader>
+            {activeFormMsg.type === 'form_ttv' && (
+              <TTVForm onSubmit={handleTTVSubmit} onSaveDraft={() => {}} />
+            )}
+            {activeFormMsg.type === 'form_keluhan' && patient && (
+              <DailyComplaintForm
+                palliativePatientId={patient.id}
+                source="chat"
+                compact
+                onSubmitSuccess={handleKeluhanSubmit}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </Card>
   );
 }
