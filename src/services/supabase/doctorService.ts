@@ -7,6 +7,7 @@
 // row holding telemedicine-specific fields (specialization, fee, rating…).
 // ───────────────────────────────────────────────────────────────────────────
 import { supabase, safeQuery, safeInsert, isValidUuid } from './_common';
+import { getSupabaseAdmin } from '@/supabaseClient';
 
 export interface DoctorRecord {
   id: string; // profiles.id (= auth.users.id)
@@ -74,8 +75,22 @@ export interface DoctorFilters {
 }
 
 export const doctorService = {
+  /**
+   * Uses the service-role admin client when available (server-only routes:
+   * /api/doctors, /api/consultations). This is deliberate: `profiles` RLS
+   * only grants SELECT to `to authenticated` sessions (see supabase/schema.sql
+   * §20), but this server call runs with the anon key and no forwarded user
+   * session, so the embedded `profiles(...)` join would otherwise come back
+   * null and doctor names would render blank in the patient's doctor list.
+   * The admin client bypasses that safely because this route only ever
+   * returns public directory fields (name, specialization, fee, rating) —
+   * never anything sensitive. Falls back to the anon client if
+   * SUPABASE_SERVICE_ROLE_KEY isn't configured.
+   */
   async getAll(filters: DoctorFilters = {}): Promise<DoctorRecord[]> {
-    let q = supabase
+    const admin = await getSupabaseAdmin().catch(() => null);
+    const client = admin ?? supabase;
+    let q = client
       .from('doctor_profiles')
       .select('*, profiles(email, full_name, phone, status)')
       .order('rating', { ascending: false });
@@ -89,8 +104,10 @@ export const doctorService = {
 
   async getById(id: string): Promise<DoctorRecord | null> {
     if (!isValidUuid(id)) return null;
+    const admin = await getSupabaseAdmin().catch(() => null);
+    const client = admin ?? supabase;
     const row = await safeQuery(
-      supabase
+      client
         .from('doctor_profiles')
         .select('*, profiles(email, full_name, phone, status)')
         .eq('id', id)
