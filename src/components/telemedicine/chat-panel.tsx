@@ -287,6 +287,7 @@ export function ChatPanel() {
     addAuditLog,
     addClinicalAlert,
     palliativeScreeningForms,
+    setPalliativeScreeningForms,
     addPalliativeScreeningForm,
     updatePalliativeScreeningForm,
     setActivePalliativeFormId,
@@ -436,6 +437,27 @@ export function ChatPanel() {
       clearInterval(interval);
     };
   }, [currentUser, isDoctor]);
+
+  // ── Load this user's palliative screening forms from Supabase ────────────
+  // Needed so `renderPalliativeCard` can resolve a `__PALLIATIVE__{formId}__`
+  // message to real, persisted form data after a reload or on another device.
+  useEffect(() => {
+    if (!currentUser) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const param = isDoctor ? `doctorId=${currentUser.id}` : `patientId=${currentUser.id}`;
+        const res = await fetch(`/api/palliative-screening-forms?${param}`);
+        const data = await res.json();
+        if (!cancelled && res.ok && Array.isArray(data?.palliativeScreeningForms)) {
+          setPalliativeScreeningForms(data.palliativeScreeningForms);
+        }
+      } catch (err) {
+        console.warn('[chat-panel] failed to load palliative screening forms:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser, isDoctor, setPalliativeScreeningForms]);
 
   // ── Auto-scroll ──────────────────────────────────────────────────────
 
@@ -1063,53 +1085,53 @@ export function ChatPanel() {
       return;
     }
 
-    const formId = generateId();
-    const palliativeForm: PalliativeScreeningForm = {
-      id: formId,
-      consultationId: activeConsultation.id,
-      doctorId: currentUser.id,
-      patientId: activeConsultation.patientId,
-      status: 'sent',
-      instructions: palliativeInstructions || undefined,
-      selectedTools: [...selectedPalliativeTools],
-      toolAnswers: {},
-      toolResults: {} as PalliativeScreeningForm['toolResults'],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    // NOTE: this form itself is still local-only (not yet persisted to
-    // Supabase) — only its chat announcement is real now. See "Skrining
-    // Pasien" (screening_forms table) for the pattern to extend this to
-    // when this feature is prioritized next.
-    addPalliativeScreeningForm(palliativeForm);
-
     try {
-      await sendChatMessage(activeConsultation.id, currentUser.id, `__PALLIATIVE__${formId}__`);
+      const res = await fetch('/api/palliative-screening-forms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          consultationId: activeConsultation.id,
+          doctorId: currentUser.id,
+          patientId: activeConsultation.patientId,
+          instructions: palliativeInstructions || undefined,
+          selectedTools: [...selectedPalliativeTools],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.palliativeScreeningForm) {
+        throw new Error(data?.details || data?.error || 'Gagal membuat form skrining paliatif');
+      }
+      const palliativeForm: PalliativeScreeningForm = data.palliativeScreeningForm;
+      addPalliativeScreeningForm(palliativeForm);
+
+      await sendChatMessage(activeConsultation.id, currentUser.id, `__PALLIATIVE__${palliativeForm.id}__`);
       await sendChatMessage(
         activeConsultation.id,
         currentUser.id,
         `Formulir Skrining Paliatif telah dikirim. Alat: ${selectedPalliativeTools.map((t) => PALLIATIVE_TOOL_LABELS[t].name).join(', ')}`
       );
-    } catch (err) {
-      console.error('[chat-panel] handleSendPalliativeScreening message failed:', err);
-      toast({ title: 'Pesan gagal terkirim', description: err instanceof Error ? err.message : undefined, variant: 'destructive' });
-      return;
-    }
 
-    setShowPalliativeDialog(false);
-    setSelectedPalliativeTools(['esas', 'distress', 'spict', 'pps', 'zarit', 'eortc']);
-    toast({ title: 'Berhasil', description: 'Form skrining paliatif berhasil dikirim ke pasien.' });
+      setShowPalliativeDialog(false);
+      setSelectedPalliativeTools(['esas', 'distress', 'spict', 'pps', 'zarit', 'eortc']);
+      toast({ title: 'Berhasil', description: 'Form skrining paliatif berhasil dikirim ke pasien.' });
+    } catch (err) {
+      console.error('[chat-panel] handleSendPalliativeScreening failed:', err);
+      toast({
+        title: 'Gagal mengirim form skrining paliatif',
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        variant: 'destructive',
+      });
+    }
   };
 
   // ── Inline Screening Submit Handler ─────────────────────────────────────
 
-  const handleInlineScreeningSubmit = useCallback((result: ScreeningScoreResult, answers: Record<string, number | string | string[]>) => {
+  const handleInlineScreeningSubmit = useCallback(async (result: ScreeningScoreResult, answers: Record<string, number | string | string[]>) => {
     if (!inlineScreeningFormId || !inlineScreeningType || !activeConsultation) return;
 
-    // Update the palliative screening form in store
+    // Update the palliative screening form (local + persisted)
     const currentForm = palliativeScreeningForms.find(f => f.id === inlineScreeningFormId);
-    updatePalliativeScreeningForm(inlineScreeningFormId, {
+    const patch: Partial<PalliativeScreeningForm> = {
       toolAnswers: { ...currentForm?.toolAnswers, [inlineScreeningType]: answers },
       toolResults: {
         ...(currentForm?.toolResults ?? ({} as PalliativeScreeningForm['toolResults'])),
@@ -1123,7 +1145,23 @@ export function ChatPanel() {
       },
       status: 'in_progress',
       updatedAt: new Date().toISOString(),
-    });
+    };
+    updatePalliativeScreeningForm(inlineScreeningFormId, patch);
+
+    if (isValidId(inlineScreeningFormId)) {
+      try {
+        await fetch(`/api/palliative-screening-forms/${inlineScreeningFormId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patch,
+            audit: { action: 'in_progress', performedBy: currentUser?.id || '', details: `Alat ${inlineScreeningType} diisi` },
+          }),
+        });
+      } catch (err) {
+        console.warn('[chat-panel] failed to persist palliative screening answer:', err);
+      }
+    }
 
     // Also add to screening records if patient is a palliative patient
     const palliativePatient = palliativePatients.find(p => p.patientId === activeConsultation.patientId);
@@ -1142,17 +1180,19 @@ export function ChatPanel() {
       });
     }
 
-    // Add a response message in chat
-    const responseMsg: Message = {
-      id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      consultationId: activeConsultation.id,
-      senderId: currentUser?.id || '',
-      content: `Hasil skrining ${inlineScreeningType.toUpperCase()}: ${result.scoreLabel} (${result.ewsLevel === 'merah' ? 'Kritis' : result.ewsLevel === 'kuning' ? 'Perhatian' : 'Normal'})`,
-      type: 'text',
-      status: 'delivered',
-      createdAt: new Date().toISOString(),
-    };
-    addMessage(responseMsg);
+    // Add a response message in chat (real, persisted — sent as the patient,
+    // a genuine participant, so it survives the message poll)
+    if (currentUser && isValidId(activeConsultation.id)) {
+      try {
+        await sendChatMessage(
+          activeConsultation.id,
+          currentUser.id,
+          `Hasil skrining ${inlineScreeningType.toUpperCase()}: ${result.scoreLabel} (${result.ewsLevel === 'merah' ? 'Kritis' : result.ewsLevel === 'kuning' ? 'Perhatian' : 'Normal'})`
+        );
+      } catch (err) {
+        console.warn('[chat-panel] failed to send screening result message:', err);
+      }
+    }
 
     // Send notification to doctor
     addPalliativeMonitoringNotification({
@@ -1172,7 +1212,7 @@ export function ChatPanel() {
     setInlineScreeningType(null);
 
     toast({ title: 'Skrining Terkirim', description: `Hasil skrining ${inlineScreeningType.toUpperCase()} berhasil dikirim.` });
-  }, [inlineScreeningFormId, inlineScreeningType, activeConsultation, currentUser, palliativeScreeningForms, palliativePatients, updatePalliativeScreeningForm, addPalliativeScreeningRecord, addPalliativeMonitoringNotification, addMessage, toast]);
+  }, [inlineScreeningFormId, inlineScreeningType, activeConsultation, currentUser, palliativeScreeningForms, palliativePatients, updatePalliativeScreeningForm, addPalliativeScreeningRecord, addPalliativeMonitoringNotification, toast]);
 
   // ── Palliative Marking Handler ──────────────────────────────────────────
 
