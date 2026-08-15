@@ -19,6 +19,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
@@ -72,6 +73,10 @@ import {
   HeartPulse,
   Users,
   Shield,
+  Play,
+  Square,
+  History,
+  Timer,
 } from 'lucide-react';
 
 // ── Module Icon Map (Lucide icons replacing emojis) ──
@@ -247,6 +252,18 @@ function isValidId(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 }
 
+// Formats a duration in seconds as a short human-readable Indonesian string,
+// e.g. 45 → "45 detik", 125 → "2 menit 5 detik", 4000 → "1 jam 6 menit".
+function formatDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${totalSeconds} detik`;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours} jam ${minutes} menit`;
+  if (minutes > 0) return seconds > 0 ? `${minutes} menit ${seconds} detik` : `${minutes} menit`;
+  return `${seconds} detik`;
+}
+
 function generateRmNumber(): string {
   const now = new Date();
   const y = now.getFullYear();
@@ -314,6 +331,7 @@ export function ChatPanel() {
 
   // Doctor dialog state
   const [showPrescriptionDialog, setShowPrescriptionDialog] = useState(false);
+  const [showResponseTimeHistory, setShowResponseTimeHistory] = useState(false);
   const [showMedicalRecordDialog, setShowMedicalRecordDialog] = useState(false);
 
   // Screening dialog state
@@ -825,6 +843,72 @@ export function ChatPanel() {
       title: 'E-Resep Dikirim',
       description: 'Dokter telah mengirim e-resep untuk Anda.',
     });
+  };
+
+  // ── Consultation Lifecycle (Start / End) — for response-time tracking ────
+
+  const handleStartConsultation = async () => {
+    if (!activeConsultation || !currentUser || !isDoctor) return;
+    if (!isValidId(activeConsultation.id)) {
+      toast({ title: 'Konsultasi belum tersimpan', description: 'Silakan tunggu sebentar lalu coba lagi.', variant: 'destructive' });
+      return;
+    }
+    const startTime = new Date().toISOString();
+    try {
+      const res = await fetch(`/api/consultations/${activeConsultation.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'active', startTime }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.consultation) throw new Error(data?.details || data?.error || 'Gagal memulai konsultasi');
+
+      const updated: Consultation = { ...activeConsultation, status: 'active', startTime };
+      setActiveConsultation(updated);
+      setConsultations(consultations.map((c) => (c.id === updated.id ? { ...c, status: 'active', startTime } : c)));
+
+      const responseSeconds = Math.max(0, Math.round((new Date(startTime).getTime() - new Date(activeConsultation.createdAt).getTime()) / 1000));
+      await sendChatMessage(
+        activeConsultation.id,
+        currentUser.id,
+        `Dokter telah memulai konsultasi. Waktu respon: ${formatDuration(responseSeconds)}.`
+      );
+      toast({ title: 'Konsultasi dimulai', description: `Waktu respon: ${formatDuration(responseSeconds)}.` });
+    } catch (err) {
+      console.error('[chat-panel] handleStartConsultation failed:', err);
+      toast({ title: 'Gagal memulai konsultasi', description: err instanceof Error ? err.message : undefined, variant: 'destructive' });
+    }
+  };
+
+  const handleEndConsultation = async () => {
+    if (!activeConsultation || !currentUser || !isDoctor) return;
+    if (!isValidId(activeConsultation.id)) return;
+    const endTime = new Date().toISOString();
+    try {
+      const res = await fetch(`/api/consultations/${activeConsultation.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'completed', endTime }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.consultation) throw new Error(data?.details || data?.error || 'Gagal mengakhiri konsultasi');
+
+      const updated: Consultation = { ...activeConsultation, status: 'completed', endTime };
+      setActiveConsultation(updated);
+      setConsultations(consultations.map((c) => (c.id === updated.id ? { ...c, status: 'completed', endTime } : c)));
+
+      const startRef = activeConsultation.startTime || activeConsultation.createdAt;
+      const durationSeconds = Math.max(0, Math.round((new Date(endTime).getTime() - new Date(startRef).getTime()) / 1000));
+      await sendChatMessage(
+        activeConsultation.id,
+        currentUser.id,
+        `Dokter telah mengakhiri konsultasi. Durasi konsultasi: ${formatDuration(durationSeconds)}.`
+      );
+      toast({ title: 'Konsultasi diakhiri', description: `Durasi konsultasi: ${formatDuration(durationSeconds)}.` });
+    } catch (err) {
+      console.error('[chat-panel] handleEndConsultation failed:', err);
+      toast({ title: 'Gagal mengakhiri konsultasi', description: err instanceof Error ? err.message : undefined, variant: 'destructive' });
+    }
   };
 
   // ── Prescription Dialog (Doctor View) ──────────────────────────────────
@@ -1984,6 +2068,19 @@ export function ChatPanel() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <h3 className="font-semibold text-sm text-foreground truncate">{otherUser?.name || (isDoctor ? 'Pasien belum ditentukan' : 'Dokter belum ditentukan')}</h3>
+            {activeConsultation && (
+              <Badge
+                variant={activeConsultation.status === 'active' ? 'default' : 'secondary'}
+                className={cn(
+                  'text-[9px] gap-1 shrink-0',
+                  activeConsultation.status === 'active' && 'bg-emerald-600',
+                  activeConsultation.status === 'completed' && 'bg-muted text-muted-foreground'
+                )}
+              >
+                {activeConsultation.status === 'active' ? <Play className="w-2.5 h-2.5" /> : activeConsultation.status === 'completed' ? <Square className="w-2.5 h-2.5" /> : <Timer className="w-2.5 h-2.5" />}
+                {activeConsultation.status === 'active' ? 'Konsultasi Berlangsung' : activeConsultation.status === 'completed' ? 'Konsultasi Selesai' : 'Menunggu Dimulai'}
+              </Badge>
+            )}
             {activeConsultation && palliativePatients.some(p => p.patientId === activeConsultation.patientId) && (
               <Badge className="text-[9px] bg-rose-100 text-rose-700 border border-rose-300 gap-1 shrink-0">
                 <HeartPulse className="w-2.5 h-2.5" />
@@ -2045,6 +2142,29 @@ export function ChatPanel() {
         {/* Doctor action buttons */}
         {isDoctor && activeConsultation && (
           <div className="flex items-center gap-1 flex-wrap">
+            {activeConsultation.status === 'waiting' && (
+              <Button
+                size="sm"
+                className="h-8 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700"
+                onClick={handleStartConsultation}
+              >
+                <Play className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Mulai Konsultasi</span>
+                <span className="sm:hidden">Mulai</span>
+              </Button>
+            )}
+            {activeConsultation.status === 'active' && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs gap-1 border-red-300 text-red-600 hover:bg-red-50"
+                onClick={handleEndConsultation}
+              >
+                <Square className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Akhiri Konsultasi</span>
+                <span className="sm:hidden">Akhiri</span>
+              </Button>
+            )}
             <Button
               size="sm"
               className="h-8 text-xs gap-1 bg-teal-600 hover:bg-teal-700"
@@ -2378,6 +2498,90 @@ export function ChatPanel() {
 
   // ── Render: Medical Record Dialog (Doctor) ─────────────────────────────
 
+  const renderResponseTimeHistoryDialog = () => {
+    const rows = doctorConsultations
+      .filter((c) => c.status === 'active' || c.status === 'completed')
+      .map((c) => {
+        const createdAt = new Date(c.createdAt).getTime();
+        const startedAt = c.startTime ? new Date(c.startTime).getTime() : null;
+        const endedAt = c.endTime ? new Date(c.endTime).getTime() : null;
+        const responseSeconds = startedAt !== null ? Math.max(0, Math.round((startedAt - createdAt) / 1000)) : null;
+        const durationSeconds = startedAt !== null && endedAt !== null ? Math.max(0, Math.round((endedAt - startedAt) / 1000)) : null;
+        return { consultation: c, responseSeconds, durationSeconds };
+      })
+      .sort((a, b) => new Date(b.consultation.createdAt).getTime() - new Date(a.consultation.createdAt).getTime());
+
+    const responseSamples = rows.map((r) => r.responseSeconds).filter((s): s is number => s !== null);
+    const avgResponseSeconds = responseSamples.length > 0
+      ? Math.round(responseSamples.reduce((sum, s) => sum + s, 0) / responseSamples.length)
+      : null;
+
+    return (
+      <Dialog open={showResponseTimeHistory} onOpenChange={setShowResponseTimeHistory}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="w-5 h-5 text-primary" />
+              Riwayat Waktu Respon Konsultasi
+            </DialogTitle>
+            <DialogDescription>
+              Waktu respon dihitung sejak pasien memulai konsultasi hingga dokter menekan "Mulai Konsultasi".
+            </DialogDescription>
+          </DialogHeader>
+
+          {avgResponseSeconds !== null && (
+            <div className="rounded-lg bg-primary/5 p-3 flex items-center gap-2">
+              <Timer className="w-4 h-4 text-primary shrink-0" />
+              <p className="text-sm text-foreground">
+                Rata-rata waktu respon: <span className="font-semibold">{formatDuration(avgResponseSeconds)}</span>
+                <span className="text-muted-foreground"> (dari {responseSamples.length} konsultasi)</span>
+              </p>
+            </div>
+          )}
+
+          {rows.length === 0 ? (
+            <div className="text-center py-10 text-sm text-muted-foreground">
+              Belum ada konsultasi yang dimulai. Riwayat akan muncul setelah Anda menekan "Mulai Konsultasi".
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground border-b">
+                    <th className="py-2 pr-3 font-medium">Pasien</th>
+                    <th className="py-2 pr-3 font-medium">Dibuat</th>
+                    <th className="py-2 pr-3 font-medium">Mulai</th>
+                    <th className="py-2 pr-3 font-medium">Waktu Respon</th>
+                    <th className="py-2 pr-3 font-medium">Selesai</th>
+                    <th className="py-2 pr-3 font-medium">Durasi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(({ consultation: c, responseSeconds, durationSeconds }) => (
+                    <tr key={c.id} className="border-b last:border-0">
+                      <td className="py-2 pr-3 font-medium text-foreground whitespace-nowrap">{c.patient?.name || 'Pasien'}</td>
+                      <td className="py-2 pr-3 text-muted-foreground whitespace-nowrap">{new Date(c.createdAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                      <td className="py-2 pr-3 text-muted-foreground whitespace-nowrap">{c.startTime ? new Date(c.startTime).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {responseSeconds !== null ? (
+                          <Badge variant="secondary" className={cn(responseSeconds <= 300 ? 'bg-emerald-100 text-emerald-700' : responseSeconds <= 900 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')}>
+                            {formatDuration(responseSeconds)}
+                          </Badge>
+                        ) : '—'}
+                      </td>
+                      <td className="py-2 pr-3 text-muted-foreground whitespace-nowrap">{c.endTime ? new Date(c.endTime).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                      <td className="py-2 pr-3 text-muted-foreground whitespace-nowrap">{durationSeconds !== null ? formatDuration(durationSeconds) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
   const renderMedicalRecordDialog = () => {
     const existingMR = activeConsultation
       ? medicalRecords.find((mr) => mr.consultationId === activeConsultation.id)
@@ -2692,8 +2896,21 @@ export function ChatPanel() {
   const renderDoctorLeftPanel = () => (
     <div className={cn('flex flex-col border-r border-border bg-card h-full', showChatArea ? 'hidden lg:flex' : 'flex')}>
       <div className="px-4 py-3 border-b border-border">
-        <h2 className="font-semibold text-foreground text-base">Konsultasi Pasien</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">Daftar konsultasi aktif dan selesai</p>
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h2 className="font-semibold text-foreground text-base">Konsultasi Pasien</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Daftar konsultasi aktif dan selesai</p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-[11px] gap-1 shrink-0"
+            onClick={() => setShowResponseTimeHistory(true)}
+          >
+            <History className="w-3.5 h-3.5" />
+            Riwayat Respon
+          </Button>
+        </div>
       </div>
 
       <div className="px-3 py-2">
@@ -2876,6 +3093,7 @@ export function ChatPanel() {
       {isDoctor && renderScreeningDialogUI()}
       {isDoctor && renderPalliativeDialogUI()}
       {isDoctor && renderPalliativeMarkingDialog()}
+      {isDoctor && renderResponseTimeHistoryDialog()}
     </div>
   );
 }

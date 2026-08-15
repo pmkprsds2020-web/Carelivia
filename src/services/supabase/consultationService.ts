@@ -5,7 +5,7 @@
 // so the existing frontend (chat-panel.tsx, doctor-panel.tsx, page.tsx) can
 // consume them without changes.
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, safeInsert, isValidUuid } from './_common';
+import { supabase, safeQuery, safeInsert, isValidUuid, stripUndefined } from './_common';
 import { notificationService } from './notificationService';
 import { getSupabaseAdmin } from '@/supabaseClient';
 
@@ -297,5 +297,36 @@ export const consultationService = {
     });
 
     return messageFromDb(row);
+  },
+
+  /**
+   * Update a consultation's lifecycle status (and, implicitly, its
+   * start_time/end_time — see the two convenience methods below).
+   * Used for the doctor-initiated "Mulai Konsultasi" / "Akhiri Konsultasi"
+   * actions, which are also what response-time history is computed from.
+   */
+  async updateStatus(
+    id: string,
+    patch: { status?: string; startTime?: string; endTime?: string }
+  ): Promise<any | null> {
+    if (!isValidUuid(id)) return null;
+    const client = await dbClient();
+    const { data: row, error } = await safeInsert<any>(
+      client
+        .from('consultations')
+        .update(
+          stripUndefined({
+            status: patch.status,
+            start_time: patch.startTime,
+            end_time: patch.endTime,
+          })
+        )
+        .eq('id', id)
+        .select(LIST_SELECT)
+        .single(),
+      'consultationService.updateStatus'
+    );
+    if (error) throw new Error(error);
+    return row ? fromDb(row) : null;
   },
 };
