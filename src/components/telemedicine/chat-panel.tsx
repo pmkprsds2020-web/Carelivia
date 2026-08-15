@@ -572,6 +572,30 @@ export function ChatPanel() {
     autoPrescriptionSentRef.current = false;
   };
 
+  // ── Shared helper: persist one chat message to Supabase + local state ────
+  // Used by handleSendMessage AND by every "send X to patient" action
+  // (screening, palliative screening, prescription) so their announcement
+  // bubbles are real, persisted messages — not local-only state that the
+  // 5s message poll would otherwise silently erase.
+  const sendChatMessage = async (consultationId: string, senderId: string, content: string): Promise<Message | null> => {
+    const res = await fetch(`/api/consultations/${consultationId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ senderId, content, type: 'text' }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data?.message) {
+      throw new Error(data?.details || data?.error || 'Gagal mengirim pesan');
+    }
+    const savedMessage: Message = data.message;
+    addMessage(savedMessage);
+    updateConsultation(consultationId, {
+      messages: [...useStore.getState().messages.filter((m) => m.id !== savedMessage.id), savedMessage],
+      updatedAt: new Date().toISOString(),
+    });
+    return savedMessage;
+  };
+
   // ── Send a message ─────────────────────────────────────────────────────
 
   const handleSendMessage = async () => {
@@ -759,8 +783,12 @@ export function ChatPanel() {
     setRxItems(updated);
   };
 
-  const handleSendPrescription = () => {
+  const handleSendPrescription = async () => {
     if (!activeConsultation || !currentUser || rxItems.length === 0) return;
+    if (!isValidId(activeConsultation.id)) {
+      toast({ title: 'Konsultasi belum tersimpan', description: 'Silakan tunggu sebentar lalu coba lagi.', variant: 'destructive' });
+      return;
+    }
 
     const validItems = rxItems.filter((item) => item.medicineId);
     if (validItems.length === 0) {
@@ -795,26 +823,12 @@ export function ChatPanel() {
       items,
     };
 
+    // NOTE: like the medical record below, this prescription itself is
+    // still local-only (no Supabase `prescriptions` table yet) — only its
+    // chat announcement is real now. Flagged for a follow-up pass.
     addPrescription(prescription);
 
-    // Send prescription message
-    const rxMessage: Message = {
-      id: generateId(),
-      consultationId: activeConsultation.id,
-      senderId: currentUser.id,
-      content: `__PRESCRIPTION__${prescriptionId}__`,
-      type: 'text',
-      status: 'delivered',
-      createdAt: new Date().toISOString(),
-    };
-    addMessage(rxMessage);
-    updateConsultation(activeConsultation.id, {
-      messages: [...(activeConsultation.messages || []), rxMessage],
-      prescription: prescription,
-      updatedAt: new Date().toISOString(),
-    });
-
-    // Auto-create medical record if not exists
+    // Auto-create medical record if not exists (also still local-only)
     const existingMR = medicalRecords.find((mr) => mr.consultationId === activeConsultation.id);
     if (!existingMR) {
       const rmNumber = generateRmNumber();
@@ -836,17 +850,15 @@ export function ChatPanel() {
       updateConsultation(activeConsultation.id, { medicalRecord: mr });
     }
 
-    // System message
-    const sysMessage: Message = {
-      id: generateId(),
-      consultationId: activeConsultation.id,
-      senderId: 'system',
-      content: 'E-Resep telah dikirim ke pasien.',
-      type: 'text',
-      status: 'read',
-      createdAt: new Date().toISOString(),
-    };
-    addMessage(sysMessage);
+    try {
+      await sendChatMessage(activeConsultation.id, currentUser.id, `__PRESCRIPTION__${prescriptionId}__`);
+      await sendChatMessage(activeConsultation.id, currentUser.id, 'E-Resep telah dikirim ke pasien.');
+      updateConsultation(activeConsultation.id, { prescription });
+    } catch (err) {
+      console.error('[chat-panel] handleSendPrescription message failed:', err);
+      toast({ title: 'Pesan gagal terkirim', description: err instanceof Error ? err.message : undefined, variant: 'destructive' });
+      return;
+    }
 
     setShowPrescriptionDialog(false);
     setRxItems([]);
@@ -981,68 +993,53 @@ export function ChatPanel() {
     );
   };
 
-  const handleSendScreening = () => {
+  const handleSendScreening = async () => {
     if (!activeConsultation || !currentUser || selectedModules.length === 0) return;
+    if (!isValidId(activeConsultation.id)) {
+      toast({ title: 'Konsultasi belum tersimpan', description: 'Silakan tunggu sebentar lalu coba lagi.', variant: 'destructive' });
+      return;
+    }
 
-    const formId = generateId();
-    const screeningForm: ScreeningForm = {
-      id: formId,
-      consultationId: activeConsultation.id,
-      doctorId: currentUser.id,
-      patientId: activeConsultation.patientId,
-      status: 'sent',
-      instructions: screeningInstructions || undefined,
-      deadline: screeningDeadline || undefined,
-      selectedModules: [...selectedModules],
-      moduleAnswers: {} as Record<ScreeningModuleId, Record<string, string | number | string[]>>,
-      moduleScores: {} as Record<ScreeningModuleId, { score: number; riskCategory: 'rendah' | 'sedang' | 'tinggi'; label: string; recommendations: string[] }>,
-      clinicalFiles: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    try {
+      const res = await fetch('/api/screening-forms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          consultationId: activeConsultation.id,
+          doctorId: currentUser.id,
+          patientId: activeConsultation.patientId,
+          instructions: screeningInstructions || undefined,
+          deadline: screeningDeadline || undefined,
+          selectedModules: [...selectedModules],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.screeningForm) {
+        throw new Error(data?.details || data?.error || 'Gagal membuat form skrining');
+      }
+      const screeningForm: ScreeningForm = data.screeningForm;
+      addScreeningForm(screeningForm);
 
-    addScreeningForm(screeningForm);
+      // Announcement message — sent as the doctor (a real participant), so
+      // it's actually persisted and won't be wiped by the message poll.
+      await sendChatMessage(activeConsultation.id, currentUser.id, `__SCREENING__${screeningForm.id}__`);
+      await sendChatMessage(
+        activeConsultation.id,
+        currentUser.id,
+        `Formulir Skrining Komprehensif Telemedicine telah dikirim. Modul: ${selectedModules.map((m) => MODULE_LABELS[m]).join(', ')}`
+      );
 
-    // Send screening message in chat
-    const screeningMessage: Message = {
-      id: generateId(),
-      consultationId: activeConsultation.id,
-      senderId: currentUser.id,
-      content: `__SCREENING__${formId}__`,
-      type: 'text',
-      status: 'delivered',
-      createdAt: new Date().toISOString(),
-    };
-    addMessage(screeningMessage);
-    updateConsultation(activeConsultation.id, {
-      messages: [...(activeConsultation.messages || []), screeningMessage],
-      updatedAt: new Date().toISOString(),
-    });
-
-    addAuditLog({
-      id: generateId(),
-      screeningId: formId,
-      action: 'sent',
-      performedBy: currentUser.id,
-      timestamp: new Date().toISOString(),
-      details: `Modul: ${selectedModules.map(m => MODULE_LABELS[m]).join(', ')}`,
-    });
-
-    // System message
-    const sysMessage: Message = {
-      id: generateId(),
-      consultationId: activeConsultation.id,
-      senderId: 'system',
-      content: `Formulir Skrining Komprehensif Telemedicine telah dikirim. Modul: ${selectedModules.map(m => MODULE_LABELS[m]).join(', ')}`,
-      type: 'text',
-      status: 'read',
-      createdAt: new Date().toISOString(),
-    };
-    addMessage(sysMessage);
-
-    setShowScreeningDialog(false);
-    setSelectedModules(['keluhan_utama', 'tanda_bahaya', 'tanda_vital']);
-    toast({ title: 'Berhasil', description: 'Form skrining komprehensif berhasil dikirim ke pasien.' });
+      setShowScreeningDialog(false);
+      setSelectedModules(['keluhan_utama', 'tanda_bahaya', 'tanda_vital']);
+      toast({ title: 'Berhasil', description: 'Form skrining komprehensif berhasil dikirim ke pasien.' });
+    } catch (err) {
+      console.error('[chat-panel] handleSendScreening failed:', err);
+      toast({
+        title: 'Gagal mengirim form skrining',
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        variant: 'destructive',
+      });
+    }
   };
 
   // ── Palliative Screening Flow ────────────────────────────────────────────
@@ -1059,8 +1056,12 @@ export function ChatPanel() {
     );
   };
 
-  const handleSendPalliativeScreening = () => {
+  const handleSendPalliativeScreening = async () => {
     if (!activeConsultation || !currentUser || selectedPalliativeTools.length === 0) return;
+    if (!isValidId(activeConsultation.id)) {
+      toast({ title: 'Konsultasi belum tersimpan', description: 'Silakan tunggu sebentar lalu coba lagi.', variant: 'destructive' });
+      return;
+    }
 
     const formId = generateId();
     const palliativeForm: PalliativeScreeningForm = {
@@ -1077,35 +1078,24 @@ export function ChatPanel() {
       updatedAt: new Date().toISOString(),
     };
 
+    // NOTE: this form itself is still local-only (not yet persisted to
+    // Supabase) — only its chat announcement is real now. See "Skrining
+    // Pasien" (screening_forms table) for the pattern to extend this to
+    // when this feature is prioritized next.
     addPalliativeScreeningForm(palliativeForm);
 
-    // Send palliative screening message in chat
-    const palliativeMessage: Message = {
-      id: generateId(),
-      consultationId: activeConsultation.id,
-      senderId: currentUser.id,
-      content: `__PALLIATIVE__${formId}__`,
-      type: 'text',
-      status: 'delivered',
-      createdAt: new Date().toISOString(),
-    };
-    addMessage(palliativeMessage);
-    updateConsultation(activeConsultation.id, {
-      messages: [...(activeConsultation.messages || []), palliativeMessage],
-      updatedAt: new Date().toISOString(),
-    });
-
-    // System message
-    const sysMessage: Message = {
-      id: generateId(),
-      consultationId: activeConsultation.id,
-      senderId: 'system',
-      content: `Formulir Skrining Paliatif telah dikirim. Alat: ${selectedPalliativeTools.map(t => PALLIATIVE_TOOL_LABELS[t].name).join(', ')}`,
-      type: 'text',
-      status: 'read',
-      createdAt: new Date().toISOString(),
-    };
-    addMessage(sysMessage);
+    try {
+      await sendChatMessage(activeConsultation.id, currentUser.id, `__PALLIATIVE__${formId}__`);
+      await sendChatMessage(
+        activeConsultation.id,
+        currentUser.id,
+        `Formulir Skrining Paliatif telah dikirim. Alat: ${selectedPalliativeTools.map((t) => PALLIATIVE_TOOL_LABELS[t].name).join(', ')}`
+      );
+    } catch (err) {
+      console.error('[chat-panel] handleSendPalliativeScreening message failed:', err);
+      toast({ title: 'Pesan gagal terkirim', description: err instanceof Error ? err.message : undefined, variant: 'destructive' });
+      return;
+    }
 
     setShowPalliativeDialog(false);
     setSelectedPalliativeTools(['esas', 'distress', 'spict', 'pps', 'zarit', 'eortc']);

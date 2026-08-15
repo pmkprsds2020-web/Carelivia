@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import type { ScreeningForm, ScreeningModuleId, RiskCategory, ScreeningAuditLog, Notification as AppNotification, ClinicalFile, TriageLevel } from '@/lib/types';
 import {
@@ -146,6 +146,7 @@ export function ScreeningPanel() {
   const {
     currentUser,
     screeningForms,
+    setScreeningForms,
     addScreeningForm,
     updateScreeningForm,
     addAuditLog,
@@ -157,6 +158,47 @@ export function ScreeningPanel() {
 
   const isDoctor = currentUser?.role === 'doctor';
   const isPatient = currentUser?.role === 'patient';
+
+  // ── Load this user's screening forms from Supabase ───────────────────────
+  // Forms are sent by a doctor from the chat panel (see chat-panel.tsx →
+  // handleSendScreening) and persisted server-side; fetch them here so the
+  // patient/doctor sees real, cross-device data instead of only whatever
+  // happened to already be in local state.
+  useEffect(() => {
+    if (!currentUser) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const param = isDoctor ? `doctorId=${currentUser.id}` : `patientId=${currentUser.id}`;
+        const res = await fetch(`/api/screening-forms?${param}`);
+        const data = await res.json();
+        if (!cancelled && res.ok && Array.isArray(data?.screeningForms)) {
+          setScreeningForms(data.screeningForms);
+        }
+      } catch (err) {
+        console.warn('[screening-panel] failed to load screening forms:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser, isDoctor, setScreeningForms]);
+
+  // ── Shared helper: update local state AND persist to Supabase ───────────
+  const persistScreeningForm = async (
+    id: string,
+    patch: Partial<ScreeningForm>,
+    audit?: { action: string; performedBy: string; details?: string }
+  ) => {
+    updateScreeningForm(id, patch); // instant local UI update
+    try {
+      await fetch(`/api/screening-forms/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patch, audit }),
+      });
+    } catch (err) {
+      console.warn('[screening-panel] failed to persist screening form update:', err);
+    }
+  };
 
   // ── Doctor State ──
   const [filterTriage, setFilterTriage] = useState<string>('all');
@@ -237,7 +279,7 @@ export function ScreeningPanel() {
     setModuleAnswers(form.moduleAnswers || {} as Record<ScreeningModuleId, Record<string, string | number | string[]>>);
     setClinicalFiles(form.clinicalFiles || []);
     if (form.status === 'sent') {
-      updateScreeningForm(form.id, { status: 'opened' });
+      persistScreeningForm(form.id, { status: 'opened' }, { action: 'opened', performedBy: currentUser?.id || '' });
       addAuditLog({ id: generateId(), screeningId: form.id, action: 'opened', performedBy: currentUser?.id || '', timestamp: new Date().toISOString() });
     }
   };
@@ -287,12 +329,16 @@ export function ScreeningPanel() {
 
   const handleSaveDraft = () => {
     if (!activeFormId) return;
-    updateScreeningForm(activeFormId, { moduleAnswers, clinicalFiles, status: 'draft' });
+    persistScreeningForm(
+      activeFormId,
+      { moduleAnswers, clinicalFiles, status: 'draft' },
+      { action: 'draft_saved', performedBy: currentUser?.id || '' }
+    );
     addAuditLog({ id: generateId(), screeningId: activeFormId, action: 'draft_saved', performedBy: currentUser?.id || '', timestamp: new Date().toISOString() });
     toast({ title: 'Draft Disimpan', description: 'Jawaban Anda telah disimpan sementara.' });
   };
 
-  const handleSubmitForm = () => {
+  const handleSubmitForm = async () => {
     if (!activeFormId) return;
 
     // Calculate scores for each module
@@ -310,15 +356,23 @@ export function ScreeningPanel() {
     // Generate clinical summary
     const clinicalSummary = generateClinicalSummary(moduleAnswers, moduleScores as Record<string, { score: number; riskCategory: RiskCategory; label: string; recommendations: string[] }>);
 
-    updateScreeningForm(activeFormId, {
-      moduleAnswers,
-      moduleScores: moduleScores as Record<ScreeningModuleId, { score: number; riskCategory: RiskCategory; label: string; recommendations: string[] }>,
-      clinicalFiles,
-      triageResult,
-      clinicalSummary,
-      status: 'completed',
-      completedAt: new Date().toISOString(),
-    });
+    await persistScreeningForm(
+      activeFormId,
+      {
+        moduleAnswers,
+        moduleScores: moduleScores as Record<ScreeningModuleId, { score: number; riskCategory: RiskCategory; label: string; recommendations: string[] }>,
+        clinicalFiles,
+        triageResult,
+        clinicalSummary,
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+      },
+      {
+        action: 'completed',
+        performedBy: currentUser?.id || '',
+        details: `Triase: ${triageResult.level}, Skor modul: ${Object.entries(moduleScores).map(([k, v]) => `${k}=${v.score}`).join(', ')}`,
+      }
+    );
 
     addAuditLog({
       id: generateId(), screeningId: activeFormId, action: 'completed',
@@ -346,7 +400,11 @@ export function ScreeningPanel() {
 
   const handleReviewForm = () => {
     if (!viewingForm) return;
-    updateScreeningForm(viewingForm.id, { status: 'reviewed', doctorNotes, followUp: doctorFollowUp, reviewedAt: new Date().toISOString() });
+    persistScreeningForm(
+      viewingForm.id,
+      { status: 'reviewed', doctorNotes, followUp: doctorFollowUp, reviewedAt: new Date().toISOString() },
+      { action: 'reviewed', performedBy: currentUser?.id || '', details: `Catatan: ${doctorNotes}, Tindak lanjut: ${doctorFollowUp}` }
+    );
     addAuditLog({ id: generateId(), screeningId: viewingForm.id, action: 'reviewed', performedBy: currentUser?.id || '', timestamp: new Date().toISOString(), details: `Catatan: ${doctorNotes}, Tindak lanjut: ${doctorFollowUp}` });
     toast({ title: 'Skrining Ditinjau', description: 'Catatan dan tindak lanjut telah disimpan.' });
     setViewingForm(null);
@@ -373,8 +431,8 @@ export function ScreeningPanel() {
       const data = await res.json();
       const analysisText = data.analysis || 'Tidak dapat menganalisis hasil skrining.';
       setAiAnalysis(analysisText);
-      // Persist AI analysis to the store
-      updateScreeningForm(form.id, { aiAnalysis: analysisText });
+      // Persist AI analysis
+      persistScreeningForm(form.id, { aiAnalysis: analysisText });
     } catch {
       const errorMsg = 'Gagal menganalisis. Periksa koneksi internet dan coba lagi.';
       setAiAnalysis(errorMsg);
