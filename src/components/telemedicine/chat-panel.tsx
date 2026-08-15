@@ -284,6 +284,7 @@ export function ChatPanel() {
     setPayments,
     setPendingPrescriptionCheckout,
     screeningForms,
+    setScreeningForms,
     addScreeningForm,
     updateScreeningForm,
     addAuditLog,
@@ -439,6 +440,31 @@ export function ChatPanel() {
       clearInterval(interval);
     };
   }, [currentUser, isDoctor]);
+
+  // ── Load this user's comprehensive screening forms from Supabase ─────────
+  // Same reasoning as the palliative-form fetch below: `renderScreeningCard`
+  // resolves a `__SCREENING__{formId}__` message against the local
+  // `screeningForms` store array, which was previously only ever populated
+  // by the ScreeningPanel component (a different screen) — so a patient
+  // opening this consultation directly would never see the fillable card,
+  // only the plain-text announcement.
+  useEffect(() => {
+    if (!currentUser) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const param = isDoctor ? `doctorId=${currentUser.id}` : `patientId=${currentUser.id}`;
+        const res = await fetch(`/api/screening-forms?${param}`);
+        const data = await res.json();
+        if (!cancelled && res.ok && Array.isArray(data?.screeningForms)) {
+          setScreeningForms(data.screeningForms);
+        }
+      } catch (err) {
+        console.warn('[chat-panel] failed to load screening forms:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser, isDoctor, setScreeningForms]);
 
   // ── Load this user's palliative screening forms from Supabase ────────────
   // Needed so `renderPalliativeCard` can resolve a `__PALLIATIVE__{formId}__`
