@@ -271,9 +271,11 @@ export function ChatPanel() {
     addMessage,
     onlineDoctors,
     prescriptions,
+    setPrescriptions,
     addPrescription,
     updatePrescriptionStatus,
     medicalRecords,
+    setMedicalRecords,
     addMedicalRecord,
     updateMedicalRecord,
     updateConsultation,
@@ -458,6 +460,37 @@ export function ChatPanel() {
     })();
     return () => { cancelled = true; };
   }, [currentUser, isDoctor, setPalliativeScreeningForms]);
+
+  // ── Load this user's medical records + prescriptions from Supabase ───────
+  // Medical records currently have no doctor_id column (they're scoped by
+  // patient + consultation), so this bulk prefetch is patient-side only —
+  // the doctor's view fetches/creates records per-consultation on demand
+  // (see handleOpenMedicalRecordDialog / handleSaveMedicalRecord).
+  useEffect(() => {
+    if (!currentUser) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rxParam = isDoctor ? `doctorId=${currentUser.id}` : `patientId=${currentUser.id}`;
+        const rxRes = await fetch(`/api/prescriptions?${rxParam}`);
+        if (!cancelled) {
+          const rxData = await rxRes.json();
+          if (rxRes.ok && Array.isArray(rxData?.prescriptions)) setPrescriptions(rxData.prescriptions);
+        }
+
+        if (!isDoctor) {
+          const mrRes = await fetch(`/api/medical-records?patientId=${currentUser.id}`);
+          if (!cancelled) {
+            const mrData = await mrRes.json();
+            if (mrRes.ok && Array.isArray(mrData?.medicalRecords)) setMedicalRecords(mrData.medicalRecords);
+          }
+        }
+      } catch (err) {
+        console.warn('[chat-panel] failed to load medical records/prescriptions:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser, isDoctor, setMedicalRecords, setPrescriptions]);
 
   // ── Auto-scroll ──────────────────────────────────────────────────────
 
@@ -818,80 +851,100 @@ export function ChatPanel() {
       return;
     }
 
-    const prescriptionId = generateId();
-    const items: PrescriptionItem[] = validItems.map((item) => {
-      const med = DEMO_MEDICINES.find((m) => m.id === item.medicineId)!;
-      return {
-        id: generateId(),
-        prescriptionId,
-        medicineName: med.name,
-        dosage: item.dosage || med.dosage,
-        quantity: item.quantity,
-        frequency: item.frequency || med.frequency,
-        duration: item.duration || med.duration,
-        price: med.price,
-      };
-    });
-
-    const prescription: Prescription = {
-      id: prescriptionId,
-      consultationId: activeConsultation.id,
-      doctorId: currentUser.id,
-      patientId: activeConsultation.patientId,
-      status: 'pending',
-      notes: '',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      items,
-    };
-
-    // NOTE: like the medical record below, this prescription itself is
-    // still local-only (no Supabase `prescriptions` table yet) — only its
-    // chat announcement is real now. Flagged for a follow-up pass.
-    addPrescription(prescription);
-
-    // Auto-create medical record if not exists (also still local-only)
-    const existingMR = medicalRecords.find((mr) => mr.consultationId === activeConsultation.id);
-    if (!existingMR) {
-      const rmNumber = generateRmNumber();
-      const mr: MedicalRecord = {
-        id: generateId(),
-        patientId: activeConsultation.patientId,
-        consultationId: activeConsultation.id,
-        rmNumber,
-        diagnosis: '',
-        symptoms: '',
-        treatment: '',
-        notes: '',
-        status: 'draft' as MedicalRecordStatus,
-        recordDate: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      addMedicalRecord(mr);
-      updateConsultation(activeConsultation.id, { medicalRecord: mr });
-    }
-
     try {
-      await sendChatMessage(activeConsultation.id, currentUser.id, `__PRESCRIPTION__${prescriptionId}__`);
-      await sendChatMessage(activeConsultation.id, currentUser.id, 'E-Resep telah dikirim ke pasien.');
-      updateConsultation(activeConsultation.id, { prescription });
-    } catch (err) {
-      console.error('[chat-panel] handleSendPrescription message failed:', err);
-      toast({ title: 'Pesan gagal terkirim', description: err instanceof Error ? err.message : undefined, variant: 'destructive' });
-      return;
-    }
+      // Auto-create medical record first if one doesn't already exist for
+      // this consultation (now really persisted — see medical_records table).
+      let medicalRecord = medicalRecords.find((mr) => mr.consultationId === activeConsultation.id) ?? null;
+      if (!medicalRecord) {
+        const rmNumber = generateRmNumber();
+        const mrRes = await fetch('/api/medical-records', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patientId: activeConsultation.patientId,
+            consultationId: activeConsultation.id,
+            rmNumber,
+            status: 'draft',
+          }),
+        });
+        const mrData = await mrRes.json();
+        if (mrRes.ok && mrData?.medicalRecord) {
+          medicalRecord = mrData.medicalRecord;
+          addMedicalRecord(medicalRecord!);
+          updateConsultation(activeConsultation.id, { medicalRecord: medicalRecord! });
+        } else {
+          console.warn('[chat-panel] failed to auto-create medical record:', mrData?.error);
+        }
+      }
 
-    setShowPrescriptionDialog(false);
-    setRxItems([]);
-    toast({ title: 'Berhasil', description: 'E-Resep berhasil dikirim.' });
+      // Create the prescription itself (persisted)
+      const items: Omit<PrescriptionItem, 'id' | 'prescriptionId'>[] = validItems.map((item) => {
+        const med = DEMO_MEDICINES.find((m) => m.id === item.medicineId)!;
+        return {
+          medicineName: med.name,
+          dosage: item.dosage || med.dosage,
+          quantity: item.quantity,
+          frequency: item.frequency || med.frequency,
+          duration: item.duration || med.duration,
+          price: med.price,
+        };
+      });
+
+      const res = await fetch('/api/prescriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          consultationId: activeConsultation.id,
+          doctorId: currentUser.id,
+          patientId: activeConsultation.patientId,
+          items,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.prescription) {
+        throw new Error(data?.details || data?.error || 'Gagal membuat resep');
+      }
+      const prescription: Prescription = data.prescription;
+      addPrescription(prescription);
+      updateConsultation(activeConsultation.id, { prescription });
+
+      await sendChatMessage(activeConsultation.id, currentUser.id, `__PRESCRIPTION__${prescription.id}__`);
+      await sendChatMessage(activeConsultation.id, currentUser.id, 'E-Resep telah dikirim ke pasien.');
+
+      setShowPrescriptionDialog(false);
+      setRxItems([]);
+      toast({ title: 'Berhasil', description: 'E-Resep berhasil dikirim.' });
+    } catch (err) {
+      console.error('[chat-panel] handleSendPrescription failed:', err);
+      toast({
+        title: 'Gagal mengirim E-Resep',
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        variant: 'destructive',
+      });
+    }
   };
 
   // ── Medical Record Dialog (Doctor View) ────────────────────────────────
 
-  const handleOpenMedicalRecordDialog = () => {
+  const handleOpenMedicalRecordDialog = async () => {
     if (activeConsultation) {
-      const existingMR = medicalRecords.find((mr) => mr.consultationId === activeConsultation.id);
+      let existingMR = medicalRecords.find((mr) => mr.consultationId === activeConsultation.id);
+
+      // Not in local state yet (e.g. doctor opened this on a fresh session,
+      // or the record was created earlier) — fetch it from Supabase.
+      if (!existingMR && isValidId(activeConsultation.id)) {
+        try {
+          const res = await fetch(`/api/medical-records?consultationId=${activeConsultation.id}`);
+          const data = await res.json();
+          if (res.ok && Array.isArray(data?.medicalRecords) && data.medicalRecords[0]) {
+            existingMR = data.medicalRecords[0];
+            addMedicalRecord(existingMR!);
+          }
+        } catch (err) {
+          console.warn('[chat-panel] failed to fetch existing medical record:', err);
+        }
+      }
+
       if (existingMR) {
         setMrDiagnosis(existingMR.diagnosis || '');
         setMrSymptoms(existingMR.symptoms || '');
@@ -907,69 +960,67 @@ export function ChatPanel() {
     setShowMedicalRecordDialog(true);
   };
 
-  const handleSaveMedicalRecord = () => {
+  const handleSaveMedicalRecord = async () => {
     if (!activeConsultation || !currentUser) return;
+    if (!isValidId(activeConsultation.id)) {
+      toast({ title: 'Konsultasi belum tersimpan', description: 'Silakan tunggu sebentar lalu coba lagi.', variant: 'destructive' });
+      return;
+    }
 
     const existingMR = medicalRecords.find((mr) => mr.consultationId === activeConsultation.id);
     const allFieldsFilled = mrDiagnosis.trim() && mrSymptoms.trim() && mrTreatment.trim();
     const status: MedicalRecordStatus = allFieldsFilled ? 'selesai' : 'draft';
 
-    if (existingMR) {
-      updateMedicalRecord(existingMR.id, {
-        diagnosis: mrDiagnosis,
-        symptoms: mrSymptoms,
-        treatment: mrTreatment,
-        notes: mrNotes,
-        status,
-        updatedAt: new Date().toISOString(),
+    try {
+      let savedRecord: MedicalRecord;
+      if (existingMR && isValidId(existingMR.id)) {
+        const res = await fetch(`/api/medical-records/${existingMR.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ diagnosis: mrDiagnosis, symptoms: mrSymptoms, treatment: mrTreatment, notes: mrNotes, status }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.medicalRecord) throw new Error(data?.details || data?.error || 'Gagal memperbarui rekam medis');
+        savedRecord = data.medicalRecord;
+        updateMedicalRecord(existingMR.id, savedRecord);
+      } else {
+        const rmNumber = generateRmNumber();
+        const res = await fetch('/api/medical-records', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patientId: activeConsultation.patientId,
+            consultationId: activeConsultation.id,
+            rmNumber,
+            diagnosis: mrDiagnosis,
+            symptoms: mrSymptoms,
+            treatment: mrTreatment,
+            notes: mrNotes,
+            status,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.medicalRecord) throw new Error(data?.details || data?.error || 'Gagal membuat rekam medis');
+        savedRecord = data.medicalRecord;
+        addMedicalRecord(savedRecord);
+      }
+
+      updateConsultation(activeConsultation.id, { medicalRecord: savedRecord });
+      await sendChatMessage(activeConsultation.id, currentUser.id, `Rekam Medis ${status === 'selesai' ? 'disimpan' : 'disimpan sebagai draft'}.`);
+
+      setShowMedicalRecordDialog(false);
+      toast({
+        title: 'Berhasil',
+        description: `Rekam Medis ${status === 'selesai' ? 'disimpan' : 'disimpan sebagai draft'}.`,
       });
-      updateConsultation(activeConsultation.id, {
-        medicalRecord: {
-          ...existingMR,
-          diagnosis: mrDiagnosis,
-          symptoms: mrSymptoms,
-          treatment: mrTreatment,
-          notes: mrNotes,
-          status,
-        },
+    } catch (err) {
+      console.error('[chat-panel] handleSaveMedicalRecord failed:', err);
+      toast({
+        title: 'Gagal menyimpan rekam medis',
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        variant: 'destructive',
       });
-    } else {
-      const rmNumber = generateRmNumber();
-      const mr: MedicalRecord = {
-        id: generateId(),
-        patientId: activeConsultation.patientId,
-        consultationId: activeConsultation.id,
-        rmNumber,
-        diagnosis: mrDiagnosis,
-        symptoms: mrSymptoms,
-        treatment: mrTreatment,
-        notes: mrNotes,
-        status,
-        recordDate: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      addMedicalRecord(mr);
-      updateConsultation(activeConsultation.id, { medicalRecord: mr });
     }
-
-    // System message
-    const sysMessage: Message = {
-      id: generateId(),
-      consultationId: activeConsultation.id,
-      senderId: 'system',
-      content: `Rekam Medis ${status === 'selesai' ? 'disimpan' : 'disimpan sebagai draft'}.`,
-      type: 'text',
-      status: 'read',
-      createdAt: new Date().toISOString(),
-    };
-    addMessage(sysMessage);
-
-    setShowMedicalRecordDialog(false);
-    toast({
-      title: 'Berhasil',
-      description: `Rekam Medis ${status === 'selesai' ? 'disimpan' : 'disimpan sebagai draft'}.`,
-    });
   };
 
   // ── Payment Flow ───────────────────────────────────────────────────────

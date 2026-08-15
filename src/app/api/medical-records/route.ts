@@ -1,71 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { medicalRecordService } from "@/services/supabase";
 
-// GET: List medical records with optional filters
+// GET /api/medical-records?patientId=...&consultationId=...
+// (Supabase-backed — replaces the old Prisma-only version, which read from
+// a database this deployment never actually had configured.)
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get("patientId") ?? "";
     const consultationId = searchParams.get("consultationId") ?? "";
-    const doctorUserId = searchParams.get("doctorUserId") ?? "";
 
-    const where: Record<string, unknown> = {};
-
-    if (patientId) {
-      where.patientId = patientId;
-    }
     if (consultationId) {
-      where.consultationId = consultationId;
-    }
-    // Filter by doctor's user ID via consultation relation
-    if (doctorUserId) {
-      where.consultation = {
-        doctor: {
-          userId: doctorUserId,
-        },
-      };
+      const record = await medicalRecordService.getByConsultation(consultationId);
+      return NextResponse.json({ medicalRecords: record ? [record] : [] });
     }
 
-    const medicalRecords = await db.medicalRecord.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      include: {
-        patient: {
-          select: { id: true, name: true, avatar: true, email: true },
-        },
-        consultation: {
-          select: {
-            id: true,
-            doctorId: true,
-            patientId: true,
-            type: true,
-            status: true,
-            createdAt: true,
-            doctor: {
-              select: {
-                id: true,
-                userId: true,
-                user: {
-                  select: { id: true, name: true, avatar: true, email: true },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
+    if (!patientId) {
+      return NextResponse.json({ error: "patientId or consultationId is required" }, { status: 400 });
+    }
 
-    // Ensure recordDate is always present (fallback to createdAt)
-    const recordsWithDates = medicalRecords.map((mr) => ({
-      ...mr,
-      recordDate: mr.recordDate || mr.createdAt,
-    }));
-
-    return NextResponse.json({ medicalRecords: recordsWithDates });
+    const medicalRecords = await medicalRecordService.listForPatient(patientId);
+    return NextResponse.json({ medicalRecords });
   } catch (error) {
     console.error("Medical records fetch error:", error);
     return NextResponse.json(
       { error: "Failed to fetch medical records", details: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}
+
+// POST /api/medical-records — doctor creates/opens a medical record for a consultation
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { patientId, consultationId, rmNumber, diagnosis, symptoms, treatment, notes, status } = body ?? {};
+
+    if (!patientId) {
+      return NextResponse.json({ error: "patientId is required" }, { status: 400 });
+    }
+
+    const record = await medicalRecordService.create({ patientId, consultationId, rmNumber, diagnosis, symptoms, treatment, notes, status });
+    if (!record) {
+      return NextResponse.json({ error: "Failed to create medical record" }, { status: 500 });
+    }
+    return NextResponse.json({ medicalRecord: record }, { status: 201 });
+  } catch (error) {
+    console.error("Medical record create error:", error);
+    return NextResponse.json(
+      { error: "Failed to create medical record", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     );
   }

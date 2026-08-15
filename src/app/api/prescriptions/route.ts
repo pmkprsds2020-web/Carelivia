@@ -1,87 +1,52 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { prescriptionService } from "@/services/supabase";
 
-// GET: List prescriptions with optional filters
+// GET /api/prescriptions?patientId=...  OR  ?doctorId=...
+// (Supabase-backed — replaces the old Prisma-only version.)
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get("patientId") ?? "";
-    const doctorUserId = searchParams.get("doctorUserId") ?? "";
-    const status = searchParams.get("status") ?? "";
-    const consultationId = searchParams.get("consultationId") ?? "";
+    const doctorId = searchParams.get("doctorId") ?? "";
 
-    const where: Record<string, unknown> = {};
-
+    let prescriptions;
     if (patientId) {
-      where.patientId = patientId;
-    }
-    if (consultationId) {
-      where.consultationId = consultationId;
-    }
-    if (status) {
-      where.status = status;
-    }
-    // Filter by doctor's user ID via DoctorProfile relation
-    if (doctorUserId) {
-      where.doctor = {
-        userId: doctorUserId,
-      };
+      prescriptions = await prescriptionService.listForPatient(patientId);
+    } else if (doctorId) {
+      prescriptions = await prescriptionService.listForDoctor(doctorId);
+    } else {
+      return NextResponse.json({ error: "patientId or doctorId is required" }, { status: 400 });
     }
 
-    const prescriptions = await db.prescription.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      include: {
-        items: true,
-        patient: {
-          select: { id: true, name: true, avatar: true, email: true },
-        },
-        consultation: {
-          select: {
-            id: true,
-            doctorId: true,
-            patientId: true,
-            type: true,
-            status: true,
-            createdAt: true,
-            doctor: {
-              select: {
-                id: true,
-                userId: true,
-                user: {
-                  select: { id: true, name: true, avatar: true, email: true },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    // Look up prices from medicines table for each prescription item
-    const allMedicines = await db.medicine.findMany({
-      select: { id: true, name: true, price: true },
-    });
-
-    const prescriptionsWithPrices = prescriptions.map((rx) => ({
-      ...rx,
-      items: rx.items.map((item) => {
-        // Find matching medicine by name
-        const matchingMedicine = allMedicines.find((m) =>
-          m.name.toLowerCase().includes(item.medicineName.toLowerCase().split(" ")[0])
-        );
-        return {
-          ...item,
-          price: matchingMedicine?.price || 0,
-        };
-      }),
-    }));
-
-    return NextResponse.json({ prescriptions: prescriptionsWithPrices });
+    return NextResponse.json({ prescriptions });
   } catch (error) {
     console.error("Prescriptions fetch error:", error);
     return NextResponse.json(
       { error: "Failed to fetch prescriptions", details: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}
+
+// POST /api/prescriptions — doctor sends an e-prescription to a patient
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { consultationId, doctorId, patientId, notes, items } = body ?? {};
+
+    if (!doctorId || !patientId || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: "doctorId, patientId, and a non-empty items array are required" }, { status: 400 });
+    }
+
+    const prescription = await prescriptionService.create({ consultationId, doctorId, patientId, notes, items });
+    if (!prescription) {
+      return NextResponse.json({ error: "Failed to create prescription" }, { status: 500 });
+    }
+    return NextResponse.json({ prescription }, { status: 201 });
+  } catch (error) {
+    console.error("Prescription create error:", error);
+    return NextResponse.json(
+      { error: "Failed to create prescription", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     );
   }

@@ -31,6 +31,8 @@ export { complaintService } from './complaintService';
 export { medicalSystemReviewService } from './medicalSystemReviewService';
 export { screeningFormService } from './screeningFormService';
 export { palliativeScreeningFormService } from './palliativeScreeningFormService';
+export { medicalRecordService } from './medicalRecordService';
+export { prescriptionService } from './prescriptionService';
 export { socialService } from './socialService';
 export { acpService } from './acpService';
 export { chatService } from './chatService';
