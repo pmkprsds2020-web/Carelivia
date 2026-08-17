@@ -343,11 +343,16 @@ export function ChatPanel() {
   ]);
   const [screeningInstructions, setScreeningInstructions] = useState('');
   const [screeningDeadline, setScreeningDeadline] = useState('');
+  // Guards against double-submit: if the request is slow/laggy and the
+  // doctor taps "Kirim" more than once, without this the form (and its two
+  // chat announcement messages) gets sent multiple times.
+  const [isSendingScreening, setIsSendingScreening] = useState(false);
 
   // Palliative screening dialog state
   const [showPalliativeDialog, setShowPalliativeDialog] = useState(false);
   const [selectedPalliativeTools, setSelectedPalliativeTools] = useState<PalliativeToolType[]>(['esas', 'distress', 'spict', 'pps', 'zarit', 'eortc']);
   const [palliativeInstructions, setPalliativeInstructions] = useState('');
+  const [isSendingPalliativeScreening, setIsSendingPalliativeScreening] = useState(false);
 
   // Prescription form state
   const [rxItems, setRxItems] = useState<Array<{
@@ -387,6 +392,11 @@ export function ChatPanel() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
+  // Tracks the last message we already auto-scrolled for, so the periodic
+  // message poll (which re-sets `messages` with a fresh array reference even
+  // when nothing actually changed) doesn't yank the view back to the bottom
+  // while a patient/doctor is filling out an inline form further up the list.
+  const lastAutoScrolledKeyRef = useRef<string | null>(null);
 
   const isDoctor = currentUser?.role === 'doctor';
   const isPatient = currentUser?.role === 'patient';
@@ -537,10 +547,24 @@ export function ChatPanel() {
   }, [currentUser, isDoctor, setMedicalRecords, setPrescriptions]);
 
   // ── Auto-scroll ──────────────────────────────────────────────────────
-
+  // Only scroll when a NEW message has actually arrived (by id + count),
+  // not on every `messages` array re-render. The background poll above
+  // (and other Supabase re-fetches) call setMessages() with a brand new
+  // array reference every few seconds even when the content is unchanged,
+  // which used to re-trigger this effect and yank the chat back to the
+  // bottom — very disruptive while a patient is mid-way through an inline
+  // screening form. We also skip auto-scroll entirely while an inline form
+  // is open, since the person is actively working further up the thread.
   useEffect(() => {
+    const lastMsg = messages[messages.length - 1];
+    const key = `${messages.length}:${lastMsg?.id ?? ''}`;
+    if (key === lastAutoScrolledKeyRef.current) return;
+    lastAutoScrolledKeyRef.current = key;
+
+    if (inlineScreeningFormId) return; // don't disrupt an in-progress form
+
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+  }, [messages, isTyping, inlineScreeningFormId]);
 
   // ── Reset auto-prescription tracking when consultation changes ──────
 
@@ -1178,11 +1202,13 @@ export function ChatPanel() {
 
   const handleSendScreening = async () => {
     if (!activeConsultation || !currentUser || selectedModules.length === 0) return;
+    if (isSendingScreening) return; // already sending — ignore extra clicks
     if (!isValidId(activeConsultation.id)) {
       toast({ title: 'Konsultasi belum tersimpan', description: 'Silakan tunggu sebentar lalu coba lagi.', variant: 'destructive' });
       return;
     }
 
+    setIsSendingScreening(true);
     try {
       const res = await fetch('/api/screening-forms', {
         method: 'POST',
@@ -1222,6 +1248,8 @@ export function ChatPanel() {
         description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
         variant: 'destructive',
       });
+    } finally {
+      setIsSendingScreening(false);
     }
   };
 
@@ -1241,11 +1269,13 @@ export function ChatPanel() {
 
   const handleSendPalliativeScreening = async () => {
     if (!activeConsultation || !currentUser || selectedPalliativeTools.length === 0) return;
+    if (isSendingPalliativeScreening) return; // already sending — ignore extra clicks
     if (!isValidId(activeConsultation.id)) {
       toast({ title: 'Konsultasi belum tersimpan', description: 'Silakan tunggu sebentar lalu coba lagi.', variant: 'destructive' });
       return;
     }
 
+    setIsSendingPalliativeScreening(true);
     try {
       const res = await fetch('/api/palliative-screening-forms', {
         method: 'POST',
@@ -1282,6 +1312,8 @@ export function ChatPanel() {
         description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
         variant: 'destructive',
       });
+    } finally {
+      setIsSendingPalliativeScreening(false);
     }
   };
 
@@ -2750,10 +2782,10 @@ export function ChatPanel() {
           <Button
             className="bg-teal-600 hover:bg-teal-700"
             onClick={handleSendScreening}
-            disabled={selectedModules.length === 0}
+            disabled={selectedModules.length === 0 || isSendingScreening}
           >
             <Send className="w-4 h-4 mr-1" />
-            Kirim ({selectedModules.length} modul)
+            {isSendingScreening ? 'Mengirim…' : `Kirim (${selectedModules.length} modul)`}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -2881,10 +2913,10 @@ export function ChatPanel() {
             size="sm"
             className="bg-rose-600 hover:bg-rose-700"
             onClick={handleSendPalliativeScreening}
-            disabled={selectedPalliativeTools.length === 0}
+            disabled={selectedPalliativeTools.length === 0 || isSendingPalliativeScreening}
           >
             <HeartPulse className="w-4 h-4 mr-1" />
-            Kirim Skrining Paliatif ({selectedPalliativeTools.length} alat)
+            {isSendingPalliativeScreening ? 'Mengirim…' : `Kirim Skrining Paliatif (${selectedPalliativeTools.length} alat)`}
           </Button>
         </DialogFooter>
       </DialogContent>
