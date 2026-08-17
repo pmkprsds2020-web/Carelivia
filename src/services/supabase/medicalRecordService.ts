@@ -98,6 +98,37 @@ export const medicalRecordService = {
     return (rows as any[]).map(fromDb);
   },
 
+  /**
+   * All medical records a doctor has created, across every patient.
+   * `medical_records` has no `doctor_id` column (records are scoped by
+   * patient + consultation), so this joins through `consultations` to find
+   * every record whose linked consultation belongs to this doctor.
+   *
+   * This is what was missing entirely: the doctor's "Rekam Medis" panel
+   * only ever read from local Zustand state, which nothing populated for
+   * doctor accounts — every doctor saw "0 Total Rekam Medis" regardless of
+   * how many real consultations/records existed.
+   */
+  async listForDoctor(doctorId: string): Promise<MedicalRecord[]> {
+    if (!isValidUuid(doctorId)) return [];
+    const client = await dbClient();
+
+    const consultationIds = await safeQuery(
+      client.from('consultations').select('id').eq('doctor_id', doctorId),
+      [] as any[],
+      'medicalRecordService.listForDoctor(consultations)'
+    );
+    const ids = (consultationIds as any[]).map((c) => c.id);
+    if (ids.length === 0) return [];
+
+    const rows = await safeQuery(
+      client.from('medical_records').select('*').in('consultation_id', ids).order('created_at', { ascending: false }),
+      [] as any[],
+      'medicalRecordService.listForDoctor(records)'
+    );
+    return (rows as any[]).map(fromDb);
+  },
+
   async update(id: string, patch: Partial<MedicalRecord>): Promise<MedicalRecord | null> {
     if (!isValidUuid(id)) return null;
     const client = await dbClient();

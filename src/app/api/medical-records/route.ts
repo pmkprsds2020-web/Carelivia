@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const patientId = searchParams.get("patientId") ?? "";
+    const doctorId = searchParams.get("doctorId") ?? "";
     const consultationId = searchParams.get("consultationId") ?? "";
 
     if (consultationId) {
@@ -15,8 +16,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ medicalRecords: record ? [record] : [] });
     }
 
+    if (doctorId) {
+      const medicalRecords = await medicalRecordService.listForDoctor(doctorId);
+      return NextResponse.json({ medicalRecords });
+    }
+
     if (!patientId) {
-      return NextResponse.json({ error: "patientId or consultationId is required" }, { status: 400 });
+      return NextResponse.json({ error: "patientId, doctorId, or consultationId is required" }, { status: 400 });
     }
 
     const medicalRecords = await medicalRecordService.listForPatient(patientId);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import type {
   MedicalRecord,
@@ -38,6 +38,7 @@ import {
 import { Input } from '@/components/ui/input';
 import {
   FileText,
+  Loader2,
   FlaskConical,
   Pill,
   ShieldCheck,
@@ -365,6 +366,8 @@ function DoctorMedicalRecordsView() {
     screeningForms,
     updateScreeningForm,
     doctors,
+    setMedicalRecords,
+    setPrescriptions,
   } = useStore();
 
   const [activeTab, setActiveTab] = useState('records-list');
@@ -376,6 +379,39 @@ function DoctorMedicalRecordsView() {
   const [selectedScreeningId, setSelectedScreeningId] = useState<string | null>(null);
   const [screeningDoctorNotes, setScreeningDoctorNotes] = useState('');
   const [screeningFollowUp, setScreeningFollowUp] = useState('');
+  const [recordsLoading, setRecordsLoading] = useState(true);
+
+  // Load this doctor's medical records + prescriptions directly when this
+  // panel opens — previously these only ever loaded as a side effect of
+  // chat-panel.tsx being mounted (and even then, only for PATIENT
+  // accounts — the fetch was explicitly skipped `if (!isDoctor)`). That's
+  // why the doctor's "Rekam Medis" screen always showed 0 records: nothing
+  // ever populated it for a doctor account, no matter how many real
+  // consultations/records existed. This panel now loads its own data.
+  useEffect(() => {
+    if (!currentUser?.id) { setRecordsLoading(false); return; }
+    let cancelled = false;
+    (async () => {
+      setRecordsLoading(true);
+      try {
+        const [mrRes, rxRes] = await Promise.all([
+          fetch(`/api/medical-records?doctorId=${encodeURIComponent(currentUser.id)}`),
+          fetch(`/api/prescriptions?doctorId=${encodeURIComponent(currentUser.id)}`),
+        ]);
+        if (!cancelled) {
+          const mrData = await mrRes.json();
+          if (mrRes.ok && Array.isArray(mrData?.medicalRecords)) setMedicalRecords(mrData.medicalRecords);
+          const rxData = await rxRes.json();
+          if (rxRes.ok && Array.isArray(rxData?.prescriptions)) setPrescriptions(rxData.prescriptions);
+        }
+      } catch (err) {
+        console.error('[medical-records] failed to load doctor records:', err);
+      } finally {
+        if (!cancelled) setRecordsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser?.id, setMedicalRecords, setPrescriptions]);
 
   // Build merged data
   const mergedRecords = useMemo(
@@ -595,7 +631,14 @@ function DoctorMedicalRecordsView() {
           </div>
 
           {/* Records Cards */}
-          {filteredRecords.length === 0 ? (
+          {recordsLoading ? (
+            <Card className="border-0">
+              <CardContent className="p-12 text-center">
+                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">Memuat rekam medis...</p>
+              </CardContent>
+            </Card>
+          ) : filteredRecords.length === 0 ? (
             <Card className="border-0">
               <CardContent className="p-8 text-center">
                 <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
@@ -1851,10 +1894,41 @@ function buildPatientPrescriptions(
 // ---------------------------------------------------------------------------
 
 function PatientMedicalRecordsView() {
-  const { currentUser, medicalRecords, consultations, prescriptions, payments, setActivePanel, setPendingPrescriptionCheckout } = useStore();
+  const { currentUser, medicalRecords, consultations, prescriptions, payments, setActivePanel, setPendingPrescriptionCheckout, setMedicalRecords, setPrescriptions } = useStore();
   const [expandedRecord, setExpandedRecord] = useState<string | null>(null);
   const [proofDialogOpen, setProofDialogOpen] = useState(false);
   const [proofPrescription, setProofPrescription] = useState<PatientPrescriptionRecord | null>(null);
+  const [recordsLoading, setRecordsLoading] = useState(true);
+
+  // Load this patient's own records directly when this panel opens —
+  // previously this only happened as a side effect of chat-panel.tsx being
+  // mounted, so a patient who opened "Rekam Medis" without having recently
+  // opened "Chat Dokter" in the same session saw an empty list even though
+  // real records existed. This panel now loads its own data independently.
+  useEffect(() => {
+    if (!currentUser?.id) { setRecordsLoading(false); return; }
+    let cancelled = false;
+    (async () => {
+      setRecordsLoading(true);
+      try {
+        const [mrRes, rxRes] = await Promise.all([
+          fetch(`/api/medical-records?patientId=${encodeURIComponent(currentUser.id)}`),
+          fetch(`/api/prescriptions?patientId=${encodeURIComponent(currentUser.id)}`),
+        ]);
+        if (!cancelled) {
+          const mrData = await mrRes.json();
+          if (mrRes.ok && Array.isArray(mrData?.medicalRecords)) setMedicalRecords(mrData.medicalRecords);
+          const rxData = await rxRes.json();
+          if (rxRes.ok && Array.isArray(rxData?.prescriptions)) setPrescriptions(rxData.prescriptions);
+        }
+      } catch (err) {
+        console.error('[medical-records] failed to load patient records:', err);
+      } finally {
+        if (!cancelled) setRecordsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser?.id, setMedicalRecords, setPrescriptions]);
 
   const patientInfo = useMemo(
     () => ({
@@ -2116,7 +2190,14 @@ function PatientMedicalRecordsView() {
 
             {/* Tab 1: Riwayat Konsultasi */}
             <TabsContent value="consultations" className="space-y-3 mt-0">
-              {patientConsultations.length === 0 ? (
+              {recordsLoading ? (
+                <Card className="border-0">
+                  <CardContent className="p-12 text-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-muted-foreground mx-auto mb-3" />
+                    <p className="text-sm text-muted-foreground">Memuat riwayat konsultasi...</p>
+                  </CardContent>
+                </Card>
+              ) : patientConsultations.length === 0 ? (
                 <Card className="border-0">
                   <CardContent className="p-8 text-center">
                     <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
