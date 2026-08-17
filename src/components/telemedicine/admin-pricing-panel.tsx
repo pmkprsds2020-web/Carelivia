@@ -110,13 +110,12 @@ const CATEGORY_LABELS: Record<string, string> = {
 // GET /api/admin/homecare-services (see loadHomeCareServices below), which
 // reads the same `homecare_services` table the patient page reads from.
 
-const INITIAL_DOCTORS: DoctorItem[] = [
-  { id: 'doc1', name: 'dr. Sarah Wijaya', specialization: 'Umum', hospital: 'RS Medika Utama', consultationFee: 75000, rating: 4.8, isOnline: true, isAvailable: true },
-  { id: 'doc2', name: 'dr. Ahmad Rizki', specialization: 'Anak', hospital: 'RS Anak Harapan', consultationFee: 100000, rating: 4.9, isOnline: true, isAvailable: true },
-  { id: 'doc3', name: 'dr. Lisa Permata', specialization: 'Penyakit Dalam', hospital: 'RS Penyakit Dalam Nasional', consultationFee: 125000, rating: 4.7, isOnline: false, isAvailable: true },
-  { id: 'doc4', name: 'dr. Dewi Sartika', specialization: 'Kebidanan', hospital: 'RS Ibu dan Anak Sejahtera', consultationFee: 100000, rating: 4.9, isOnline: true, isAvailable: true },
-  { id: 'doc5', name: 'drg. Budi Santoso', specialization: 'Gigi', hospital: 'Klinik Gigi Sehat Medika', consultationFee: 85000, rating: 4.6, isOnline: true, isAvailable: true },
-];
+// NOTE: `INITIAL_DOCTORS` (5 fake doctors — "dr. Sarah Wijaya", "dr. Ahmad
+// Rizki", etc.) has been removed for the same reason as the home care list
+// above: it never touched the database, and the "Tarif Dokter" save button
+// POSTed to a dead Prisma/SQLite route, so every edit silently fell back to
+// a local-only toast. Real doctors now load from GET /api/doctors (already
+// Supabase-backed) via loadDoctors() below.
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -151,7 +150,8 @@ export function AdminPricingPanel() {
   // Data state
   const [homeCareServices, setHomeCareServices] = useState<HomeCareServiceItem[]>([]);
   const [hcLoading, setHcLoading] = useState(true);
-  const [doctors, setDoctors] = useState<DoctorItem[]>(INITIAL_DOCTORS);
+  const [doctors, setDoctors] = useState<DoctorItem[]>([]);
+  const [docLoading, setDocLoading] = useState(true);
   const [priceHistory, setPriceHistory] = useState<PriceChangeRecord[]>([]);
 
   // Filter state
@@ -308,6 +308,46 @@ export function AdminPricingPanel() {
   useEffect(() => {
     loadHomeCareServices();
   }, [loadHomeCareServices]);
+
+  // ─── Load real doctors from Supabase (via /api/doctors) ─────────────────
+  // Replaces the 5 hardcoded fake doctors ("dr. Sarah Wijaya" etc.) that
+  // never reflected who's actually registered on the platform.
+  const loadDoctors = useCallback(async () => {
+    setDocLoading(true);
+    try {
+      const res = await fetch('/api/doctors');
+      const data = await res.json();
+      if (res.ok && Array.isArray(data?.doctors)) {
+        setDoctors(
+          data.doctors.map((d: any) => ({
+            id: d.doctorProfile?.id ?? d.id,
+            name: d.name,
+            specialization: d.doctorProfile?.specialization ?? 'umum',
+            hospital: d.doctorProfile?.hospital ?? '-',
+            consultationFee: Number(d.doctorProfile?.consultationFee ?? 0),
+            rating: Number(d.doctorProfile?.rating ?? 0),
+            isOnline: !!d.doctorProfile?.isOnline,
+            isAvailable: !!d.doctorProfile?.isAvailable,
+          }))
+        );
+      } else {
+        toast.error('Gagal memuat daftar dokter', {
+          description: data?.details || 'Terjadi kesalahan saat memuat data dari server.',
+        });
+      }
+    } catch (err) {
+      console.error('[admin-pricing-panel] loadDoctors failed:', err);
+      toast.error('Gagal memuat daftar dokter', {
+        description: 'Periksa koneksi Anda dan coba lagi.',
+      });
+    } finally {
+      setDocLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDoctors();
+  }, [loadDoctors]);
 
   // ─── Edit handlers ───────────────────────────────────────────────────────
 
@@ -507,62 +547,64 @@ export function AdminPricingPanel() {
 
     const newFee = Number(editConsultationFee);
 
-    if (!editConsultationFee || isNaN(newFee) || newFee <= 0) {
-      setFormError('Tarif konsultasi harus lebih dari 0');
+    if (!editConsultationFee || isNaN(newFee) || newFee < 0) {
+      setFormError('Tarif konsultasi harus berupa angka >= 0');
       return;
     }
 
     setIsSaving(true);
-
-    // Update local state immediately
-    setDoctors((prev) =>
-      prev.map((d) =>
-        d.id === editingDoctor.id
-          ? { ...d, consultationFee: newFee, isAvailable: editIsAvailable }
-          : d
-      )
-    );
-
-    // Log price change if fee changed
-    if (newFee !== editingDoctor.consultationFee) {
-      const changeRecord: PriceChangeRecord = {
-        id: `ch-${Date.now()}`,
-        itemName: editingDoctor.name,
-        type: 'doctor',
-        oldPrice: editingDoctor.consultationFee,
-        newPrice: newFee,
-        changedAt: new Date().toISOString(),
-        changedBy: currentUser?.name || 'Admin',
-      };
-      setPriceHistory((prev) => [changeRecord, ...prev]);
-    }
-
-    // Try to save to API
     try {
-      const res = await fetch('/api/admin/pricing', {
+      const res = await fetch('/api/admin/doctors', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'doctor',
           id: editingDoctor.id,
           consultationFee: newFee,
           isAvailable: editIsAvailable,
         }),
       });
-      if (!res.ok) throw new Error('API error');
+      const data = await res.json();
+      if (!res.ok || !data?.doctor) {
+        throw new Error(data?.details || data?.error || 'Gagal menyimpan perubahan');
+      }
+
+      setDoctors((prev) =>
+        prev.map((d) =>
+          d.id === editingDoctor.id
+            ? { ...d, consultationFee: Number(data.doctor.doctorProfile.consultationFee), isAvailable: !!data.doctor.doctorProfile.isAvailable }
+            : d
+        )
+      );
+
+      if (newFee !== editingDoctor.consultationFee) {
+        setPriceHistory((prev) => [
+          {
+            id: `ch-${Date.now()}`,
+            itemName: editingDoctor.name,
+            type: 'doctor',
+            oldPrice: editingDoctor.consultationFee,
+            newPrice: newFee,
+            changedAt: new Date().toISOString(),
+            changedBy: currentUser?.name || 'Admin',
+          },
+          ...prev,
+        ]);
+      }
+
       toast.success('Tarif dokter berhasil diperbarui', {
-        description: `${editingDoctor.name}: ${formatCurrency(newFee)}`,
+        description: `${editingDoctor.name}: ${formatCurrency(newFee)} — perubahan langsung terlihat oleh pasien.`,
         icon: <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
       });
-    } catch {
-      toast.success('Tarif dokter berhasil diperbarui (lokal)', {
-        description: `${editingDoctor.name}: ${formatCurrency(newFee)} — perubahan disimpan secara lokal`,
-        icon: <AlertCircle className="w-4 h-4 text-amber-500" />,
+      setDocEditOpen(false);
+      setEditingDoctor(null);
+    } catch (err) {
+      // No more silent "(lokal)" fallback — a failed save must be visible.
+      toast.error('Gagal menyimpan tarif dokter', {
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        icon: <AlertCircle className="w-4 h-4" />,
       });
     } finally {
       setIsSaving(false);
-      setDocEditOpen(false);
-      setEditingDoctor(null);
     }
   }, [editingDoctor, editConsultationFee, editIsAvailable, currentUser]);
 
@@ -1150,10 +1192,17 @@ export function AdminPricingPanel() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredDoctors.length === 0 ? (
+                      {docLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-12 text-muted-foreground text-sm">
+                            <Loader2 className="w-5 h-5 animate-spin inline mr-2" />
+                            Memuat dokter...
+                          </TableCell>
+                        </TableRow>
+                      ) : filteredDoctors.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={7} className="text-center py-8 text-muted-foreground text-sm">
-                            Tidak ada dokter ditemukan
+                            {doctors.length === 0 ? 'Belum ada dokter terdaftar di sistem.' : 'Tidak ada dokter ditemukan'}
                           </TableCell>
                         </TableRow>
                       ) : (

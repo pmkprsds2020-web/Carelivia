@@ -111,7 +111,7 @@ export const doctorService = {
         .from('doctor_profiles')
         .select('*, profiles(email, full_name, phone, status)')
         .eq('id', id)
-        .single(),
+        .maybeSingle(),
       null as any,
       'doctorService.getById'
     );
@@ -126,11 +126,47 @@ export const doctorService = {
   async resolveDoctorProfileId(profileId: string): Promise<string | null> {
     if (!isValidUuid(profileId)) return null;
     const row = await safeQuery(
-      supabase.from('doctor_profiles').select('id').eq('id', profileId).single(),
+      supabase.from('doctor_profiles').select('id').eq('id', profileId).maybeSingle(),
       null as any,
       'doctorService.resolveDoctorProfileId'
     );
     return row ? (row as any).id : null;
+  },
+
+  /**
+   * Admin: update a doctor's consultation fee / availability. This is what
+   * the "Kelola Harga → Tarif Dokter" tab now calls, replacing the dead
+   * Prisma/SQLite `/api/admin/pricing` route (no working DB connection in
+   * production, so every save there was silently falling back to a
+   * local-only toast that never reached the database or the doctor/patient
+   * apps).
+   */
+  async updatePricing(
+    doctorProfileId: string,
+    data: { consultationFee?: number; isAvailable?: boolean }
+  ): Promise<DoctorRecord | null> {
+    if (!isValidUuid(doctorProfileId)) {
+      throw new Error(`id dokter tidak valid: ${doctorProfileId}`);
+    }
+    const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (data.consultationFee !== undefined) payload.consultation_fee = data.consultationFee;
+    if (data.isAvailable !== undefined) payload.is_available = data.isAvailable;
+
+    // .maybeSingle(): a stale/mismatched id returns 0 rows updated instead
+    // of throwing the opaque "Cannot coerce the result to a single JSON
+    // object" Postgrest error — we can then say clearly "not found".
+    const { data: row, error } = await safeInsert<any>(
+      supabase
+        .from('doctor_profiles')
+        .update(payload)
+        .eq('id', doctorProfileId)
+        .select('*, profiles(email, full_name, phone, status)')
+        .maybeSingle(),
+      'doctorService.updatePricing'
+    );
+    if (error) throw new Error(error);
+    if (!row) throw new Error(`Dokter dengan id=${doctorProfileId} tidak ditemukan.`);
+    return fromDb(row);
   },
 
   async upsert(profileId: string, data: Record<string, any>): Promise<DoctorRecord | null> {
