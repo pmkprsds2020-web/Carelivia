@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const booking = await homecareService.createBooking({
+    const result = await homecareService.createBooking({
       patientId,
       serviceId,
       scheduledAt,
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       notes,
     });
 
-    return NextResponse.json({ booking }, { status: 201 });
+    return NextResponse.json({ booking: result?.booking ?? null, payment: result?.payment ?? null }, { status: 201 });
   } catch (error) {
     console.error("Home care booking create error:", error);
     const msg = error instanceof Error ? error.message : "Unknown error";

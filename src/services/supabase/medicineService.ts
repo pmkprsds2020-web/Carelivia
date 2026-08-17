@@ -71,6 +71,16 @@ export const medicineService = {
     return (rows as any[]).map(fromDb);
   },
 
+  /** Admin-facing: ALL medicines (active + inactive), for the management table. */
+  async getAllForAdmin(): Promise<MedicineRecord[]> {
+    const rows = await safeQuery(
+      supabase.from('medicines').select('*').order('name', { ascending: true }),
+      [] as any[],
+      'medicineService.getAllForAdmin'
+    );
+    return (rows as any[]).map(fromDb);
+  },
+
   async create(data: Partial<MedicineRecord>): Promise<MedicineRecord | null> {
     const payload = toDb(data);
     const { data: row, error } = await safeInsert<any>(
@@ -79,5 +89,58 @@ export const medicineService = {
     );
     if (error) throw new Error(error);
     return row ? fromDb(row) : null;
+  },
+
+  async update(id: string, data: Partial<MedicineRecord>): Promise<MedicineRecord | null> {
+    const payload = toDb(data);
+    // .maybeSingle(): a stale/mismatched id returns 0 rows instead of the
+    // opaque "Cannot coerce the result to a single JSON object" error.
+    const { data: row, error } = await safeInsert<any>(
+      supabase.from('medicines').update(payload).eq('id', id).select().maybeSingle(),
+      'medicineService.update'
+    );
+    if (error) throw new Error(error);
+    if (!row) throw new Error(`Obat dengan id=${id} tidak ditemukan.`);
+    return fromDb(row);
+  },
+
+  /**
+   * Delete a medicine. Hard delete if it has never appeared in an order
+   * (order_items); soft delete (is_active=false) if it has, so historical
+   * orders/invoices keep showing the real name/price.
+   */
+  async remove(id: string): Promise<{ hardDeleted: boolean }> {
+    let inUse = false;
+    try {
+      const { count, error: countError } = await supabase
+        .from('order_items')
+        .select('id', { head: true, count: 'exact' })
+        .eq('medicine_id', id);
+      if (countError) {
+        console.warn('[Supabase:medicineService.remove(usage check)]', countError.message);
+      } else {
+        inUse = (count ?? 0) > 0;
+      }
+    } catch (e: any) {
+      console.warn('[Supabase:medicineService.remove(usage check)] threw', e?.message ?? e);
+    }
+
+    if (inUse) {
+      const { error } = await safeInsert<any>(
+        supabase.from('medicines').update({ is_active: false, updated_at: new Date().toISOString() }).eq('id', id).select().maybeSingle(),
+        'medicineService.remove(soft)'
+      );
+      if (error) throw new Error(error);
+      return { hardDeleted: false };
+    }
+
+    try {
+      const { error } = await supabase.from('medicines').delete().eq('id', id);
+      if (error) throw new Error(error.message);
+    } catch (e: any) {
+      console.error('[Supabase:medicineService.remove(hard)]', e?.message ?? e);
+      throw new Error(e?.message ?? 'Gagal menghapus obat');
+    }
+    return { hardDeleted: true };
   },
 };

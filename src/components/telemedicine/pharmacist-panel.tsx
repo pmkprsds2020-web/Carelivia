@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useStore } from '@/lib/store';
 import type { MedicineCategory } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -47,6 +47,7 @@ import {
   TrendingUp,
   Box,
   AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -149,12 +150,15 @@ const rxStatusConfig: Record<string, { label: string; className: string }> = {
 };
 
 export function PharmacistPanel() {
-  const { medicines } = useStore();
+  const { medicines, setMedicines } = useStore();
   const { toast } = useToast();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [medDialogOpen, setMedDialogOpen] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState<string | null>(null);
+  const [medicinesLoading, setMedicinesLoading] = useState(true);
+  const [isSavingMedicine, setIsSavingMedicine] = useState(false);
+  const [deletingMedicineId, setDeletingMedicineId] = useState<string | null>(null);
 
   // Medicine form state
   const [medName, setMedName] = useState('');
@@ -164,6 +168,32 @@ export function PharmacistPanel() {
   const [medStock, setMedStock] = useState('');
   const [medUnit, setMedUnit] = useState('');
   const [medManufacturer, setMedManufacturer] = useState('');
+
+  // Load ALL medicines (active + inactive) for the admin table — separate
+  // from the patient shop's GET /api/medicines, which only returns active
+  // ones. This is what fixes "Simpan"/"Hapus" doing nothing: they used to
+  // just fire a toast and never touch the database or this list.
+  const loadMedicines = useCallback(async () => {
+    setMedicinesLoading(true);
+    try {
+      const res = await fetch('/api/medicines?admin=true');
+      const data = await res.json();
+      if (res.ok && Array.isArray(data?.medicines)) {
+        setMedicines(data.medicines);
+      } else {
+        toast({ title: 'Gagal memuat daftar obat', description: data?.details || 'Terjadi kesalahan.', variant: 'destructive' });
+      }
+    } catch (err) {
+      console.error('[pharmacist-panel] loadMedicines failed:', err);
+      toast({ title: 'Gagal memuat daftar obat', description: 'Periksa koneksi Anda.', variant: 'destructive' });
+    } finally {
+      setMedicinesLoading(false);
+    }
+  }, [setMedicines, toast]);
+
+  useEffect(() => {
+    loadMedicines();
+  }, [loadMedicines]);
 
   const filteredMedicines = useMemo(() => {
     if (!searchQuery.trim()) return medicines;
@@ -199,20 +229,82 @@ export function PharmacistPanel() {
     setMedDialogOpen(true);
   };
 
-  const handleSaveMedicine = () => {
-    toast({
-      title: editingMedicine ? 'Obat Diperbarui' : 'Obat Ditambahkan',
-      description: `${medName} berhasil ${editingMedicine ? 'diperbarui' : 'ditambahkan'}`,
-    });
-    setMedDialogOpen(false);
+  const handleSaveMedicine = async () => {
+    if (!medName.trim()) {
+      toast({ title: 'Nama obat wajib diisi', variant: 'destructive' });
+      return;
+    }
+    const price = Number(medPrice);
+    if (!medPrice || isNaN(price) || price < 0) {
+      toast({ title: 'Harga harus berupa angka >= 0', variant: 'destructive' });
+      return;
+    }
+    const stock = Number(medStock);
+    if (medStock === '' || isNaN(stock) || stock < 0 || !Number.isInteger(stock)) {
+      toast({ title: 'Stok harus berupa bilangan bulat >= 0', variant: 'destructive' });
+      return;
+    }
+
+    setIsSavingMedicine(true);
+    try {
+      const payload = {
+        name: medName.trim(),
+        genericName: medGenericName.trim() || undefined,
+        category: medCategory,
+        price,
+        stock,
+        unit: medUnit.trim() || undefined,
+        manufacturer: medManufacturer.trim() || undefined,
+      };
+      const res = await fetch('/api/medicines', {
+        method: editingMedicine ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingMedicine ? { id: editingMedicine, ...payload } : payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.medicine) {
+        throw new Error(data?.details || data?.error || 'Gagal menyimpan obat');
+      }
+      await loadMedicines();
+      toast({
+        title: editingMedicine ? 'Obat Diperbarui' : 'Obat Ditambahkan',
+        description: `${medName} berhasil ${editingMedicine ? 'diperbarui' : 'ditambahkan'} — langsung terlihat oleh pasien.`,
+      });
+      setMedDialogOpen(false);
+    } catch (err) {
+      toast({
+        title: 'Gagal menyimpan obat',
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingMedicine(false);
+    }
   };
 
-  const handleDeleteMedicine = (name: string) => {
-    toast({
-      title: 'Obat Dihapus',
-      description: `${name} telah dihapus dari daftar`,
-      variant: 'destructive',
-    });
+  const handleDeleteMedicine = async (id: string, name: string) => {
+    setDeletingMedicineId(id);
+    try {
+      const res = await fetch(`/api/medicines?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.details || data?.error || 'Gagal menghapus obat');
+      }
+      await loadMedicines();
+      toast({
+        title: data.hardDeleted ? 'Obat Dihapus' : 'Obat Dinonaktifkan',
+        description: data.message,
+        variant: data.hardDeleted ? 'default' : undefined,
+      });
+    } catch (err) {
+      toast({
+        title: 'Gagal menghapus obat',
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingMedicineId(null);
+    }
   };
 
   const handleProcessPrescription = (rxId: string) => {
@@ -352,10 +444,17 @@ export function PharmacistPanel() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredMedicines.length === 0 ? (
+                    {medicinesLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                          <Loader2 className="w-5 h-5 animate-spin inline mr-2" />
+                          Memuat daftar obat...
+                        </TableCell>
+                      </TableRow>
+                    ) : filteredMedicines.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                          Tidak ada obat ditemukan
+                          {medicines.length === 0 ? 'Belum ada obat. Klik "Tambah Obat" untuk menambahkan.' : 'Tidak ada obat ditemukan'}
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -394,8 +493,8 @@ export function PharmacistPanel() {
                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenEditMedicine(med)}>
                                   <Edit className="w-3.5 h-3.5" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteMedicine(med.name)}>
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" disabled={deletingMedicineId === med.id} onClick={() => handleDeleteMedicine(med.id, med.name)}>
+                                  {deletingMedicineId === med.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                                 </Button>
                               </div>
                             </TableCell>
@@ -575,8 +674,13 @@ export function PharmacistPanel() {
                 <Input value={medManufacturer} onChange={(e) => setMedManufacturer(e.target.value)} placeholder="Nama produsen" />
               </div>
             </div>
-            <Button className="w-full" onClick={handleSaveMedicine} disabled={!medName || !medPrice || !medStock}>
-              {editingMedicine ? 'Simpan Perubahan' : 'Tambah Obat'}
+            <Button className="w-full" onClick={handleSaveMedicine} disabled={!medName || !medPrice || !medStock || isSavingMedicine}>
+              {isSavingMedicine ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  Menyimpan...
+                </>
+              ) : editingMedicine ? 'Simpan Perubahan' : 'Tambah Obat'}
             </Button>
           </div>
         </DialogContent>

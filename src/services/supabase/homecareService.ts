@@ -3,6 +3,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 import { supabase, safeQuery, safeInsert, isValidUuid } from './_common';
 import { notificationService } from './notificationService';
+import { paymentService, type PaymentRecord } from './paymentService';
 
 export interface HomecareServiceRecord {
   id: string;
@@ -218,7 +219,7 @@ export const homecareService = {
     latitude?: number;
     longitude?: number;
     notes?: string;
-  }): Promise<HomecareBookingRecord | null> {
+  }): Promise<{ booking: HomecareBookingRecord; payment: PaymentRecord | null } | null> {
     const service = await safeQuery(
       supabase.from('homecare_services').select('*').eq('id', input.serviceId).eq('is_active', true).maybeSingle(),
       null as any,
@@ -284,6 +285,27 @@ export const homecareService = {
       row.staff_id = staffId;
     }
 
-    return bookingFromDb(row);
+    // Create a pending payment for this booking, at the service's CURRENT
+    // price (already snapshotted onto the booking row above too). This is
+    // what was missing — bookings could reach "Menunggu"/"confirmed" but
+    // could never actually be paid, so they could never contribute to
+    // revenue. Once paid, revenueService attributes this to the assigned
+    // staff member (doctor or provider — see revenueService for the rule).
+    let payment: PaymentRecord | null = null;
+    try {
+      const price = Number((service as any).price ?? 0);
+      if (price > 0) {
+        payment = await paymentService.createPending({
+          userId: input.patientId,
+          referenceType: 'homecare_booking',
+          referenceId: row.id,
+          amount: price,
+        });
+      }
+    } catch (payErr) {
+      console.error('[homecareService.createBooking] failed to create pending payment:', payErr);
+    }
+
+    return { booking: bookingFromDb(row), payment };
   },
 };
