@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { consultationService, doctorService } from "@/services/supabase";
+import { consultationService, doctorService, paymentService } from "@/services/supabase";
 
 // GET: List consultations with optional filters (Supabase-backed)
 export async function GET(request: NextRequest) {
@@ -57,7 +57,33 @@ export async function POST(request: NextRequest) {
       notes,
     });
 
-    return NextResponse.json({ consultation }, { status: 201 });
+    // Create a pending payment for this consultation right away, at the
+    // doctor's CURRENT consultation fee (never trust a client-supplied
+    // amount — see master repair item #9). The chat itself isn't gated on
+    // payment (patients can start chatting immediately, matching the
+    // existing UX), but the invoice now exists for real from the moment
+    // the consultation starts, instead of never existing at all. Once
+    // paid, this is what makes real money show up in the doctor's
+    // Pendapatan tab via revenueService.
+    let payment = null;
+    try {
+      const doctorRecord = await doctorService.getById(doctorProfile);
+      const fee = doctorRecord?.doctorProfile?.consultationFee ?? 0;
+      if (fee > 0) {
+        payment = await paymentService.createPending({
+          userId: patientId,
+          referenceType: 'consultation',
+          referenceId: consultation.id,
+          amount: fee,
+        });
+      }
+    } catch (payErr) {
+      // Don't fail consultation creation just because invoicing hiccuped —
+      // log it loudly so it's visible, but the chat can still proceed.
+      console.error("[consultations] failed to create pending payment:", payErr);
+    }
+
+    return NextResponse.json({ consultation, payment }, { status: 201 });
   } catch (error) {
     console.error("Consultation create error:", error);
     return NextResponse.json(
