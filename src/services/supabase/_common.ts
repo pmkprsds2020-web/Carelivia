@@ -8,7 +8,25 @@
 // This lets the app gracefully degrade to local Zustand data.
 // ───────────────────────────────────────────────────────────────────────────
 
-import { supabase } from '@/supabaseClient';
+import { supabase, getSupabaseAdmin } from '@/supabaseClient';
+
+/**
+ * Server-only helper: returns the service-role admin client when
+ * SUPABASE_SERVICE_ROLE_KEY is configured (bypasses RLS — safe here because
+ * this only ever runs inside Next.js API routes, never in the browser),
+ * falling back to the plain anon client otherwise.
+ *
+ * Use this for tables where writes should be RESTRICTED to server-side code
+ * (payments, orders, order_items, revenue_ledger, platform_settings — see
+ * supabase/migration_lockdown_financial_tables.sql). Calling this from
+ * client-side ('use client') code is a no-op safety net: getSupabaseAdmin()
+ * itself throws if called from the browser, and this function only awaits
+ * it from server contexts.
+ */
+export async function getDbClient() {
+  const admin = await getSupabaseAdmin().catch(() => null);
+  return admin ?? supabase;
+}
 
 // ── UUID validation ─────────────────────────────────────────────────────────
 //

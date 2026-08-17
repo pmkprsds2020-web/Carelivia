@@ -9,7 +9,7 @@
 //     existing pending payment for the same reference instead of creating
 //     a second one)
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, safeInsert, isValidUuid } from './_common';
+import { safeQuery, safeInsert, isValidUuid, getDbClient } from './_common';
 import { revenueService } from './revenueService';
 
 export type PaymentReferenceType = 'pharmacy_order' | 'homecare_booking' | 'consultation';
@@ -74,8 +74,9 @@ export const paymentService = {
     if (!isValidUuid(input.userId)) throw new Error('userId tidak valid');
     if (!isValidUuid(input.referenceId)) throw new Error('referenceId tidak valid');
 
+    const db = await getDbClient();
     const existing = await safeQuery(
-      supabase
+      db
         .from('payments')
         .select('*')
         .eq('reference_type', input.referenceType)
@@ -97,7 +98,7 @@ export const paymentService = {
       // status === 'failed' or 'refunded' → fall through and create a fresh one
     }
 
-    const { data: invoiceNumber, error: invErr } = await supabase.rpc('generate_invoice_number', {
+    const { data: invoiceNumber, error: invErr } = await db.rpc('generate_invoice_number', {
       prefix: INVOICE_PREFIX[input.referenceType],
     });
     if (invErr) {
@@ -106,7 +107,7 @@ export const paymentService = {
     }
 
     const { data: row, error } = await safeInsert<any>(
-      supabase
+      db
         .from('payments')
         .insert({
           user_id: input.userId,
@@ -137,8 +138,9 @@ export const paymentService = {
   async markPaid(paymentId: string, method?: string): Promise<{ payment: PaymentRecord; alreadyPaid: boolean }> {
     if (!isValidUuid(paymentId)) throw new Error('paymentId tidak valid');
 
+    const db = await getDbClient();
     const { data: updated, error } = await safeInsert<any>(
-      supabase
+      db
         .from('payments')
         .update({
           status: 'success',
@@ -173,7 +175,7 @@ export const paymentService = {
     // 0 rows updated: either it's already paid (race with another click),
     // or the id doesn't exist. Distinguish the two.
     const current = await safeQuery(
-      supabase.from('payments').select('*').eq('id', paymentId).maybeSingle(),
+      db.from('payments').select('*').eq('id', paymentId).maybeSingle(),
       null as any,
       'paymentService.markPaid(refetch)'
     );
@@ -182,8 +184,9 @@ export const paymentService = {
   },
 
   async markFailed(paymentId: string): Promise<PaymentRecord | null> {
+    const db = await getDbClient();
     const { data: row, error } = await safeInsert<any>(
-      supabase
+      db
         .from('payments')
         .update({ status: 'failed', updated_at: new Date().toISOString() })
         .eq('id', paymentId)
@@ -198,8 +201,9 @@ export const paymentService = {
 
   async getForUser(userId: string): Promise<PaymentRecord[]> {
     if (!isValidUuid(userId)) return [];
+    const db = await getDbClient();
     const rows = await safeQuery(
-      supabase.from('payments').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+      db.from('payments').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
       [] as any[],
       'paymentService.getForUser'
     );
@@ -208,8 +212,9 @@ export const paymentService = {
 
   async getById(id: string): Promise<PaymentRecord | null> {
     if (!isValidUuid(id)) return null;
+    const db = await getDbClient();
     const row = await safeQuery(
-      supabase.from('payments').select('*').eq('id', id).maybeSingle(),
+      db.from('payments').select('*').eq('id', id).maybeSingle(),
       null as any,
       'paymentService.getById'
     );

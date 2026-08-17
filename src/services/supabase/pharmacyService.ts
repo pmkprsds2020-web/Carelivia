@@ -17,7 +17,7 @@
 // to abandoned carts. The atomic decrement function still protects against
 // two concurrent payments overselling the same last few units.
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, safeInsert, isValidUuid } from './_common';
+import { supabase, safeQuery, safeInsert, isValidUuid, getDbClient } from './_common';
 import { paymentService, type PaymentRecord } from './paymentService';
 
 export interface PharmacyOrderItemInput {
@@ -80,8 +80,12 @@ export const pharmacyService = {
     if (!isValidUuid(input.userId)) throw new Error('User tidak valid. Silakan login ulang.');
     if (!input.items || input.items.length === 0) throw new Error('Keranjang kosong.');
 
+    const db = await getDbClient();
+
     // 1. Look up REAL current prices + stock from the DB — never trust the
-    //    client's cached medicine.price, which may be stale.
+    //    client's cached medicine.price, which may be stale. `medicines` is
+    //    still world-readable (unrestricted RLS), so the plain client is
+    //    fine for this lookup.
     const medicineIds = input.items.map((i) => i.medicineId);
     const medicines = await safeQuery(
       supabase.from('medicines').select('*').in('id', medicineIds).eq('is_active', true),
@@ -109,7 +113,7 @@ export const pharmacyService = {
 
     // 2. Create the order.
     const { data: orderRow, error: orderErr } = await safeInsert<any>(
-      supabase
+      db
         .from('orders')
         .insert({
           user_id: input.userId,
@@ -128,7 +132,7 @@ export const pharmacyService = {
     // 3. Create order_items with a name+price SNAPSHOT (order_items.price
     //    already existed for this — we add medicine_name_snapshot too).
     const { data: itemRows, error: itemsErr } = await safeInsert<any>(
-      supabase
+      db
         .from('order_items')
         .insert(
           lineItems.map((li) => ({
@@ -145,7 +149,7 @@ export const pharmacyService = {
     if (itemsErr) {
       // Order was created but items failed — don't leave an empty phantom
       // order sitting around; clean it up so retrying doesn't pile up junk.
-      await supabase.from('orders').delete().eq('id', orderRow.id);
+      await db.from('orders').delete().eq('id', orderRow.id);
       throw new Error(itemsErr);
     }
 
@@ -169,6 +173,7 @@ export const pharmacyService = {
    * the current state — it will NOT double-deduct stock.
    */
   async confirmPayment(paymentId: string, method?: string): Promise<{ order: PharmacyOrderRecord; alreadyPaid: boolean }> {
+    const db = await getDbClient();
     const { payment, alreadyPaid } = await paymentService.markPaid(paymentId, method);
     if (payment.referenceType !== 'pharmacy_order') {
       throw new Error('Payment ini bukan untuk pesanan apotek.');
@@ -178,12 +183,15 @@ export const pharmacyService = {
     if (!alreadyPaid) {
       // Only deduct stock the FIRST time this payment is confirmed.
       const items = await safeQuery(
-        supabase.from('order_items').select('*').eq('order_id', orderId),
+        db.from('order_items').select('*').eq('order_id', orderId),
         [] as any[],
         'pharmacyService.confirmPayment(items lookup)'
       );
       for (const item of items as any[]) {
-        const { data: ok, error } = await supabase.rpc('decrement_medicine_stock', {
+        // decrement_medicine_stock writes to `medicines`, whose RLS is
+        // unrestricted, so either client works here — use the resolved
+        // admin/anon client we already have for consistency.
+        const { data: ok, error } = await db.rpc('decrement_medicine_stock', {
           p_medicine_id: item.medicine_id,
           p_quantity: item.quantity,
         });
@@ -199,16 +207,16 @@ export const pharmacyService = {
         }
       }
 
-      await supabase.from('orders').update({ status: 'processing', updated_at: new Date().toISOString() }).eq('id', orderId);
+      await db.from('orders').update({ status: 'processing', updated_at: new Date().toISOString() }).eq('id', orderId);
     }
 
     const orderRow = await safeQuery(
-      supabase.from('orders').select('*').eq('id', orderId).maybeSingle(),
+      db.from('orders').select('*').eq('id', orderId).maybeSingle(),
       null as any,
       'pharmacyService.confirmPayment(order refetch)'
     );
     const items = await safeQuery(
-      supabase.from('order_items').select('*').eq('order_id', orderId),
+      db.from('order_items').select('*').eq('order_id', orderId),
       [] as any[],
       'pharmacyService.confirmPayment(items refetch)'
     );
@@ -218,15 +226,16 @@ export const pharmacyService = {
 
   async getOrdersForUser(userId: string): Promise<PharmacyOrderRecord[]> {
     if (!isValidUuid(userId)) return [];
+    const db = await getDbClient();
     const orders = await safeQuery(
-      supabase.from('orders').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+      db.from('orders').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
       [] as any[],
       'pharmacyService.getOrdersForUser'
     );
     const results: PharmacyOrderRecord[] = [];
     for (const order of orders as any[]) {
       const items = await safeQuery(
-        supabase.from('order_items').select('*').eq('order_id', order.id),
+        db.from('order_items').select('*').eq('order_id', order.id),
         [] as any[],
         'pharmacyService.getOrdersForUser(items)'
       );

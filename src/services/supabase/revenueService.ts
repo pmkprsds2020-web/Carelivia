@@ -3,7 +3,7 @@
 // payments (never from "consultation completed" alone, and never from
 // pharmacy sales — see the migration file's header for why).
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, isValidUuid } from './_common';
+import { supabase, safeQuery, isValidUuid, getDbClient } from './_common';
 
 export interface RevenueEntry {
   id: string;
@@ -66,9 +66,11 @@ export const revenueService = {
       return; // pharmacy_order — deliberately excluded from doctor/provider revenue
     }
 
+    const db = await getDbClient();
+
     // Already recorded? (idempotency guard, on top of the DB unique index)
     const existing = await safeQuery(
-      supabase.from('revenue_ledger').select('id').eq('payment_id', payment.id).maybeSingle(),
+      db.from('revenue_ledger').select('id').eq('payment_id', payment.id).maybeSingle(),
       null as any,
       'revenueService.recordForPayment(existing check)'
     );
@@ -119,7 +121,7 @@ export const revenueService = {
     }
 
     const settings = await safeQuery(
-      supabase.from('platform_settings').select('platform_fee_percent').eq('id', 1).maybeSingle(),
+      db.from('platform_settings').select('platform_fee_percent').eq('id', 1).maybeSingle(),
       { platform_fee_percent: 0 } as any,
       'revenueService.recordForPayment(settings)'
     );
@@ -128,7 +130,7 @@ export const revenueService = {
     const platformFee = Math.round((gross * feePercent) / 100);
     const net = gross - platformFee;
 
-    const { error } = await supabase.from('revenue_ledger').insert({
+    const { error } = await db.from('revenue_ledger').insert({
       payment_id: payment.id,
       reference_type: payment.referenceType,
       reference_id: payment.referenceId,
@@ -154,9 +156,10 @@ export const revenueService = {
     if (!isValidUuid(doctorId)) {
       return { todayNet: 0, monthNet: 0, totalNet: 0, pendingNet: 0, entries: [] };
     }
+    const db = await getDbClient();
 
     const rows = await safeQuery(
-      supabase
+      db
         .from('revenue_ledger')
         .select('*, patient_profile:profiles!revenue_ledger_patient_id_fkey(full_name)')
         .eq('payee_type', 'doctor')
@@ -180,7 +183,7 @@ export const revenueService = {
     // but haven't been confirmed paid yet — informational, not counted in
     // totalNet (per master rule: pending payments are never revenue).
     const pendingPayments = await safeQuery(
-      supabase
+      db
         .from('payments')
         .select('amount, reference_id, reference_type')
         .eq('status', 'pending')
