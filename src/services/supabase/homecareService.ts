@@ -41,7 +41,7 @@ export interface HomecareBookingRecord {
   notes?: string;
   status: string;
   createdAt: string;
-  patient?: { id: string; name: string };
+  patient?: { id: string; name: string; phone?: string };
   staff?: { id: string; name: string } | null;
   service?: HomecareServiceRecord;
 }
@@ -74,7 +74,7 @@ function bookingFromDb(row: any): HomecareBookingRecord {
     notes: row.notes ?? undefined,
     status: row.status,
     createdAt: row.created_at,
-    patient: row.patient_profile ? { id: row.patient_id, name: row.patient_profile.full_name } : undefined,
+    patient: row.patient_profile ? { id: row.patient_id, name: row.patient_profile.full_name, phone: row.patient_profile.phone ?? undefined } : undefined,
     staff: row.staff_profile ? { id: row.staff_id, name: row.staff_profile.profiles?.full_name } : null,
     service: row.homecare_services ? serviceFromDb(row.homecare_services) : undefined,
   };
@@ -193,12 +193,12 @@ export const homecareService = {
     return { hardDeleted: true };
   },
 
-  async getBookings(filters: { status?: string; patientId?: string } = {}): Promise<HomecareBookingRecord[]> {
+  async getBookings(filters: { status?: string; patientId?: string; staffId?: string } = {}): Promise<HomecareBookingRecord[]> {
     let q = supabase
       .from('homecare_bookings')
       .select(
         `*,
-         patient_profile:profiles!homecare_bookings_patient_id_fkey(full_name),
+         patient_profile:profiles!homecare_bookings_patient_id_fkey(full_name, phone),
          staff_profile:homecare_staff(profiles(full_name)),
          homecare_services(*)`
       )
@@ -206,9 +206,33 @@ export const homecareService = {
 
     if (filters.status) q = q.eq('status', filters.status);
     if (filters.patientId && isValidUuid(filters.patientId)) q = q.eq('patient_id', filters.patientId);
+    if (filters.staffId && isValidUuid(filters.staffId)) q = q.eq('staff_id', filters.staffId);
 
     const rows = await safeQuery(q, [] as any[], 'homecareService.getBookings');
     return (rows as any[]).map(bookingFromDb);
+  },
+
+  /**
+   * Update a booking's status (e.g. staff checking in, marking on-the-way,
+   * completing the visit). Replaces the old homecare-staff-panel.tsx flow,
+   * which only fired a toast — check-in, "tiba di lokasi", and "selesai"
+   * never touched the database, so a booking could sit at 'confirmed'
+   * forever no matter what a staff member did in the app.
+   */
+  async updateBookingStatus(bookingId: string, status: string): Promise<HomecareBookingRecord | null> {
+    if (!isValidUuid(bookingId)) throw new Error('bookingId tidak valid');
+    const { data: row, error } = await safeInsert<any>(
+      supabase
+        .from('homecare_bookings')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', bookingId)
+        .select('*, patient_profile:profiles!homecare_bookings_patient_id_fkey(full_name, phone), staff_profile:homecare_staff(profiles(full_name)), homecare_services(*)')
+        .maybeSingle(),
+      'homecareService.updateBookingStatus'
+    );
+    if (error) throw new Error(error);
+    if (!row) throw new Error(`Booking dengan id=${bookingId} tidak ditemukan.`);
+    return bookingFromDb(row);
   },
 
   async createBooking(input: {

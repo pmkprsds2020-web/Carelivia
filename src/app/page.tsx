@@ -80,7 +80,13 @@ export default function TelemedicineApp() {
         fetch('/api/dashboard').then(r => r.json()),
         fetch('/api/medicines').then(r => r.json()),
         fetch('/api/homecare').then(r => r.json()),
-        fetch('/api/notifications?userId=default').then(r => r.json()),
+        // NOTE: this used to always fetch userId=default (a literal string,
+        // not the actual logged-in user's id) — meaning it never returned
+        // this person's real notifications. Only fetch once we actually
+        // know who's logged in.
+        currentUser?.id
+          ? fetch(`/api/notifications?userId=${encodeURIComponent(currentUser.id)}`).then(r => r.json())
+          : Promise.resolve(null),
         fetch('/api/consultations').then(r => r.json()),
         fetch('/api/homecare?type=bookings').then(r => r.json()),
         fetch('/api/doctors').then(r => r.json()),
@@ -98,14 +104,14 @@ export default function TelemedicineApp() {
       if (dashData?.articles && dashData.articles.length > 0) setArticles(dashData.articles);
       if (medData?.medicines && medData.medicines.length > 0) setMedicines(medData.medicines);
       if (hcData?.services && hcData.services.length > 0) setHomeCareServices(hcData.services);
-      if (notifData?.notifications && notifData.notifications.length > 0) setNotifications(notifData.notifications);
+      if (Array.isArray(notifData?.notifications)) setNotifications(notifData.notifications);
       if (consultData?.consultations && consultData.consultations.length > 0) setConsultations(consultData.consultations);
       if (hcBookings?.bookings && hcBookings.bookings.length > 0) setHomeCareBookings(hcBookings.bookings);
     } catch (error) {
       // Silently fail - components have their own demo data
       console.log('Background data load skipped:', error);
     }
-  }, [setDashboardStats, setDoctors, setArticles, setMedicines, setHomeCareServices, setNotifications, setConsultations, setHomeCareBookings]);
+  }, [currentUser?.id, setDashboardStats, setDoctors, setArticles, setMedicines, setHomeCareServices, setNotifications, setConsultations, setHomeCareBookings]);
 
   useEffect(() => {
     loadDataInBackground();

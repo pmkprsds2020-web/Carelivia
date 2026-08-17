@@ -79,99 +79,15 @@ const typeConfig: Record<NotificationType, { icon: React.ReactNode; bgColor: str
   },
 };
 
-// Demo notifications to supplement store data
-const demoNotifications = [
-  {
-    id: 'dn1',
-    userId: 'demo-patient',
-    title: 'Konsultasi Dimulai',
-    message: 'Konsultasi video call dengan dr. Andi Pratama telah dimulai. Silakan bergabung.',
-    type: 'consultation' as NotificationType,
-    isRead: false,
-    createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'dn2',
-    userId: 'demo-patient',
-    title: 'Pesan Baru dari Dokter',
-    message: 'dr. Siti Rahayu mengirim pesan: "Hasil lab Anda sudah keluar, silakan dilihat."',
-    type: 'chat' as NotificationType,
-    isRead: false,
-    createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'dn3',
-    userId: 'demo-patient',
-    title: 'Petugas Dalam Perjalanan',
-    message: 'Petugas home care sedang menuju lokasi Anda. Estimasi tiba 15 menit.',
-    type: 'homecare' as NotificationType,
-    isRead: false,
-    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'dn4',
-    userId: 'demo-patient',
-    title: 'Pesanan Obat Dikirim',
-    message: 'Pesanan obat Anda dengan invoice INV-2025-001 telah dikirim via JNE.',
-    type: 'pharmacy' as NotificationType,
-    isRead: true,
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'dn5',
-    userId: 'demo-patient',
-    title: 'Pembayaran Berhasil',
-    message: 'Pembayaran sebesar Rp 150.000 untuk konsultasi telah berhasil diproses.',
-    type: 'payment' as NotificationType,
-    isRead: true,
-    createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'dn6',
-    userId: 'demo-patient',
-    title: 'Pengingat Jadwal',
-    message: 'Anda memiliki jadwal konsultasi dengan dr. Budi Santoso besok pukul 10:00 WIB.',
-    type: 'reminder' as NotificationType,
-    isRead: false,
-    createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'dn7',
-    userId: 'demo-patient',
-    title: 'Resep Obat Siap',
-    message: 'Resep obat dari dr. Andi Pratama telah siap. Silakan ambil di apotek atau pesan online.',
-    type: 'pharmacy' as NotificationType,
-    isRead: true,
-    createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'dn8',
-    userId: 'demo-patient',
-    title: 'Pembayaran Menunggu',
-    message: 'Anda memiliki pembayaran yang menunggu untuk konsultasi sebesar Rp 200.000.',
-    type: 'payment' as NotificationType,
-    isRead: false,
-    createdAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'dn9',
-    userId: 'demo-patient',
-    title: 'Home Care Selesai',
-    message: 'Layanan perawatan luka Anda telah selesai. Jangan lupa beri rating!',
-    type: 'homecare' as NotificationType,
-    isRead: true,
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'dn10',
-    userId: 'demo-patient',
-    title: 'Jadwal Kontrol',
-    message: 'Waktunya kontrol rutin diabetes Anda. Jadwalkan konsultasi sekarang.',
-    type: 'reminder' as NotificationType,
-    isRead: false,
-    createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-  },
-];
+// NOTE: the `demoNotifications` array (10 fake notifications — "Konsultasi
+// Dimulai", "Pembayaran Berhasil" etc., all tagged `userId: 'demo-patient'`
+// but merged in UNCONDITIONALLY without any userId filtering) has been
+// removed. Every logged-in account, patient or doctor, used to see these
+// same 10 fake items mixed into their real notifications. Real ones now
+// come exclusively from the store (populated via GET /api/notifications
+// for the actual logged-in user — see page.tsx), and "mark as read" now
+// calls the real PATCH /api/notifications endpoint instead of only
+// mutating local state (which never persisted past a page refresh).
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
@@ -188,14 +104,12 @@ function timeAgo(dateStr: string): string {
 }
 
 export function NotificationsPanel() {
-  const { notifications, setNotifications, setUnreadCount } = useStore();
+  const { notifications, setNotifications, setUnreadCount, currentUser } = useStore();
   const [activeFilter, setActiveFilter] = useState<NotificationType | 'all'>('all');
 
-  // Merge store notifications with demo data
+  // Real notifications only — sorted newest first.
   const allNotifications = useMemo(() => {
-    const storeIds = new Set(notifications.map((n) => n.id));
-    const merged = [...notifications, ...demoNotifications.filter((n) => !storeIds.has(n.id))];
-    return merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return [...notifications].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [notifications]);
 
   const filteredNotifications = useMemo(() => {
@@ -208,19 +122,41 @@ export function NotificationsPanel() {
     [allNotifications]
   );
 
-  const handleMarkAsRead = (notifId: string) => {
+  const handleMarkAsRead = async (notifId: string) => {
+    // Optimistic local update...
     const updated = allNotifications.map((n) =>
       n.id === notifId ? { ...n, isRead: true } : n
     );
     setNotifications(updated);
-    const newUnread = updated.filter((n) => !n.isRead).length;
-    setUnreadCount(newUnread);
+    setUnreadCount(updated.filter((n) => !n.isRead).length);
+
+    // ...then persist for real, so it survives a page refresh.
+    try {
+      const res = await fetch(`/api/notifications?id=${encodeURIComponent(notifId)}`, { method: 'PATCH' });
+      if (!res.ok) throw new Error('Gagal menandai notifikasi sebagai dibaca');
+    } catch (err) {
+      console.error('[notifications-panel] markAsRead failed:', err);
+      // Revert on failure so the UI doesn't lie about persisted state.
+      setNotifications(allNotifications);
+      setUnreadCount(allNotifications.filter((n) => !n.isRead).length);
+    }
   };
 
-  const handleMarkAllRead = () => {
+  const handleMarkAllRead = async () => {
+    const previous = allNotifications;
     const updated = allNotifications.map((n) => ({ ...n, isRead: true }));
     setNotifications(updated);
     setUnreadCount(0);
+
+    if (!currentUser?.id) return;
+    try {
+      const res = await fetch(`/api/notifications?userId=${encodeURIComponent(currentUser.id)}&all=true`, { method: 'PATCH' });
+      if (!res.ok) throw new Error('Gagal menandai semua notifikasi sebagai dibaca');
+    } catch (err) {
+      console.error('[notifications-panel] markAllRead failed:', err);
+      setNotifications(previous);
+      setUnreadCount(previous.filter((n) => !n.isRead).length);
+    }
   };
 
   return (

@@ -8,11 +8,13 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get("type") ?? "services"; // "services" or "bookings"
     const status = searchParams.get("status") ?? "";
     const patientId = searchParams.get("patientId") ?? "";
+    const staffId = searchParams.get("staffId") ?? "";
 
     if (type === "bookings") {
       const bookings = await homecareService.getBookings({
         status: status || undefined,
         patientId: patientId || undefined,
+        staffId: staffId || undefined,
       });
       return NextResponse.json({ bookings });
     }
@@ -58,6 +60,36 @@ export async function POST(request: NextRequest) {
     const status = msg === "Home care service not found" ? 404 : 500;
     return NextResponse.json(
       { success: false, error: "Failed to create home care booking", details: msg },
+      { status }
+    );
+  }
+}
+
+// PUT: Update a booking's status (staff check-in / on-the-way / completed,
+// or a patient/admin cancelling). Replaces the old staff panel flow that
+// only showed a toast on check-in/complete/mark-arrived and never touched
+// the database.
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { bookingId, status } = body ?? {};
+    const validStatuses = ["pending", "confirmed", "on_the_way", "in_progress", "completed", "cancelled"];
+
+    if (!bookingId || !status) {
+      return NextResponse.json({ success: false, error: "bookingId and status are required" }, { status: 400 });
+    }
+    if (!validStatuses.includes(status)) {
+      return NextResponse.json({ success: false, error: `status must be one of: ${validStatuses.join(", ")}` }, { status: 400 });
+    }
+
+    const booking = await homecareService.updateBookingStatus(bookingId, status);
+    return NextResponse.json({ booking });
+  } catch (error) {
+    console.error("Home care booking status update error:", error);
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    const status = msg.includes("tidak ditemukan") ? 404 : 500;
+    return NextResponse.json(
+      { success: false, error: "Failed to update booking status", details: msg },
       { status }
     );
   }

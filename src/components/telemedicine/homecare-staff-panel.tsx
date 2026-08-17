@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,93 +19,29 @@ import {
   Truck,
   History,
   ChevronRight,
-  Bell,
   Phone,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// Demo schedule data
-const demoSchedule = [
-  {
-    id: 'v1',
-    service: 'Perawatan Luka',
-    patient: 'Rina Wulandari',
-    address: 'Jl. Merdeka No. 45, Bandung',
-    time: '09:00',
-    endTime: '10:00',
-    status: 'confirmed',
-    notes: 'Luka bakar derajat 2, perlu perawatan rutin',
-  },
-  {
-    id: 'v2',
-    service: 'Infus',
-    patient: 'Ahmad Fauzi',
-    address: 'Jl. Asia Afrika No. 123, Bandung',
-    time: '11:00',
-    endTime: '12:00',
-    status: 'confirmed',
-    notes: 'Infus antibiotik, 100ml/jam',
-  },
-  {
-    id: 'v3',
-    service: 'Injeksi',
-    patient: 'Siti Aminah',
-    address: 'Jl. Braga No. 67, Bandung',
-    time: '14:00',
-    endTime: '14:30',
-    status: 'pending',
-    notes: 'Injeksi vitamin B12',
-  },
-  {
-    id: 'v4',
-    service: 'Fisioterapi',
-    patient: 'Bambang S.',
-    address: 'Jl. Dago No. 88, Bandung',
-    time: '16:00',
-    endTime: '17:00',
-    status: 'pending',
-    notes: 'Fisioterapi lutut pasca operasi',
-  },
-];
+// NOTE: the hardcoded `demoSchedule` / `demoHistory` arrays (4 fake visits
+// + 5 fake history entries, none of which existed in the database) have
+// been removed. Check-in / "Tandai Tiba" / "Selesai" used to only show a
+// toast and never persisted anything — a staff member's actual work status
+// was never recorded. Real bookings now load from
+// GET /api/homecare?type=bookings&staffId=..., and every action below
+// calls PUT /api/homecare to update the booking's real status in Supabase.
 
-// Demo history data
-const demoHistory = [
-  {
-    id: 'h1',
-    service: 'Perawatan Luka',
-    patient: 'Dewi Sartika',
-    date: '2025-01-09',
-    status: 'completed',
-  },
-  {
-    id: 'h2',
-    service: 'Kunjungan Dokter',
-    patient: 'Rina Wulandari',
-    date: '2025-01-08',
-    status: 'completed',
-  },
-  {
-    id: 'h3',
-    service: 'Infus',
-    patient: 'Ahmad Fauzi',
-    date: '2025-01-07',
-    status: 'completed',
-  },
-  {
-    id: 'h4',
-    service: 'Lab Sample',
-    patient: 'Bambang S.',
-    date: '2025-01-06',
-    status: 'completed',
-  },
-  {
-    id: 'h5',
-    service: 'Fisioterapi',
-    patient: 'Siti Aminah',
-    date: '2025-01-05',
-    status: 'completed',
-  },
-];
+interface StaffBooking {
+  id: string;
+  service: string;
+  patient: string;
+  patientPhone?: string;
+  address: string;
+  scheduledAt: string;
+  status: string;
+  notes?: string;
+}
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   pending: { label: 'Menunggu', className: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400' },
@@ -118,25 +54,93 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 
 export function HomeCareStaffPanel() {
   const { toast } = useToast();
+  const { currentUser } = useStore();
   const [activeVisit, setActiveVisit] = useState<string | null>(null);
-  const [checkedIn, setCheckedIn] = useState<Record<string, boolean>>({});
+  const [bookings, setBookings] = useState<StaffBooking[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  const handleCheckIn = (visitId: string) => {
-    setCheckedIn((prev) => ({ ...prev, [visitId]: true }));
-    setActiveVisit(visitId);
-    toast({ title: 'Check-in Berhasil', description: 'Anda telah check-in di lokasi pasien' });
+  const loadBookings = useCallback(async () => {
+    if (!currentUser?.id) { setBookingsLoading(false); return; }
+    setBookingsLoading(true);
+    try {
+      const res = await fetch(`/api/homecare?type=bookings&staffId=${encodeURIComponent(currentUser.id)}`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data?.bookings)) {
+        setBookings(
+          data.bookings.map((b: any) => ({
+            id: b.id,
+            service: b.service?.name ?? 'Home Care',
+            patient: b.patient?.name ?? 'Pasien',
+            patientPhone: b.patient?.phone,
+            address: b.address,
+            scheduledAt: b.scheduledAt,
+            status: b.status,
+            notes: b.notes,
+          }))
+        );
+      } else {
+        toast({ title: 'Gagal memuat jadwal', description: data?.details || 'Terjadi kesalahan.', variant: 'destructive' });
+      }
+    } catch (err) {
+      console.error('[homecare-staff-panel] loadBookings failed:', err);
+      toast({ title: 'Gagal memuat jadwal', description: 'Periksa koneksi Anda.', variant: 'destructive' });
+    } finally {
+      setBookingsLoading(false);
+    }
+  }, [currentUser?.id, toast]);
+
+  useEffect(() => {
+    loadBookings();
+  }, [loadBookings]);
+
+  const updateStatus = async (bookingId: string, status: string, successMessage: { title: string; description: string }) => {
+    setUpdatingId(bookingId);
+    try {
+      const res = await fetch('/api/homecare', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId, status }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.booking) {
+        throw new Error(data?.details || data?.error || 'Gagal memperbarui status');
+      }
+      setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status } : b)));
+      toast(successMessage);
+    } catch (err) {
+      toast({
+        title: 'Gagal memperbarui status',
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
-  const handleComplete = (visitId: string) => {
-    toast({ title: 'Kunjungan Selesai', description: 'Layanan home care telah diselesaikan' });
+  const handleCheckIn = (bookingId: string) => {
+    setActiveVisit(bookingId);
+    updateStatus(bookingId, 'on_the_way', { title: 'Check-in Berhasil', description: 'Anda telah check-in di lokasi pasien' });
+  };
+
+  const handleComplete = (bookingId: string) => {
+    updateStatus(bookingId, 'completed', { title: 'Kunjungan Selesai', description: 'Layanan home care telah diselesaikan' });
     setActiveVisit(null);
   };
 
-  const handleMarkArrived = () => {
-    toast({ title: 'Tiba di Lokasi', description: 'Anda telah menandai tiba di lokasi pasien' });
+  const handleMarkArrived = (bookingId: string) => {
+    updateStatus(bookingId, 'in_progress', { title: 'Tiba di Lokasi', description: 'Anda telah menandai tiba di lokasi pasien' });
   };
 
-  const currentVisit = demoSchedule.find((v) => v.id === activeVisit);
+  const todaySchedule = useMemo(() => {
+    const today = new Date().toDateString();
+    return bookings.filter((b) => new Date(b.scheduledAt).toDateString() === today && b.status !== 'completed' && b.status !== 'cancelled');
+  }, [bookings]);
+
+  const history = useMemo(() => bookings.filter((b) => b.status === 'completed'), [bookings]);
+
+  const currentVisit = bookings.find((v) => v.id === activeVisit);
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -165,16 +169,31 @@ export function HomeCareStaffPanel() {
                 {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
               </p>
             </div>
-            <Badge variant="secondary">{demoSchedule.length} kunjungan</Badge>
+            <Badge variant="secondary">{todaySchedule.length} kunjungan</Badge>
           </div>
 
+          {bookingsLoading ? (
+            <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" />
+              Memuat jadwal...
+            </div>
+          ) : todaySchedule.length === 0 ? (
+            <Card className="border-0 bg-muted/50">
+              <CardContent className="p-12 text-center">
+                <Calendar className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-muted-foreground font-medium">Tidak ada jadwal hari ini</p>
+              </CardContent>
+            </Card>
+          ) : (
           <div className="space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar">
-            {demoSchedule.map((visit, index) => {
+            {todaySchedule.map((visit, index) => {
               const sc = statusConfig[visit.status] || statusConfig.pending;
-              const isCompleted = checkedIn[visit.id];
+              const isArrived = visit.status === 'in_progress';
+              const isUpdating = updatingId === visit.id;
+              const visitTime = new Date(visit.scheduledAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
               return (
-                <Card key={visit.id} className={cn('border-0 hover:shadow-sm transition-shadow', isCompleted && 'opacity-60')}>
+                <Card key={visit.id} className={cn('border-0 hover:shadow-sm transition-shadow', isArrived && 'opacity-60')}>
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-3">
@@ -182,11 +201,11 @@ export function HomeCareStaffPanel() {
                         <div className="flex flex-col items-center">
                           <div className={cn(
                             'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white',
-                            isCompleted ? 'bg-emerald-500' : 'bg-primary'
+                            isArrived ? 'bg-emerald-500' : 'bg-primary'
                           )}>
-                            {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : index + 1}
+                            {isArrived ? <CheckCircle2 className="w-4 h-4" /> : index + 1}
                           </div>
-                          {index < demoSchedule.length - 1 && (
+                          {index < todaySchedule.length - 1 && (
                             <div className="w-0.5 h-8 bg-border mt-1" />
                           )}
                         </div>
@@ -205,7 +224,7 @@ export function HomeCareStaffPanel() {
                           </p>
                           <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                             <Clock className="w-3 h-3" />
-                            {visit.time} - {visit.endTime} WIB
+                            {visitTime} WIB
                           </p>
                           {visit.notes && (
                             <p className="text-xs text-muted-foreground mt-1 bg-muted/50 rounded p-1.5">
@@ -217,10 +236,10 @@ export function HomeCareStaffPanel() {
                     </div>
 
                     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border ml-11">
-                      {!isCompleted && visit.status === 'confirmed' && (
+                      {!isArrived && visit.status === 'confirmed' && (
                         <>
-                          <Button size="sm" onClick={() => handleCheckIn(visit.id)}>
-                            <MapPin className="w-3.5 h-3.5 mr-1" />
+                          <Button size="sm" onClick={() => handleCheckIn(visit.id)} disabled={isUpdating}>
+                            {isUpdating ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <MapPin className="w-3.5 h-3.5 mr-1" />}
                             Check-in
                           </Button>
                           <Button variant="outline" size="sm" onClick={() => setActiveVisit(visit.id)}>
@@ -229,9 +248,9 @@ export function HomeCareStaffPanel() {
                           </Button>
                         </>
                       )}
-                      {isCompleted && (
-                        <Button size="sm" variant="outline" onClick={() => handleComplete(visit.id)}>
-                          <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                      {isArrived && (
+                        <Button size="sm" variant="outline" onClick={() => handleComplete(visit.id)} disabled={isUpdating}>
+                          {isUpdating ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5 mr-1" />}
                           Selesai
                         </Button>
                       )}
@@ -240,12 +259,19 @@ export function HomeCareStaffPanel() {
                           Menunggu konfirmasi
                         </Badge>
                       )}
+                      {visit.status === 'on_the_way' && (
+                        <Button size="sm" variant="outline" onClick={() => handleMarkArrived(visit.id)} disabled={isUpdating}>
+                          {isUpdating ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <MapPin className="w-3.5 h-3.5 mr-1" />}
+                          Tandai Tiba
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
               );
             })}
           </div>
+          )}
         </TabsContent>
 
         {/* ==================== NAVIGASI TAB ==================== */}
@@ -270,7 +296,7 @@ export function HomeCareStaffPanel() {
                       </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                         <Clock className="w-3 h-3" />
-                        {currentVisit.time} - {currentVisit.endTime} WIB
+                        {new Date(currentVisit.scheduledAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
                       </p>
                     </div>
                   </div>
@@ -297,12 +323,12 @@ export function HomeCareStaffPanel() {
                         <Truck className="w-5 h-5 text-orange-600" />
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-orange-700 dark:text-orange-400">Estimasi Tiba</p>
-                        <p className="text-xs text-orange-600 dark:text-orange-500">15 menit (2.3 km)</p>
+                        <p className="text-sm font-semibold text-orange-700 dark:text-orange-400">Perjalanan Menuju Lokasi</p>
+                        <p className="text-xs text-orange-600 dark:text-orange-500">Tandai saat Anda tiba di lokasi pasien</p>
                       </div>
                     </div>
-                    <Button onClick={handleMarkArrived}>
-                      <MapPin className="w-4 h-4 mr-1" />
+                    <Button onClick={() => handleMarkArrived(currentVisit.id)} disabled={updatingId === currentVisit.id}>
+                      {updatingId === currentVisit.id ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <MapPin className="w-4 h-4 mr-1" />}
                       Tandai Tiba
                     </Button>
                   </div>
@@ -323,11 +349,14 @@ export function HomeCareStaffPanel() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="icon">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        disabled={!currentVisit.patientPhone}
+                        onClick={() => currentVisit.patientPhone && window.open(`tel:${currentVisit.patientPhone}`)}
+                        title={currentVisit.patientPhone || 'Nomor telepon pasien tidak tersedia'}
+                      >
                         <Phone className="w-4 h-4" />
-                      </Button>
-                      <Button variant="outline" size="icon">
-                        <Bell className="w-4 h-4" />
                       </Button>
                     </div>
                   </div>
@@ -343,7 +372,7 @@ export function HomeCareStaffPanel() {
                   Pilih kunjungan dari jadwal dan check-in untuk memulai navigasi
                 </p>
                 <Button variant="outline" size="sm" className="mt-4" onClick={() => {
-                  const firstConfirmed = demoSchedule.find((v) => v.status === 'confirmed');
+                  const firstConfirmed = todaySchedule.find((v) => v.status === 'confirmed');
                   if (firstConfirmed) {
                     setActiveVisit(firstConfirmed.id);
                   }
@@ -359,7 +388,12 @@ export function HomeCareStaffPanel() {
         <TabsContent value="history" className="space-y-4 mt-4">
           <h3 className="font-semibold text-foreground">Riwayat Kunjungan</h3>
 
-          {demoHistory.length === 0 ? (
+          {bookingsLoading ? (
+            <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" />
+              Memuat riwayat...
+            </div>
+          ) : history.length === 0 ? (
             <Card className="border-0 bg-muted/50">
               <CardContent className="p-12 text-center">
                 <History className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
@@ -368,7 +402,7 @@ export function HomeCareStaffPanel() {
             </Card>
           ) : (
             <div className="space-y-2 max-h-[70vh] overflow-y-auto custom-scrollbar">
-              {demoHistory.map((item) => (
+              {history.map((item) => (
                 <Card key={item.id} className="border-0 hover:shadow-sm transition-shadow">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
@@ -384,7 +418,7 @@ export function HomeCareStaffPanel() {
                       </div>
                       <div className="text-right">
                         <p className="text-xs text-muted-foreground">
-                          {new Date(item.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          {new Date(item.scheduledAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </p>
                         <Badge className={cn('text-[10px] border-0', statusConfig.completed.className)}>
                           Selesai
