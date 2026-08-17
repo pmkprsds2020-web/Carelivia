@@ -98,4 +98,6 @@ export { pharmacyService } from './pharmacyService';
 export type { PharmacyOrderRecord, PharmacyOrderItemInput } from './pharmacyService';
 export { revenueService } from './revenueService';
 export type { RevenueEntry, DoctorRevenueStats } from './revenueService';
+export { userService } from './userService';
+export type { UserProfileRecord } from './userService';
 export { adminDashboardService } from './adminDashboardService';

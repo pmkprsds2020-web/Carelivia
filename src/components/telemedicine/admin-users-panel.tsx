@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useStore } from '@/lib/store';
+import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,50 +24,68 @@ import {
   Trash2,
   CheckCircle2,
   XCircle,
+  Loader2,
 } from 'lucide-react';
 
-type UserRole = 'doctor' | 'patient' | 'admin' | 'pharmacist' | 'homecare_staff';
+// Real DB role values (see supabase/schema.sql: profiles.role check
+// constraint) — 'Apoteker'/'Petugas HC' aren't distinct profile roles in
+// the current schema (pharmacists/home-care staff are identified by having
+// a row in a separate table, not a dedicated `profiles.role` value), so
+// this list intentionally only covers what the database can actually say.
+type UserRole = 'Admin' | 'Dokter' | 'Perawat' | 'Caregiver' | 'Pasien';
 
 interface UserEntry {
   id: string;
   name: string;
   email: string;
-  phone: string;
+  phone?: string;
   role: UserRole;
   isActive: boolean;
   joinedAt: string;
 }
 
 const roleConfig: Record<UserRole, { label: string; icon: React.ElementType; color: string; bgColor: string }> = {
-  doctor: { label: 'Dokter', icon: Stethoscope, color: 'text-[#2D8C7A]', bgColor: 'bg-[#2D8C7A]/10' },
-  patient: { label: 'Pasien', icon: Heart, color: 'text-[#6DB8A8]', bgColor: 'bg-[#6DB8A8]/10' },
-  admin: { label: 'Admin', icon: Shield, color: 'text-[#D9B26F]', bgColor: 'bg-[#D9B26F]/10' },
-  pharmacist: { label: 'Apoteker', icon: Package, color: 'text-[#2D8C7A]', bgColor: 'bg-[#2D8C7A]/10' },
-  homecare_staff: { label: 'Petugas HC', icon: Truck, color: 'text-[#6DB8A8]', bgColor: 'bg-[#6DB8A8]/10' },
+  Dokter: { label: 'Dokter', icon: Stethoscope, color: 'text-[#2D8C7A]', bgColor: 'bg-[#2D8C7A]/10' },
+  Pasien: { label: 'Pasien', icon: Heart, color: 'text-[#6DB8A8]', bgColor: 'bg-[#6DB8A8]/10' },
+  Admin: { label: 'Admin', icon: Shield, color: 'text-[#D9B26F]', bgColor: 'bg-[#D9B26F]/10' },
+  Perawat: { label: 'Perawat', icon: Package, color: 'text-[#2D8C7A]', bgColor: 'bg-[#2D8C7A]/10' },
+  Caregiver: { label: 'Caregiver', icon: Truck, color: 'text-[#6DB8A8]', bgColor: 'bg-[#6DB8A8]/10' },
 };
-
-// Demo user data
-const demoUsers: UserEntry[] = [
-  { id: 'doc-sarah', name: 'dr. Sarah Wijaya', email: 'sarah@carelivia.id', phone: '081234567001', role: 'doctor', isActive: true, joinedAt: '2024-01-15' },
-  { id: 'doc-ahmad', name: 'dr. Ahmad Rizki', email: 'ahmad@carelivia.id', phone: '081234567002', role: 'doctor', isActive: true, joinedAt: '2024-02-20' },
-  { id: 'doc-lisa', name: 'dr. Lisa Permata', email: 'lisa@carelivia.id', phone: '081234567003', role: 'doctor', isActive: true, joinedAt: '2024-03-10' },
-  { id: 'doc-dewi', name: 'dr. Dewi Sartika', email: 'dewi@carelivia.id', phone: '081234567004', role: 'doctor', isActive: false, joinedAt: '2024-04-05' },
-  { id: 'doc-budi', name: 'drg. Budi Santoso', email: 'budi@carelivia.id', phone: '081234567005', role: 'doctor', isActive: true, joinedAt: '2024-05-12' },
-  { id: 'pat-rina', name: 'Rina Wulandari', email: 'rina@mail.com', phone: '081234567890', role: 'patient', isActive: true, joinedAt: '2024-01-20' },
-  { id: 'pat-doni', name: 'Doni Pratama', email: 'doni@mail.com', phone: '081234567891', role: 'patient', isActive: true, joinedAt: '2024-02-15' },
-  { id: 'pat-maya', name: 'Maya Sari', email: 'maya@mail.com', phone: '081234567892', role: 'patient', isActive: true, joinedAt: '2024-03-22' },
-  { id: 'pat-siti', name: 'Siti Aminah', email: 'siti@mail.com', phone: '081234567893', role: 'patient', isActive: false, joinedAt: '2024-04-10' },
-  { id: 'pat-joko', name: 'Joko Widodo', email: 'joko@mail.com', phone: '081234567894', role: 'patient', isActive: true, joinedAt: '2024-05-08' },
-  { id: 'admin-carelivia', name: 'Admin CareLivia', email: 'admin@carelivia.id', phone: '081200000000', role: 'admin', isActive: true, joinedAt: '2024-01-01' },
-  { id: 'pharm-1', name: 'Apoteker Andi', email: 'andi@carelivia.id', phone: '081234567010', role: 'pharmacist', isActive: true, joinedAt: '2024-03-01' },
-  { id: 'hc-1', name: 'Petugas Rina HC', email: 'rinahc@carelivia.id', phone: '081234567011', role: 'homecare_staff', isActive: true, joinedAt: '2024-04-01' },
-];
 
 export function AdminUsersPanel() {
   const { currentUser } = useStore();
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState<UserRole | 'all'>('all');
-  const [users, setUsers] = useState<UserEntry[]>(demoUsers);
+  // NOTE: the hardcoded `demoUsers` array (13 fake people, including the
+  // same placeholder "dr. Sarah Wijaya" found elsewhere in the app) has
+  // been removed. Real users now load from GET /api/admin/users, which
+  // reads the actual `profiles` table.
+  const [users, setUsers] = useState<UserEntry[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const loadUsers = useCallback(async () => {
+    setUsersLoading(true);
+    try {
+      const res = await fetch('/api/admin/users');
+      const data = await res.json();
+      if (res.ok && Array.isArray(data?.users)) {
+        setUsers(data.users);
+      } else {
+        toast({ title: 'Gagal memuat pengguna', description: data?.details || 'Terjadi kesalahan.', variant: 'destructive' });
+      }
+    } catch (err) {
+      console.error('[admin-users-panel] loadUsers failed:', err);
+      toast({ title: 'Gagal memuat pengguna', description: 'Periksa koneksi Anda.', variant: 'destructive' });
+    } finally {
+      setUsersLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
 
   const filteredUsers = useMemo(() => {
     return users.filter(user => {
@@ -85,10 +104,32 @@ export function AdminUsersPanel() {
     return { total, active, byRole };
   }, [users]);
 
-  const toggleUserStatus = (userId: string) => {
-    setUsers(prev => prev.map(u => 
-      u.id === userId ? { ...u, isActive: !u.isActive } : u
-    ));
+  const toggleUserStatus = async (userId: string) => {
+    setTogglingId(userId);
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: userId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.user) {
+        throw new Error(data?.details || data?.error || 'Gagal mengubah status');
+      }
+      setUsers(prev => prev.map(u => (u.id === userId ? data.user : u)));
+      toast({
+        title: data.user.isActive ? 'Pengguna Diaktifkan' : 'Pengguna Dinonaktifkan',
+        description: data.user.name,
+      });
+    } catch (err) {
+      toast({
+        title: 'Gagal mengubah status',
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        variant: 'destructive',
+      });
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   return (
@@ -101,7 +142,11 @@ export function AdminUsersPanel() {
             Kelola akun dokter, pasien, dan staf pada platform CareLivia
           </p>
         </div>
-        <Button className="gap-2 bg-[#2D8C7A] hover:bg-[#1F6B5C] shrink-0">
+        <Button
+          className="gap-2 bg-[#2D8C7A] hover:bg-[#1F6B5C] shrink-0"
+          disabled
+          title="Pembuatan pengguna baru lewat panel ini belum tersedia — gunakan halaman registrasi/login untuk membuat akun."
+        >
           <UserPlus className="w-4 h-4" />
           Tambah Pengguna
         </Button>
@@ -142,7 +187,7 @@ export function AdminUsersPanel() {
                 <Stethoscope className="w-5 h-5 text-[#2D8C7A]" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-foreground">{stats.byRole('doctor')}</p>
+                <p className="text-2xl font-bold text-foreground">{stats.byRole('Dokter')}</p>
                 <p className="text-xs text-muted-foreground">Dokter</p>
               </div>
             </div>
@@ -155,7 +200,7 @@ export function AdminUsersPanel() {
                 <Heart className="w-5 h-5 text-[#6DB8A8]" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-foreground">{stats.byRole('patient')}</p>
+                <p className="text-2xl font-bold text-foreground">{stats.byRole('Pasien')}</p>
                 <p className="text-xs text-muted-foreground">Pasien</p>
               </div>
             </div>
@@ -211,7 +256,12 @@ export function AdminUsersPanel() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="divide-y divide-border">
-            {filteredUsers.length === 0 ? (
+            {usersLoading ? (
+              <div className="p-8 text-center">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">Memuat pengguna...</p>
+              </div>
+            ) : filteredUsers.length === 0 ? (
               <div className="p-8 text-center">
                 <Users className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
                 <p className="text-sm text-muted-foreground">Tidak ada pengguna ditemukan</p>
@@ -251,7 +301,7 @@ export function AdminUsersPanel() {
                           <Mail className="w-3 h-3" /> {user.email}
                         </span>
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Phone className="w-3 h-3" /> {user.phone}
+                          <Phone className="w-3 h-3" /> {user.phone || '-'}
                         </span>
                       </div>
                     </div>
@@ -263,19 +313,22 @@ export function AdminUsersPanel() {
                         size="icon"
                         className="h-8 w-8"
                         onClick={() => toggleUserStatus(user.id)}
+                        disabled={togglingId === user.id}
                         title={user.isActive ? 'Nonaktifkan' : 'Aktifkan'}
                       >
-                        {user.isActive ? (
+                        {togglingId === user.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : user.isActive ? (
                           <CheckCircle2 className="w-4 h-4 text-green-600" />
                         ) : (
                           <XCircle className="w-4 h-4 text-red-400" />
                         )}
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit">
-                        <Edit2 className="w-4 h-4 text-muted-foreground" />
+                      <Button variant="ghost" size="icon" className="h-8 w-8" disabled title="Edit profil pengguna belum tersedia di panel ini">
+                        <Edit2 className="w-4 h-4 text-muted-foreground/40" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Hapus">
-                        <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
+                      <Button variant="ghost" size="icon" className="h-8 w-8" disabled title="Hapus akun belum tersedia di panel ini — nonaktifkan sebagai gantinya">
+                        <Trash2 className="w-4 h-4 text-muted-foreground/40" />
                       </Button>
                     </div>
                   </motion.div>
