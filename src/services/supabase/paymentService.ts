@@ -10,6 +10,7 @@
 //     a second one)
 // ───────────────────────────────────────────────────────────────────────────
 import { supabase, safeQuery, safeInsert, isValidUuid } from './_common';
+import { revenueService } from './revenueService';
 
 export type PaymentReferenceType = 'pharmacy_order' | 'homecare_booking' | 'consultation';
 export type PaymentStatus = 'pending' | 'success' | 'failed' | 'refunded';
@@ -154,7 +155,19 @@ export const paymentService = {
     if (error) throw new Error(error);
 
     if (updated) {
-      return { payment: fromDb(updated), alreadyPaid: false };
+      const paid = fromDb(updated);
+      // Doctor/provider revenue is recorded here, right after payment
+      // actually succeeds — never from "consultation completed" alone, and
+      // never for pharmacy_order (see revenueService for why). Failures
+      // here are logged but don't fail the payment confirmation itself —
+      // the payment genuinely succeeded either way.
+      await revenueService.recordForPayment({
+        id: paid.id,
+        referenceType: paid.referenceType,
+        referenceId: paid.referenceId,
+        amount: paid.amount,
+      }).catch((e) => console.error('[paymentService.markPaid] revenue recording failed:', e));
+      return { payment: paid, alreadyPaid: false };
     }
 
     // 0 rows updated: either it's already paid (race with another click),

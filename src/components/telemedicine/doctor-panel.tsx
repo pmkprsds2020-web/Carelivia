@@ -38,12 +38,12 @@ import {
   Plus,
   Trash2,
   ChevronRight,
-  Activity,
   CheckCircle2,
   AlertCircle,
   XCircle,
   ArrowRight,
   Megaphone,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -98,15 +98,12 @@ interface ScheduleSlot {
   isActive: boolean;
 }
 
-// Demo earnings data
-const monthlyEarnings = [
-  { month: 'Jan', amount: 3200000 },
-  { month: 'Feb', amount: 2800000 },
-  { month: 'Mar', amount: 4100000 },
-  { month: 'Apr', amount: 3600000 },
-  { month: 'Mei', amount: 4500000 },
-  { month: 'Jun', amount: 3900000 },
-];
+// NOTE: The hardcoded `monthlyEarnings` demo array (fake "Jan Rp3.200.000"
+// etc. and a fake "+12% dari bulan lalu" indicator) has been removed. Real
+// earnings now load from GET /api/doctors/revenue?doctorId=..., which is
+// only ever populated by an actually-successful payment recorded through
+// revenueService — see supabase/migration_revenue_ledger.sql for the full
+// rationale, including why pharmacy sales are excluded from doctor revenue.
 
 export function DoctorPanel() {
   const {
@@ -117,6 +114,8 @@ export function DoctorPanel() {
   } = useStore();
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [revenueStats, setRevenueStats] = useState<{ todayNet: number; monthNet: number; totalNet: number; pendingNet: number; entries: any[] } | null>(null);
+  const [revenueLoading, setRevenueLoading] = useState(true);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([
     {
       id: 'rx-1',
@@ -210,10 +209,31 @@ export function DoctorPanel() {
   const activeConsultations = consultations.filter(c => c.status === 'active' || c.status === 'waiting');
   const completedConsultations = consultations.filter(c => c.status === 'completed');
   const totalPatients = new Set(completedConsultations.map(c => c.patientId)).size;
-  const monthlyEarning = monthlyEarnings[monthlyEarnings.length - 1]?.amount || 0;
+  const monthlyEarning = revenueStats?.monthNet ?? 0;
   const avgRating = doctors.length > 0
     ? (doctors.reduce((sum, d) => sum + (d.doctorProfile?.rating || 0), 0) / doctors.length).toFixed(1)
     : '4.8';
+
+  // Load REAL earnings — see the note above monthlyEarnings' removal.
+  useEffect(() => {
+    if (!currentUser?.id) { setRevenueLoading(false); return; }
+    let cancelled = false;
+    (async () => {
+      setRevenueLoading(true);
+      try {
+        const res = await fetch(`/api/doctors/revenue?doctorId=${encodeURIComponent(currentUser.id)}`);
+        const data = await res.json();
+        if (!cancelled && res.ok && data?.stats) {
+          setRevenueStats(data.stats);
+        }
+      } catch (err) {
+        console.error('[doctor-panel] failed to load revenue stats:', err);
+      } finally {
+        if (!cancelled) setRevenueLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
 
   const addMedicineItem = () => {
     setMedicineItems([...medicineItems, { medicineName: '', dosage: '', quantity: 1, frequency: '', duration: '', instructions: '' }]);
@@ -849,105 +869,84 @@ export function DoctorPanel() {
 
         {/* Tab 6: Pendapatan */}
         <TabsContent value="pendapatan" className="space-y-6 mt-4">
+          {revenueLoading ? (
+            <Card>
+              <CardContent className="flex items-center justify-center py-16 text-muted-foreground text-sm">
+                <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                Memuat data pendapatan...
+              </CardContent>
+            </Card>
+          ) : (
+          <>
           {/* Earnings Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Card>
               <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Hari Ini</p>
+                <p className="text-2xl font-bold text-primary mt-1">Rp {formatCurrency(revenueStats?.todayNet ?? 0)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground">Bulan Ini</p>
-                <p className="text-2xl font-bold text-primary mt-1">Rp {formatCurrency(monthlyEarning)}</p>
-                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                  <Activity className="w-3 h-3" />
-                  +12% dari bulan lalu
-                </p>
+                <p className="text-2xl font-bold mt-1">Rp {formatCurrency(revenueStats?.monthNet ?? 0)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground">Total Pendapatan</p>
-                <p className="text-2xl font-bold mt-1">
-                  Rp {formatCurrency(monthlyEarnings.reduce((sum, m) => sum + m.amount, 0))}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">6 bulan terakhir</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">Rata-rata / Bulan</p>
-                <p className="text-2xl font-bold mt-1">
-                  Rp {formatCurrency(Math.round(monthlyEarnings.reduce((sum, m) => sum + m.amount, 0) / monthlyEarnings.length))}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">Konsultasi & home care</p>
+                <p className="text-2xl font-bold mt-1">Rp {formatCurrency(revenueStats?.totalNet ?? 0)}</p>
+                <p className="text-xs text-muted-foreground mt-1">Dari pembayaran yang sudah lunas</p>
               </CardContent>
             </Card>
           </div>
 
-          {/* Monthly Earnings Chart (Simple bar chart) */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">Pendapatan Bulanan</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {monthlyEarnings.map((item) => {
-                  const maxAmount = Math.max(...monthlyEarnings.map(m => m.amount));
-                  const percentage = (item.amount / maxAmount) * 100;
-                  return (
-                    <div key={item.month} className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground w-8 shrink-0">{item.month}</span>
-                      <div className="flex-1 h-6 bg-muted/50 rounded-md overflow-hidden">
-                        <div
-                          className="h-full bg-primary/80 rounded-md flex items-center px-2 transition-all duration-500"
-                          style={{ width: `${percentage}%` }}
-                        >
-                          <span className="text-[10px] text-primary-foreground font-medium whitespace-nowrap">
-                            Rp {formatCurrency(item.amount)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
+          {(revenueStats?.pendingNet ?? 0) > 0 && (
+            <Card className="border-amber-200 bg-amber-50/50 dark:bg-amber-950/20">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">Menunggu Pembayaran</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Belum dihitung sebagai pendapatan sampai pasien membayar</p>
+                </div>
+                <p className="text-lg font-bold text-amber-700 dark:text-amber-400">Rp {formatCurrency(revenueStats?.pendingNet ?? 0)}</p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Transaction List */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold">Riwayat Transaksi</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-              {consultations.filter(c => c.status === 'completed').slice(0, 10).map((consultation) => {
-                const fee = consultation.doctor?.doctorProfile?.consultationFee || 75000;
-                return (
-                  <div key={consultation.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center shrink-0">
-                        <DollarSign className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium truncate">
-                          Konsultasi - {consultation.patient?.name || 'Pasien'}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground">
-                          {new Date(consultation.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </p>
-                      </div>
+            <CardContent className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
+              {(revenueStats?.entries ?? []).slice(0, 20).map((entry) => (
+                <div key={entry.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center shrink-0">
+                      <DollarSign className="w-4 h-4" />
                     </div>
-                    <span className="text-sm font-semibold text-green-600 shrink-0">
-                      +Rp {formatCurrency(fee)}
-                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium truncate">{entry.description}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {new Date(entry.occurredAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                    </div>
                   </div>
-                );
-              })}
-              {consultations.filter(c => c.status === 'completed').length === 0 && (
+                  <span className="text-sm font-semibold text-green-600 shrink-0">
+                    +Rp {formatCurrency(entry.netAmount)}
+                  </span>
+                </div>
+              ))}
+              {(revenueStats?.entries.length ?? 0) === 0 && (
                 <div className="text-center py-6">
                   <DollarSign className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Belum ada transaksi</p>
+                  <p className="text-sm text-muted-foreground">Belum ada transaksi yang lunas</p>
                 </div>
               )}
             </CardContent>
           </Card>
+          </>
+          )}
         </TabsContent>
       </Tabs>
     </div>

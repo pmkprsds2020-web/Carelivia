@@ -96,4 +96,6 @@ export { paymentService } from './paymentService';
 export type { PaymentRecord, PaymentReferenceType, PaymentStatus } from './paymentService';
 export { pharmacyService } from './pharmacyService';
 export type { PharmacyOrderRecord, PharmacyOrderItemInput } from './pharmacyService';
+export { revenueService } from './revenueService';
+export type { RevenueEntry, DoctorRevenueStats } from './revenueService';
 export { adminDashboardService } from './adminDashboardService';
