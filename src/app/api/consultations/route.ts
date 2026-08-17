@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { consultationService, doctorService, paymentService } from "@/services/supabase";
+import { consultationService, doctorService, paymentService, type PaymentRecord } from "@/services/supabase";
 
 // GET: List consultations with optional filters (Supabase-backed)
 export async function GET(request: NextRequest) {
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     // the consultation starts, instead of never existing at all. Once
     // paid, this is what makes real money show up in the doctor's
     // Pendapatan tab via revenueService.
-    let payment = null;
+    let payment: PaymentRecord | null = null;
     try {
       const doctorRecord = await doctorService.getById(doctorProfile);
       const fee = doctorRecord?.doctorProfile?.consultationFee ?? 0;
