@@ -162,12 +162,20 @@ export const patientService = {
 
   async update(id: string, data: Partial<PalliativePatientInfo>): Promise<PalliativePatientInfo | null> {
     const payload = toDb(data);
+    // .maybeSingle() instead of .single(): when RLS or a stale/mismatched
+    // `id` means 0 rows were actually updated, .single() used to throw the
+    // opaque Postgrest error "Cannot coerce the result to a single JSON
+    // object" (PGRST116). We now detect that explicitly and raise a message
+    // that actually explains what happened.
     const { data: row, error } = await safeInsert<any>(
-      supabase.from('patients').update(payload).eq('id', id).select().single(),
+      supabase.from('patients').update(payload).eq('id', id).select().maybeSingle(),
       'patientService.update'
     );
     if (error) throw new Error(error);
-    return row ? fromDb(row) : null;
+    if (!row) {
+      throw new Error(`Update pasien gagal: tidak ada baris dengan id=${id} yang cocok (kemungkinan id lokal belum tersinkron ke Supabase, atau data sudah dihapus).`);
+    }
+    return fromDb(row);
   },
 
   async remove(id: string): Promise<boolean> {

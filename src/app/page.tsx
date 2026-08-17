@@ -68,8 +68,12 @@ export default function TelemedicineApp() {
   // Load data from API in the background (non-blocking)
   const loadDataInBackground = useCallback(async () => {
     try {
-      // Seed data first (ignore errors)
-      await fetch('/api/seed').catch(() => {});
+      // Seed data first (dev-only — /api/seed itself already 403s in
+      // production, but calling it unconditionally on every page load spams
+      // the console with a 403 for nothing on prod).
+      if (process.env.NODE_ENV !== 'production') {
+        await fetch('/api/seed').catch(() => {});
+      }
       
       // Load all data in parallel (ignore individual failures)
       const results = await Promise.allSettled([

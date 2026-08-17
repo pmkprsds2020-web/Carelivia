@@ -7,10 +7,25 @@ import { notificationService } from './notificationService';
 export interface HomecareServiceRecord {
   id: string;
   name: string;
+  category: string;
   description?: string;
   price: number;
   durationMinutes?: number;
   isActive: boolean;
+  displayOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface HomecareServiceInput {
+  name: string;
+  category: string;
+  description?: string;
+  price: number;
+  durationMinutes?: number;
+  isActive?: boolean;
+  displayOrder?: number;
+  updatedBy?: string;
 }
 
 export interface HomecareBookingRecord {
@@ -34,10 +49,14 @@ function serviceFromDb(row: any): HomecareServiceRecord {
   return {
     id: row.id,
     name: row.name,
+    category: row.category ?? 'Lainnya',
     description: row.description ?? undefined,
     price: Number(row.price ?? 0),
     durationMinutes: row.duration_minutes ?? undefined,
     isActive: row.is_active ?? true,
+    displayOrder: row.display_order ?? 0,
+    createdAt: row.created_at ?? undefined,
+    updatedAt: row.updated_at ?? undefined,
   };
 }
 
@@ -61,13 +80,116 @@ function bookingFromDb(row: any): HomecareBookingRecord {
 }
 
 export const homecareService = {
+  /** Public/patient-facing: only ACTIVE services, in display order. */
   async getServices(): Promise<HomecareServiceRecord[]> {
     const rows = await safeQuery(
-      supabase.from('homecare_services').select('*').eq('is_active', true).order('name', { ascending: true }),
+      supabase.from('homecare_services').select('*').eq('is_active', true).order('display_order', { ascending: true }).order('name', { ascending: true }),
       [] as any[],
       'homecareService.getServices'
     );
     return (rows as any[]).map(serviceFromDb);
+  },
+
+  /** Admin-facing: ALL services (active + inactive), for the management table. */
+  async getAllServicesForAdmin(): Promise<HomecareServiceRecord[]> {
+    const rows = await safeQuery(
+      supabase.from('homecare_services').select('*').order('display_order', { ascending: true }).order('name', { ascending: true }),
+      [] as any[],
+      'homecareService.getAllServicesForAdmin'
+    );
+    return (rows as any[]).map(serviceFromDb);
+  },
+
+  /** Admin: create a new master home care service. Source of truth for the patient catalog. */
+  async createService(input: HomecareServiceInput): Promise<HomecareServiceRecord | null> {
+    const { data: row, error } = await safeInsert<any>(
+      supabase
+        .from('homecare_services')
+        .insert({
+          name: input.name,
+          category: input.category,
+          description: input.description ?? null,
+          price: input.price,
+          duration_minutes: input.durationMinutes ?? null,
+          is_active: input.isActive ?? true,
+          display_order: input.displayOrder ?? 0,
+          created_by: input.updatedBy ?? null,
+          updated_by: input.updatedBy ?? null,
+        })
+        .select()
+        .single(),
+      'homecareService.createService'
+    );
+    if (error) throw new Error(error);
+    return row ? serviceFromDb(row) : null;
+  },
+
+  /** Admin: update name/price/etc. Existing bookings keep their own price snapshot, unaffected. */
+  async updateService(id: string, input: Partial<HomecareServiceInput>): Promise<HomecareServiceRecord | null> {
+    const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (input.name !== undefined) payload.name = input.name;
+    if (input.category !== undefined) payload.category = input.category;
+    if (input.description !== undefined) payload.description = input.description;
+    if (input.price !== undefined) payload.price = input.price;
+    if (input.durationMinutes !== undefined) payload.duration_minutes = input.durationMinutes;
+    if (input.isActive !== undefined) payload.is_active = input.isActive;
+    if (input.displayOrder !== undefined) payload.display_order = input.displayOrder;
+    if (input.updatedBy !== undefined) payload.updated_by = input.updatedBy;
+
+    // .maybeSingle() instead of .single(): if `id` doesn't match any row
+    // (stale id, RLS denial, etc.) this returns { data: null, error: null }
+    // instead of throwing the opaque "Cannot coerce the result to a single
+    // JSON object" error — the caller can then say clearly "not found"
+    // rather than showing a generic Supabase error to the admin.
+    const { data: row, error } = await safeInsert<any>(
+      supabase.from('homecare_services').update(payload).eq('id', id).select().maybeSingle(),
+      'homecareService.updateService'
+    );
+    if (error) throw new Error(error);
+    if (!row) throw new Error('Layanan tidak ditemukan (mungkin sudah dihapus oleh admin lain).');
+    return serviceFromDb(row);
+  },
+
+  /**
+   * Admin: delete a service.
+   * - If it has never been used in a booking → hard delete.
+   * - If it HAS been used → soft delete (is_active=false) so historical
+   *   bookings/invoices keep showing the real service name/price.
+   * Returns which kind of delete actually happened.
+   */
+  async deleteService(id: string): Promise<{ hardDeleted: boolean }> {
+    let inUse = false;
+    try {
+      const { count, error: countError } = await supabase
+        .from('homecare_bookings')
+        .select('id', { head: true, count: 'exact' })
+        .eq('service_id', id);
+      if (countError) {
+        console.warn('[Supabase:homecareService.deleteService(usage check)]', countError.message);
+      } else {
+        inUse = (count ?? 0) > 0;
+      }
+    } catch (e: any) {
+      console.warn('[Supabase:homecareService.deleteService(usage check)] threw', e?.message ?? e);
+    }
+
+    if (inUse) {
+      const { error } = await safeInsert<any>(
+        supabase.from('homecare_services').update({ is_active: false, updated_at: new Date().toISOString() }).eq('id', id).select().maybeSingle(),
+        'homecareService.deleteService(soft)'
+      );
+      if (error) throw new Error(error);
+      return { hardDeleted: false };
+    }
+
+    try {
+      const { error } = await supabase.from('homecare_services').delete().eq('id', id);
+      if (error) throw new Error(error.message);
+    } catch (e: any) {
+      console.error('[Supabase:homecareService.deleteService(hard)]', e?.message ?? e);
+      throw new Error(e?.message ?? 'Gagal menghapus layanan');
+    }
+    return { hardDeleted: true };
   },
 
   async getBookings(filters: { status?: string; patientId?: string } = {}): Promise<HomecareBookingRecord[]> {
@@ -98,7 +220,7 @@ export const homecareService = {
     notes?: string;
   }): Promise<HomecareBookingRecord | null> {
     const service = await safeQuery(
-      supabase.from('homecare_services').select('*').eq('id', input.serviceId).single(),
+      supabase.from('homecare_services').select('*').eq('id', input.serviceId).eq('is_active', true).maybeSingle(),
       null as any,
       'homecareService.createBooking(service lookup)'
     );
@@ -116,6 +238,11 @@ export const homecareService = {
           longitude: input.longitude ?? null,
           notes: input.notes ?? null,
           status: 'pending',
+          // Price/name SNAPSHOT at the moment of booking — if an admin later
+          // edits this service's name or price, this booking (and its
+          // invoice) keeps showing what the patient actually agreed to pay.
+          service_name_snapshot: (service as any).name,
+          unit_price: (service as any).price,
         })
         .select('*, patient_profile:profiles!homecare_bookings_patient_id_fkey(full_name), staff_profile:homecare_staff(profiles(full_name)), homecare_services(*)')
         .single(),

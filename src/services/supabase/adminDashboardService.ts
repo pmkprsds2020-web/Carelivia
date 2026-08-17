@@ -8,6 +8,21 @@
 // missing pieces just come back as 0 / [].
 // ───────────────────────────────────────────────────────────────────────────
 import { supabase } from './_common';
+import { getSupabaseAdmin } from '@/supabaseClient';
+
+// This endpoint is admin-only and needs to see ALL rows across profiles,
+// payments, etc. — not just what the anon-key/RLS-restricted client can see.
+// Previously this used the plain anon `supabase` client even on the server,
+// so RLS silently filtered out rows the caller had no session for, and every
+// count came back 0 (masked by safeCount's error-swallowing below). We now
+// prefer the service-role admin client (bypasses RLS) and only fall back to
+// the anon client if SUPABASE_SERVICE_ROLE_KEY isn't configured — in which
+// case results may legitimately be incomplete, which is at least explainable
+// rather than a silent, confusing "0".
+async function getDbClient() {
+  const admin = await getSupabaseAdmin();
+  return admin ?? supabase;
+}
 
 async function safeCount(builder: any, label: string): Promise<number> {
   try {
@@ -39,6 +54,7 @@ async function safeRows<T>(builder: any, label: string): Promise<T[]> {
 
 export const adminDashboardService = {
   async getStats() {
+    const db = await getDbClient();
     const [
       totalPatients,
       totalDoctors,
@@ -51,13 +67,13 @@ export const adminDashboardService = {
       doctorProfiles,
       topDoctorsRaw,
     ] = await Promise.all([
-      safeCount(supabase.from('profiles').select('*', { head: true, count: 'exact' }).eq('role', 'Pasien'), 'adminDashboard.totalPatients'),
-      safeCount(supabase.from('profiles').select('*', { head: true, count: 'exact' }).eq('role', 'Dokter'), 'adminDashboard.totalDoctors'),
-      safeCount(supabase.from('consultations').select('*', { head: true, count: 'exact' }), 'adminDashboard.totalConsultations'),
-      safeCount(supabase.from('orders').select('*', { head: true, count: 'exact' }), 'adminDashboard.totalOrders'),
-      safeCount(supabase.from('homecare_bookings').select('*', { head: true, count: 'exact' }), 'adminDashboard.totalHomeCareBookings'),
+      safeCount(db.from('profiles').select('*', { head: true, count: 'exact' }).eq('role', 'Pasien'), 'adminDashboard.totalPatients'),
+      safeCount(db.from('profiles').select('*', { head: true, count: 'exact' }).eq('role', 'Dokter'), 'adminDashboard.totalDoctors'),
+      safeCount(db.from('consultations').select('*', { head: true, count: 'exact' }), 'adminDashboard.totalConsultations'),
+      safeCount(db.from('orders').select('*', { head: true, count: 'exact' }), 'adminDashboard.totalOrders'),
+      safeCount(db.from('homecare_bookings').select('*', { head: true, count: 'exact' }), 'adminDashboard.totalHomeCareBookings'),
       safeRows(
-        supabase
+        db
           .from('consultations')
           .select('*, patient_profile:profiles!consultations_patient_id_fkey(id, full_name), doctor_profiles(specialization, profiles(id, full_name))')
           .order('created_at', { ascending: false })
@@ -65,7 +81,7 @@ export const adminDashboardService = {
         'adminDashboard.recentConsultations'
       ),
       safeRows(
-        supabase
+        db
           .from('payments')
           .select('*, profiles(id, full_name, email)')
           .order('created_at', { ascending: false })
@@ -73,18 +89,18 @@ export const adminDashboardService = {
         'adminDashboard.recentPayments'
       ),
       safeRows<{ created_at: string }>(
-        supabase
+        db
           .from('consultations')
           .select('created_at')
           .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth() - 5, 1).toISOString()),
         'adminDashboard.consultationsLast6mo'
       ),
       safeRows<{ specialization: string }>(
-        supabase.from('doctor_profiles').select('specialization'),
+        db.from('doctor_profiles').select('specialization'),
         'adminDashboard.doctorProfiles'
       ),
       safeRows<{ doctor_id: string }>(
-        supabase.from('consultations').select('doctor_id'),
+        db.from('consultations').select('doctor_id'),
         'adminDashboard.topDoctorsRaw'
       ),
     ]);
@@ -92,7 +108,7 @@ export const adminDashboardService = {
     // Revenue: sum of successful payments (fetched client-side since count-only
     // queries can't aggregate a sum).
     const successfulPayments = await safeRows<{ amount: number }>(
-      supabase.from('payments').select('amount').eq('status', 'success'),
+      db.from('payments').select('amount').eq('status', 'success'),
       'adminDashboard.successfulPayments'
     );
     const totalRevenue = successfulPayments.reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
@@ -135,7 +151,7 @@ export const adminDashboardService = {
     const topDoctors = await Promise.all(
       topDoctorIds.map(async (doctorId) => {
         const rows = await safeRows<any>(
-          supabase.from('doctor_profiles').select('*, profiles(full_name)').eq('id', doctorId).limit(1),
+          db.from('doctor_profiles').select('*, profiles(full_name)').eq('id', doctorId).limit(1),
           'adminDashboard.topDoctorProfile'
         );
         const profile = rows[0];
@@ -161,6 +177,9 @@ export const adminDashboardService = {
       monthlyStats,
       doctorSpecializationDistribution,
       topDoctors,
+      // Lets the UI show a warning banner instead of silently trusting
+      // possibly-incomplete numbers when the service-role key isn't set.
+      usingServiceRole: db !== supabase,
     };
   },
 };

@@ -61,9 +61,11 @@ interface HomeCareServiceItem {
   id: string;
   name: string;
   category: string;
+  description?: string;
   price: number;
   duration: number;
   isActive: boolean;
+  displayOrder: number;
 }
 
 interface DoctorItem {
@@ -101,17 +103,12 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 // ─── Demo Data ───────────────────────────────────────────────────────────────
-
-const INITIAL_HOME_CARE_SERVICES: HomeCareServiceItem[] = [
-  { id: 'hc1', name: 'Perawatan Luka', category: 'perawatan_luka', price: 150000, duration: 45, isActive: true },
-  { id: 'hc2', name: 'Pemasangan Infus', category: 'infus', price: 200000, duration: 30, isActive: true },
-  { id: 'hc3', name: 'Injeksi/Injeksi IM', category: 'injeksi', price: 100000, duration: 20, isActive: true },
-  { id: 'hc4', name: 'Pemeriksaan Lansia', category: 'pemeriksaan_lansia', price: 175000, duration: 60, isActive: true },
-  { id: 'hc5', name: 'Kunjungan Dokter', category: 'kunjungan_dokter', price: 350000, duration: 45, isActive: true },
-  { id: 'hc6', name: 'Kunjungan Bidan', category: 'kunjungan_bidan', price: 250000, duration: 45, isActive: true },
-  { id: 'hc7', name: 'Pengambilan Sampel Lab', category: 'lab_sample', price: 125000, duration: 30, isActive: true },
-  { id: 'hc8', name: 'Fisioterapi', category: 'fisioterapi', price: 300000, duration: 60, isActive: true },
-];
+// NOTE: `INITIAL_HOME_CARE_SERVICES` (the old hardcoded 8-item array) has been
+// removed. It never touched the database — editing/adding "worked" visually
+// but nothing reached Supabase, which is why the patient Home Care page
+// always showed "Belum ada layanan tersedia". Real services now load from
+// GET /api/admin/homecare-services (see loadHomeCareServices below), which
+// reads the same `homecare_services` table the patient page reads from.
 
 const INITIAL_DOCTORS: DoctorItem[] = [
   { id: 'doc1', name: 'dr. Sarah Wijaya', specialization: 'Umum', hospital: 'RS Medika Utama', consultationFee: 75000, rating: 4.8, isOnline: true, isAvailable: true },
@@ -152,7 +149,8 @@ export function AdminPricingPanel() {
   const { currentUser } = useStore();
 
   // Data state
-  const [homeCareServices, setHomeCareServices] = useState<HomeCareServiceItem[]>(INITIAL_HOME_CARE_SERVICES);
+  const [homeCareServices, setHomeCareServices] = useState<HomeCareServiceItem[]>([]);
+  const [hcLoading, setHcLoading] = useState(true);
   const [doctors, setDoctors] = useState<DoctorItem[]>(INITIAL_DOCTORS);
   const [priceHistory, setPriceHistory] = useState<PriceChangeRecord[]>([]);
 
@@ -164,9 +162,21 @@ export function AdminPricingPanel() {
 
   // Dialog state
   const [hcEditOpen, setHcEditOpen] = useState(false);
+  const [hcAddOpen, setHcAddOpen] = useState(false);
+  const [hcDeleteConfirmId, setHcDeleteConfirmId] = useState<string | null>(null);
+  const [hcDeleting, setHcDeleting] = useState(false);
   const [docEditOpen, setDocEditOpen] = useState(false);
   const [editingService, setEditingService] = useState<HomeCareServiceItem | null>(null);
   const [editingDoctor, setEditingDoctor] = useState<DoctorItem | null>(null);
+
+  // Add-service form state (separate from edit form to avoid cross-talk)
+  const [newSvcName, setNewSvcName] = useState('');
+  const [newSvcCategory, setNewSvcCategory] = useState('');
+  const [newSvcPrice, setNewSvcPrice] = useState('');
+  const [newSvcDuration, setNewSvcDuration] = useState('');
+  const [newSvcDescription, setNewSvcDescription] = useState('');
+  const [newSvcError, setNewSvcError] = useState('');
+  const [newSvcSaving, setNewSvcSaving] = useState(false);
 
   // Form state
   const [editPrice, setEditPrice] = useState('');
@@ -258,6 +268,47 @@ export function AdminPricingPanel() {
     return Array.from(specs).sort();
   }, [doctors]);
 
+  // ─── Load real home care services from Supabase (via admin API) ─────────
+  // This is what fixes "Belum ada layanan tersedia" on the patient side —
+  // both admin and patient now read/write the same `homecare_services`
+  // table instead of admin editing a local-only array.
+  const loadHomeCareServices = useCallback(async () => {
+    setHcLoading(true);
+    try {
+      const res = await fetch('/api/admin/homecare-services');
+      const data = await res.json();
+      if (res.ok && Array.isArray(data?.services)) {
+        setHomeCareServices(
+          data.services.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            category: s.category,
+            description: s.description,
+            price: Number(s.price ?? 0),
+            duration: Number(s.durationMinutes ?? 0),
+            isActive: !!s.isActive,
+            displayOrder: Number(s.displayOrder ?? 0),
+          }))
+        );
+      } else {
+        toast.error('Gagal memuat layanan home care', {
+          description: data?.details || 'Terjadi kesalahan saat memuat data dari server.',
+        });
+      }
+    } catch (err) {
+      console.error('[admin-pricing-panel] loadHomeCareServices failed:', err);
+      toast.error('Gagal memuat layanan home care', {
+        description: 'Periksa koneksi Anda dan coba lagi.',
+      });
+    } finally {
+      setHcLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadHomeCareServices();
+  }, [loadHomeCareServices]);
+
   // ─── Edit handlers ───────────────────────────────────────────────────────
 
   const handleEditService = useCallback((service: HomeCareServiceItem) => {
@@ -283,8 +334,8 @@ export function AdminPricingPanel() {
     const newPrice = Number(editPrice);
     const newDuration = Number(editDuration);
 
-    if (!editPrice || isNaN(newPrice) || newPrice <= 0) {
-      setFormError('Harga harus lebih dari 0');
+    if (!editPrice || isNaN(newPrice) || newPrice < 0) {
+      setFormError('Harga harus berupa angka >= 0');
       return;
     }
     if (!editDuration || isNaN(newDuration) || newDuration <= 0) {
@@ -293,59 +344,163 @@ export function AdminPricingPanel() {
     }
 
     setIsSaving(true);
-
-    // Update local state immediately
-    setHomeCareServices((prev) =>
-      prev.map((s) =>
-        s.id === editingService.id
-          ? { ...s, price: newPrice, duration: newDuration, isActive: editIsActive }
-          : s
-      )
-    );
-
-    // Log price change if price changed
-    if (newPrice !== editingService.price) {
-      const changeRecord: PriceChangeRecord = {
-        id: `ch-${Date.now()}`,
-        itemName: editingService.name,
-        type: 'homecare',
-        oldPrice: editingService.price,
-        newPrice,
-        changedAt: new Date().toISOString(),
-        changedBy: currentUser?.name || 'Admin',
-      };
-      setPriceHistory((prev) => [changeRecord, ...prev]);
-    }
-
-    // Try to save to API
     try {
-      const res = await fetch('/api/admin/pricing', {
+      const res = await fetch('/api/admin/homecare-services', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'homecare',
           id: editingService.id,
           price: newPrice,
-          duration: newDuration,
+          durationMinutes: newDuration,
           isActive: editIsActive,
+          updatedBy: currentUser?.id,
         }),
       });
-      if (!res.ok) throw new Error('API error');
+      const data = await res.json();
+      if (!res.ok || !data?.service) {
+        throw new Error(data?.details || data?.error || 'Gagal menyimpan perubahan');
+      }
+
+      // Reflect the confirmed DB row locally (not an optimistic guess).
+      setHomeCareServices((prev) =>
+        prev.map((s) =>
+          s.id === editingService.id
+            ? { ...s, price: Number(data.service.price), duration: Number(data.service.durationMinutes ?? 0), isActive: !!data.service.isActive }
+            : s
+        )
+      );
+
+      if (newPrice !== editingService.price) {
+        setPriceHistory((prev) => [
+          {
+            id: `ch-${Date.now()}`,
+            itemName: editingService.name,
+            type: 'homecare',
+            oldPrice: editingService.price,
+            newPrice,
+            changedAt: new Date().toISOString(),
+            changedBy: currentUser?.name || 'Admin',
+          },
+          ...prev,
+        ]);
+      }
+
       toast.success('Harga layanan berhasil diperbarui', {
-        description: `${editingService.name}: ${formatCurrency(newPrice)}`,
+        description: `${editingService.name}: ${formatCurrency(newPrice)} — perubahan langsung terlihat oleh pasien.`,
         icon: <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
       });
-    } catch {
-      toast.success('Harga layanan berhasil diperbarui (lokal)', {
-        description: `${editingService.name}: ${formatCurrency(newPrice)} — perubahan disimpan secara lokal`,
-        icon: <AlertCircle className="w-4 h-4 text-amber-500" />,
+      setHcEditOpen(false);
+      setEditingService(null);
+    } catch (err) {
+      // No more silent "(lokal)" fallback — a failed save must be visible,
+      // otherwise the admin thinks it worked while the patient never sees it.
+      toast.error('Gagal menyimpan perubahan', {
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        icon: <AlertCircle className="w-4 h-4" />,
       });
     } finally {
       setIsSaving(false);
-      setHcEditOpen(false);
-      setEditingService(null);
     }
   }, [editingService, editPrice, editDuration, editIsActive, currentUser]);
+
+  const handleAddService = useCallback(async () => {
+    if (!newSvcName.trim()) {
+      setNewSvcError('Nama layanan wajib diisi');
+      return;
+    }
+    if (!newSvcCategory.trim()) {
+      setNewSvcError('Kategori wajib diisi');
+      return;
+    }
+    const price = Number(newSvcPrice);
+    if (!newSvcPrice || isNaN(price) || price < 0) {
+      setNewSvcError('Harga harus berupa angka >= 0');
+      return;
+    }
+    const duration = Number(newSvcDuration);
+    if (!newSvcDuration || isNaN(duration) || duration <= 0) {
+      setNewSvcError('Durasi harus lebih dari 0 menit');
+      return;
+    }
+
+    setNewSvcSaving(true);
+    setNewSvcError('');
+    try {
+      const res = await fetch('/api/admin/homecare-services', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newSvcName.trim(),
+          category: newSvcCategory.trim(),
+          description: newSvcDescription.trim() || undefined,
+          price,
+          durationMinutes: duration,
+          isActive: true,
+          displayOrder: homeCareServices.length,
+          updatedBy: currentUser?.id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.service) {
+        throw new Error(data?.details || data?.error || 'Gagal menambah layanan');
+      }
+      await loadHomeCareServices();
+      toast.success('Layanan berhasil ditambahkan', {
+        description: `${data.service.name} kini tersedia untuk dipesan pasien.`,
+        icon: <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
+      });
+      setHcAddOpen(false);
+      setNewSvcName('');
+      setNewSvcCategory('');
+      setNewSvcPrice('');
+      setNewSvcDuration('');
+      setNewSvcDescription('');
+    } catch (err) {
+      setNewSvcError(err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.');
+    } finally {
+      setNewSvcSaving(false);
+    }
+  }, [newSvcName, newSvcCategory, newSvcPrice, newSvcDuration, newSvcDescription, homeCareServices.length, currentUser, loadHomeCareServices]);
+
+  const handleToggleServiceActive = useCallback(async (service: HomeCareServiceItem) => {
+    try {
+      const res = await fetch('/api/admin/homecare-services', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: service.id, isActive: !service.isActive, updatedBy: currentUser?.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.service) throw new Error(data?.details || data?.error || 'Gagal mengubah status');
+      setHomeCareServices((prev) => prev.map((s) => (s.id === service.id ? { ...s, isActive: !!data.service.isActive } : s)));
+      toast.success(data.service.isActive ? 'Layanan diaktifkan' : 'Layanan dinonaktifkan', {
+        description: `${service.name} ${data.service.isActive ? 'kini terlihat' : 'tidak lagi terlihat'} di katalog pasien.`,
+      });
+    } catch (err) {
+      toast.error('Gagal mengubah status layanan', {
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+      });
+    }
+  }, [currentUser]);
+
+  const handleDeleteService = useCallback(async (id: string) => {
+    setHcDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/homecare-services?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.details || data?.error || 'Gagal menghapus layanan');
+      await loadHomeCareServices();
+      toast.success(data.hardDeleted ? 'Layanan dihapus' : 'Layanan dinonaktifkan', {
+        description: data.message,
+      });
+    } catch (err) {
+      toast.error('Gagal menghapus layanan', {
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+      });
+    } finally {
+      setHcDeleting(false);
+      setHcDeleteConfirmId(null);
+    }
+  }, [loadHomeCareServices]);
 
   const handleSaveDoctor = useCallback(async () => {
     if (!editingDoctor) return;
@@ -824,6 +979,14 @@ export function AdminPricingPanel() {
                   ))}
                 </SelectContent>
               </Select>
+              <Button
+                size="sm"
+                className="bg-teal-600 hover:bg-teal-700 text-white shrink-0"
+                onClick={() => { setNewSvcError(''); setHcAddOpen(true); }}
+              >
+                <Plus className="w-4 h-4 mr-1.5" />
+                Tambah Layanan
+              </Button>
             </div>
 
             {/* Table */}
@@ -842,10 +1005,17 @@ export function AdminPricingPanel() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredServices.length === 0 ? (
+                      {hcLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-12 text-muted-foreground text-sm">
+                            <Loader2 className="w-5 h-5 animate-spin inline mr-2" />
+                            Memuat layanan...
+                          </TableCell>
+                        </TableRow>
+                      ) : filteredServices.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={6} className="text-center py-8 text-muted-foreground text-sm">
-                            Tidak ada layanan ditemukan
+                            {homeCareServices.length === 0 ? 'Belum ada layanan. Klik "Tambah Layanan" untuk menambahkan.' : 'Tidak ada layanan ditemukan'}
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -873,32 +1043,47 @@ export function AdminPricingPanel() {
                                     <div>
                                       <Switch
                                         checked={service.isActive}
-                                        disabled
+                                        onCheckedChange={() => handleToggleServiceActive(service)}
                                         className="data-[state=checked]:bg-teal-600"
                                       />
                                     </div>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    {service.isActive ? 'Layanan aktif' : 'Layanan nonaktif'}
+                                    {service.isActive ? 'Layanan aktif — klik untuk nonaktifkan' : 'Layanan nonaktif — klik untuk aktifkan'}
                                   </TooltipContent>
                                 </Tooltip>
                               </div>
                             </TableCell>
                             <TableCell className="text-center">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleEditService(service)}
-                                    className="h-8 gap-1.5 text-xs"
-                                  >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                    Edit
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Edit harga layanan</TooltipContent>
-                              </Tooltip>
+                              <div className="flex items-center justify-center gap-1.5">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleEditService(service)}
+                                      className="h-8 gap-1.5 text-xs"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                      Edit
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Edit harga layanan</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => setHcDeleteConfirmId(service.id)}
+                                      className="h-8 gap-1.5 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Hapus layanan</TooltipContent>
+                                </Tooltip>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))
@@ -1512,6 +1697,152 @@ export function AdminPricingPanel() {
                   <>
                     <Save className="w-4 h-4 mr-1.5" />
                     Simpan
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── Add Homecare Service Dialog ───────────────────────────────── */}
+        <Dialog open={hcAddOpen} onOpenChange={(open) => { if (!open) setHcAddOpen(false); }}>
+          <DialogContent className="sm:max-w-[460px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Plus className="w-4 h-4 text-teal-600" />
+                Tambah Layanan Home Care
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="new-svc-name" className="text-sm font-medium">Nama Layanan</Label>
+                <Input
+                  id="new-svc-name"
+                  value={newSvcName}
+                  onChange={(e) => { setNewSvcName(e.target.value); if (newSvcError) setNewSvcError(''); }}
+                  placeholder="mis. Perawatan Luka"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="new-svc-category" className="text-sm font-medium">Kategori</Label>
+                <Select value={newSvcCategory} onValueChange={setNewSvcCategory}>
+                  <SelectTrigger id="new-svc-category">
+                    <SelectValue placeholder="Pilih kategori" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="new-svc-desc" className="text-sm font-medium">Deskripsi (opsional)</Label>
+                <Input
+                  id="new-svc-desc"
+                  value={newSvcDescription}
+                  onChange={(e) => setNewSvcDescription(e.target.value)}
+                  placeholder="Penjelasan singkat layanan"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="new-svc-price" className="text-sm font-medium">Harga (Rp)</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">Rp</span>
+                  <Input
+                    id="new-svc-price"
+                    type="number"
+                    min="0"
+                    value={newSvcPrice}
+                    onChange={(e) => { setNewSvcPrice(e.target.value); if (newSvcError) setNewSvcError(''); }}
+                    className="pl-10"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="new-svc-duration" className="text-sm font-medium">Durasi (menit)</Label>
+                <div className="relative">
+                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="new-svc-duration"
+                    type="number"
+                    min="1"
+                    value={newSvcDuration}
+                    onChange={(e) => { setNewSvcDuration(e.target.value); if (newSvcError) setNewSvcError(''); }}
+                    className="pl-9"
+                    placeholder="mis. 45"
+                  />
+                </div>
+              </div>
+
+              {newSvcError && (
+                <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/5 p-3">
+                  <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
+                  <p className="text-sm text-destructive">{newSvcError}</p>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setHcAddOpen(false)} disabled={newSvcSaving}>
+                <X className="w-4 h-4 mr-1.5" />
+                Batal
+              </Button>
+              <Button onClick={handleAddService} disabled={newSvcSaving} className="bg-teal-600 hover:bg-teal-700 text-white">
+                {newSvcSaving ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Menyimpan...
+                  </div>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-1.5" />
+                    Tambah Layanan
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── Delete Homecare Service Confirm ───────────────────────────── */}
+        <Dialog open={!!hcDeleteConfirmId} onOpenChange={(open) => { if (!open) setHcDeleteConfirmId(null); }}>
+          <DialogContent className="sm:max-w-[420px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <Trash2 className="w-4 h-4" />
+                Hapus Layanan?
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground py-2">
+              Apakah Anda yakin ingin menghapus layanan ini? Jika layanan ini sudah pernah digunakan
+              dalam transaksi, layanan tidak akan dihapus permanen — hanya dinonaktifkan agar histori
+              transaksi lama tetap utuh.
+            </p>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setHcDeleteConfirmId(null)} disabled={hcDeleting}>
+                Batal
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => hcDeleteConfirmId && handleDeleteService(hcDeleteConfirmId)}
+                disabled={hcDeleting}
+              >
+                {hcDeleting ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Menghapus...
+                  </div>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-1.5" />
+                    Hapus
                   </>
                 )}
               </Button>
