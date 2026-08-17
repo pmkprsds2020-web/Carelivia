@@ -135,15 +135,6 @@ const SPECIALIZATION_MAP: Record<string, string> = {
   gigi: 'Dokter Gigi',
 };
 
-function extractPatientKey(name: string): string {
-  if (!name) return '';
-  const first = name.trim().split(' ')[0].toLowerCase();
-  for (const [key, val] of Object.entries(PATIENT_NAME_MAP)) {
-    if (val.toLowerCase().startsWith(first)) return key;
-  }
-  return '';
-}
-
 function generateRmNumber(mr: MedicalRecord, index: number): string {
   const dateStr = mr.recordDate || mr.createdAt;
   const d = new Date(dateStr);
@@ -230,446 +221,6 @@ function consultationTypeLabel(type?: string): string {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Demo / Seed data for Doctor View (when store is empty)
-// ---------------------------------------------------------------------------
-
-const DOCTOR_DEMO_MEDICAL_RECORDS: MedicalRecord[] = [
-  {
-    id: 'mr-demo-1',
-    patientId: 'pat-rina',
-    consultationId: 'cons-demo-1',
-    rmNumber: 'RM-20260304-0001',
-    diagnosis: 'Gastritis Akut',
-    symptoms: 'Nyeri ulu hati, mual, muntah, nafsu makan menurun',
-    treatment: 'Antasida 3x sehari, Omeprazole 20mg 1x sehari, diet ringan',
-    notes: 'Pasien mengeluh nyeri ulu hati sejak 3 hari. Direkomendasikan endoskopi jika kambuh.',
-    status: 'selesai',
-    recordDate: '2026-03-04T09:00:00.000Z',
-    createdAt: '2026-03-04T09:00:00.000Z',
-    updatedAt: '2026-03-04T09:30:00.000Z',
-  },
-  {
-    id: 'mr-demo-2',
-    patientId: 'pat-doni',
-    consultationId: 'cons-demo-2',
-    rmNumber: 'RM-20260303-0002',
-    diagnosis: 'Hipertensi Grade I',
-    symptoms: 'Sakit kepala, pusing, berdebar-debar',
-    treatment: 'Amlodipine 5mg 1x sehari, modifikasi gaya hidup, kurangi garam',
-    notes: 'Tekanan darah 150/95 mmHg. Perlu monitoring 2 minggu.',
-    status: 'ditinjau',
-    recordDate: '2026-03-03T14:00:00.000Z',
-    createdAt: '2026-03-03T14:00:00.000Z',
-    updatedAt: '2026-03-03T14:45:00.000Z',
-  },
-  {
-    id: 'mr-demo-3',
-    patientId: 'pat-maya',
-    consultationId: 'cons-demo-3',
-    rmNumber: 'RM-20260302-0003',
-    diagnosis: 'ISPA (Infeksi Saluran Pernapasan Atas)',
-    symptoms: 'Demam, batuk pilek, sakit tenggorokan, hidung tersumbat',
-    treatment: 'Paracetamol 500mg 3x sehari, Amoxicillin 500mg 3x sehari, istirahat cukup',
-    notes: 'Demam sudah turun setelah 2 hari. Batuk masih ada, kontrol 1 minggu.',
-    status: 'selesai',
-    recordDate: '2026-03-02T10:30:00.000Z',
-    createdAt: '2026-03-02T10:30:00.000Z',
-    updatedAt: '2026-03-02T11:15:00.000Z',
-  },
-  {
-    id: 'mr-demo-4',
-    patientId: 'pat-siti',
-    consultationId: 'cons-demo-4',
-    rmNumber: 'RM-20260301-0004',
-    diagnosis: 'Kehamilan Trimester 2 - Normal',
-    symptoms: 'Kontrol kehamilan rutin, tidak ada keluhan khusus',
-    treatment: 'Suplemen asam folat, vitamin B6, kontrol rutin tiap bulan',
-    notes: 'USG menunjukkan perkembangan janin normal. Berat janin sesuai usia kehamilan.',
-    status: 'selesai',
-    recordDate: '2026-03-01T08:00:00.000Z',
-    createdAt: '2026-03-01T08:00:00.000Z',
-    updatedAt: '2026-03-01T08:30:00.000Z',
-  },
-  {
-    id: 'mr-demo-5',
-    patientId: 'pat-joko',
-    consultationId: 'cons-demo-5',
-    rmNumber: 'RM-20260228-0005',
-    diagnosis: 'Diabetes Mellitus Tipe 2',
-    symptoms: 'Sering haus, sering buang air kecil, penurunan berat badan',
-    treatment: 'Metformin 500mg 2x sehari, diet rendah gula, olahraga teratur',
-    notes: 'Gula darah puasa 180 mg/dL. Perlu monitoring rutin dan evaluasi HbA1c.',
-    status: 'draft',
-    recordDate: '2026-02-28T11:00:00.000Z',
-    createdAt: '2026-02-28T11:00:00.000Z',
-    updatedAt: '2026-02-28T11:30:00.000Z',
-  },
-  {
-    id: 'mr-demo-6',
-    patientId: 'pat-rina',
-    consultationId: 'cons-demo-6',
-    diagnosis: 'Migrain',
-    symptoms: 'Sakit kepala sebelah, mual, sensitif terhadap cahaya',
-    treatment: 'Ibuprofen 400mg saat serangan, istirahat di ruangan gelap',
-    notes: 'Serangan migrain 2-3x sebulan. Dipertimbangkan pencegahan jika frekuensi meningkat.',
-    status: 'draft',
-    recordDate: '2026-02-25T16:00:00.000Z',
-    createdAt: '2026-02-25T16:00:00.000Z',
-    updatedAt: '2026-02-25T16:20:00.000Z',
-  },
-  {
-    id: 'mr-demo-7',
-    patientId: 'pat-doni',
-    consultationId: 'cons-demo-7',
-    diagnosis: 'Dermatitis Kontak',
-    symptoms: 'Ruam merah, gatal, kulit kering pada tangan',
-    treatment: 'Krim hydrocortisone 1%, loratadine 10mg 1x sehari, hindari iritan',
-    notes: 'Kemungkinan akibat paparan bahan kimia di tempat kerja.',
-    status: 'ditinjau',
-    recordDate: '2026-02-20T13:00:00.000Z',
-    createdAt: '2026-02-20T13:00:00.000Z',
-    updatedAt: '2026-02-20T13:40:00.000Z',
-  },
-];
-
-const DOCTOR_DEMO_CONSULTATIONS: Consultation[] = [
-  {
-    id: 'cons-demo-1',
-    patientId: 'pat-rina',
-    doctorId: 'doc-sarah',
-    type: 'video',
-    status: 'completed',
-    createdAt: '2026-03-04T09:00:00.000Z',
-    updatedAt: '2026-03-04T09:30:00.000Z',
-    patient: {
-      id: 'pat-rina',
-      name: 'Rina Wulandari',
-      email: 'rina@email.com',
-      role: 'patient',
-      isVerified: true,
-      isActive: true,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    },
-  },
-  {
-    id: 'cons-demo-2',
-    patientId: 'pat-doni',
-    doctorId: 'doc-sarah',
-    type: 'chat',
-    status: 'completed',
-    createdAt: '2026-03-03T14:00:00.000Z',
-    updatedAt: '2026-03-03T14:45:00.000Z',
-    patient: {
-      id: 'pat-doni',
-      name: 'Doni Pratama',
-      email: 'doni@email.com',
-      role: 'patient',
-      isVerified: true,
-      isActive: true,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    },
-  },
-  {
-    id: 'cons-demo-3',
-    patientId: 'pat-maya',
-    doctorId: 'doc-sarah',
-    type: 'video',
-    status: 'completed',
-    createdAt: '2026-03-02T10:30:00.000Z',
-    updatedAt: '2026-03-02T11:15:00.000Z',
-    patient: {
-      id: 'pat-maya',
-      name: 'Maya Sari',
-      email: 'maya@email.com',
-      role: 'patient',
-      isVerified: true,
-      isActive: true,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    },
-  },
-  {
-    id: 'cons-demo-4',
-    patientId: 'pat-siti',
-    doctorId: 'doc-sarah',
-    type: 'audio',
-    status: 'completed',
-    createdAt: '2026-03-01T08:00:00.000Z',
-    updatedAt: '2026-03-01T08:30:00.000Z',
-    patient: {
-      id: 'pat-siti',
-      name: 'Siti Aminah',
-      email: 'siti@email.com',
-      role: 'patient',
-      isVerified: true,
-      isActive: true,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    },
-  },
-  {
-    id: 'cons-demo-5',
-    patientId: 'pat-joko',
-    doctorId: 'doc-sarah',
-    type: 'chat',
-    status: 'completed',
-    createdAt: '2026-02-28T11:00:00.000Z',
-    updatedAt: '2026-02-28T11:30:00.000Z',
-    patient: {
-      id: 'pat-joko',
-      name: 'Joko Widodo',
-      email: 'joko@email.com',
-      role: 'patient',
-      isVerified: true,
-      isActive: true,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    },
-  },
-  {
-    id: 'cons-demo-6',
-    patientId: 'pat-rina',
-    doctorId: 'doc-sarah',
-    type: 'chat',
-    status: 'completed',
-    createdAt: '2026-02-25T16:00:00.000Z',
-    updatedAt: '2026-02-25T16:20:00.000Z',
-    patient: {
-      id: 'pat-rina',
-      name: 'Rina Wulandari',
-      email: 'rina@email.com',
-      role: 'patient',
-      isVerified: true,
-      isActive: true,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    },
-  },
-  {
-    id: 'cons-demo-7',
-    patientId: 'pat-doni',
-    doctorId: 'doc-sarah',
-    type: 'video',
-    status: 'completed',
-    createdAt: '2026-02-20T13:00:00.000Z',
-    updatedAt: '2026-02-20T13:40:00.000Z',
-    patient: {
-      id: 'pat-doni',
-      name: 'Doni Pratama',
-      email: 'doni@email.com',
-      role: 'patient',
-      isVerified: true,
-      isActive: true,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    },
-  },
-];
-
-const DOCTOR_DEMO_PRESCRIPTIONS: Prescription[] = [
-  {
-    id: 'rx-demo-1',
-    consultationId: 'cons-demo-1',
-    doctorId: 'doc-sarah',
-    patientId: 'pat-rina',
-    status: 'active',
-    notes: 'Diminum setelah makan',
-    createdAt: '2026-03-04T09:30:00.000Z',
-    updatedAt: '2026-03-04T09:30:00.000Z',
-    items: [
-      {
-        id: 'rxi-1-1',
-        prescriptionId: 'rx-demo-1',
-        medicineName: 'Antasida Sirup',
-        dosage: '3x sehari setelah makan',
-        quantity: 1,
-        frequency: '3x sehari',
-        duration: '7 hari',
-        instructions: 'Diminum setelah makan',
-        price: 22000,
-      },
-      {
-        id: 'rxi-1-2',
-        prescriptionId: 'rx-demo-1',
-        medicineName: 'Omeprazole 20mg',
-        dosage: '1x sehari sebelum sarapan',
-        quantity: 14,
-        frequency: '1x sehari',
-        duration: '14 hari',
-        instructions: 'Diminum sebelum sarapan',
-        price: 35000,
-      },
-    ],
-  },
-  {
-    id: 'rx-demo-2',
-    consultationId: 'cons-demo-2',
-    doctorId: 'doc-sarah',
-    patientId: 'pat-doni',
-    status: 'active',
-    notes: 'Monitor tekanan darah secara rutin',
-    createdAt: '2026-03-03T14:45:00.000Z',
-    updatedAt: '2026-03-03T14:45:00.000Z',
-    items: [
-      {
-        id: 'rxi-2-1',
-        prescriptionId: 'rx-demo-2',
-        medicineName: 'Amlodipine 5mg',
-        dosage: '1x sehari',
-        quantity: 30,
-        frequency: '1x sehari',
-        duration: '30 hari',
-        price: 45000,
-      },
-    ],
-  },
-  {
-    id: 'rx-demo-3',
-    consultationId: 'cons-demo-3',
-    doctorId: 'doc-sarah',
-    patientId: 'pat-maya',
-    status: 'completed',
-    notes: 'Habiskan antibiotik',
-    createdAt: '2026-03-02T11:15:00.000Z',
-    updatedAt: '2026-03-02T11:15:00.000Z',
-    items: [
-      {
-        id: 'rxi-3-1',
-        prescriptionId: 'rx-demo-3',
-        medicineName: 'Paracetamol 500mg',
-        dosage: '3x sehari jika demam',
-        quantity: 10,
-        frequency: '3x sehari',
-        duration: '3 hari',
-        price: 15000,
-      },
-      {
-        id: 'rxi-3-2',
-        prescriptionId: 'rx-demo-3',
-        medicineName: 'Amoxicillin 500mg',
-        dosage: '3x sehari setelah makan',
-        quantity: 30,
-        frequency: '3x sehari',
-        duration: '10 hari',
-        instructions: 'Habiskan meski gejala membaik',
-        price: 25000,
-      },
-    ],
-  },
-  {
-    id: 'rx-demo-4',
-    consultationId: 'cons-demo-4',
-    doctorId: 'doc-sarah',
-    patientId: 'pat-siti',
-    status: 'completed',
-    notes: 'Suplemen kehamilan',
-    createdAt: '2026-03-01T08:30:00.000Z',
-    updatedAt: '2026-03-01T08:30:00.000Z',
-    items: [
-      {
-        id: 'rxi-4-1',
-        prescriptionId: 'rx-demo-4',
-        medicineName: 'Asam Folat 400mcg',
-        dosage: '1x sehari',
-        quantity: 30,
-        frequency: '1x sehari',
-        duration: '30 hari',
-        price: 18000,
-      },
-      {
-        id: 'rxi-4-2',
-        prescriptionId: 'rx-demo-4',
-        medicineName: 'Vitamin B6',
-        dosage: '1x sehari',
-        quantity: 30,
-        frequency: '1x sehari',
-        duration: '30 hari',
-        price: 25000,
-      },
-    ],
-  },
-  {
-    id: 'rx-demo-5',
-    consultationId: 'cons-demo-5',
-    doctorId: 'doc-sarah',
-    patientId: 'pat-joko',
-    status: 'active',
-    notes: 'Diet rendah gula wajib',
-    createdAt: '2026-02-28T11:30:00.000Z',
-    updatedAt: '2026-02-28T11:30:00.000Z',
-    items: [
-      {
-        id: 'rxi-5-1',
-        prescriptionId: 'rx-demo-5',
-        medicineName: 'Metformin 500mg',
-        dosage: '2x sehari setelah makan',
-        quantity: 60,
-        frequency: '2x sehari',
-        duration: '30 hari',
-        instructions: 'Diminum setelah makan untuk mengurangi efek samping GI',
-        price: 22000,
-      },
-    ],
-  },
-  {
-    id: 'rx-demo-6',
-    consultationId: 'cons-demo-6',
-    doctorId: 'doc-sarah',
-    patientId: 'pat-rina',
-    status: 'active',
-    notes: 'Untuk serangan migrain akut',
-    createdAt: '2026-02-25T16:20:00.000Z',
-    updatedAt: '2026-02-25T16:20:00.000Z',
-    items: [
-      {
-        id: 'rxi-6-1',
-        prescriptionId: 'rx-demo-6',
-        medicineName: 'Ibuprofen 400mg',
-        dosage: 'Saat serangan migrain',
-        quantity: 20,
-        frequency: 'Saat dibutuhkan',
-        duration: 'Saat serangan',
-        price: 18000,
-      },
-    ],
-  },
-  {
-    id: 'rx-demo-7',
-    consultationId: 'cons-demo-7',
-    doctorId: 'doc-sarah',
-    patientId: 'pat-doni',
-    status: 'completed',
-    notes: 'Hindari kontak dengan iritan',
-    createdAt: '2026-02-20T13:40:00.000Z',
-    updatedAt: '2026-02-20T13:40:00.000Z',
-    items: [
-      {
-        id: 'rxi-7-1',
-        prescriptionId: 'rx-demo-7',
-        medicineName: 'Loratadine 10mg',
-        dosage: '1x sehari',
-        quantity: 10,
-        frequency: '1x sehari',
-        duration: '10 hari',
-        price: 28000,
-      },
-      {
-        id: 'rxi-7-2',
-        prescriptionId: 'rx-demo-7',
-        medicineName: 'Krim Hydrocortisone 1%',
-        dosage: 'Oleskan tipis 2x sehari',
-        quantity: 1,
-        frequency: '2x sehari',
-        duration: '7 hari',
-        instructions: 'Jangan oleskan lebih dari 7 hari berturut-turut',
-        price: 35000,
-      },
-    ],
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Merged data interface for doctor view
@@ -686,29 +237,20 @@ function buildMergedRecords(
   storeConsultations: Consultation[],
   storePrescriptions: Prescription[],
 ): MergedMedicalRecord[] {
-  // Step 1: Merge store records with demo records using Map dedup
+  // Step 1: real medical records only (demo records removed).
   const recordMap = new Map<string, MedicalRecord>();
-  for (const mr of DOCTOR_DEMO_MEDICAL_RECORDS) {
-    recordMap.set(mr.id, mr);
-  }
   for (const mr of storeRecords) {
     recordMap.set(mr.id, mr);
   }
 
-  // Step 2: Merge consultations using Map dedup
+  // Step 2: real consultations only.
   const consultationMap = new Map<string, Consultation>();
-  for (const c of DOCTOR_DEMO_CONSULTATIONS) {
-    consultationMap.set(c.id, c);
-  }
   for (const c of storeConsultations) {
     consultationMap.set(c.id, c);
   }
 
-  // Step 3: Merge prescriptions using Map dedup
+  // Step 3: real prescriptions only.
   const prescriptionMap = new Map<string, Prescription>();
-  for (const p of DOCTOR_DEMO_PRESCRIPTIONS) {
-    prescriptionMap.set(p.id, p);
-  }
   for (const p of storePrescriptions) {
     prescriptionMap.set(p.id, p);
   }
@@ -841,12 +383,10 @@ function DoctorMedicalRecordsView() {
     [medicalRecords, consultations, prescriptions],
   );
 
-  // Build prescription list with patient names
+  // Build prescription list with patient names — real prescriptions only
+  // (demo prescriptions removed).
   const prescriptionList = useMemo(() => {
     const rxMap = new Map<string, Prescription>();
-    for (const rx of DOCTOR_DEMO_PRESCRIPTIONS) {
-      rxMap.set(rx.id, rx);
-    }
     for (const rx of prescriptions) {
       rxMap.set(rx.id, rx);
     }
@@ -857,17 +397,12 @@ function DoctorMedicalRecordsView() {
         patientNameById.set(cons.patientId, cons.patient.name);
       }
     }
-    for (const [pid, pname] of Object.entries(PATIENT_NAME_MAP)) {
-      if (!patientNameById.has(pid)) {
-        patientNameById.set(pid, pname);
-      }
-    }
 
     return Array.from(rxMap.values())
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .map((rx) => ({
         ...rx,
-        patientName: patientNameById.get(rx.patientId) || PATIENT_NAME_MAP[rx.patientId] || rx.patientId,
+        patientName: patientNameById.get(rx.patientId) || rx.patientId,
       }));
   }, [prescriptions, consultations]);
 
@@ -2128,141 +1663,18 @@ function DoctorMedicalRecordsView() {
 }
 
 // ---------------------------------------------------------------------------
-// Patient View — Demo data
+// Patient View
 // ---------------------------------------------------------------------------
-
-const demoConsultations = [
-  {
-    id: 'c1',
-    date: '2025-01-10',
-    doctorName: 'dr. Andi Pratama',
-    specialization: 'Penyakit Dalam',
-    diagnosis: 'Gastritis Akut',
-    treatment: 'Obat maag (Antasida), diet ringan, hindari makanan pedas',
-    status: 'completed',
-    notes: 'Pasien mengeluh nyeri ulu hati sejak 3 hari. Direkomendasikan endoskopi jika kambuh.',
-  },
-  {
-    id: 'c2',
-    date: '2024-12-28',
-    doctorName: 'dr. Siti Rahayu',
-    specialization: 'Kebidanan',
-    diagnosis: 'Kehamilan Trimester 2 - Normal',
-    treatment: 'Suplemen asam folat, vitamin B6, kontrol rutin tiap bulan',
-    status: 'completed',
-    notes: 'USG menunjukkan perkembangan janin normal. Berat janin sesuai usia kehamilan.',
-  },
-  {
-    id: 'c3',
-    date: '2024-12-15',
-    doctorName: 'dr. Budi Santoso',
-    specialization: 'Anak',
-    diagnosis: 'ISPA (Infeksi Saluran Pernapasan Atas)',
-    treatment: 'Paracetamol sirup, istirahat cukup, minum air putih banyak',
-    status: 'completed',
-    notes: 'Demam sudah turun setelah 2 hari. Batuk masih ada, kontrol 1 minggu.',
-  },
-  {
-    id: 'c4',
-    date: '2024-11-20',
-    doctorName: 'dr. Andi Pratama',
-    specialization: 'Penyakit Dalam',
-    diagnosis: 'Diabetes Mellitus Tipe 2',
-    treatment: 'Metformin 500mg 2x sehari, diet rendah gula, olahraga teratur',
-    status: 'active',
-    notes: 'Gula darah puasa 180 mg/dL. Perlu monitoring rutin dan evaluasi HbA1c.',
-  },
-];
-
-const demoLabResults = [
-  {
-    id: 'l1',
-    date: '2025-01-10',
-    testName: 'Darah Lengkap',
-    result: 'Hb: 12.5 g/dL, Leukosit: 7.800/μL, Trombosit: 250.000/μL',
-    referenceRange: 'Hb: 12-16 g/dL, Leukosit: 4.000-11.000/μL, Trombosit: 150.000-400.000/μL',
-    status: 'normal',
-  },
-  {
-    id: 'l2',
-    date: '2025-01-10',
-    testName: 'Gula Darah Puasa',
-    result: '180 mg/dL',
-    referenceRange: '70-100 mg/dL',
-    status: 'high',
-  },
-  {
-    id: 'l3',
-    date: '2024-12-28',
-    testName: 'USG Obstetri',
-    result: 'Janin tunggal hidup, usia kehamilan 22 minggu, posisi kepala',
-    referenceRange: 'Normal sesuai usia kehamilan',
-    status: 'normal',
-  },
-  {
-    id: 'l4',
-    date: '2024-12-15',
-    testName: 'Throat Swab',
-    result: 'Streptococcus pyogenes: Negatif',
-    referenceRange: 'Negatif',
-    status: 'normal',
-  },
-  {
-    id: 'l5',
-    date: '2024-11-20',
-    testName: 'HbA1c',
-    result: '8.2%',
-    referenceRange: '< 5.7% (normal), 5.7-6.4% (pre-diabetes), >= 6.5% (diabetes)',
-    status: 'high',
-  },
-];
-
-const demoPrescriptions = [
-  {
-    id: 'p1',
-    date: '2025-01-10',
-    doctor: 'dr. Andi Pratama',
-    items: [
-      { name: 'Antasida', dosage: '3x sehari setelah makan', quantity: 30, price: 22000 },
-      { name: 'Omeprazole 20mg', dosage: '1x sehari sebelum sarapan', quantity: 14, price: 35000 },
-    ],
-    status: 'active',
-  },
-  {
-    id: 'p2',
-    date: '2024-12-28',
-    doctor: 'dr. Siti Rahayu',
-    items: [
-      { name: 'Asam Folat 400mcg', dosage: '1x sehari', quantity: 30, price: 18000 },
-      { name: 'Vitamin B6', dosage: '1x sehari', quantity: 30, price: 25000 },
-    ],
-    status: 'paid',
-    invoiceNumber: 'INV-2024-028',
-    paidAt: '2024-12-28T15:30:00Z',
-    paymentMethod: 'qris' as PaymentMethod,
-  },
-  {
-    id: 'p3',
-    date: '2024-12-15',
-    doctor: 'dr. Budi Santoso',
-    items: [
-      { name: 'Paracetamol Sirup 120mg/5ml', dosage: '3x sehari jika demam', quantity: 60, price: 15000 },
-    ],
-    status: 'paid',
-    invoiceNumber: 'INV-2024-022',
-    paidAt: '2024-12-16T09:15:00Z',
-    paymentMethod: 'gopay' as PaymentMethod,
-  },
-  {
-    id: 'p4',
-    date: '2024-11-20',
-    doctor: 'dr. Andi Pratama',
-    items: [
-      { name: 'Metformin 500mg', dosage: '2x sehari setelah makan', quantity: 60, price: 22000 },
-    ],
-    status: 'active',
-  },
-];
+// NOTE: the demo arrays that used to live here (`demoConsultations`,
+// `demoLabResults`, `demoPrescriptions` — fabricated diagnoses like
+// "Gastritis Akut" and "Diabetes Mellitus Tipe 2" attributed to fake
+// doctors "dr. Andi Pratama" etc.) have been removed. They were merged
+// UNCONDITIONALLY into every patient's medical record view regardless of
+// who was logged in — a genuine patient-safety concern for a health app,
+// not just a cosmetic bug: a patient could see fabricated clinical history
+// that wasn't theirs. Real data now comes exclusively from
+// `storeMedicalRecords` / `storePrescriptions`, already correctly filtered
+// by `patientId === currentPatientId` below.
 
 // ---------------------------------------------------------------------------
 // Patient view: unified consultation/prescription record
@@ -2305,26 +1717,10 @@ function buildPatientConsultations(
   storeConsultations: Consultation[],
   storePrescriptions: Prescription[],
 ): PatientConsultationRecord[] {
-  // Doctor name lookup
-  const DOCTOR_NAME_MAP: Record<string, string> = {
-    'doc-sarah': 'dr. Sarah Wijaya',
-    'doc-ahmad': 'dr. Ahmad Rizki',
-    'doc-lisa': 'dr. Lisa Permata',
-    'doc-dewi': 'dr. Dewi Sartika',
-    'doc-budi': 'drg. Budi Santoso',
-  };
-
-  const DOCTOR_SPEC_MAP: Record<string, string> = {
-    'doc-sarah': 'Dokter Umum',
-    'doc-ahmad': 'Dokter Anak',
-    'doc-lisa': 'Penyakit Dalam',
-    'doc-dewi': 'Dokter Kebidanan',
-    'doc-budi': 'Dokter Gigi',
-  };
-
-  // Also try to extract doctor names from consultations
-  const doctorNameById = new Map<string, string>(Object.entries(DOCTOR_NAME_MAP));
-  const doctorSpecById = new Map<string, string>(Object.entries(DOCTOR_SPEC_MAP));
+  // Doctor name/specialization lookup — built purely from real consultation
+  // data (fake 'doc-sarah' etc. placeholder map removed).
+  const doctorNameById = new Map<string, string>();
+  const doctorSpecById = new Map<string, string>();
   for (const cons of storeConsultations) {
     if (cons.doctor?.name && !doctorNameById.has(cons.doctorId)) {
       doctorNameById.set(cons.doctorId, cons.doctor.name);
@@ -2337,11 +1733,8 @@ function buildPatientConsultations(
     consById.set(c.id, c);
   }
 
-  // Start with demo consultations
+  // Real medical records only.
   const recordMap = new Map<string, PatientConsultationRecord>();
-  for (const dc of demoConsultations) {
-    recordMap.set(dc.id, dc);
-  }
 
   // Add store medical records for this patient
   for (const mr of storeMedicalRecords) {
@@ -2394,16 +1787,8 @@ function buildPatientPrescriptions(
   storeConsultations: Consultation[],
   storePayments: Payment[],
 ): PatientPrescriptionRecord[] {
-  // Doctor name lookup
-  const DOCTOR_NAME_MAP: Record<string, string> = {
-    'doc-sarah': 'dr. Sarah Wijaya',
-    'doc-ahmad': 'dr. Ahmad Rizki',
-    'doc-lisa': 'dr. Lisa Permata',
-    'doc-dewi': 'dr. Dewi Sartika',
-    'doc-budi': 'drg. Budi Santoso',
-  };
-
-  const doctorNameById = new Map<string, string>(Object.entries(DOCTOR_NAME_MAP));
+  // Doctor name lookup — built purely from real consultation data.
+  const doctorNameById = new Map<string, string>();
   for (const cons of storeConsultations) {
     if (cons.doctor?.name && !doctorNameById.has(cons.doctorId)) {
       doctorNameById.set(cons.doctorId, cons.doctor.name);
@@ -2418,12 +1803,8 @@ function buildPatientPrescriptions(
     }
   }
 
+  // Real prescriptions only.
   const rxMap = new Map<string, PatientPrescriptionRecord>();
-
-  // Add demo prescriptions
-  for (const dp of demoPrescriptions) {
-    rxMap.set(dp.id, dp);
-  }
 
   // Add store prescriptions for this patient
   for (const rx of storePrescriptions) {
@@ -2487,15 +1868,12 @@ function PatientMedicalRecordsView() {
     [currentUser],
   );
 
-  // Resolve current patient ID (could be currentUser.id or a pat-xxx key)
-  const currentPatientId = useMemo(() => {
-    if (!currentUser) return '';
-    // If the id is already a pat- key, use it
-    if (currentUser.id.startsWith('pat-')) return currentUser.id;
-    // Try matching by name
-    const key = extractPatientKey(currentUser.name || '');
-    return key || currentUser.id;
-  }, [currentUser]);
+  // Real patient id (Supabase UUID) — the old 'pat-xxx' demo key / fuzzy
+  // first-name matching has been removed. That name-matching was a genuine
+  // bug risk beyond just showing fake data: a real patient legitimately
+  // named e.g. "Rina" or "Doni" could have been misidentified and shown
+  // the wrong (or no) medical records.
+  const currentPatientId = currentUser?.id || '';
 
   // Build merged consultation records (demo + store), sorted newest first
   const patientConsultations = useMemo(
@@ -2851,59 +2229,20 @@ function PatientMedicalRecordsView() {
 
             {/* Tab 3: Hasil Lab */}
             <TabsContent value="lab" className="space-y-3 mt-0">
-              {demoLabResults.map((lab) => (
-                <Card key={lab.id} className="border-0 hover:shadow-sm transition-shadow">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={cn(
-                            'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
-                            lab.status === 'normal'
-                              ? 'bg-emerald-100 dark:bg-emerald-950/50'
-                              : 'bg-amber-100 dark:bg-amber-950/50',
-                          )}
-                        >
-                          <FlaskConical
-                            className={cn(
-                              'w-5 h-5',
-                              lab.status === 'normal' ? 'text-emerald-600' : 'text-amber-600',
-                            )}
-                          />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-sm text-foreground">{lab.testName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            <Calendar className="w-3 h-3 inline mr-1" />
-                            {formatDate(lab.date)}
-                          </p>
-                        </div>
-                      </div>
-                      <Badge
-                        variant="secondary"
-                        className={cn(
-                          'text-[10px] shrink-0',
-                          lab.status === 'normal'
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
-                            : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400',
-                        )}
-                      >
-                        {lab.status === 'normal' ? 'Normal' : 'Tinggi'}
-                      </Badge>
-                    </div>
-                    <div className="mt-3 space-y-2 pl-13">
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground">Hasil</p>
-                        <p className="text-sm text-foreground font-medium">{lab.result}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground">Nilai Rujukan</p>
-                        <p className="text-xs text-muted-foreground">{lab.referenceRange}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+              {/* The fabricated `demoLabResults` list (5 fake lab results —
+                  "Gula Darah Puasa 180 mg/dL", "HbA1c 8.2%" etc. — shown
+                  identically to every patient) has been removed. There is
+                  no real lab-results feature wired into this view yet, so
+                  the honest state is an empty state, not fake data. */}
+              <Card className="border-0">
+                <CardContent className="p-8 text-center">
+                  <FlaskConical className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-sm font-medium text-foreground">Belum ada hasil lab</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Hasil pemeriksaan laboratorium dari dokter akan muncul di sini.
+                  </p>
+                </CardContent>
+              </Card>
             </TabsContent>
 
             {/* Tab 3: Resep Obat */}
@@ -3196,26 +2535,19 @@ function PatientScreeningTimeline() {
   const { screeningForms, currentUser, doctors, setActivePanel } = useStore();
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
 
-  // Doctor name lookup
-  const DOCTOR_NAME_MAP: Record<string, string> = {
-    'doc-sarah': 'dr. Sarah Wijaya',
-    'doc-ahmad': 'dr. Ahmad Rizki',
-    'doc-lisa': 'dr. Lisa Permata',
-    'doc-dewi': 'dr. Dewi Sartika',
-    'doc-budi': 'drg. Budi Santoso',
-  };
-
+  // Doctor name lookup — real doctors only (fake 'doc-sarah' placeholder
+  // map removed; unresolved ids just fall back to the generic label).
   const getDoctorName = useCallback((doctorId: string) => {
     const doctor = doctors.find((d: { id: string }) => d.id === doctorId);
-    if (doctor?.name) return doctor.name;
-    return DOCTOR_NAME_MAP[doctorId] || 'Dokter';
+    return doctor?.name || 'Dokter';
   }, [doctors]);
 
   const patientScreenings = useMemo(() => {
     if (!currentUser) return [];
-    const patientId = currentUser.id.startsWith('pat-') ? currentUser.id : (extractPatientKey(currentUser.name || '') || currentUser.id);
+    // Real patient id only — see the note on currentPatientId above for
+    // why the old fuzzy first-name matching was removed.
     return screeningForms
-      .filter((f: ScreeningForm) => f.patientId === patientId)
+      .filter((f: ScreeningForm) => f.patientId === currentUser.id)
       .sort((a: ScreeningForm, b: ScreeningForm) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [screeningForms, currentUser]);
 
