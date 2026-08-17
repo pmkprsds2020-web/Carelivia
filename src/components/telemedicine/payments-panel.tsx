@@ -65,81 +65,14 @@ interface MergedPayment {
 }
 
 // ---------------------------------------------------------------------------
-// Demo data
+// NOTE: The hardcoded `demoPayments` array (7 fake invoices — "INV-2025-001"
+// etc.) has been REMOVED. It used to render as part of every account's
+// payment history regardless of who was logged in — a patient and a doctor
+// account showed the exact same fake invoices. Real payments now come from
+// GET /api/payments?userId=... (see loadRealPayments below), which reads
+// the real `payments` table (currently populated by real Apotek Online
+// checkouts — see pharmacyService.checkout()).
 // ---------------------------------------------------------------------------
-
-const demoPayments: MergedPayment[] = [
-  {
-    id: 'pay1',
-    invoiceNumber: 'INV-2025-001',
-    type: 'Konsultasi',
-    amount: 200000,
-    method: 'qris',
-    status: 'success',
-    date: '2025-01-10T10:30:00Z',
-    description: 'Konsultasi Video Call - dr. Andi Pratama',
-  },
-  {
-    id: 'pay2',
-    invoiceNumber: 'INV-2025-002',
-    type: 'Farmasi',
-    amount: 85000,
-    method: 'gopay',
-    status: 'success',
-    date: '2025-01-09T14:20:00Z',
-    description: 'Pembelian Obat - Antasida, Omeprazole',
-  },
-  {
-    id: 'pay3',
-    invoiceNumber: 'INV-2025-003',
-    type: 'Home Care',
-    amount: 150000,
-    method: 'bank_transfer',
-    status: 'pending',
-    date: '2025-01-12T09:00:00Z',
-    description: 'Home Care - Perawatan Luka',
-  },
-  {
-    id: 'pay4',
-    invoiceNumber: 'INV-2025-004',
-    type: 'Konsultasi',
-    amount: 175000,
-    method: 'qris',
-    status: 'pending',
-    date: '2025-01-13T11:00:00Z',
-    description: 'Konsultasi Chat - dr. Siti Rahayu',
-  },
-  {
-    id: 'pay5',
-    invoiceNumber: 'INV-2024-048',
-    type: 'Farmasi',
-    amount: 320000,
-    method: 'ovo',
-    status: 'failed',
-    date: '2024-12-28T16:45:00Z',
-    description: 'Pembelian Obat - Metformin, Vitamin B6',
-  },
-  {
-    id: 'pay6',
-    invoiceNumber: 'INV-2024-045',
-    type: 'Home Care',
-    amount: 200000,
-    method: 'bank_transfer',
-    status: 'refunded',
-    date: '2024-12-20T08:30:00Z',
-    description: 'Home Care - Kunjungan Dokter (Dibatalkan)',
-  },
-  {
-    id: 'pay7',
-    invoiceNumber: 'INV-2024-042',
-    type: 'Konsultasi',
-    amount: 150000,
-    method: 'dana',
-    status: 'success',
-    date: '2024-12-15T13:15:00Z',
-    description: 'Konsultasi Audio - dr. Budi Santoso',
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -208,19 +141,54 @@ function generateInvoiceNumber(): string {
   return `INV-${Date.now()}`;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // ---------------------------------------------------------------------------
-// Build merged payments from demo + store
+// Build merged payments from REAL backend payments + local store payments
+// (the local store still carries the e-resep/prescription checkout flow,
+// which is a separate, pre-existing local-only system not yet migrated to
+// the real backend — see the note on handleConfirmPayment below).
 // ---------------------------------------------------------------------------
 
-function buildMergedPayments(storePayments: Payment[]): MergedPayment[] {
+interface RealPaymentRow {
+  id: string;
+  invoiceNumber: string;
+  referenceType: 'pharmacy_order' | 'homecare_booking' | 'consultation';
+  amount: number;
+  method?: string;
+  status: PaymentStatus;
+  createdAt: string;
+  paidAt?: string;
+}
+
+const REFERENCE_TYPE_LABEL: Record<RealPaymentRow['referenceType'], PaymentType> = {
+  pharmacy_order: 'Farmasi',
+  homecare_booking: 'Home Care',
+  consultation: 'Konsultasi',
+};
+
+function buildMergedPayments(storePayments: Payment[], realPayments: RealPaymentRow[]): MergedPayment[] {
   const payMap = new Map<string, MergedPayment>();
 
-  // Add demo payments
-  for (const dp of demoPayments) {
-    payMap.set(dp.id, dp);
+  // Real backend payments (currently: Apotek Online checkouts) — these have
+  // a real UUID id, so handleConfirmPayment can tell them apart from the
+  // local-only store payments below and route "Bayar" to the real API.
+  for (const rp of realPayments) {
+    const typeLabel = REFERENCE_TYPE_LABEL[rp.referenceType];
+    payMap.set(rp.id, {
+      id: rp.id,
+      invoiceNumber: rp.invoiceNumber,
+      type: typeLabel,
+      amount: rp.amount,
+      method: (rp.method as PaymentMethod) || 'qris',
+      status: rp.status,
+      date: rp.paidAt || rp.createdAt,
+      description: `Pembayaran ${typeLabel}`,
+      paidAt: rp.paidAt,
+    });
   }
 
-  // Add store payments
+  // Add store payments (local-only e-resep flow etc.)
   for (const sp of storePayments) {
     const typeLabel = sp.type === 'prescription' ? 'E-Resep' : sp.type === 'consultation' ? 'Konsultasi' : sp.type === 'pharmacy' ? 'Farmasi' : sp.type === 'homecare' ? 'Home Care' : 'Konsultasi';
     payMap.set(sp.id, {
@@ -248,12 +216,37 @@ function buildMergedPayments(storePayments: Payment[]): MergedPayment[] {
 
 export function PaymentsPanel() {
   const { toast } = useToast();
-  const { payments, setPayments, updatePrescriptionStatus, prescriptions } = useStore();
+  const { payments, setPayments, updatePrescriptionStatus, prescriptions, currentUser } = useStore();
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<MergedPayment | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('qris');
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [realPayments, setRealPayments] = useState<RealPaymentRow[]>([]);
+  const [realPaymentsLoading, setRealPaymentsLoading] = useState(true);
+
+  // Load REAL payments from the backend (currently: Apotek Online
+  // checkouts). Replaces the `demoPayments` array that used to show
+  // identical fake invoices to every account.
+  const loadRealPayments = useCallback(async () => {
+    if (!currentUser?.id) { setRealPaymentsLoading(false); return; }
+    setRealPaymentsLoading(true);
+    try {
+      const res = await fetch(`/api/payments?userId=${encodeURIComponent(currentUser.id)}`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data?.payments)) {
+        setRealPayments(data.payments);
+      }
+    } catch (err) {
+      console.error('[payments-panel] loadRealPayments failed:', err);
+    } finally {
+      setRealPaymentsLoading(false);
+    }
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    loadRealPayments();
+  }, [loadRealPayments]);
 
   // Payment proof dialog
   const [proofDialogOpen, setProofDialogOpen] = useState(false);
@@ -289,8 +282,8 @@ export function PaymentsPanel() {
 
   // Build merged payments
   const allPayments = useMemo(
-    () => buildMergedPayments(payments),
-    [payments],
+    () => buildMergedPayments(payments, realPayments),
+    [payments, realPayments],
   );
 
   const filteredPayments = useMemo(() => {
@@ -356,20 +349,56 @@ export function PaymentsPanel() {
     setPaymentDialogOpen(true);
   };
 
-  const handleConfirmPayment = useCallback(() => {
+  const handleConfirmPayment = useCallback(async () => {
     if (!selectedPayment) return;
 
     setProcessingPayment(true);
 
-    // Simulate processing
+    // Real backend payment (has a UUID id — created by pharmacyService,
+    // and in future homecare/consultation checkouts) → call the real,
+    // idempotent confirm endpoint. This actually updates Supabase and (for
+    // pharmacy orders) atomically deducts stock — replacing the old
+    // setTimeout()-only fake flow.
+    if (UUID_RE.test(selectedPayment.id)) {
+      try {
+        const res = await fetch('/api/payments/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentId: selectedPayment.id, method: selectedMethod }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.payment) {
+          throw new Error(data?.details || data?.error || 'Pembayaran gagal');
+        }
+        await loadRealPayments();
+        toast({
+          title: 'Pembayaran Berhasil! ✅',
+          description: `Pembayaran ${selectedPayment.description} ${formatCurrency(selectedPayment.amount)} berhasil.`,
+        });
+      } catch (err) {
+        toast({
+          title: 'Pembayaran Gagal',
+          description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+          variant: 'destructive',
+        });
+      } finally {
+        setProcessingPayment(false);
+        setPaymentDialogOpen(false);
+        setSelectedPayment(null);
+      }
+      return;
+    }
+
+    // Local-only payment (e-resep/prescription flow — a separate,
+    // pre-existing system not yet migrated to the real backend). Left as-is
+    // here to avoid touching a working flow in this pass; still uses a
+    // simulated delay rather than a real server call.
     setTimeout(() => {
-      // Update the store payment status
       const updatedPayments = useStore.getState().payments.map((p) =>
         p.id === selectedPayment.id ? { ...p, status: 'success' as const, paidAt: new Date().toISOString() } : p,
       );
       setPayments(updatedPayments);
 
-      // If linked to prescription, update that too
       if (selectedPayment.referenceId) {
         updatePrescriptionStatus(selectedPayment.referenceId, 'paid');
       }
@@ -383,7 +412,7 @@ export function PaymentsPanel() {
         description: `Pembayaran ${selectedPayment.description} ${formatCurrency(selectedPayment.amount)} berhasil.`,
       });
     }, 1500);
-  }, [selectedPayment, setPayments, updatePrescriptionStatus, toast]);
+  }, [selectedPayment, selectedMethod, setPayments, updatePrescriptionStatus, toast, loadRealPayments]);
 
   const handleViewDetail = (payment: MergedPayment) => {
     if (payment.status === 'success') {

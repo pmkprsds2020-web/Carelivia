@@ -77,13 +77,14 @@ function getStockStatus(stock: number): { label: string; variant: 'default' | 's
 }
 
 export function PharmacyPanel() {
-  const { medicines, cart, addToCart, removeFromCart, updateCartQuantity, clearCart } = useStore();
+  const { medicines, cart, addToCart, removeFromCart, updateCartQuantity, clearCart, currentUser } = useStore();
   const { toast } = useToast();
 
   const [activeTab, setActiveTab] = useState('shop');
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<MedicineCategory | ''>('');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
 
   const filteredMedicines = useMemo(() => {
     let result = medicines;
@@ -155,12 +156,48 @@ export function PharmacyPanel() {
     });
   };
 
-  const handleCheckout = () => {
-    toast({
-      title: 'Checkout Berhasil',
-      description: `Pesanan sebesar ${formatCurrency(cartTotal)} sedang diproses`,
-    });
-    clearCart();
+  const handleCheckout = async () => {
+    if (!currentUser) {
+      toast({ title: 'Silakan login', description: 'Anda harus login untuk checkout.', variant: 'destructive' });
+      return;
+    }
+    if (cart.length === 0) return;
+    if (isCheckingOut) return; // guard against double-submit
+
+    setIsCheckingOut(true);
+    try {
+      const res = await fetch('/api/pharmacy/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          items: cart.map((item) => ({ medicineId: item.medicine.id, quantity: item.quantity })),
+          shippingFee: SHIPPING_FEE,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.order) {
+        throw new Error(data?.details || data?.error || 'Checkout gagal');
+      }
+
+      // The order + a pending payment now exist for real in Supabase — the
+      // cart is only cleared AFTER that succeeds, so a failed checkout
+      // never silently loses what was in the cart.
+      clearCart();
+      toast({
+        title: 'Pesanan Dibuat',
+        description: `Invoice ${data.payment.invoiceNumber} — selesaikan pembayaran di halaman Pembayaran.`,
+      });
+      setActiveTab('shop');
+    } catch (err) {
+      toast({
+        title: 'Checkout Gagal',
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCheckingOut(false);
+    }
   };
 
   return (
@@ -444,9 +481,18 @@ export function PharmacyPanel() {
                       </div>
                     </div>
 
-                    <Button className="w-full gap-2" size="lg" onClick={handleCheckout}>
-                      <CreditCard className="w-4 h-4" />
-                      Checkout
+                    <Button className="w-full gap-2" size="lg" onClick={handleCheckout} disabled={isCheckingOut}>
+                      {isCheckingOut ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Memproses...
+                        </>
+                      ) : (
+                        <>
+                          <CreditCard className="w-4 h-4" />
+                          Checkout
+                        </>
+                      )}
                     </Button>
 
                     <p className="text-[10px] text-muted-foreground text-center">
