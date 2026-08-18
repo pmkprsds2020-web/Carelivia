@@ -232,33 +232,63 @@ export const homecareService = {
   },
 
   /**
-   * List every Home Care field staff account (profiles with role
-   * Perawat/Caregiver that have a matching `homecare_staff` row — see
-   * /api/auth/create-profile and the backfill route for how that row gets
-   * created). Powers the admin "Tugaskan Petugas" picker, since relying
-   * purely on automatic assignment at validation time leaves the admin with
-   * no way to choose or fix a "Belum ditugaskan" booking by hand.
+   * List every Home Care field staff account — every `profiles` row with
+   * role Perawat/Caregiver, NOT just rows that already have a matching
+   * `homecare_staff` row. This is deliberately more defensive than reading
+   * `homecare_staff` alone: an account created before this feature existed,
+   * or one whose signup-time `homecare_staff` upsert silently failed (e.g.
+   * SUPABASE_SERVICE_ROLE_KEY wasn't set yet at the time), would otherwise
+   * be a real registered nurse/caregiver who never shows up in the admin's
+   * "Tugaskan Petugas" picker and can never receive a booking — which is
+   * exactly the bug this fixes. Any staff-role profile missing its
+   * `homecare_staff` row gets one created right here, on read, with safe
+   * defaults — so the list is always complete regardless of how or when
+   * the account was created.
    */
   async getAllStaff(): Promise<HomecareStaffRecord[]> {
-    const rows = await safeQuery(
-      supabase
-        .from('homecare_staff')
-        .select('id, certification, is_available, current_status, profiles(full_name, phone)')
-        .order('current_status', { ascending: true }),
+    const profileRows = await safeQuery(
+      supabase.from('profiles').select('id, full_name, phone, role').in('role', ['Perawat', 'Caregiver']),
       [] as any[],
-      'homecareService.getAllStaff'
+      'homecareService.getAllStaff(profiles)'
     );
+    if ((profileRows as any[]).length === 0) return [];
 
-    const staffList = (rows as any[]).map((row) => ({
-      id: row.id,
-      name: row.profiles?.full_name ?? 'Petugas',
-      phone: row.profiles?.phone ?? undefined,
-      certification: row.certification ?? undefined,
-      isAvailable: row.is_available ?? true,
-      currentStatus: row.current_status ?? 'available',
-    }));
+    const ids = (profileRows as any[]).map((p) => p.id);
+    const staffRows = await safeQuery(
+      supabase.from('homecare_staff').select('id, certification, is_available, current_status').in('id', ids),
+      [] as any[],
+      'homecareService.getAllStaff(homecare_staff)'
+    );
+    const staffMap = new Map<string, any>((staffRows as any[]).map((r) => [r.id, r]));
 
-    if (staffList.length === 0) return [];
+    const missing = (profileRows as any[]).filter((p) => !staffMap.has(p.id));
+    for (const p of missing) {
+      const { data: created, error } = await safeInsert<any>(
+        supabase
+          .from('homecare_staff')
+          .insert({ id: p.id, certification: p.role, is_available: true, current_status: 'available' })
+          .select()
+          .maybeSingle(),
+        'homecareService.getAllStaff(self-heal insert)'
+      );
+      if (error) {
+        console.warn('[homecareService.getAllStaff] self-heal insert failed for', p.id, error);
+      } else if (created) {
+        staffMap.set(p.id, created);
+      }
+    }
+
+    const staffList: Omit<HomecareStaffRecord, 'activeBookingCount'>[] = (profileRows as any[]).map((p) => {
+      const s = staffMap.get(p.id);
+      return {
+        id: p.id,
+        name: p.full_name ?? 'Petugas',
+        phone: p.phone ?? undefined,
+        certification: s?.certification ?? p.role,
+        isAvailable: s?.is_available ?? true,
+        currentStatus: s?.current_status ?? 'available',
+      };
+    });
 
     // Active-booking counts, so the admin can see at a glance who's already
     // loaded up versus who's free — a simple `count` group-by via Supabase's

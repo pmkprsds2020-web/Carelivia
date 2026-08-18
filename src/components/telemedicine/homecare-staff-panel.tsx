@@ -361,7 +361,9 @@ export function HomeCareStaffPanel() {
                                     </SelectTrigger>
                                     <SelectContent>
                                       {staffOptions.length === 0 ? (
-                                        <div className="px-2 py-1.5 text-xs text-muted-foreground">Belum ada akun petugas terdaftar</div>
+                                        <div className="px-2 py-2 text-xs text-muted-foreground max-w-[220px]">
+                                          Belum ada akun Perawat/Caregiver terdaftar. Minta calon petugas mendaftar akun dengan role &quot;Perawat&quot; atau &quot;Caregiver&quot; di halaman login.
+                                        </div>
                                       ) : (
                                         staffOptions.map((s) => (
                                           <SelectItem key={s.id} value={s.id} className="text-xs">
