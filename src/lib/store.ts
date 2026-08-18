@@ -220,6 +220,13 @@ interface TelemedicineStore {
   setScreeningNavigationFrom: (from: 'monitoring' | null) => void;
   screeningPreselectedPatientId: string | null;
   setScreeningPreselectedPatientId: (id: string | null) => void;
+  // Which screening form to jump straight into filling out, set right
+  // before navigating to the 'screening' panel — e.g. from the "Isi
+  // Skrining" button in Rekam Medis, so a patient lands directly in the
+  // form instead of on the Skrining Kesehatan list first. Consumed once by
+  // screening-panel.tsx on mount, then cleared.
+  screeningPreselectedFormId: string | null;
+  setScreeningPreselectedFormId: (id: string | null) => void;
   // Which tab Monitoring Paliatif should open on next time it mounts — used
   // to resume the "Skrining" tab after finishing a screening deep-linked
   // from Monitoring Paliatif, instead of always resetting to 'dashboard'.
@@ -1082,6 +1089,8 @@ export const useStore = create<TelemedicineStore>((set) => ({
   setMonitoringReturnTab: (tab) => set({ monitoringReturnTab: tab }),
   screeningPreselectedPatientId: null as string | null,
   setScreeningPreselectedPatientId: (id) => set({ screeningPreselectedPatientId: id }),
+  screeningPreselectedFormId: null as string | null,
+  setScreeningPreselectedFormId: (id) => set({ screeningPreselectedFormId: id }),
 
   // Palliative Program Completion
   palliativeProgramCompletions: [] as PalliativeProgramCompletion[],

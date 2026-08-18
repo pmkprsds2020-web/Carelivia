@@ -152,6 +152,8 @@ export function ScreeningPanel() {
     addAuditLog,
     addClinicalAlert,
     consultations,
+    screeningPreselectedFormId,
+    setScreeningPreselectedFormId,
   } = useStore();
 
   const { toast } = useToast();
@@ -283,6 +285,24 @@ export function ScreeningPanel() {
       addAuditLog({ id: generateId(), screeningId: form.id, action: 'opened', performedBy: currentUser?.id || '', timestamp: new Date().toISOString() });
     }
   };
+
+  // Jump straight into a specific form's fill-out view (skipping the
+  // Skrining Kesehatan list) when arriving here via "Isi Skrining" from
+  // Rekam Medis — see screeningPreselectedFormId in store.ts. Only ever
+  // consumed once: cleared immediately so a later normal visit to this
+  // panel isn't affected.
+  useEffect(() => {
+    if (!screeningPreselectedFormId) return;
+    const form = screeningForms.find((f) => f.id === screeningPreselectedFormId);
+    if (form) {
+      handleOpenForm(form);
+      setScreeningPreselectedFormId(null);
+    }
+    // If not found yet, leave the flag set — screeningForms may still be
+    // loading (this panel's own fetch above hasn't resolved yet); the
+    // effect re-runs once that data arrives and retries automatically.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screeningPreselectedFormId, screeningForms]);
 
   const handleAnswerChange = (moduleId: ScreeningModuleId, questionId: string, value: string | number | string[]) => {
     setModuleAnswers(prev => ({

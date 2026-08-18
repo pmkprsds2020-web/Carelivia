@@ -51,7 +51,12 @@ const allNavItems: NavItem[] = [
   { id: 'pharmacy', label: 'Apotek Online', icon: <Pill className="w-5 h-5" />, roles: ['patient'] },
   { id: 'homecare', label: 'Home Care', icon: <Heart className="w-5 h-5" />, roles: ['patient'] },
   { id: 'medical-records', label: 'Rekam Medis', icon: <FileText className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
-  { id: 'screening', label: 'Skrining Kesehatan', icon: <ClipboardCheck className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
+  // 'screening' (Skrining Kesehatan) intentionally removed from the patient
+  // nav — filling out a screening now happens via the "Isi Skrining" button
+  // directly inside Rekam Medis, which jumps straight into the form (see
+  // screeningPreselectedFormId in store.ts). The route/panel itself still
+  // exists and still works if reached that way; it's just no longer a
+  // separate destination in the sidebar.
   { id: 'patient-paliatif', label: 'Pelayanan Paliatif', icon: <HeartPulse className="w-5 h-5" />, roles: ['patient'], section: 'Kesehatan' },
   { id: 'payments', label: 'Pembayaran', icon: <CreditCard className="w-5 h-5" />, roles: ['patient'], section: 'Lainnya' },
   { id: 'notifications', label: 'Notifikasi', icon: <Bell className="w-5 h-5" />, roles: ['patient'] },

@@ -159,6 +159,18 @@
   background: oklch(0.55 0.1 170);
 }
 
+/* Fully hidden scrollbar — used for horizontally-scrollable tab strips
+   (e.g. Rekam Medis tabs on narrow screens) where a visible scrollbar
+   would look out of place; the content still scrolls via touch/drag/wheel,
+   it's just not visually rendered as a bar. */
+.no-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Opera */
+}
+
 /* ── Clinical Alert List Scrollbar ── */
 /* Modern, 8px wide, CareLivia green theme, rounded, smooth */
 .alert-list-scroll {

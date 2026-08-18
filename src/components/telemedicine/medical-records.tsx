@@ -573,31 +573,31 @@ function DoctorMedicalRecordsView() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 mb-4">
-          <TabsTrigger value="records-list" className="flex items-center gap-1.5">
+        <TabsList className="flex w-full gap-1 overflow-x-auto no-scrollbar mb-4">
+          <TabsTrigger value="records-list" className="flex items-center gap-1.5 shrink-0 md:flex-1">
             <ClipboardList className="w-4 h-4" />
-            <span className="hidden sm:inline">Daftar Rekam Medis</span>
-            <span className="sm:hidden">Daftar RM</span>
+            <span className="hidden md:inline">Daftar Rekam Medis</span>
+            <span className="md:hidden">Daftar RM</span>
           </TabsTrigger>
-          <TabsTrigger value="patient-timeline" className="flex items-center gap-1.5">
+          <TabsTrigger value="patient-timeline" className="flex items-center gap-1.5 shrink-0 md:flex-1">
             <Clock className="w-4 h-4" />
-            <span className="hidden sm:inline">Timeline Pasien</span>
-            <span className="sm:hidden">Timeline</span>
+            <span className="hidden md:inline">Timeline Pasien</span>
+            <span className="md:hidden">Timeline</span>
           </TabsTrigger>
-          <TabsTrigger value="prescriptions" className="flex items-center gap-1.5">
+          <TabsTrigger value="prescriptions" className="flex items-center gap-1.5 shrink-0 md:flex-1">
             <Pill className="w-4 h-4" />
-            <span className="hidden sm:inline">Resep Obat</span>
-            <span className="sm:hidden">Resep</span>
+            <span className="hidden md:inline">Resep Obat</span>
+            <span className="md:hidden">Resep</span>
           </TabsTrigger>
-          <TabsTrigger value="screening" className="flex items-center gap-1.5">
+          <TabsTrigger value="screening" className="flex items-center gap-1.5 shrink-0 md:flex-1">
             <ClipboardCheck className="w-4 h-4" />
-            <span className="hidden sm:inline">Skrining Komprehensif</span>
-            <span className="sm:hidden">Skrining</span>
+            <span className="hidden md:inline">Skrining Komprehensif</span>
+            <span className="md:hidden">Skrining</span>
           </TabsTrigger>
-          <TabsTrigger value="anamnesis-sistem" className="flex items-center gap-1.5">
+          <TabsTrigger value="anamnesis-sistem" className="flex items-center gap-1.5 shrink-0 md:flex-1">
             <Stethoscope className="w-4 h-4" />
-            <span className="hidden sm:inline">Anamnesis Sistem</span>
-            <span className="sm:hidden">Anamnesis</span>
+            <span className="hidden md:inline">Anamnesis Sistem</span>
+            <span className="md:hidden">Anamnesis</span>
           </TabsTrigger>
         </TabsList>
 
@@ -2160,31 +2160,40 @@ function PatientMedicalRecordsView() {
         {/* Main Content */}
         <div className="lg:col-span-3">
           <Tabs defaultValue="consultations" className="w-full">
-            <TabsList className="grid w-full grid-cols-5 mb-4">
-              <TabsTrigger value="consultations" className="flex items-center gap-1.5">
+            {/* Was a fixed `grid-cols-5` — at widths where the full labels
+                fit box-wise per Tailwind's `sm:` breakpoint (≥640px) but the
+                5 equal columns are still too narrow for text like "Skrining
+                Kesehatan" or "Pengkajian Dokter", the label text overflowed
+                its column and visually overlapped the next tab. Now the bar
+                scrolls horizontally instead of squeezing text, and the
+                breakpoint for showing full labels is pushed out to `md`
+                (≥768px) — comfortably wide enough for every label — with
+                short labels below that. */}
+            <TabsList className="flex w-full gap-1 overflow-x-auto no-scrollbar mb-4">
+              <TabsTrigger value="consultations" className="flex items-center gap-1.5 shrink-0 md:flex-1">
                 <FileText className="w-4 h-4" />
-                <span className="hidden sm:inline">Riwayat Konsultasi</span>
-                <span className="sm:hidden">Konsultasi</span>
+                <span className="hidden md:inline">Riwayat Konsultasi</span>
+                <span className="md:hidden">Konsultasi</span>
               </TabsTrigger>
-              <TabsTrigger value="screening" className="flex items-center gap-1.5">
+              <TabsTrigger value="screening" className="flex items-center gap-1.5 shrink-0 md:flex-1">
                 <ClipboardCheck className="w-4 h-4" />
-                <span className="hidden sm:inline">Skrining Kesehatan</span>
-                <span className="sm:hidden">Skrining</span>
+                <span className="hidden md:inline">Skrining Kesehatan</span>
+                <span className="md:hidden">Skrining</span>
               </TabsTrigger>
-              <TabsTrigger value="anamnesis-sistem" className="flex items-center gap-1.5">
+              <TabsTrigger value="anamnesis-sistem" className="flex items-center gap-1.5 shrink-0 md:flex-1">
                 <Stethoscope className="w-4 h-4" />
-                <span className="hidden sm:inline">Pengkajian Dokter</span>
-                <span className="sm:hidden">Pengkajian</span>
+                <span className="hidden md:inline">Pengkajian Dokter</span>
+                <span className="md:hidden">Pengkajian</span>
               </TabsTrigger>
-              <TabsTrigger value="lab" className="flex items-center gap-1.5">
+              <TabsTrigger value="lab" className="flex items-center gap-1.5 shrink-0 md:flex-1">
                 <FlaskConical className="w-4 h-4" />
-                <span className="hidden sm:inline">Hasil Lab</span>
-                <span className="sm:hidden">Lab</span>
+                <span className="hidden md:inline">Hasil Lab</span>
+                <span className="md:hidden">Lab</span>
               </TabsTrigger>
-              <TabsTrigger value="prescriptions" className="flex items-center gap-1.5">
+              <TabsTrigger value="prescriptions" className="flex items-center gap-1.5 shrink-0 md:flex-1">
                 <Pill className="w-4 h-4" />
-                <span className="hidden sm:inline">Resep Obat</span>
-                <span className="sm:hidden">Resep</span>
+                <span className="hidden md:inline">Resep Obat</span>
+                <span className="md:hidden">Resep</span>
               </TabsTrigger>
             </TabsList>
 
@@ -2613,7 +2622,7 @@ function PatientMedicalRecordsView() {
 // ---------------------------------------------------------------------------
 
 function PatientScreeningTimeline() {
-  const { screeningForms, currentUser, doctors, setActivePanel } = useStore();
+  const { screeningForms, currentUser, doctors, setActivePanel, setScreeningPreselectedFormId } = useStore();
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
 
   // Doctor name lookup — real doctors only (fake 'doc-sarah' placeholder
@@ -2729,7 +2738,14 @@ function PatientScreeningTimeline() {
                     <Button
                       size="sm"
                       className="flex-1 h-8 text-xs"
-                      onClick={() => setActivePanel('screening')}
+                      onClick={() => {
+                        // Jump straight into filling out THIS form — skips
+                        // the Skrining Kesehatan list page entirely, since
+                        // the patient already knows exactly which form they
+                        // want (they just tapped its card here).
+                        setScreeningPreselectedFormId(form.id);
+                        setActivePanel('screening');
+                      }}
                     >
                       <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
                       Isi Skrining
