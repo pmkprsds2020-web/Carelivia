@@ -147,6 +147,18 @@ interface TelemedicineStore {
   setPalliativePatients: (patients: PalliativePatientInfo[]) => void;
   addPalliativePatient: (patient: PalliativePatientInfo) => Promise<PalliativePatientInfo | null>;
   updatePalliativePatient: (patientId: string, data: Partial<PalliativePatientInfo>) => void;
+  /**
+   * Local-only variant of updatePalliativePatient — updates Zustand state
+   * WITHOUT writing back to Supabase. This exists specifically for the
+   * realtime subscription handler (see supabase-sync-provider.tsx): a
+   * change that just arrived FROM the database must never be persisted
+   * again, or every DB update re-triggers its own realtime event forever
+   * (an infinite INSERT/UPDATE loop that floods the network until the
+   * browser hits ERR_INSUFFICIENT_RESOURCES and the whole app locks up —
+   * this was exactly the "tombol Jadikan Pasien Monitoring Paliatif seperti
+   * tidak berfungsi" / chat freezing bug).
+   */
+  updatePalliativePatientLocal: (patientId: string, data: Partial<PalliativePatientInfo>) => void;
   removePalliativePatient: (patientId: string) => void;
   selectedPalliativePatientId: string | null;
   setSelectedPalliativePatientId: (id: string | null) => void;
@@ -602,6 +614,14 @@ export const useStore = create<TelemedicineStore>((set) => ({
     }));
     // Persist to Firestore
     firestoreSync.updatePatient(patientId, data).catch(err => console.error('[Store] Firestore sync error (updatePatient):', err));
+  },
+  updatePalliativePatientLocal: (patientId, data) => {
+    set((state) => ({
+      palliativePatients: state.palliativePatients.map(p =>
+        p.id === patientId ? { ...p, ...data, updatedAt: new Date().toISOString() } : p
+      ),
+    }));
+    // Deliberately NO firestoreSync call — see the interface comment above.
   },
   removePalliativePatient: (patientId) => {
     set((state) => ({

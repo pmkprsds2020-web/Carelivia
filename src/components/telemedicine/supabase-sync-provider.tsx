@@ -416,7 +416,14 @@ function handlePatientEvent(store: ReturnType<typeof useStore.getState>, p: Real
       if (!fresh) return;
       const exists = hasId(useStore.getState().palliativePatients, id);
       if (exists) {
-        store.updatePalliativePatient(id, fresh);
+        // Local-only — this row already reflects what's in the database.
+        // Routing it through the persisting updatePalliativePatient() here
+        // would immediately PATCH it right back to Supabase, which fires
+        // ANOTHER realtime UPDATE event, which lands back in this handler
+        // again — an infinite update↔realtime loop that floods the network
+        // until the browser refuses new connections (ERR_INSUFFICIENT_
+        // RESOURCES) and the whole app appears to hang.
+        useStore.getState().updatePalliativePatientLocal(id, fresh);
       } else {
         store.addPalliativePatient(fresh);
       }
@@ -648,9 +655,18 @@ function handleAcpEvent(store: ReturnType<typeof useStore.getState>, p: Realtime
       const state = useStore.getState();
       const exists = hasId(state.advanceCarePlans, id);
       if (exists) {
-        store.updateAdvanceCarePlan(id, fresh);
+        // Local-only via setState — NOT store.updateAdvanceCarePlan, which
+        // would PATCH this row straight back to Supabase and re-trigger
+        // this very event (see handlePatientEvent's comment for the full
+        // infinite-loop explanation).
+        useStore.setState({
+          advanceCarePlans: state.advanceCarePlans.map((a) => (a.id === id ? fresh : a)),
+        });
       } else {
-        store.addAdvanceCarePlan(fresh);
+        // Local-only — NOT store.addAdvanceCarePlan, for the same reason.
+        useStore.setState((s) => ({
+          advanceCarePlans: [...s.advanceCarePlans, fresh],
+        }));
       }
     })
     .catch((e: unknown) => warn('acp realtime', e));
