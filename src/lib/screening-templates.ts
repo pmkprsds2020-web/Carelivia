@@ -116,12 +116,17 @@ export const SCREENING_MODULES: ScreeningModule[] = [
     icon: 'activity',
     description: 'Pengukuran tanda vital yang dapat dilakukan pasien secara mandiri di rumah',
     estimatedMinutes: 5,
-    isRequired: true,
+    // Made optional: a patient without a working scale/thermometer at home
+    // (or who simply doesn't want to measure right now) should be able to
+    // skip this module entirely and still send their screening results —
+    // it no longer blocks the doctor from deselecting it when sending the
+    // form, nor counts toward the required-fields progress gate below.
+    isRequired: false,
     targetAudience: 'all',
     questions: [
-      { id: 'tv-berat', text: 'Berat badan (kg)', type: 'number', required: true, section: 'Pengukuran Fisik', placeholder: 'Contoh: 70', unit: 'kg', min: 20, max: 300 },
-      { id: 'tv-tinggi', text: 'Tinggi badan (cm)', type: 'number', required: true, placeholder: 'Contoh: 170', unit: 'cm', min: 50, max: 250 },
-      { id: 'tv-suhu', text: 'Suhu tubuh (°C)', type: 'number', required: true, section: 'Tanda Vital', placeholder: 'Contoh: 36.5', unit: '°C', min: 34, max: 42 },
+      { id: 'tv-berat', text: 'Berat badan (kg)', type: 'number', required: false, section: 'Pengukuran Fisik', placeholder: 'Contoh: 70', unit: 'kg', min: 20, max: 300 },
+      { id: 'tv-tinggi', text: 'Tinggi badan (cm)', type: 'number', required: false, placeholder: 'Contoh: 170', unit: 'cm', min: 50, max: 250 },
+      { id: 'tv-suhu', text: 'Suhu tubuh (°C)', type: 'number', required: false, section: 'Tanda Vital', placeholder: 'Contoh: 36.5', unit: '°C', min: 34, max: 42 },
       { id: 'tv-sistolik', text: 'Tekanan darah sistolik (mmHg)', type: 'number', required: false, placeholder: 'Contoh: 120', unit: 'mmHg', min: 60, max: 250 },
       { id: 'tv-diastolik', text: 'Tekanan darah diastolik (mmHg)', type: 'number', required: false, placeholder: 'Contoh: 80', unit: 'mmHg', min: 30, max: 150 },
       { id: 'tv-nadi', text: 'Denyut nadi (bpm)', type: 'number', required: false, placeholder: 'Contoh: 80', unit: 'bpm', min: 30, max: 220 },
