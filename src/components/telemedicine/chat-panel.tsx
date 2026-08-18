@@ -2317,7 +2317,7 @@ export function ChatPanel() {
     }
 
     return (
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4 space-y-1">
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-4 space-y-1">
         {messages.map((msg, index) => {
           const isOwn = msg.senderId === currentUser?.id;
           const isSystem = msg.senderId === 'system';
@@ -3148,14 +3148,21 @@ export function ChatPanel() {
   // ── Main Render ────────────────────────────────────────────────────────
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex rounded-xl overflow-hidden border border-border shadow-sm">
-      {/* Left panel */}
-      <div className="w-full lg:w-80 xl:w-96 shrink-0">
+    <div className="h-[calc(100dvh-8rem)] flex rounded-xl overflow-hidden border border-border shadow-sm">
+      {/* Left panel — width must collapse to 0 (not just hide its CONTENT)
+          when a conversation is open on narrow screens. Previously this
+          wrapper always reserved `w-full` below the `lg` breakpoint even
+          while its inner content was `hidden`, leaving a full-width blank
+          box and squeezing the actual conversation into whatever space
+          was left over — exactly the empty-gutter/squeezed-chat bug seen
+          on real Chat Dokter windows below ~1024px wide. Now the wrapper's
+          own width/visibility mirrors the inner panel's hidden/flex state. */}
+      <div className={cn('shrink-0', showChatArea ? 'hidden lg:block lg:w-80 xl:w-96' : 'w-full lg:w-80 xl:w-96')}>
         {isDoctor ? renderDoctorLeftPanel() : renderPatientLeftPanel()}
       </div>
 
       {/* Right panel - Chat area */}
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         {renderRightPanel()}
       </div>
 
