@@ -221,14 +221,41 @@ export const homecareService = {
   },
 
   /**
-   * Update a booking's status (e.g. staff checking in, marking on-the-way,
+   * Update a booking's status (e.g. staff heading to location, arriving,
    * completing the visit). Replaces the old homecare-staff-panel.tsx flow,
-   * which only fired a toast — check-in, "tiba di lokasi", and "selesai"
-   * never touched the database, so a booking could sit at 'confirmed'
-   * forever no matter what a staff member did in the app.
+   * which only fired a toast — the transitions below never touched the
+   * database, so a booking could sit at 'confirmed' forever no matter what
+   * a staff member did in the app.
+   *
+   * Two behaviors added on top of the plain status update:
+   *  - Moving to 'on_the_way' (petugas menuju lokasi pasien) is BLOCKED
+   *    unless the booking's payment has actually succeeded — a staff
+   *    member can't head out for a booking the patient hasn't paid for yet.
+   *  - The patient gets a real-time notification on each meaningful
+   *    transition (on the way / arrived / completed), so they know without
+   *    needing to refresh.
    */
   async updateBookingStatus(bookingId: string, status: string): Promise<HomecareBookingRecord | null> {
     if (!isValidUuid(bookingId)) throw new Error('bookingId tidak valid');
+
+    if (status === 'on_the_way') {
+      const payment = await safeQuery(
+        supabase
+          .from('payments')
+          .select('status')
+          .eq('reference_type', 'homecare_booking')
+          .eq('reference_id', bookingId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        null as any,
+        'homecareService.updateBookingStatus(payment check)'
+      );
+      if (!payment || (payment as any).status !== 'success') {
+        throw new Error('Booking ini belum dibayar oleh pasien. Petugas tidak dapat menuju lokasi sebelum pembayaran berhasil.');
+      }
+    }
+
     const { data: row, error } = await safeInsert<any>(
       supabase
         .from('homecare_bookings')
@@ -240,6 +267,39 @@ export const homecareService = {
     );
     if (error) throw new Error(error);
     if (!row) throw new Error(`Booking dengan id=${bookingId} tidak ditemukan.`);
+
+    // Let the patient know in real time — they were otherwise only ever
+    // told "Menunggu konfirmasi" at booking time and never heard from the
+    // app again until the visit was already over.
+    const patientNotif: Record<string, { title: string; body: string }> = {
+      on_the_way: {
+        title: 'Petugas Menuju Lokasi Anda',
+        body: `Petugas Home Care untuk layanan ${row.homecare_services?.name ?? ''} sedang dalam perjalanan menuju lokasi Anda.`,
+      },
+      in_progress: {
+        title: 'Petugas Telah Tiba',
+        body: `Petugas Home Care telah tiba di lokasi Anda untuk layanan ${row.homecare_services?.name ?? ''}.`,
+      },
+      completed: {
+        title: 'Home Care Selesai',
+        body: `Layanan ${row.homecare_services?.name ?? ''} telah selesai dilaksanakan. Terima kasih telah menggunakan CareLivia.`,
+      },
+      cancelled: {
+        title: 'Home Care Dibatalkan',
+        body: `Booking ${row.homecare_services?.name ?? ''} Anda telah dibatalkan.`,
+      },
+    };
+    const notif = patientNotif[status];
+    if (notif && row.patient_id) {
+      await notificationService.create({
+        userId: row.patient_id,
+        title: notif.title,
+        body: notif.body,
+        type: 'homecare',
+        data: { bookingId },
+      }).catch((e) => console.error('[homecareService.updateBookingStatus] patient notification failed:', e));
+    }
+
     return bookingFromDb(row);
   },
 

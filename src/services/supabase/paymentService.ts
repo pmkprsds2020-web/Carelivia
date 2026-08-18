@@ -251,6 +251,45 @@ export const paymentService = {
     return (rows as any[]).map(fromDb);
   },
 
+  /**
+   * Latest payment per reference id, for a batch of Home Care bookings (or
+   * any other reference type). Uses the service-role client because the
+   * caller here is staff/admin looking up OTHER people's (patients')
+   * payments — RLS would normally scope payments to their own owner.
+   * Returns a map keyed by referenceId; bookings with no payment row yet
+   * are simply absent from the map.
+   */
+  async getLatestForReferenceIds(
+    referenceType: PaymentReferenceType,
+    referenceIds: string[]
+  ): Promise<Record<string, PaymentRecord>> {
+    const validIds = referenceIds.filter(isValidUuid);
+    if (validIds.length === 0) return {};
+
+    const db = await getDbClient();
+    const rows = await safeQuery(
+      db
+        .from('payments')
+        .select('*')
+        .eq('reference_type', referenceType)
+        .in('reference_id', validIds)
+        .order('created_at', { ascending: false }),
+      [] as any[],
+      'paymentService.getLatestForReferenceIds'
+    );
+
+    const map: Record<string, PaymentRecord> = {};
+    for (const row of rows as any[]) {
+      // Rows arrive newest-first, so the first one seen per reference_id is
+      // the latest — matches the "most recent payment wins" behavior used
+      // elsewhere (e.g. a failed attempt followed by a fresh pending one).
+      if (!map[row.reference_id]) {
+        map[row.reference_id] = fromDb(row);
+      }
+    }
+    return map;
+  },
+
   async getById(id: string): Promise<PaymentRecord | null> {
     if (!isValidUuid(id)) return null;
     const db = await getDbClient();

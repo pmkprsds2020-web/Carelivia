@@ -43,6 +43,14 @@ interface StaffBooking {
   scheduledAt: string;
   status: string;
   notes?: string;
+  // Payment status attached server-side (see GET /api/homecare) — drives
+  // whether "Menuju Lokasi" is even offered, since a staff member shouldn't
+  // head out for a booking the patient hasn't paid for yet.
+  paymentStatus?: string;
+  // Only populated for the admin monitoring view (see isAdminView below) —
+  // an individual field staff member's own queue is implicitly "mine".
+  staffName?: string;
+  adminValidated?: boolean;
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -57,6 +65,13 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 export function HomeCareStaffPanel() {
   const { toast } = useToast();
   const { currentUser } = useStore();
+  // Admin opens this same panel as a monitoring/overview tool over ALL
+  // validated bookings (across every staff member) rather than a personal
+  // working queue — the old version fetched by staffId=currentUser.id
+  // unconditionally, which for an admin account (not itself a staff row)
+  // always returned zero results and showed a permanently blank "Tidak ada
+  // jadwal hari ini", even when bookings were validated and waiting.
+  const isAdminView = currentUser?.role === 'admin';
   const [activeVisit, setActiveVisit] = useState<string | null>(null);
   const [bookings, setBookings] = useState<StaffBooking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(true);
@@ -66,7 +81,10 @@ export function HomeCareStaffPanel() {
     if (!currentUser?.id) { setBookingsLoading(false); return; }
     setBookingsLoading(true);
     try {
-      const res = await fetch(`/api/homecare?type=bookings&staffId=${encodeURIComponent(currentUser.id)}`);
+      const url = isAdminView
+        ? '/api/homecare?type=bookings&validatedOnly=true'
+        : `/api/homecare?type=bookings&staffId=${encodeURIComponent(currentUser.id)}`;
+      const res = await fetch(url);
       const data = await res.json();
       if (res.ok && Array.isArray(data?.bookings)) {
         setBookings(
@@ -81,6 +99,9 @@ export function HomeCareStaffPanel() {
             scheduledAt: b.scheduledAt,
             status: b.status,
             notes: b.notes,
+            paymentStatus: b.payment?.status,
+            staffName: b.staff?.name,
+            adminValidated: b.adminValidated,
           }))
         );
       } else {
@@ -92,7 +113,7 @@ export function HomeCareStaffPanel() {
     } finally {
       setBookingsLoading(false);
     }
-  }, [currentUser?.id, toast]);
+  }, [currentUser?.id, isAdminView, toast]);
 
   useEffect(() => {
     loadBookings();
@@ -123,24 +144,38 @@ export function HomeCareStaffPanel() {
     }
   };
 
-  const handleCheckIn = (bookingId: string) => {
+  // "Menuju Lokasi" — notifies the patient the staff is heading their way.
+  // The server rejects this if the booking isn't paid yet (see
+  // homecareService.updateBookingStatus), so the button is also hidden
+  // client-side once paymentStatus isn't 'success' to avoid a dead click.
+  const handleGoToLocation = (bookingId: string) => {
     setActiveVisit(bookingId);
-    updateStatus(bookingId, 'on_the_way', { title: 'Check-in Berhasil', description: 'Anda telah check-in di lokasi pasien' });
+    updateStatus(bookingId, 'on_the_way', { title: 'Menuju Lokasi', description: 'Pasien telah diberitahu bahwa Anda sedang dalam perjalanan.' });
   };
 
   const handleComplete = (bookingId: string) => {
-    updateStatus(bookingId, 'completed', { title: 'Kunjungan Selesai', description: 'Layanan home care telah diselesaikan' });
+    updateStatus(bookingId, 'completed', { title: 'Home Care Selesai', description: 'Layanan home care telah diselesaikan.' });
     setActiveVisit(null);
   };
 
   const handleMarkArrived = (bookingId: string) => {
-    updateStatus(bookingId, 'in_progress', { title: 'Tiba di Lokasi', description: 'Anda telah menandai tiba di lokasi pasien' });
+    updateStatus(bookingId, 'in_progress', { title: 'Sudah Sampai', description: 'Anda telah menandai tiba di lokasi pasien.' });
   };
 
   const todaySchedule = useMemo(() => {
     const today = new Date().toDateString();
     return bookings.filter((b) => new Date(b.scheduledAt).toDateString() === today && b.status !== 'completed' && b.status !== 'cancelled');
   }, [bookings]);
+
+  // Admin monitors everything still in flight, not just "today" — a
+  // management overview shouldn't hide tomorrow's already-validated
+  // bookings just because they're not scheduled for today.
+  const activeBookings = useMemo(
+    () => bookings.filter((b) => b.status !== 'completed' && b.status !== 'cancelled'),
+    [bookings]
+  );
+
+  const scheduleList = isAdminView ? activeBookings : todaySchedule;
 
   const history = useMemo(() => bookings.filter((b) => b.status === 'completed'), [bookings]);
 
@@ -149,15 +184,17 @@ export function HomeCareStaffPanel() {
   return (
     <div className="p-4 md:p-6 space-y-6">
       <Tabs defaultValue="schedule" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-3">
+        <TabsList className={cn('grid w-full max-w-md', isAdminView ? 'grid-cols-2' : 'grid-cols-3')}>
           <TabsTrigger value="schedule" className="flex items-center gap-1.5">
             <Calendar className="w-4 h-4" />
             <span className="hidden sm:inline">Jadwal</span>
           </TabsTrigger>
-          <TabsTrigger value="navigation" className="flex items-center gap-1.5">
-            <Navigation className="w-4 h-4" />
-            <span className="hidden sm:inline">Navigasi</span>
-          </TabsTrigger>
+          {!isAdminView && (
+            <TabsTrigger value="navigation" className="flex items-center gap-1.5">
+              <Navigation className="w-4 h-4" />
+              <span className="hidden sm:inline">Navigasi</span>
+            </TabsTrigger>
+          )}
           <TabsTrigger value="history" className="flex items-center gap-1.5">
             <History className="w-4 h-4" />
             <span className="hidden sm:inline">Riwayat</span>
@@ -168,12 +205,14 @@ export function HomeCareStaffPanel() {
         <TabsContent value="schedule" className="space-y-4 mt-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-semibold text-foreground">Jadwal Hari Ini</h3>
+              <h3 className="font-semibold text-foreground">{isAdminView ? 'Pesanan Home Care Tervalidasi' : 'Jadwal Hari Ini'}</h3>
               <p className="text-sm text-muted-foreground">
-                {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                {isAdminView
+                  ? 'Semua pesanan yang sudah divalidasi admin dan masih berjalan'
+                  : new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
               </p>
             </div>
-            <Badge variant="secondary">{todaySchedule.length} kunjungan</Badge>
+            <Badge variant="secondary">{scheduleList.length} kunjungan</Badge>
           </div>
 
           {bookingsLoading ? (
@@ -181,19 +220,22 @@ export function HomeCareStaffPanel() {
               <Loader2 className="w-5 h-5 animate-spin mr-2" />
               Memuat jadwal...
             </div>
-          ) : todaySchedule.length === 0 ? (
+          ) : scheduleList.length === 0 ? (
             <Card className="border-0 bg-muted/50">
               <CardContent className="p-12 text-center">
                 <Calendar className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
-                <p className="text-muted-foreground font-medium">Tidak ada jadwal hari ini</p>
+                <p className="text-muted-foreground font-medium">
+                  {isAdminView ? 'Belum ada pesanan Home Care yang tervalidasi' : 'Tidak ada jadwal hari ini'}
+                </p>
               </CardContent>
             </Card>
           ) : (
           <div className="space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar">
-            {todaySchedule.map((visit, index) => {
+            {scheduleList.map((visit, index) => {
               const sc = statusConfig[visit.status] || statusConfig.pending;
               const isArrived = visit.status === 'in_progress';
               const isUpdating = updatingId === visit.id;
+              const isPaid = visit.paymentStatus === 'success';
               const visitTime = new Date(visit.scheduledAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
               return (
@@ -209,19 +251,33 @@ export function HomeCareStaffPanel() {
                           )}>
                             {isArrived ? <CheckCircle2 className="w-4 h-4" /> : index + 1}
                           </div>
-                          {index < todaySchedule.length - 1 && (
+                          {index < scheduleList.length - 1 && (
                             <div className="w-0.5 h-8 bg-border mt-1" />
                           )}
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-semibold text-sm text-foreground">{visit.service}</p>
                             <Badge className={cn('text-[10px] border-0', sc.className)}>{sc.label}</Badge>
+                            <Badge className={cn(
+                              'text-[10px] border-0',
+                              isPaid
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
+                                : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400'
+                            )}>
+                              {isPaid ? 'Sudah Dibayar' : 'Belum Dibayar'}
+                            </Badge>
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
                             <User className="w-3 h-3" />
                             {visit.patient}
                           </p>
+                          {isAdminView && (
+                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                              <Truck className="w-3 h-3" />
+                              Petugas: {visit.staffName || 'Belum ditugaskan'}
+                            </p>
+                          )}
                           <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                             <MapPin className="w-3 h-3" />
                             {visit.address}
@@ -250,37 +306,45 @@ export function HomeCareStaffPanel() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border ml-11">
-                      {!isArrived && visit.status === 'confirmed' && (
-                        <>
-                          <Button size="sm" onClick={() => handleCheckIn(visit.id)} disabled={isUpdating}>
+                    {/* Action buttons are for field staff only — admin monitors, doesn't perform the visit */}
+                    {!isAdminView && (
+                      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border ml-11 flex-wrap">
+                        {!isArrived && visit.status === 'confirmed' && isPaid && (
+                          <>
+                            <Button size="sm" onClick={() => handleGoToLocation(visit.id)} disabled={isUpdating}>
+                              {isUpdating ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Navigation className="w-3.5 h-3.5 mr-1" />}
+                              Menuju Lokasi
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => setActiveVisit(visit.id)}>
+                              <Navigation className="w-3.5 h-3.5 mr-1" />
+                              Navigasi
+                            </Button>
+                          </>
+                        )}
+                        {!isArrived && visit.status === 'confirmed' && !isPaid && (
+                          <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border-0 text-[10px]">
+                            Menunggu pembayaran pasien
+                          </Badge>
+                        )}
+                        {isArrived && (
+                          <Button size="sm" variant="outline" onClick={() => handleComplete(visit.id)} disabled={isUpdating}>
+                            {isUpdating ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5 mr-1" />}
+                            Selesai Home Care
+                          </Button>
+                        )}
+                        {visit.status === 'pending' && (
+                          <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border-0 text-[10px]">
+                            Menunggu konfirmasi
+                          </Badge>
+                        )}
+                        {visit.status === 'on_the_way' && (
+                          <Button size="sm" variant="outline" onClick={() => handleMarkArrived(visit.id)} disabled={isUpdating}>
                             {isUpdating ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <MapPin className="w-3.5 h-3.5 mr-1" />}
-                            Check-in
+                            Sudah Sampai
                           </Button>
-                          <Button variant="outline" size="sm" onClick={() => setActiveVisit(visit.id)}>
-                            <Navigation className="w-3.5 h-3.5 mr-1" />
-                            Navigasi
-                          </Button>
-                        </>
-                      )}
-                      {isArrived && (
-                        <Button size="sm" variant="outline" onClick={() => handleComplete(visit.id)} disabled={isUpdating}>
-                          {isUpdating ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5 mr-1" />}
-                          Selesai
-                        </Button>
-                      )}
-                      {visit.status === 'pending' && (
-                        <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border-0 text-[10px]">
-                          Menunggu konfirmasi
-                        </Badge>
-                      )}
-                      {visit.status === 'on_the_way' && (
-                        <Button size="sm" variant="outline" onClick={() => handleMarkArrived(visit.id)} disabled={isUpdating}>
-                          {isUpdating ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <MapPin className="w-3.5 h-3.5 mr-1" />}
-                          Tandai Tiba
-                        </Button>
-                      )}
-                    </div>
+                        )}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               );
@@ -366,7 +430,7 @@ export function HomeCareStaffPanel() {
                     </div>
                     <Button onClick={() => handleMarkArrived(currentVisit.id)} disabled={updatingId === currentVisit.id}>
                       {updatingId === currentVisit.id ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <MapPin className="w-4 h-4 mr-1" />}
-                      Tandai Tiba
+                      Sudah Sampai
                     </Button>
                   </div>
                 </CardContent>
@@ -409,7 +473,7 @@ export function HomeCareStaffPanel() {
                   Pilih kunjungan dari jadwal dan check-in untuk memulai navigasi
                 </p>
                 <Button variant="outline" size="sm" className="mt-4" onClick={() => {
-                  const firstConfirmed = todaySchedule.find((v) => v.status === 'confirmed');
+                  const firstConfirmed = scheduleList.find((v) => v.status === 'confirmed');
                   if (firstConfirmed) {
                     setActiveVisit(firstConfirmed.id);
                   }
@@ -452,6 +516,12 @@ export function HomeCareStaffPanel() {
                           <User className="w-3 h-3" />
                           {item.patient}
                         </p>
+                        {isAdminView && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Truck className="w-3 h-3" />
+                            Petugas: {item.staffName || '-'}
+                          </p>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="text-xs text-muted-foreground">

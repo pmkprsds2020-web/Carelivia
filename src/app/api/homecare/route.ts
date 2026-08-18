@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { homecareService } from "@/services/supabase";
+import { homecareService, paymentService } from "@/services/supabase";
 
 // GET: List home care services and bookings (Supabase-backed)
 export async function GET(request: NextRequest) {
@@ -9,14 +9,35 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status") ?? "";
     const patientId = searchParams.get("patientId") ?? "";
     const staffId = searchParams.get("staffId") ?? "";
+    const validatedOnly = searchParams.get("validatedOnly") === "true";
 
     if (type === "bookings") {
-      const bookings = await homecareService.getBookings({
+      let bookings = await homecareService.getBookings({
         status: status || undefined,
         patientId: patientId || undefined,
         staffId: staffId || undefined,
       });
-      return NextResponse.json({ bookings });
+
+      if (validatedOnly) {
+        bookings = bookings.filter((b) => b.adminValidated);
+      }
+
+      // Attach each booking's latest payment status — staff/admin need to
+      // see "sudah dibayar" vs "belum dibayar" without a separate call per
+      // booking, and the staff app gates "Menuju Lokasi" on it client-side
+      // too (the real enforcement is server-side in updateBookingStatus).
+      const paymentMap = await paymentService.getLatestForReferenceIds(
+        "homecare_booking",
+        bookings.map((b) => b.id)
+      );
+      const withPayment = bookings.map((b) => ({
+        ...b,
+        payment: paymentMap[b.id]
+          ? { id: paymentMap[b.id].id, status: paymentMap[b.id].status, invoiceNumber: paymentMap[b.id].invoiceNumber }
+          : null,
+      }));
+
+      return NextResponse.json({ bookings: withPayment });
     }
 
     const services = await homecareService.getServices();
@@ -87,10 +108,10 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     console.error("Home care booking status update error:", error);
     const msg = error instanceof Error ? error.message : "Unknown error";
-    const status = msg.includes("tidak ditemukan") ? 404 : 500;
+    const httpStatus = msg.includes("tidak ditemukan") ? 404 : msg.includes("belum dibayar") ? 409 : 500;
     return NextResponse.json(
       { success: false, error: "Failed to update booking status", details: msg },
-      { status }
+      { status: httpStatus }
     );
   }
 }
