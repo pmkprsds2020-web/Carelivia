@@ -1,7 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 // homecareService — Supabase CRUD for `homecare_services` + `homecare_bookings`
 // ───────────────────────────────────────────────────────────────────────────
-import { supabase, safeQuery, safeInsert, isValidUuid } from './_common';
+import { safeQuery, safeInsert, isValidUuid, getDbClient } from './_common';
 import { notificationService } from './notificationService';
 import { paymentService, type PaymentRecord } from './paymentService';
 
@@ -102,8 +102,9 @@ function bookingFromDb(row: any): HomecareBookingRecord {
 export const homecareService = {
   /** Public/patient-facing: only ACTIVE services, in display order. */
   async getServices(): Promise<HomecareServiceRecord[]> {
+    const db = await getDbClient();
     const rows = await safeQuery(
-      supabase.from('homecare_services').select('*').eq('is_active', true).order('display_order', { ascending: true }).order('name', { ascending: true }),
+      db.from('homecare_services').select('*').eq('is_active', true).order('display_order', { ascending: true }).order('name', { ascending: true }),
       [] as any[],
       'homecareService.getServices'
     );
@@ -112,8 +113,9 @@ export const homecareService = {
 
   /** Admin-facing: ALL services (active + inactive), for the management table. */
   async getAllServicesForAdmin(): Promise<HomecareServiceRecord[]> {
+    const db = await getDbClient();
     const rows = await safeQuery(
-      supabase.from('homecare_services').select('*').order('display_order', { ascending: true }).order('name', { ascending: true }),
+      db.from('homecare_services').select('*').order('display_order', { ascending: true }).order('name', { ascending: true }),
       [] as any[],
       'homecareService.getAllServicesForAdmin'
     );
@@ -122,8 +124,9 @@ export const homecareService = {
 
   /** Admin: create a new master home care service. Source of truth for the patient catalog. */
   async createService(input: HomecareServiceInput): Promise<HomecareServiceRecord | null> {
+    const db = await getDbClient();
     const { data: row, error } = await safeInsert<any>(
-      supabase
+      db
         .from('homecare_services')
         .insert({
           name: input.name,
@@ -146,6 +149,7 @@ export const homecareService = {
 
   /** Admin: update name/price/etc. Existing bookings keep their own price snapshot, unaffected. */
   async updateService(id: string, input: Partial<HomecareServiceInput>): Promise<HomecareServiceRecord | null> {
+    const db = await getDbClient();
     const payload: Record<string, any> = { updated_at: new Date().toISOString() };
     if (input.name !== undefined) payload.name = input.name;
     if (input.category !== undefined) payload.category = input.category;
@@ -162,7 +166,7 @@ export const homecareService = {
     // JSON object" error — the caller can then say clearly "not found"
     // rather than showing a generic Supabase error to the admin.
     const { data: row, error } = await safeInsert<any>(
-      supabase.from('homecare_services').update(payload).eq('id', id).select().maybeSingle(),
+      db.from('homecare_services').update(payload).eq('id', id).select().maybeSingle(),
       'homecareService.updateService'
     );
     if (error) throw new Error(error);
@@ -178,9 +182,10 @@ export const homecareService = {
    * Returns which kind of delete actually happened.
    */
   async deleteService(id: string): Promise<{ hardDeleted: boolean }> {
+    const db = await getDbClient();
     let inUse = false;
     try {
-      const { count, error: countError } = await supabase
+      const { count, error: countError } = await db
         .from('homecare_bookings')
         .select('id', { head: true, count: 'exact' })
         .eq('service_id', id);
@@ -195,7 +200,7 @@ export const homecareService = {
 
     if (inUse) {
       const { error } = await safeInsert<any>(
-        supabase.from('homecare_services').update({ is_active: false, updated_at: new Date().toISOString() }).eq('id', id).select().maybeSingle(),
+        db.from('homecare_services').update({ is_active: false, updated_at: new Date().toISOString() }).eq('id', id).select().maybeSingle(),
         'homecareService.deleteService(soft)'
       );
       if (error) throw new Error(error);
@@ -203,7 +208,7 @@ export const homecareService = {
     }
 
     try {
-      const { error } = await supabase.from('homecare_services').delete().eq('id', id);
+      const { error } = await db.from('homecare_services').delete().eq('id', id);
       if (error) throw new Error(error.message);
     } catch (e: any) {
       console.error('[Supabase:homecareService.deleteService(hard)]', e?.message ?? e);
@@ -213,7 +218,8 @@ export const homecareService = {
   },
 
   async getBookings(filters: { status?: string; patientId?: string; staffId?: string } = {}): Promise<HomecareBookingRecord[]> {
-    let q = supabase
+    const db = await getDbClient();
+    let q = db
       .from('homecare_bookings')
       .select(
         `*,
@@ -246,8 +252,9 @@ export const homecareService = {
    * the account was created.
    */
   async getAllStaff(): Promise<HomecareStaffRecord[]> {
+    const db = await getDbClient();
     const profileRows = await safeQuery(
-      supabase.from('profiles').select('id, full_name, phone, role').in('role', ['Perawat', 'Caregiver']),
+      db.from('profiles').select('id, full_name, phone, role').in('role', ['Perawat', 'Caregiver']),
       [] as any[],
       'homecareService.getAllStaff(profiles)'
     );
@@ -255,7 +262,7 @@ export const homecareService = {
 
     const ids = (profileRows as any[]).map((p) => p.id);
     const staffRows = await safeQuery(
-      supabase.from('homecare_staff').select('id, certification, is_available, current_status').in('id', ids),
+      db.from('homecare_staff').select('id, certification, is_available, current_status').in('id', ids),
       [] as any[],
       'homecareService.getAllStaff(homecare_staff)'
     );
@@ -264,7 +271,7 @@ export const homecareService = {
     const missing = (profileRows as any[]).filter((p) => !staffMap.has(p.id));
     for (const p of missing) {
       const { data: created, error } = await safeInsert<any>(
-        supabase
+        db
           .from('homecare_staff')
           .insert({ id: p.id, certification: p.role, is_available: true, current_status: 'available' })
           .select()
@@ -294,7 +301,7 @@ export const homecareService = {
     // loaded up versus who's free — a simple `count` group-by via Supabase's
     // query builder rather than an extra round trip per staff member.
     const counts = await safeQuery(
-      supabase
+      db
         .from('homecare_bookings')
         .select('staff_id')
         .in('staff_id', staffList.map((s) => s.id))
@@ -322,16 +329,17 @@ export const homecareService = {
   async assignStaff(bookingId: string, staffId: string): Promise<HomecareBookingRecord> {
     if (!isValidUuid(bookingId)) throw new Error('bookingId tidak valid');
     if (!isValidUuid(staffId)) throw new Error('staffId tidak valid');
+    const db = await getDbClient();
 
     const staff = await safeQuery(
-      supabase.from('homecare_staff').select('id').eq('id', staffId).maybeSingle(),
+      db.from('homecare_staff').select('id').eq('id', staffId).maybeSingle(),
       null as any,
       'homecareService.assignStaff(staff lookup)'
     );
     if (!staff) throw new Error('Petugas tidak ditemukan.');
 
     const existing = await safeQuery(
-      supabase.from('homecare_bookings').select('status, admin_validated, homecare_services(name)').eq('id', bookingId).maybeSingle(),
+      db.from('homecare_bookings').select('status, admin_validated, homecare_services(name)').eq('id', bookingId).maybeSingle(),
       null as any,
       'homecareService.assignStaff(booking lookup)'
     );
@@ -348,7 +356,7 @@ export const homecareService = {
     }
 
     const { data: row, error } = await safeInsert<any>(
-      supabase
+      db
         .from('homecare_bookings')
         .update(updatePayload)
         .eq('id', bookingId)
@@ -387,10 +395,11 @@ export const homecareService = {
    */
   async updateBookingStatus(bookingId: string, status: string): Promise<HomecareBookingRecord | null> {
     if (!isValidUuid(bookingId)) throw new Error('bookingId tidak valid');
+    const db = await getDbClient();
 
     if (status === 'on_the_way') {
       const payment = await safeQuery(
-        supabase
+        db
           .from('payments')
           .select('status')
           .eq('reference_type', 'homecare_booking')
@@ -407,7 +416,7 @@ export const homecareService = {
     }
 
     const { data: row, error } = await safeInsert<any>(
-      supabase
+      db
         .from('homecare_bookings')
         .update({ status, updated_at: new Date().toISOString() })
         .eq('id', bookingId)
@@ -462,15 +471,16 @@ export const homecareService = {
     longitude?: number;
     notes?: string;
   }): Promise<{ booking: HomecareBookingRecord; payment: PaymentRecord | null } | null> {
+    const db = await getDbClient();
     const service = await safeQuery(
-      supabase.from('homecare_services').select('*').eq('id', input.serviceId).eq('is_active', true).maybeSingle(),
+      db.from('homecare_services').select('*').eq('id', input.serviceId).eq('is_active', true).maybeSingle(),
       null as any,
       'homecareService.createBooking(service lookup)'
     );
     if (!service) throw new Error('Home care service not found');
 
     const { data: row, error } = await safeInsert<any>(
-      supabase
+      db
         .from('homecare_bookings')
         .insert({
           patient_id: input.patientId,
@@ -517,8 +527,9 @@ export const homecareService = {
    * not yet cancelled). Powers the admin "Validasi Home Care" queue.
    */
   async getPendingValidation(): Promise<HomecareBookingRecord[]> {
+    const db = await getDbClient();
     const rows = await safeQuery(
-      supabase
+      db
         .from('homecare_bookings')
         .select(
           `*,
@@ -544,9 +555,10 @@ export const homecareService = {
    */
   async validateBooking(bookingId: string, adminId?: string): Promise<{ booking: HomecareBookingRecord; payment: PaymentRecord | null }> {
     if (!isValidUuid(bookingId)) throw new Error('bookingId tidak valid');
+    const db = await getDbClient();
 
     const existing = await safeQuery(
-      supabase.from('homecare_bookings').select('*, homecare_services(*)').eq('id', bookingId).maybeSingle(),
+      db.from('homecare_bookings').select('*, homecare_services(*)').eq('id', bookingId).maybeSingle(),
       null as any,
       'homecareService.validateBooking(lookup)'
     );
@@ -572,7 +584,7 @@ export const homecareService = {
     // Try to auto-assign an available staff member, same as before — just
     // now happening at validation time instead of at checkout.
     const availableStaff = await safeQuery(
-      supabase.from('homecare_staff').select('id').eq('is_available', true).eq('current_status', 'available').limit(1).maybeSingle(),
+      db.from('homecare_staff').select('id').eq('is_available', true).eq('current_status', 'available').limit(1).maybeSingle(),
       null as any,
       'homecareService.validateBooking(staff lookup)'
     );
@@ -582,7 +594,7 @@ export const homecareService = {
     }
 
     const { data: updatedRow, error } = await safeInsert<any>(
-      supabase
+      db
         .from('homecare_bookings')
         .update(updatePayload)
         .eq('id', bookingId)
@@ -638,8 +650,9 @@ export const homecareService = {
   /** Admin rejects a booking that hasn't been validated yet. */
   async rejectBooking(bookingId: string, reason?: string): Promise<HomecareBookingRecord> {
     if (!isValidUuid(bookingId)) throw new Error('bookingId tidak valid');
+    const db = await getDbClient();
     const { data: row, error } = await safeInsert<any>(
-      supabase
+      db
         .from('homecare_bookings')
         .update({ status: 'cancelled', updated_at: new Date().toISOString() })
         .eq('id', bookingId)
