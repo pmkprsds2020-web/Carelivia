@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import type {
@@ -142,6 +142,9 @@ import {
   Scale,
   Flame,
   ClipboardList,
+  FileClock,
+  Layers,
+  Lock,
 } from 'lucide-react';
 import { PalliativeChatPanel } from './palliative-chat-panel';
 import { MedicationMonitoringDashboard } from './medication-monitoring-dashboard';
@@ -151,11 +154,11 @@ import DailyComplaintPanel from './daily-complaint-panel';
 import { ClinicalAlertPanel } from './clinical-alert-panel';
 import { SupportingExamPanel } from './supporting-exam-panel';
 import { useToast } from '@/hooks/use-toast';
-import { isValidUuid, validUuidOrUndefined } from '@/services/supabase';
+import { isValidUuid, validUuidOrUndefined, soapService, supportingExamService, type SoapNoteRecord, type SupportingExamUnion } from '@/services/supabase';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-type MonitorTab = 'dashboard' | 'patients' | 'ttv' | 'screening' | 'medication' | 'nutrition' | 'keluhan' | 'sosial' | 'acp' | 'ai' | 'alerts' | 'chat' | 'dokumen' | 'supporting-exam';
+type MonitorTab = 'dashboard' | 'patients' | 'keluhan' | 'ttv' | 'screening' | 'medication' | 'supporting-exam' | 'nutrition' | 'sosial' | 'acp' | 'alerts' | 'dokumen' | 'ai' | 'soap' | 'chat';
 
 // ── Helper Functions ─────────────────────────────────────────────────────
 
@@ -182,6 +185,45 @@ function formatDateTime(dateStr: string): string {
     });
   } catch {
     return dateStr;
+  }
+}
+
+// ── SOAP: Asia/Jakarta-anchored date helpers ────────────────────────────────
+// The SOAP timeline groups events by calendar day. Using the raw ISO string
+// (which Postgres stores in UTC) or the browser's local timezone would shift
+// which day an event near midnight falls on for doctors outside WIB — so
+// every date/time shown or grouped in the SOAP tab is explicitly computed in
+// Asia/Jakarta (UTC+7), never left to the browser's ambient timezone.
+const JAKARTA_TZ = 'Asia/Jakarta';
+
+function soapDateKey(iso: string | undefined | null): string {
+  if (!iso) return '';
+  try {
+    // en-CA formats as YYYY-MM-DD, which sorts and compares correctly.
+    return new Intl.DateTimeFormat('en-CA', { timeZone: JAKARTA_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
+
+function soapTimeLabel(iso: string | undefined | null): string {
+  if (!iso) return '-';
+  try {
+    return new Intl.DateTimeFormat('id-ID', { timeZone: JAKARTA_TZ, hour: '2-digit', minute: '2-digit' }).format(new Date(iso)) + ' WIB';
+  } catch {
+    return '-';
+  }
+}
+
+function soapDateLabel(dateKey: string): string {
+  if (!dateKey) return '-';
+  try {
+    // dateKey is already a YYYY-MM-DD Jakarta-local key — parse it as a
+    // plain calendar date (noon UTC avoids any DST/offset edge case) rather
+    // than re-interpreting it through another timezone conversion.
+    return new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${dateKey}T12:00:00Z`));
+  } catch {
+    return dateKey;
   }
 }
 
@@ -355,6 +397,69 @@ export function PalliativeMonitoringPanel() {
   const [sendFormPatientId, setSendFormPatientId] = useState<string | null>(null);
   const [selectedFormTypes, setSelectedFormTypes] = useState<PalliativeMonitoringFormType[]>([]);
 
+  // ── SOAP tab state ──
+  const [soapRange, setSoapRange] = useState<'today' | '3d' | '7d' | '14d' | '30d'>('today');
+  const [soapSelectedDate, setSoapSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [soapNotes, setSoapNotes] = useState<SoapNoteRecord[]>([]);
+  const [soapNotesLoading, setSoapNotesLoading] = useState(false);
+  const [soapExams, setSoapExams] = useState<SupportingExamUnion[]>([]);
+  const [soapSubjective, setSoapSubjective] = useState('');
+  const [soapObjective, setSoapObjective] = useState('');
+  const [soapAssessment, setSoapAssessment] = useState('');
+  const [soapPlan, setSoapPlan] = useState('');
+  const [soapGenerating, setSoapGenerating] = useState(false);
+  const [soapSaving, setSoapSaving] = useState(false);
+  const [soapCurrentStatus, setSoapCurrentStatus] = useState<'draft' | 'final' | null>(null);
+  const [soapCurrentId, setSoapCurrentId] = useState<string | null>(null);
+
+  // Load this patient's SOAP notes + supporting exams (the latter isn't in
+  // the Zustand store — see supportingExamService) whenever the selected
+  // patient changes, so the SOAP tab has what it needs without the doctor
+  // having to first click into Pemeriksaan Penunjang.
+  useEffect(() => {
+    if (!selectedPalliativePatientId) {
+      setSoapNotes([]);
+      setSoapExams([]);
+      return;
+    }
+    let cancelled = false;
+    setSoapNotesLoading(true);
+    Promise.all([
+      soapService.getForPatient(selectedPalliativePatientId),
+      supportingExamService.listAll(selectedPalliativePatientId),
+    ])
+      .then(([notes, exams]) => {
+        if (cancelled) return;
+        setSoapNotes(notes);
+        setSoapExams(exams);
+      })
+      .catch((err) => console.error('[palliative-monitoring-panel] failed to load SOAP data:', err))
+      .finally(() => { if (!cancelled) setSoapNotesLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedPalliativePatientId]);
+
+  // Whenever the doctor switches which date they're looking at (or the SOAP
+  // notes list refreshes), load that date's existing note into the editable
+  // fields — or clear them if there isn't one yet for that day.
+  useEffect(() => {
+    const existing = soapNotes.find((n) => n.encounterDate === soapSelectedDate);
+    if (existing) {
+      setSoapSubjective(existing.subjective);
+      setSoapObjective(existing.objective);
+      setSoapAssessment(existing.assessment);
+      setSoapPlan(existing.plan);
+      setSoapCurrentStatus(existing.status);
+      setSoapCurrentId(existing.id);
+    } else {
+      setSoapSubjective('');
+      setSoapObjective('');
+      setSoapAssessment('');
+      setSoapPlan('');
+      setSoapCurrentStatus(null);
+      setSoapCurrentId(null);
+    }
+  }, [soapSelectedDate, soapNotes]);
+
   // ── Store ──
   const {
     palliativePatients,
@@ -436,6 +541,119 @@ export function PalliativeMonitoringPanel() {
     }
     return map;
   }, [palliativePatients, vitalSignRecords, dailyComplaints, palliativeMedications, nutritionRecords, palliativeScreeningRecords]);
+
+  // ── SOAP: unified timeline for the selected patient ──
+  // Every event (Keluhan / TTV / Skrining / Obat / Pemeriksaan Penunjang /
+  // Nutrisi) for the currently selected patient, normalized into one shape
+  // and sorted newest-first — this is the single source both the visible
+  // "Timeline Klinis" list and the auto-generated SOAP draft are built from,
+  // so what the doctor sees in the timeline is exactly what fed the draft.
+  const soapTimelineAll = useMemo(() => {
+    type Item = { id: string; timestamp: string; dateKey: string; type: 'keluhan' | 'ttv' | 'skrining' | 'obat' | 'lab' | 'usg' | 'ekg' | 'radiologi' | 'nutrisi'; title: string; detail: string };
+    if (!selectedPalliativePatientId) return [] as Item[];
+    const pid = selectedPalliativePatientId;
+    const items: Item[] = [];
+
+    vitalSignRecords.filter((v) => v.palliativePatientId === pid).forEach((v) => {
+      const parts: string[] = [];
+      if (v.systolicBP != null && v.diastolicBP != null) parts.push(`TD ${v.systolicBP}/${v.diastolicBP} mmHg`);
+      if (v.heartRate != null) parts.push(`Nadi ${v.heartRate}x/mnt`);
+      if (v.respiratoryRate != null) parts.push(`RR ${v.respiratoryRate}x/mnt`);
+      if (v.oxygenSat != null) parts.push(`SpO2 ${v.oxygenSat}%`);
+      if (v.temperature != null) parts.push(`Suhu ${v.temperature}°C`);
+      if (v.weight != null) parts.push(`BB ${v.weight} kg`);
+      items.push({ id: v.id, timestamp: v.recordedAt, dateKey: soapDateKey(v.recordedAt), type: 'ttv', title: 'TTV Serial', detail: parts.length ? parts.join(', ') : 'Tidak ada nilai tercatat.' });
+    });
+
+    dailyComplaints.filter((c) => c.palliativePatientId === pid).forEach((c) => {
+      const parts: string[] = [
+        `Kondisi hari ini: ${c.kondisiHariIni}${c.alasanKondisi ? ` (${c.alasanKondisi})` : ''}`,
+        `Keluhan baru: ${c.keluhanBaru === 'ya' ? (c.deskripsiKeluhanBaru || 'ada') : 'tidak ada'}`,
+        `Nyeri: ${c.kondisiNyeri}`,
+        `Sesak: ${c.kondisiSesak}`,
+        `Makan/minum: ${c.makanMinum}${c.alasanMakanMinum ? ` (${c.alasanMakanMinum})` : ''}`,
+        `Tidur: ${c.tidur}${c.alasanTidur ? ` (${c.alasanTidur})` : ''}`,
+        `Masalah obat: ${c.masalahObat}${c.deskripsiMasalahObat ? ` — ${c.deskripsiMasalahObat}` : ''}`,
+      ];
+      items.push({ id: c.id, timestamp: c.submittedAt, dateKey: soapDateKey(c.submittedAt), type: 'keluhan', title: `Keluhan Harian (${c.sumberPengisian})`, detail: parts.join('. ') + '.' });
+    });
+
+    palliativeScreeningRecords.filter((s) => s.palliativePatientId === pid).forEach((s) => {
+      const scoreLabel = s.score != null ? `Skor ${s.score}` : '';
+      const parts = [scoreLabel, s.scoreLabel, s.interpretation].filter(Boolean).join(' — ');
+      items.push({ id: s.id, timestamp: s.performedAt, dateKey: soapDateKey(s.performedAt), type: 'skrining', title: `Skrining ${s.screeningType.toUpperCase()}`, detail: parts || 'Hasil tidak tercatat.' });
+    });
+
+    palliativeMedications.filter((m) => m.palliativePatientId === pid).forEach((m) => {
+      (m.adherences ?? []).forEach((a) => {
+        const parts = [
+          `${m.medicineName} ${m.dosage} (${m.frequency}${m.route ? `, ${m.route}` : ''})`,
+          a.takenOnTime ? 'diminum tepat waktu' : a.missedDose ? 'dosis terlewat' : 'dicatat',
+          a.sideEffects ? `Efek samping: ${a.sideEffects}` : '',
+          a.complaints ? `Catatan: ${a.complaints}` : '',
+        ].filter(Boolean);
+        items.push({ id: a.id, timestamp: a.createdAt, dateKey: soapDateKey(a.createdAt), type: 'obat', title: 'Obat', detail: parts.join('. ') + '.' });
+      });
+    });
+
+    nutritionRecords.filter((n) => n.palliativePatientId === pid).forEach((n) => {
+      const parts: string[] = [`BB ${n.weight} kg`, `TB ${n.height} cm`];
+      if (n.calculation?.bmi != null) parts.push(`IMT ${n.calculation.bmi}`);
+      if (n.actualIntakeKcal != null) parts.push(`Asupan ${n.actualIntakeKcal} kkal`);
+      items.push({ id: n.id, timestamp: n.recordedAt, dateKey: soapDateKey(n.recordedAt), type: 'nutrisi', title: 'Nutrisi', detail: parts.join(', ') + '.' });
+    });
+
+    soapExams.forEach((e) => {
+      const ts = (e.data as any).tanggal ?? (e.data as any).createdAt;
+      if (e.type === 'laboratorium') {
+        const d = e.data as any;
+        const parts = [
+          d.gdp != null && `GDP ${d.gdp} mg/dL`,
+          d.gds != null && `GDS ${d.gds} mg/dL`,
+          d.hba1c != null && `HbA1c ${d.hba1c}%`,
+          d.ureum != null && `Ureum ${d.ureum} mg/dL`,
+          d.kreatinin != null && `Kreatinin ${d.kreatinin} mg/dL`,
+          d.kolesterolTotal != null && `Kolesterol Total ${d.kolesterolTotal} mg/dL`,
+          d.hdl != null && `HDL ${d.hdl} mg/dL`,
+          d.ldl != null && `LDL ${d.ldl} mg/dL`,
+          d.trigliserida != null && `Trigliserida ${d.trigliserida} mg/dL`,
+        ].filter(Boolean) as string[];
+        items.push({ id: d.id, timestamp: ts, dateKey: soapDateKey(ts), type: 'lab', title: 'Laboratorium', detail: parts.length ? parts.join(', ') + '.' : (d.catatan || 'Tidak ada nilai tercatat.') });
+      } else if (e.type === 'usg') {
+        const d = e.data as any;
+        items.push({ id: d.id, timestamp: ts, dateKey: soapDateKey(ts), type: 'usg', title: `USG${d.jenisUsg ? ` — ${d.jenisUsg}` : ''}`, detail: d.hasil || d.catatan || 'Hasil belum diisi.' });
+      } else if (e.type === 'ekg') {
+        const d = e.data as any;
+        items.push({ id: d.id, timestamp: ts, dateKey: soapDateKey(ts), type: 'ekg', title: 'EKG', detail: d.interpretasi || d.catatan || 'Interpretasi belum diisi.' });
+      } else if (e.type === 'radiologi') {
+        const d = e.data as any;
+        items.push({ id: d.id, timestamp: ts, dateKey: soapDateKey(ts), type: 'radiologi', title: `Radiologi${d.jenisRadiologi ? ` — ${d.jenisRadiologi}` : ''}`, detail: d.hasil || d.catatan || 'Hasil belum diisi.' });
+      }
+    });
+
+    return items
+      .filter((it) => it.timestamp)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [selectedPalliativePatientId, vitalSignRecords, dailyComplaints, palliativeScreeningRecords, palliativeMedications, nutritionRecords, soapExams]);
+
+  // Days-back window for the visible timeline (the SOAP editor itself always
+  // operates on ONE specific day — `soapSelectedDate` — regardless of this).
+  const soapTimelineFiltered = useMemo(() => {
+    const daysBack: Record<typeof soapRange, number> = { today: 0, '3d': 2, '7d': 6, '14d': 13, '30d': 29 };
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysBack[soapRange]);
+    const cutoffKey = soapDateKey(cutoff.toISOString());
+    return soapTimelineAll.filter((it) => it.dateKey >= cutoffKey);
+  }, [soapTimelineAll, soapRange]);
+
+  const soapTimelineGrouped = useMemo(() => {
+    const groups = new Map<string, typeof soapTimelineFiltered>();
+    for (const it of soapTimelineFiltered) {
+      if (!groups.has(it.dateKey)) groups.set(it.dateKey, []);
+      groups.get(it.dateKey)!.push(it);
+    }
+    return Array.from(groups.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  }, [soapTimelineFiltered]);
 
   // ── Selected patient data ──
   const selectedPatient = useMemo(
@@ -3136,6 +3354,395 @@ export function PalliativeMonitoringPanel() {
     </div>
   );
 
+  // ── SOAP: draft generation + save/finalize handlers ──
+
+  const handleGenerateSoapDraft = () => {
+    if (!selectedPalliativePatientId) return;
+    setSoapGenerating(true);
+    try {
+      const dayItems = soapTimelineAll.filter((it) => it.dateKey === soapSelectedDate);
+      const byType = (t: string) => dayItems.filter((it) => it.type === t);
+
+      // ── Subjective ── from Keluhan Harian only (that's the patient/caregiver's own voice).
+      const keluhanItems = byType('keluhan');
+      const subjective = keluhanItems.length
+        ? keluhanItems.map((it) => `${soapTimeLabel(it.timestamp)} — ${it.detail}`).join('\n')
+        : 'Tidak ada laporan Keluhan Harian pada tanggal ini.';
+
+      // ── Objective ── TTV + Skrining + Pemeriksaan Penunjang + Nutrisi (all objective/measured data).
+      const objectiveSections: string[] = [];
+      const ttvItems = byType('ttv');
+      objectiveSections.push(
+        `TTV Serial:\n${ttvItems.length ? ttvItems.map((it) => `  ${soapTimeLabel(it.timestamp)} — ${it.detail}`).join('\n') : '  Tidak ada data pada tanggal ini.'}`
+      );
+      const skriningItems = byType('skrining');
+      objectiveSections.push(
+        `Skrining:\n${skriningItems.length ? skriningItems.map((it) => `  ${soapTimeLabel(it.timestamp)} — ${it.title}: ${it.detail}`).join('\n') : '  Tidak ada data pada tanggal ini.'}`
+      );
+      const examItems = [...byType('lab'), ...byType('usg'), ...byType('ekg'), ...byType('radiologi')];
+      objectiveSections.push(
+        `Pemeriksaan Penunjang:\n${examItems.length ? examItems.map((it) => `  ${soapTimeLabel(it.timestamp)} — ${it.title}: ${it.detail}`).join('\n') : '  Tidak ada data pada tanggal ini.'}`
+      );
+      const nutrisiItems = byType('nutrisi');
+      objectiveSections.push(
+        `Nutrisi:\n${nutrisiItems.length ? nutrisiItems.map((it) => `  ${soapTimeLabel(it.timestamp)} — ${it.detail}`).join('\n') : '  Tidak ada data pada tanggal ini.'}`
+      );
+      const obatItems = byType('obat');
+      objectiveSections.push(
+        `Obat:\n${obatItems.length ? obatItems.map((it) => `  ${soapTimeLabel(it.timestamp)} — ${it.detail}`).join('\n') : '  Tidak ada data pemberian obat pada tanggal ini.'}`
+      );
+      const objective = objectiveSections.join('\n\n');
+
+      // ── Assessment ── compare the day's key values against the closest
+      // earlier record of the same type (from the FULL history, not just
+      // this day) — this is the only place we state a trend, and only when
+      // both points actually exist.
+      const assessmentLines: string[] = [];
+      const priorOfType = (type: string, beforeTs: string) =>
+        soapTimelineAll.filter((it) => it.type === type && new Date(it.timestamp).getTime() < new Date(beforeTs).getTime())[0];
+
+      if (skriningItems.length) {
+        skriningItems.forEach((it) => {
+          const prior = soapTimelineAll.find((p) => p.type === 'skrining' && p.title === it.title && new Date(p.timestamp).getTime() < new Date(it.timestamp).getTime());
+          assessmentLines.push(`${it.title}: ${it.detail}${prior ? ` (sebelumnya: ${prior.detail}, pada ${soapDateLabel(prior.dateKey)})` : ''}`);
+        });
+      }
+      if (nutrisiItems.length) {
+        const latestNutrisi = nutrisiItems[0];
+        const priorNutrisi = priorOfType('nutrisi', latestNutrisi.timestamp);
+        assessmentLines.push(`Status nutrisi: ${latestNutrisi.detail}${priorNutrisi ? ` (sebelumnya: ${priorNutrisi.detail}, pada ${soapDateLabel(priorNutrisi.dateKey)})` : ''}`);
+      }
+      if (ttvItems.length) {
+        assessmentLines.push(`Tanda vital tercatat ${ttvItems.length}x pada tanggal ini — lihat rincian pada bagian Objective.`);
+      }
+      if (keluhanItems.some((it) => it.detail.includes('Nyeri: berat') || it.detail.includes('Nyeri: sangat berat'))) {
+        assessmentLines.push('Keluhan nyeri dilaporkan pada tingkat berat — perlu evaluasi manajemen nyeri.');
+      }
+      const assessment = assessmentLines.length
+        ? assessmentLines.join('\n')
+        : 'Data tidak tersedia untuk menyusun asesmen perbandingan pada tanggal ini.';
+
+      // ── Plan ── minimal, clearly a draft the doctor must review/edit.
+      const planLines: string[] = [];
+      if (keluhanItems.some((it) => it.detail.includes('Nyeri: berat') || it.detail.includes('Nyeri: sangat berat'))) {
+        planLines.push('- Evaluasi ulang manajemen nyeri.');
+      }
+      if (nutrisiItems.length) {
+        const latest = nutrisiItems[0];
+        const prior = priorOfType('nutrisi', latest.timestamp);
+        if (prior) {
+          const wMatch = latest.detail.match(/BB (\d+(\.\d+)?)/);
+          const wMatchPrior = prior.detail.match(/BB (\d+(\.\d+)?)/);
+          if (wMatch && wMatchPrior && parseFloat(wMatch[1]) < parseFloat(wMatchPrior[1])) {
+            planLines.push('- Pertimbangkan konsultasi/evaluasi gizi klinis terkait penurunan berat badan.');
+          }
+        }
+      }
+      planLines.push('- Lanjutkan monitoring sesuai kondisi pasien.');
+      const plan = `[Draft — mohon ditinjau dan disesuaikan oleh dokter]\n${planLines.join('\n')}`;
+
+      setSoapSubjective(subjective);
+      setSoapObjective(objective);
+      setSoapAssessment(assessment);
+      setSoapPlan(plan);
+      setSoapCurrentStatus('draft');
+
+      toast({ title: 'Draft SOAP Dibuat', description: `Disusun dari data tanggal ${soapDateLabel(soapSelectedDate)}. Silakan tinjau sebelum disimpan.` });
+    } finally {
+      setSoapGenerating(false);
+    }
+  };
+
+  const handleSaveSoapDraft = async () => {
+    if (!selectedPalliativePatientId) return;
+    setSoapSaving(true);
+    try {
+      const dayItems = soapTimelineAll.filter((it) => it.dateKey === soapSelectedDate);
+      const sourceSummary = {
+        keluhan: dayItems.filter((it) => it.type === 'keluhan').length,
+        ttv: dayItems.filter((it) => it.type === 'ttv').length,
+        skrining: dayItems.filter((it) => it.type === 'skrining').length,
+        obat: dayItems.filter((it) => it.type === 'obat').length,
+        pemeriksaanPenunjang: dayItems.filter((it) => ['lab', 'usg', 'ekg', 'radiologi'].includes(it.type)).length,
+        nutrisi: dayItems.filter((it) => it.type === 'nutrisi').length,
+      };
+      const saved = await soapService.upsert({
+        patientId: selectedPalliativePatientId,
+        doctorId: currentUser?.id,
+        encounterDate: soapSelectedDate,
+        subjective: soapSubjective,
+        objective: soapObjective,
+        assessment: soapAssessment,
+        plan: soapPlan,
+        sourceSummary,
+      });
+      setSoapNotes((prev) => {
+        const others = prev.filter((n) => n.encounterDate !== soapSelectedDate);
+        return [saved, ...others].sort((a, b) => (a.encounterDate < b.encounterDate ? 1 : -1));
+      });
+      setSoapCurrentStatus(saved.status);
+      setSoapCurrentId(saved.id);
+      toast({ title: 'SOAP Disimpan', description: `SOAP tanggal ${soapDateLabel(soapSelectedDate)} disimpan sebagai draft.` });
+    } catch (err) {
+      toast({ title: 'Gagal Menyimpan SOAP', description: err instanceof Error ? err.message : 'Terjadi kesalahan.', variant: 'destructive' });
+    } finally {
+      setSoapSaving(false);
+    }
+  };
+
+  const handleFinalizeSoap = async () => {
+    if (!selectedPalliativePatientId || !currentUser) return;
+    setSoapSaving(true);
+    try {
+      // Save current edits first, then finalize — a doctor might edit and
+      // finalize in one go without clicking "Simpan Draft" first.
+      const dayItems = soapTimelineAll.filter((it) => it.dateKey === soapSelectedDate);
+      const sourceSummary = {
+        keluhan: dayItems.filter((it) => it.type === 'keluhan').length,
+        ttv: dayItems.filter((it) => it.type === 'ttv').length,
+        skrining: dayItems.filter((it) => it.type === 'skrining').length,
+        obat: dayItems.filter((it) => it.type === 'obat').length,
+        pemeriksaanPenunjang: dayItems.filter((it) => ['lab', 'usg', 'ekg', 'radiologi'].includes(it.type)).length,
+        nutrisi: dayItems.filter((it) => it.type === 'nutrisi').length,
+      };
+      const saved = await soapService.upsert({
+        patientId: selectedPalliativePatientId,
+        doctorId: currentUser.id,
+        encounterDate: soapSelectedDate,
+        subjective: soapSubjective,
+        objective: soapObjective,
+        assessment: soapAssessment,
+        plan: soapPlan,
+        sourceSummary,
+      });
+      const finalized = await soapService.finalize(saved.id, currentUser.id);
+      setSoapNotes((prev) => {
+        const others = prev.filter((n) => n.encounterDate !== soapSelectedDate);
+        return [finalized, ...others].sort((a, b) => (a.encounterDate < b.encounterDate ? 1 : -1));
+      });
+      setSoapCurrentStatus('final');
+      setSoapCurrentId(finalized.id);
+      toast({ title: 'SOAP Difinalisasi', description: `SOAP tanggal ${soapDateLabel(soapSelectedDate)} telah dikunci sebagai Final.` });
+    } catch (err) {
+      toast({ title: 'Gagal Finalisasi SOAP', description: err instanceof Error ? err.message : 'Terjadi kesalahan.', variant: 'destructive' });
+    } finally {
+      setSoapSaving(false);
+    }
+  };
+
+  const soapTypeIcon: Record<string, React.ReactNode> = {
+    keluhan: <ClipboardList className="w-3.5 h-3.5" />,
+    ttv: <Thermometer className="w-3.5 h-3.5" />,
+    skrining: <ClipboardCheck className="w-3.5 h-3.5" />,
+    obat: <Pill className="w-3.5 h-3.5" />,
+    lab: <Stethoscope className="w-3.5 h-3.5" />,
+    usg: <Stethoscope className="w-3.5 h-3.5" />,
+    ekg: <Stethoscope className="w-3.5 h-3.5" />,
+    radiologi: <Stethoscope className="w-3.5 h-3.5" />,
+    nutrisi: <Utensils className="w-3.5 h-3.5" />,
+  };
+
+  // ── Render: SOAP (Clinical Timeline + SOAP Documentation) ──
+  const renderSoap = () => {
+    if (!selectedPalliativePatientId) {
+      return (
+        <div className="p-8 text-center text-muted-foreground">
+          <FileClock className="w-10 h-10 mx-auto mb-2 opacity-40" />
+          Pilih pasien terlebih dahulu untuk melihat SOAP.
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {/* Range filter for the visible timeline */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+            {([
+              { key: 'today', label: 'Hari Ini' },
+              { key: '3d', label: '3 Hari' },
+              { key: '7d', label: '7 Hari' },
+              { key: '14d', label: '14 Hari' },
+              { key: '30d', label: '30 Hari' },
+            ] as const).map((r) => (
+              <button
+                key={r.key}
+                onClick={() => setSoapRange(r.key)}
+                className={cn(
+                  'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+                  soapRange === r.key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground whitespace-nowrap">Tanggal SOAP:</Label>
+            <Input
+              type="date"
+              value={soapSelectedDate}
+              onChange={(e) => setSoapSelectedDate(e.target.value)}
+              className="h-8 text-xs w-40"
+              max={new Date().toISOString().split('T')[0]}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* ── Timeline Klinis ── */}
+          <Card className="p-4">
+            <CardHeader className="p-0 pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <History className="w-4 h-4 text-primary" />
+                Timeline Klinis
+              </CardTitle>
+              <CardDescription className="text-xs">Diurutkan dari yang terbaru, waktu Asia/Jakarta (WIB).</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0 max-h-[560px] overflow-y-auto space-y-4">
+              {soapNotesLoading ? (
+                <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Memuat data...
+                </div>
+              ) : soapTimelineGrouped.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-10">Belum ada data pada periode ini.</p>
+              ) : (
+                soapTimelineGrouped.map(([dateKey, items]) => (
+                  <div key={dateKey}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <button
+                        onClick={() => setSoapSelectedDate(dateKey)}
+                        className={cn(
+                          'text-xs font-semibold px-2 py-0.5 rounded-full',
+                          dateKey === soapSelectedDate ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                        )}
+                      >
+                        {soapDateLabel(dateKey)}
+                      </button>
+                      {soapNotes.some((n) => n.encounterDate === dateKey) && (
+                        <Badge variant="outline" className={soapNotes.find((n) => n.encounterDate === dateKey)?.status === 'final' ? 'bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px]' : 'bg-amber-100 text-amber-700 border-amber-200 text-[10px]'}>
+                          SOAP {soapNotes.find((n) => n.encounterDate === dateKey)?.status === 'final' ? 'Final' : 'Draft'}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="space-y-2 pl-1 border-l-2 border-border ml-1.5">
+                      {items.map((it) => (
+                        <div key={`${it.type}-${it.id}`} className="pl-3 relative">
+                          <div className="absolute -left-[9px] top-1 w-3.5 h-3.5 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                            {soapTypeIcon[it.type]}
+                            {it.title}
+                            <span className="text-muted-foreground font-normal">— {soapTimeLabel(it.timestamp)}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground whitespace-pre-line mt-0.5">{it.detail}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ── SOAP Editor ── */}
+          <Card className="p-4">
+            <CardHeader className="p-0 pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <FileClock className="w-4 h-4 text-primary" />
+                  SOAP — {soapDateLabel(soapSelectedDate)}
+                </CardTitle>
+                {soapCurrentStatus && (
+                  <Badge variant="outline" className={soapCurrentStatus === 'final' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-amber-100 text-amber-700 border-amber-200'}>
+                    {soapCurrentStatus === 'final' ? (<><Lock className="w-3 h-3 mr-1 inline" />Final</>) : 'Draft'}
+                  </Badge>
+                )}
+              </div>
+              <CardDescription className="text-xs">
+                Draft dibuat otomatis dari data pada tanggal ini — tetap dapat diedit dan wajib ditinjau sebelum difinalisasi.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0 space-y-3">
+              <Button size="sm" variant="outline" className="w-full" onClick={handleGenerateSoapDraft} disabled={soapGenerating}>
+                {soapGenerating ? <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 mr-1.5" />}
+                Generate Draft SOAP dari Data Tanggal Ini
+              </Button>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">S — Subjective</Label>
+                <Textarea value={soapSubjective} onChange={(e) => setSoapSubjective(e.target.value)} rows={4} className="text-xs" placeholder="Keluhan pasien/caregiver..." disabled={soapCurrentStatus === 'final'} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">O — Objective</Label>
+                <Textarea value={soapObjective} onChange={(e) => setSoapObjective(e.target.value)} rows={6} className="text-xs font-mono" placeholder="TTV, skrining, pemeriksaan penunjang, nutrisi..." disabled={soapCurrentStatus === 'final'} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">A — Assessment</Label>
+                <Textarea value={soapAssessment} onChange={(e) => setSoapAssessment(e.target.value)} rows={4} className="text-xs" placeholder="Penilaian kondisi & perkembangan pasien..." disabled={soapCurrentStatus === 'final'} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">P — Plan</Label>
+                <Textarea value={soapPlan} onChange={(e) => setSoapPlan(e.target.value)} rows={4} className="text-xs" placeholder="Rencana tindak lanjut..." disabled={soapCurrentStatus === 'final'} />
+              </div>
+
+              {soapCurrentStatus !== 'final' && (
+                <div className="flex gap-2 pt-2">
+                  <Button size="sm" variant="outline" className="flex-1" onClick={handleSaveSoapDraft} disabled={soapSaving}>
+                    {soapSaving ? <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
+                    Simpan Draft
+                  </Button>
+                  <Button size="sm" className="flex-1" onClick={handleFinalizeSoap} disabled={soapSaving}>
+                    <Lock className="w-3.5 h-3.5 mr-1.5" />
+                    Finalisasi SOAP
+                  </Button>
+                </div>
+              )}
+              {soapCurrentStatus === 'final' && (
+                <p className="text-[11px] text-muted-foreground pt-1">
+                  SOAP ini sudah difinalisasi dan dikunci. Hubungi admin/pengembang bila memerlukan koreksi (amendment) resmi.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ── SOAP Harian (riwayat) ── */}
+        <Card className="p-4">
+          <CardHeader className="p-0 pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Layers className="w-4 h-4 text-primary" />
+              SOAP Harian
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {soapNotes.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">Belum ada SOAP tersimpan untuk pasien ini.</p>
+            ) : (
+              <div className="space-y-2">
+                {soapNotes.map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => setSoapSelectedDate(n.encounterDate)}
+                    className={cn(
+                      'w-full flex items-center justify-between p-2.5 rounded-lg border text-left hover:bg-muted/50 transition-colors',
+                      n.encounterDate === soapSelectedDate ? 'border-primary bg-primary/5' : 'border-border'
+                    )}
+                  >
+                    <span className="text-sm font-medium">{soapDateLabel(n.encounterDate)}</span>
+                    <Badge variant="outline" className={n.status === 'final' ? 'bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px]' : 'bg-amber-100 text-amber-700 border-amber-200 text-[10px]'}>
+                      {n.status === 'final' ? 'Final' : 'Draft'}
+                    </Badge>
+                  </button>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
   // ── Render: Nutrition & Calorie Calculator ──
   const renderNutrition = () => {
     // Pre-fill from patient data
@@ -3847,7 +4454,7 @@ export function PalliativeMonitoringPanel() {
   };
 
   // ── Main Render ──
-  const needsPatientSelection = ['ttv', 'screening', 'medication', 'nutrition', 'keluhan', 'sosial', 'acp', 'ai', 'alerts', 'chat', 'supporting-exam'].includes(
+  const needsPatientSelection = ['ttv', 'screening', 'medication', 'nutrition', 'keluhan', 'sosial', 'acp', 'ai', 'alerts', 'chat', 'supporting-exam', 'soap'].includes(
     activeTab
   );
 
@@ -3870,6 +4477,10 @@ export function PalliativeMonitoringPanel() {
             <Users className="w-4 h-4 mr-1" />
             Pasien
           </TabsTrigger>
+          <TabsTrigger value="keluhan" className="text-xs sm:text-sm">
+            <ClipboardList className="w-4 h-4 mr-1" />
+            Keluhan Harian
+          </TabsTrigger>
           <TabsTrigger value="ttv" className="text-xs sm:text-sm">
             <Thermometer className="w-4 h-4 mr-1" />
             TTV Serial
@@ -3882,13 +4493,13 @@ export function PalliativeMonitoringPanel() {
             <Pill className="w-4 h-4 mr-1" />
             Obat
           </TabsTrigger>
+          <TabsTrigger value="supporting-exam" className="text-xs sm:text-sm">
+            <Stethoscope className="w-4 h-4 mr-1" />
+            Pemeriksaan Penunjang
+          </TabsTrigger>
           <TabsTrigger value="nutrition" className="text-xs sm:text-sm">
             <Utensils className="w-4 h-4 mr-1" />
             Nutrisi
-          </TabsTrigger>
-          <TabsTrigger value="keluhan" className="text-xs sm:text-sm">
-            <ClipboardList className="w-4 h-4 mr-1" />
-            Keluhan Harian
           </TabsTrigger>
           <TabsTrigger value="sosial" className="text-xs sm:text-sm">
             <Users className="w-4 h-4 mr-1" />
@@ -3897,10 +4508,6 @@ export function PalliativeMonitoringPanel() {
           <TabsTrigger value="acp" className="text-xs sm:text-sm">
             <Shield className="w-4 h-4 mr-1" />
             ACP
-          </TabsTrigger>
-          <TabsTrigger value="ai" className="text-xs sm:text-sm">
-            <Brain className="w-4 h-4 mr-1" />
-            AI
           </TabsTrigger>
           <TabsTrigger value="alerts" className="text-xs sm:text-sm">
             <AlertCircle className="w-4 h-4 mr-1" />
@@ -3920,17 +4527,21 @@ export function PalliativeMonitoringPanel() {
               ) : null;
             })()}
           </TabsTrigger>
-          <TabsTrigger value="chat" className="text-xs sm:text-sm">
-            <MessageCircle className="w-4 h-4 mr-1" />
-            Chat
-          </TabsTrigger>
           <TabsTrigger value="dokumen" className="text-xs sm:text-sm">
             <FileText className="w-4 h-4 mr-1" />
             Dokumen
           </TabsTrigger>
-          <TabsTrigger value="supporting-exam" className="text-xs sm:text-sm">
-            <Stethoscope className="w-4 h-4 mr-1" />
-            Pemeriksaan Penunjang
+          <TabsTrigger value="ai" className="text-xs sm:text-sm">
+            <Brain className="w-4 h-4 mr-1" />
+            AI
+          </TabsTrigger>
+          <TabsTrigger value="soap" className="text-xs sm:text-sm">
+            <FileClock className="w-4 h-4 mr-1" />
+            SOAP
+          </TabsTrigger>
+          <TabsTrigger value="chat" className="text-xs sm:text-sm">
+            <MessageCircle className="w-4 h-4 mr-1" />
+            Chat
           </TabsTrigger>
         </TabsList>
 
@@ -3939,35 +4550,36 @@ export function PalliativeMonitoringPanel() {
 
         <TabsContent value="dashboard">{renderDashboard()}</TabsContent>
         <TabsContent value="patients">{renderPatients()}</TabsContent>
-        <TabsContent value="ttv">{renderTTV()}</TabsContent>
-        <TabsContent value="screening">{renderScreening()}</TabsContent>
-        <TabsContent value="medication">{renderMedication()}</TabsContent>
-        <TabsContent value="nutrition">{renderNutrition()}</TabsContent>
         <TabsContent value="keluhan">
           <MonitoringMarquee priority={monitoringStatus.keluhan.priority} message={monitoringStatus.keluhan.message} />
           <DailyComplaintPanel palliativePatientId={selectedPalliativePatientId} />
         </TabsContent>
-        <TabsContent value="sosial">
-          <SocialSupportPanel palliativePatientId={selectedPalliativePatientId} />
-        </TabsContent>
-        <TabsContent value="acp">{renderACP()}</TabsContent>
-        <TabsContent value="ai">{renderAI()}</TabsContent>
-        <TabsContent value="alerts">
-          <ClinicalAlertPanel palliativePatientId={selectedPalliativePatientId ?? undefined} />
-        </TabsContent>
-        <TabsContent value="chat">
-          <div className="h-[calc(100vh-280px)]">
-            <PalliativeChatPanel patient={selectedPatient} />
-          </div>
-        </TabsContent>
-        <TabsContent value="dokumen">
-          <PalliativeResumeReferralPanel patient={selectedPatient} />
-        </TabsContent>
+        <TabsContent value="ttv">{renderTTV()}</TabsContent>
+        <TabsContent value="screening">{renderScreening()}</TabsContent>
+        <TabsContent value="medication">{renderMedication()}</TabsContent>
         <TabsContent value="supporting-exam">
           <SupportingExamPanel
             palliativePatientId={selectedPalliativePatientId ?? undefined}
             patientName={selectedPatient?.patientName}
           />
+        </TabsContent>
+        <TabsContent value="nutrition">{renderNutrition()}</TabsContent>
+        <TabsContent value="sosial">
+          <SocialSupportPanel palliativePatientId={selectedPalliativePatientId} />
+        </TabsContent>
+        <TabsContent value="acp">{renderACP()}</TabsContent>
+        <TabsContent value="alerts">
+          <ClinicalAlertPanel palliativePatientId={selectedPalliativePatientId ?? undefined} />
+        </TabsContent>
+        <TabsContent value="dokumen">
+          <PalliativeResumeReferralPanel patient={selectedPatient} />
+        </TabsContent>
+        <TabsContent value="ai">{renderAI()}</TabsContent>
+        <TabsContent value="soap">{renderSoap()}</TabsContent>
+        <TabsContent value="chat">
+          <div className="h-[calc(100vh-280px)]">
+            <PalliativeChatPanel patient={selectedPatient} />
+          </div>
         </TabsContent>
       </Tabs>
 
