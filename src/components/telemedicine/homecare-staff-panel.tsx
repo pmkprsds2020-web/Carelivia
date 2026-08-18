@@ -7,6 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import {
   Calendar,
@@ -49,8 +56,18 @@ interface StaffBooking {
   paymentStatus?: string;
   // Only populated for the admin monitoring view (see isAdminView below) —
   // an individual field staff member's own queue is implicitly "mine".
+  staffId?: string;
   staffName?: string;
   adminValidated?: boolean;
+}
+
+interface HomecareStaffOption {
+  id: string;
+  name: string;
+  phone?: string;
+  isAvailable: boolean;
+  currentStatus: string;
+  activeBookingCount: number;
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -76,6 +93,29 @@ export function HomeCareStaffPanel() {
   const [bookings, setBookings] = useState<StaffBooking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  // Admin-only: the list of field staff to pick from when assigning a
+  // "Belum ditugaskan" booking, and which booking's picker is currently open.
+  const [staffOptions, setStaffOptions] = useState<HomecareStaffOption[]>([]);
+  const [assigningBookingId, setAssigningBookingId] = useState<string | null>(null);
+  const [selectedStaffId, setSelectedStaffId] = useState<string>('');
+  const [assignSubmitting, setAssignSubmitting] = useState(false);
+
+  const loadStaffOptions = useCallback(async () => {
+    if (!isAdminView) return;
+    try {
+      const res = await fetch('/api/admin/homecare-staff');
+      const data = await res.json();
+      if (res.ok && Array.isArray(data?.staff)) {
+        setStaffOptions(data.staff);
+      }
+    } catch (err) {
+      console.error('[homecare-staff-panel] loadStaffOptions failed:', err);
+    }
+  }, [isAdminView]);
+
+  useEffect(() => {
+    loadStaffOptions();
+  }, [loadStaffOptions]);
 
   const loadBookings = useCallback(async () => {
     if (!currentUser?.id) { setBookingsLoading(false); return; }
@@ -100,6 +140,7 @@ export function HomeCareStaffPanel() {
             status: b.status,
             notes: b.notes,
             paymentStatus: b.payment?.status,
+            staffId: b.staff?.id,
             staffName: b.staff?.name,
             adminValidated: b.adminValidated,
           }))
@@ -160,6 +201,44 @@ export function HomeCareStaffPanel() {
 
   const handleMarkArrived = (bookingId: string) => {
     updateStatus(bookingId, 'in_progress', { title: 'Sudah Sampai', description: 'Anda telah menandai tiba di lokasi pasien.' });
+  };
+
+  // Admin manually assigns a specific staff member to a "Belum ditugaskan"
+  // booking (or reassigns an existing one) — the explicit control that
+  // pure auto-assignment doesn't give when no staff was free at the moment
+  // the booking was validated.
+  const handleAssignStaff = async (bookingId: string) => {
+    if (!selectedStaffId) return;
+    setAssignSubmitting(true);
+    try {
+      const res = await fetch('/api/admin/homecare-bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId, action: 'assign', staffId: selectedStaffId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.booking) {
+        throw new Error(data?.details || data?.error || 'Gagal menugaskan petugas');
+      }
+      const assigned = staffOptions.find((s) => s.id === selectedStaffId);
+      setBookings((prev) => prev.map((b) => (
+        b.id === bookingId
+          ? { ...b, status: data.booking.status, staffId: selectedStaffId, staffName: assigned?.name }
+          : b
+      )));
+      toast({ title: 'Petugas Ditugaskan', description: `${assigned?.name ?? 'Petugas'} telah ditugaskan untuk booking ini.` });
+      setAssigningBookingId(null);
+      setSelectedStaffId('');
+      loadStaffOptions(); // refresh active-booking counts
+    } catch (err) {
+      toast({
+        title: 'Gagal Menugaskan Petugas',
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        variant: 'destructive',
+      });
+    } finally {
+      setAssignSubmitting(false);
+    }
   };
 
   const todaySchedule = useMemo(() => {
@@ -273,10 +352,56 @@ export function HomeCareStaffPanel() {
                             {visit.patient}
                           </p>
                           {isAdminView && (
-                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                              <Truck className="w-3 h-3" />
-                              Petugas: {visit.staffName || 'Belum ditugaskan'}
-                            </p>
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              {assigningBookingId === visit.id ? (
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <Select value={selectedStaffId} onValueChange={setSelectedStaffId}>
+                                    <SelectTrigger className="h-7 text-xs w-48">
+                                      <SelectValue placeholder="Pilih petugas..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {staffOptions.length === 0 ? (
+                                        <div className="px-2 py-1.5 text-xs text-muted-foreground">Belum ada akun petugas terdaftar</div>
+                                      ) : (
+                                        staffOptions.map((s) => (
+                                          <SelectItem key={s.id} value={s.id} className="text-xs">
+                                            {s.name} {s.isAvailable ? '· Tersedia' : '· Sibuk'} ({s.activeBookingCount} tugas aktif)
+                                          </SelectItem>
+                                        ))
+                                      )}
+                                    </SelectContent>
+                                  </Select>
+                                  <Button
+                                    size="sm"
+                                    className="h-7 text-[11px] px-2"
+                                    disabled={!selectedStaffId || assignSubmitting}
+                                    onClick={() => handleAssignStaff(visit.id)}
+                                  >
+                                    {assignSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Tugaskan'}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 text-[11px] px-2"
+                                    onClick={() => { setAssigningBookingId(null); setSelectedStaffId(''); }}
+                                  >
+                                    Batal
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <Truck className="w-3 h-3" />
+                                  Petugas: {visit.staffName || 'Belum ditugaskan'}
+                                  <button
+                                    type="button"
+                                    className="text-primary hover:underline text-[11px] ml-1"
+                                    onClick={() => { setAssigningBookingId(visit.id); setSelectedStaffId(visit.staffId || ''); }}
+                                  >
+                                    {visit.staffName ? 'Ganti' : 'Tugaskan'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           )}
                           <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                             <MapPin className="w-3 h-3" />

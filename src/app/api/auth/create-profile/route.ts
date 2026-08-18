@@ -117,7 +117,31 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, doctorProfileWarning, usedAuthedFallback });
+    // ── Home Care field staff also need a `homecare_staff` row ─────────────
+    // Without this, a "Perawat"/"Caregiver" signup only ever got a `profiles`
+    // row: they could log in and see the staff panel, but were completely
+    // invisible to homecareService's auto-assign query (which reads
+    // `homecare_staff`, not `profiles`) — so validated Home Care bookings
+    // could never be assigned to them, and admin's "Kelola Petugas" always
+    // showed "Petugas: Belum ditugaskan" no matter how many staff signed up.
+    let homecareStaffWarning: string | null = null;
+    if (role === "Perawat" || role === "Caregiver") {
+      const { error: hsError } = await client.from("homecare_staff").upsert(
+        {
+          id: userId,
+          certification: role === "Perawat" ? "Perawat" : "Caregiver",
+          is_available: true,
+          current_status: "available",
+        },
+        { onConflict: "id" }
+      );
+      if (hsError) {
+        console.warn("[auth/create-profile] homecare_staff upsert failed:", hsError.message);
+        homecareStaffWarning = hsError.message;
+      }
+    }
+
+    return NextResponse.json({ ok: true, doctorProfileWarning, homecareStaffWarning, usedAuthedFallback });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     console.error("[auth/create-profile] fatal:", msg);

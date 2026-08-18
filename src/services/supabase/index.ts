@@ -91,7 +91,7 @@ export type { MedicineRecord, MedicineFilters } from './medicineService';
 export { consultationService } from './consultationService';
 export type { ConsultationFilters } from './consultationService';
 export { homecareService } from './homecareService';
-export type { HomecareServiceRecord, HomecareBookingRecord, HomecareServiceInput } from './homecareService';
+export type { HomecareServiceRecord, HomecareBookingRecord, HomecareServiceInput, HomecareStaffRecord } from './homecareService';
 export { paymentService } from './paymentService';
 export type { PaymentRecord, PaymentReferenceType, PaymentStatus } from './paymentService';
 export { pharmacyService } from './pharmacyService';

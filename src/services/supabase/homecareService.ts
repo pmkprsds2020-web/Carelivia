@@ -29,6 +29,17 @@ export interface HomecareServiceInput {
   updatedBy?: string;
 }
 
+export interface HomecareStaffRecord {
+  id: string;
+  name: string;
+  phone?: string;
+  certification?: string;
+  isAvailable: boolean;
+  currentStatus: string;
+  /** How many active (not completed/cancelled) bookings this staff member currently has. */
+  activeBookingCount: number;
+}
+
 export interface HomecareBookingRecord {
   id: string;
   patientId: string;
@@ -218,6 +229,115 @@ export const homecareService = {
 
     const rows = await safeQuery(q, [] as any[], 'homecareService.getBookings');
     return (rows as any[]).map(bookingFromDb);
+  },
+
+  /**
+   * List every Home Care field staff account (profiles with role
+   * Perawat/Caregiver that have a matching `homecare_staff` row — see
+   * /api/auth/create-profile and the backfill route for how that row gets
+   * created). Powers the admin "Tugaskan Petugas" picker, since relying
+   * purely on automatic assignment at validation time leaves the admin with
+   * no way to choose or fix a "Belum ditugaskan" booking by hand.
+   */
+  async getAllStaff(): Promise<HomecareStaffRecord[]> {
+    const rows = await safeQuery(
+      supabase
+        .from('homecare_staff')
+        .select('id, certification, is_available, current_status, profiles(full_name, phone)')
+        .order('current_status', { ascending: true }),
+      [] as any[],
+      'homecareService.getAllStaff'
+    );
+
+    const staffList = (rows as any[]).map((row) => ({
+      id: row.id,
+      name: row.profiles?.full_name ?? 'Petugas',
+      phone: row.profiles?.phone ?? undefined,
+      certification: row.certification ?? undefined,
+      isAvailable: row.is_available ?? true,
+      currentStatus: row.current_status ?? 'available',
+    }));
+
+    if (staffList.length === 0) return [];
+
+    // Active-booking counts, so the admin can see at a glance who's already
+    // loaded up versus who's free — a simple `count` group-by via Supabase's
+    // query builder rather than an extra round trip per staff member.
+    const counts = await safeQuery(
+      supabase
+        .from('homecare_bookings')
+        .select('staff_id')
+        .in('staff_id', staffList.map((s) => s.id))
+        .neq('status', 'completed')
+        .neq('status', 'cancelled'),
+      [] as any[],
+      'homecareService.getAllStaff(active counts)'
+    );
+    const countMap = new Map<string, number>();
+    for (const row of counts as any[]) {
+      countMap.set(row.staff_id, (countMap.get(row.staff_id) ?? 0) + 1);
+    }
+
+    return staffList.map((s) => ({ ...s, activeBookingCount: countMap.get(s.id) ?? 0 }));
+  },
+
+  /**
+   * Admin manually assigns (or reassigns) a specific staff member to a
+   * validated booking. This is the explicit control the auto-assign at
+   * validation time doesn't give: if no staff was free when the booking was
+   * validated, or the admin simply wants to route it to someone specific,
+   * this is how they do it — instead of the booking sitting at "Belum
+   * ditugaskan" forever.
+   */
+  async assignStaff(bookingId: string, staffId: string): Promise<HomecareBookingRecord> {
+    if (!isValidUuid(bookingId)) throw new Error('bookingId tidak valid');
+    if (!isValidUuid(staffId)) throw new Error('staffId tidak valid');
+
+    const staff = await safeQuery(
+      supabase.from('homecare_staff').select('id').eq('id', staffId).maybeSingle(),
+      null as any,
+      'homecareService.assignStaff(staff lookup)'
+    );
+    if (!staff) throw new Error('Petugas tidak ditemukan.');
+
+    const existing = await safeQuery(
+      supabase.from('homecare_bookings').select('status, admin_validated, homecare_services(name)').eq('id', bookingId).maybeSingle(),
+      null as any,
+      'homecareService.assignStaff(booking lookup)'
+    );
+    if (!existing) throw new Error('Booking tidak ditemukan.');
+    const bookingRow = existing as any;
+    if (bookingRow.status === 'cancelled') throw new Error('Booking ini sudah dibatalkan.');
+    if (bookingRow.status === 'completed') throw new Error('Booking ini sudah selesai.');
+
+    const updatePayload: Record<string, any> = { staff_id: staffId, updated_at: new Date().toISOString() };
+    // A validated-but-unassigned booking is still sitting at 'pending' —
+    // assigning staff is what actually moves it forward operationally.
+    if (bookingRow.status === 'pending' && bookingRow.admin_validated) {
+      updatePayload.status = 'confirmed';
+    }
+
+    const { data: row, error } = await safeInsert<any>(
+      supabase
+        .from('homecare_bookings')
+        .update(updatePayload)
+        .eq('id', bookingId)
+        .select('*, patient_profile:profiles!homecare_bookings_patient_id_fkey(full_name, phone), staff_profile:homecare_staff(profiles(full_name)), homecare_services(*)')
+        .maybeSingle(),
+      'homecareService.assignStaff(update)'
+    );
+    if (error) throw new Error(error);
+    if (!row) throw new Error('Booking tidak ditemukan.');
+
+    await notificationService.create({
+      userId: staffId,
+      title: 'Home Care Baru Ditugaskan',
+      body: `Anda ditugaskan untuk layanan ${row.homecare_services?.name ?? 'Home Care'} pada ${new Date(row.scheduled_at).toLocaleDateString('id-ID')} di ${row.address}.`,
+      type: 'homecare',
+      data: { bookingId },
+    }).catch((e) => console.error('[homecareService.assignStaff] staff notification failed:', e));
+
+    return bookingFromDb(row);
   },
 
   /**
