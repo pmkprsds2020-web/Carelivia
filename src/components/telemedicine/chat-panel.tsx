@@ -376,6 +376,7 @@ export function ChatPanel() {
 
   // Palliative marking dialog state
   const [showPalliativeMarkingDialog, setShowPalliativeMarkingDialog] = useState(false);
+  const [isMarkingPalliative, setIsMarkingPalliative] = useState(false);
   const [markingData, setMarkingData] = useState({
     primaryDiagnosis: '',
     secondaryDiagnosis: '',
@@ -1418,19 +1419,35 @@ export function ChatPanel() {
 
   // ── Palliative Marking Handler ──────────────────────────────────────────
 
-  const handleConfirmPalliativeMarking = () => {
+  const handleConfirmPalliativeMarking = async () => {
     if (!activeConsultation || !currentUser || !markingData.primaryDiagnosis) {
       toast({ title: 'Error', description: 'Diagnosis utama wajib diisi.' });
       return;
     }
+    // Guards against a double-click/double-submit creating two palliative
+    // records for the same patient before the first request even resolves
+    // (the button itself only hides once `palliativePatients` updates,
+    // which can't happen until this async call finishes).
+    if (isMarkingPalliative) return;
+    setIsMarkingPalliative(true);
 
-    markPatientAsPalliative(
+    const result = await markPatientAsPalliative(
       activeConsultation.id,
       currentUser.id,
       activeConsultation.patientId,
       activeConsultation.patient?.name || 'Pasien',
       markingData
     );
+
+    setIsMarkingPalliative(false);
+
+    if (!result) {
+      // Either it already existed (now synced locally by markPatientAsPalliative
+      // itself) or the create genuinely failed (which already toasted its own
+      // error) — either way, don't send a misleading "success" system message.
+      setShowPalliativeMarkingDialog(false);
+      return;
+    }
 
     // Send system message
     const sysMessage: Message = {
@@ -3108,10 +3125,14 @@ export function ChatPanel() {
           </Button>
           <Button
             onClick={handleConfirmPalliativeMarking}
-            disabled={!markingData.primaryDiagnosis.trim()}
+            disabled={!markingData.primaryDiagnosis.trim() || isMarkingPalliative}
             className="bg-rose-600 hover:bg-rose-700"
           >
-            <Shield className="w-4 h-4 mr-1" />
+            {isMarkingPalliative ? (
+              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+            ) : (
+              <Shield className="w-4 h-4 mr-1" />
+            )}
             Tandai sebagai Pasien Paliatif
           </Button>
         </DialogFooter>

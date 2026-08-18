@@ -971,11 +971,32 @@ export const useStore = create<TelemedicineStore>((set) => ({
     ),
   })),
   markPatientAsPalliative: async (consultationId, doctorId, patientId, patientName, markingData) => {
-    // Check if patient already exists in palliative patients
-    const existing = useStore.getState().palliativePatients.some(p => p.patientId === patientId || p.id === patientId);
-    if (existing) {
-      console.log('[Store.markPatientAsPalliative] patient already exists, skipping');
+    // Check the LOCAL cache first (fast path — avoids a network round trip
+    // in the common case where the record was already loaded).
+    const existingLocal = useStore.getState().palliativePatients.some(p => p.patientId === patientId || p.id === patientId);
+    if (existingLocal) {
+      console.log('[Store.markPatientAsPalliative] patient already exists (local cache), skipping');
       return null;
+    }
+
+    // Also check the DATABASE directly before creating — the local cache
+    // can be stale (a different tab/session already marked this patient,
+    // or this device hasn't finished its initial sync yet). Without this,
+    // "Jadikan Pasien Monitoring Paliatif" could create a duplicate
+    // palliative-patient row for the same person every time it was clicked,
+    // since the local-only check above would never catch it in that case.
+    try {
+      const existingRemote = await patientService.getByAccountId(patientId);
+      if (existingRemote) {
+        console.log('[Store.markPatientAsPalliative] patient already exists (database), skipping and syncing local state');
+        set((state) => {
+          if (state.palliativePatients.some((p) => p.id === existingRemote.id)) return state;
+          return { palliativePatients: [...state.palliativePatients, existingRemote] };
+        });
+        return existingRemote;
+      }
+    } catch (err) {
+      console.warn('[Store.markPatientAsPalliative] getByAccountId check failed, proceeding with create:', err);
     }
 
     // Build the patient object WITHOUT a custom id — let Supabase generate

@@ -59,7 +59,13 @@ function normalizeProgram(raw: unknown): string {
 function fromDb(row: any): PalliativePatientInfo {
   return {
     id: row.id,
-    patientId: row.id,
+    // The real logged-in patient account id (profiles.id) — see
+    // migration_patients_account_link.sql. Falls back to the row's own id
+    // for legacy rows created before that column existed (those rows can
+    // never be matched to a login account, and effectively behave as
+    // "unlinked" — the doctor should re-mark the patient once to get a
+    // correctly linked record).
+    patientId: row.patient_account_id ?? row.id,
     patientName: row.nama ?? '',
     rmNumber: row.rm ?? undefined,
     nik: row.nik ?? undefined,
@@ -96,6 +102,12 @@ function fromDb(row: any): PalliativePatientInfo {
 function toDb(data: Partial<PalliativePatientInfo>): Record<string, any> {
   const out: Record<string, any> = {};
   // Never send `id` — let Supabase auto-generate the UUID.
+  // `patientId` (when it's a real UUID — the logged-in patient's account id
+  // from `profiles`, NOT a temp/local string) links this clinical record
+  // back to who can actually log in and see it. See
+  // migration_patients_account_link.sql.
+  const accountId = validUuidOrUndefined(data.patientId);
+  if (accountId) out.patient_account_id = accountId;
   if (data.patientName !== undefined) out.nama = data.patientName;
   if (data.rmNumber !== undefined) out.rm = data.rmNumber;
   if (data.nik !== undefined) out.nik = data.nik;
@@ -139,6 +151,23 @@ export const patientService = {
       supabase.from('patients').select('*').eq('id', id).maybeSingle(),
       null as any,
       'patientService.getById'
+    );
+    return row ? fromDb(row) : null;
+  },
+
+  /**
+   * Find the palliative-patient record already linked to a given login
+   * account (patient_account_id), if any. Used to guard "Jadikan Pasien
+   * Monitoring Paliatif" against creating a duplicate — checking the local
+   * Zustand cache alone isn't reliable (it can be stale across tabs/
+   * sessions), so this hits the database directly right before insert.
+   */
+  async getByAccountId(accountId: string): Promise<PalliativePatientInfo | null> {
+    if (!accountId) return null;
+    const row = await safeQuery(
+      supabase.from('patients').select('*').eq('patient_account_id', accountId).maybeSingle(),
+      null as any,
+      'patientService.getByAccountId'
     );
     return row ? fromDb(row) : null;
   },
