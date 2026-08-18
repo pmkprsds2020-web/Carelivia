@@ -36,6 +36,34 @@ const INVOICE_PREFIX: Record<PaymentReferenceType, string> = {
   consultation: 'INV-CONS',
 };
 
+// Kept local (not in homecareService) to avoid a circular import —
+// homecareService already imports paymentService. Only touches the booking
+// if it's still 'pending'; a booking already 'confirmed'/'in_progress'/etc.
+// (e.g. staff was already assigned at validation time) is left untouched.
+async function confirmHomecareBookingAfterPayment(db: any, bookingId: string): Promise<void> {
+  const { data: booking } = await db
+    .from('homecare_bookings')
+    .select('id, status, staff_id')
+    .eq('id', bookingId)
+    .maybeSingle();
+  if (!booking || booking.status !== 'pending') return;
+
+  const updatePayload: Record<string, any> = { status: 'confirmed', updated_at: new Date().toISOString() };
+
+  if (!booking.staff_id) {
+    const { data: availableStaff } = await db
+      .from('homecare_staff')
+      .select('id')
+      .eq('is_available', true)
+      .eq('current_status', 'available')
+      .limit(1)
+      .maybeSingle();
+    if (availableStaff) updatePayload.staff_id = availableStaff.id;
+  }
+
+  await db.from('homecare_bookings').update(updatePayload).eq('id', bookingId);
+}
+
 function fromDb(row: any): PaymentRecord {
   return {
     id: row.id,
@@ -169,6 +197,19 @@ export const paymentService = {
         referenceId: paid.referenceId,
         amount: paid.amount,
       }).catch((e) => console.error('[paymentService.markPaid] revenue recording failed:', e));
+
+      // A Home Care booking that's still 'pending' at the moment its
+      // payment succeeds gets bumped to 'confirmed' (assigning staff if one
+      // wasn't already picked at admin-validation time) — otherwise the
+      // patient's "Pesanan Saya" list kept showing "Menunggu" with the
+      // "Bayar Sekarang"/"Batalkan" buttons even after payment actually
+      // went through, because nothing here ever touched the booking row.
+      if (paid.referenceType === 'homecare_booking') {
+        await confirmHomecareBookingAfterPayment(db, paid.referenceId).catch((e) =>
+          console.error('[paymentService.markPaid] homecare booking confirm failed:', e)
+        );
+      }
+
       return { payment: paid, alreadyPaid: false };
     }
 

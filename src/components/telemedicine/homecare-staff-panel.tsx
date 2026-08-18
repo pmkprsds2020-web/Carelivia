@@ -38,6 +38,8 @@ interface StaffBooking {
   patient: string;
   patientPhone?: string;
   address: string;
+  latitude?: number;
+  longitude?: number;
   scheduledAt: string;
   status: string;
   notes?: string;
@@ -74,6 +76,8 @@ export function HomeCareStaffPanel() {
             patient: b.patient?.name ?? 'Pasien',
             patientPhone: b.patient?.phone,
             address: b.address,
+            latitude: b.latitude,
+            longitude: b.longitude,
             scheduledAt: b.scheduledAt,
             status: b.status,
             notes: b.notes,
@@ -222,6 +226,17 @@ export function HomeCareStaffPanel() {
                             <MapPin className="w-3 h-3" />
                             {visit.address}
                           </p>
+                          {visit.latitude != null && visit.longitude != null && (
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${visit.latitude},${visit.longitude}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-primary hover:underline flex items-center gap-1 mt-0.5"
+                            >
+                              <Navigation className="w-3 h-3" />
+                              Lihat di Google Maps
+                            </a>
+                          )}
                           <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                             <Clock className="w-3 h-3" />
                             {visitTime} WIB
@@ -303,15 +318,37 @@ export function HomeCareStaffPanel() {
                 </CardContent>
               </Card>
 
-              {/* Map Placeholder */}
+              {/* Map / Navigation */}
               <Card className="border-0 overflow-hidden">
-                <div className="w-full h-64 md:h-80 bg-gray-200 dark:bg-gray-800 flex items-center justify-center">
-                  <div className="text-center text-gray-500 dark:text-gray-400">
-                    <Map className="w-12 h-12 mx-auto mb-2 opacity-40" />
-                    <p className="text-sm font-medium">GPS Map - Lokasi Pasien</p>
-                    <p className="text-xs mt-1">{currentVisit.address}</p>
+                {currentVisit.latitude != null && currentVisit.longitude != null ? (
+                  <div className="p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Map className="w-4 h-4 text-primary" />
+                      Koordinat GPS Pasien
+                    </div>
+                    <p className="text-xs text-muted-foreground font-mono">
+                      {currentVisit.latitude.toFixed(5)}, {currentVisit.longitude.toFixed(5)}
+                    </p>
+                    <Button
+                      className="w-full"
+                      onClick={() => window.open(
+                        `https://www.google.com/maps/dir/?api=1&destination=${currentVisit.latitude},${currentVisit.longitude}`,
+                        '_blank'
+                      )}
+                    >
+                      <Navigation className="w-4 h-4 mr-2" />
+                      Rute ke Lokasi Pasien (Google Maps)
+                    </Button>
                   </div>
-                </div>
+                ) : (
+                  <div className="w-full h-64 md:h-80 bg-gray-200 dark:bg-gray-800 flex items-center justify-center">
+                    <div className="text-center text-gray-500 dark:text-gray-400">
+                      <Map className="w-12 h-12 mx-auto mb-2 opacity-40" />
+                      <p className="text-sm font-medium">Koordinat GPS tidak tersedia</p>
+                      <p className="text-xs mt-1">{currentVisit.address}</p>
+                    </div>
+                  </div>
+                )}
               </Card>
 
               {/* ETA */}

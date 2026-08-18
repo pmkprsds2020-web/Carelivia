@@ -122,24 +122,61 @@ export function HomeCarePanel() {
   const [bookingNotes, setBookingNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  // GPS coordinates captured via "Gunakan Lokasi GPS Saat Ini" — sent along
+  // with the booking so staff/admin can open the exact pin in Google Maps
+  // instead of relying only on the free-text address.
+  const [bookingLat, setBookingLat] = useState<number | null>(null);
+  const [bookingLng, setBookingLng] = useState<number | null>(null);
+  const [locatingGps, setLocatingGps] = useState(false);
+  // Maps bookingId → latest payment {id, status} for THIS patient, loaded
+  // alongside bookings so each card can show real payment state.
+  const [bookingPayments, setBookingPayments] = useState<Record<string, { id: string; status: string }>>({});
 
   useEffect(() => {
     const loadData = async () => {
       try {
         const [servicesRes, bookingsRes] = await Promise.all([
           fetch('/api/homecare'),
-          fetch('/api/homecare?type=bookings'),
+          // Filtered to the logged-in patient's own bookings — without
+          // patientId this endpoint returns EVERY patient's bookings, so
+          // "Pesanan Saya" was showing other people's Home Care orders too.
+          currentUser?.id
+            ? fetch(`/api/homecare?type=bookings&patientId=${encodeURIComponent(currentUser.id)}`)
+            : Promise.resolve(null),
         ]);
         const servicesData = await servicesRes.json();
-        const bookingsData = await bookingsRes.json();
         if (servicesData.services) setHomeCareServices(servicesData.services);
-        if (bookingsData.bookings) setHomeCareBookings(bookingsData.bookings);
+        if (bookingsRes) {
+          const bookingsData = await bookingsRes.json();
+          if (bookingsData.bookings) setHomeCareBookings(bookingsData.bookings);
+        }
+
+        // Load this patient's payments too, so each booking card can show
+        // its REAL payment state (paid / awaiting payment) instead of
+        // guessing from the booking status alone — a booking can stay
+        // 'pending' momentarily even after payment succeeds.
+        if (currentUser?.id) {
+          const paymentsRes = await fetch(`/api/payments?userId=${encodeURIComponent(currentUser.id)}`);
+          const paymentsData = await paymentsRes.json();
+          if (Array.isArray(paymentsData?.payments)) {
+            const map: Record<string, { id: string; status: string }> = {};
+            for (const p of paymentsData.payments) {
+              // getForUser() already orders by created_at DESC, so the
+              // first payment we see per booking is the most recent one —
+              // skip any earlier/duplicate rows for the same booking.
+              if (p.referenceType === 'homecare_booking' && !map[p.referenceId]) {
+                map[p.referenceId] = { id: p.id, status: p.status };
+              }
+            }
+            setBookingPayments(map);
+          }
+        }
       } catch (error) {
         console.error('Failed to load home care data:', error);
       }
     };
     loadData();
-  }, [setHomeCareServices, setHomeCareBookings]);
+  }, [setHomeCareServices, setHomeCareBookings, currentUser?.id]);
 
   const handleBookService = (service: HomeCareService) => {
     setSelectedService(service);
@@ -147,7 +184,56 @@ export function HomeCarePanel() {
     setBookingTime('');
     setBookingAddress(currentUser?.address || '');
     setBookingNotes('');
+    setBookingLat(null);
+    setBookingLng(null);
     setBookingDialogOpen(true);
+  };
+
+  // Captures the patient's real GPS coordinates from the browser and
+  // reverse-geocodes them into a readable address via OpenStreetMap's free
+  // Nominatim API (no API key required). The coordinates are what actually
+  // get sent to staff/admin for "Buka di Google Maps" — the text address
+  // stays editable in case the reverse-geocoded text isn't quite right.
+  const handleUseGpsLocation = () => {
+    if (!navigator.geolocation) {
+      toast({ title: 'GPS Tidak Tersedia', description: 'Perangkat/browser Anda tidak mendukung lokasi GPS.', variant: 'destructive' });
+      return;
+    }
+    setLocatingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        setBookingLat(latitude);
+        setBookingLng(longitude);
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`,
+            { headers: { Accept: 'application/json' } }
+          );
+          const data = await res.json();
+          if (data?.display_name) {
+            setBookingAddress(data.display_name);
+          }
+          toast({ title: 'Lokasi Ditemukan', description: 'Alamat telah diisi otomatis dari lokasi GPS Anda. Periksa kembali sebelum memesan.' });
+        } catch (err) {
+          console.warn('[homecare-panel] reverse geocoding failed:', err);
+          toast({ title: 'Lokasi GPS Didapat', description: 'Koordinat tersimpan, namun gagal mengambil nama alamat. Silakan isi alamat secara manual.' });
+        } finally {
+          setLocatingGps(false);
+        }
+      },
+      (err) => {
+        setLocatingGps(false);
+        toast({
+          title: 'Gagal Mengambil Lokasi',
+          description: err.code === err.PERMISSION_DENIED
+            ? 'Izin lokasi ditolak. Aktifkan izin lokasi untuk browser ini.'
+            : 'Terjadi kesalahan saat mengambil lokasi GPS.',
+          variant: 'destructive',
+        });
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   };
 
   const handleSubmitBooking = async () => {
@@ -167,6 +253,8 @@ export function HomeCarePanel() {
           serviceId: selectedService.id,
           scheduledAt: scheduledAt.toISOString(),
           address: bookingAddress,
+          latitude: bookingLat ?? undefined,
+          longitude: bookingLng ?? undefined,
           notes: bookingNotes,
         }),
       });
@@ -295,7 +383,7 @@ export function HomeCarePanel() {
           ) : (
             <div className="space-y-3 max-h-[calc(100vh-240px)] overflow-y-auto custom-scrollbar">
               {homeCareBookings.map((booking) => (
-                <BookingCard key={booking.id} booking={booking} />
+                <BookingCard key={booking.id} booking={booking} payment={bookingPayments[booking.id]} />
               ))}
             </div>
           )}
@@ -373,7 +461,20 @@ export function HomeCarePanel() {
 
             {/* Address Input */}
             <div className="space-y-2">
-              <Label className="text-xs font-medium text-muted-foreground">Alamat Lengkap</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium text-muted-foreground">Alamat Lengkap</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-[11px] px-2 gap-1 text-primary hover:text-primary"
+                  onClick={handleUseGpsLocation}
+                  disabled={locatingGps}
+                >
+                  <Navigation className="w-3 h-3" />
+                  {locatingGps ? 'Mencari lokasi...' : 'Gunakan Lokasi GPS'}
+                </Button>
+              </div>
               <div className="relative">
                 <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -383,6 +484,12 @@ export function HomeCarePanel() {
                   className="pl-9 text-sm"
                 />
               </div>
+              {bookingLat != null && bookingLng != null && (
+                <p className="text-[11px] text-emerald-600 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Koordinat GPS tersimpan ({bookingLat.toFixed(5)}, {bookingLng.toFixed(5)}) — memudahkan petugas melacak lokasi Anda.
+                </p>
+              )}
             </div>
 
             {/* Notes Textarea */}
@@ -412,32 +519,25 @@ export function HomeCarePanel() {
   );
 }
 
-function BookingCard({ booking }: { booking: HomeCareBooking }) {
+function BookingCard({ booking, payment }: { booking: HomeCareBooking; payment?: { id: string; status: string } }) {
   const { currentUser, setActivePanel, setPendingPaymentFocusId } = useStore();
   const [showTracking, setShowTracking] = useState(false);
   const [findingPayment, setFindingPayment] = useState(false);
 
+  const isPaid = payment?.status === 'success';
+  const hasPendingPayment = payment?.status === 'pending';
+
   // "Bayar Sekarang" only becomes available once an admin has validated the
   // booking — that's the step that actually creates the pending payment
-  // (see homecareService.validateBooking). Look it up and jump straight to
-  // the payment method screen, same pattern as the Apotek Online checkout.
+  // (see homecareService.validateBooking). Jump straight to the payment
+  // method screen, same pattern as the Apotek Online checkout.
   const handlePayNow = async () => {
     if (!currentUser?.id) return;
     setFindingPayment(true);
     try {
-      const res = await fetch(`/api/payments?userId=${encodeURIComponent(currentUser.id)}`);
-      const data = await res.json();
-      const payment = Array.isArray(data?.payments)
-        ? data.payments.find(
-            (p: any) => p.referenceType === 'homecare_booking' && p.referenceId === booking.id && p.status === 'pending'
-          )
-        : null;
-      if (payment) {
+      if (payment?.id) {
         setPendingPaymentFocusId(payment.id);
       }
-      setActivePanel('payments');
-    } catch (err) {
-      console.error('[homecare-panel] handlePayNow failed:', err);
       setActivePanel('payments');
     } finally {
       setFindingPayment(false);
@@ -484,6 +584,17 @@ function BookingCard({ booking }: { booking: HomeCareBooking }) {
                 <MapPin className="w-3.5 h-3.5 shrink-0" />
                 <span className="truncate">{booking.address}</span>
               </p>
+              {booking.latitude != null && booking.longitude != null && (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${booking.latitude},${booking.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-primary hover:underline"
+                >
+                  <Navigation className="w-3.5 h-3.5 shrink-0" />
+                  Buka di Google Maps
+                </a>
+              )}
               {staffName && (
                 <p className="flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 shrink-0" />
@@ -550,14 +661,22 @@ function BookingCard({ booking }: { booking: HomeCareBooking }) {
           </div>
         )}
 
+        {/* Already paid — confirm it instead of showing stale pay buttons */}
+        {isPaid && (
+          <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <p className="text-[11px] text-emerald-700">Pembayaran untuk booking ini telah berhasil.</p>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="mt-3 flex gap-2">
-          {booking.adminValidated && booking.status !== 'cancelled' && booking.status !== 'completed' && (
+          {booking.adminValidated && hasPendingPayment && (
             <Button size="sm" className="text-xs" onClick={handlePayNow} disabled={findingPayment}>
               {findingPayment ? 'Memuat...' : 'Bayar Sekarang'}
             </Button>
           )}
-          {(booking.status === 'pending' || booking.status === 'confirmed') && (
+          {!isPaid && (booking.status === 'pending' || booking.status === 'confirmed') && (
             <Button variant="outline" size="sm" className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50">
               Batalkan
             </Button>

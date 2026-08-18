@@ -25,6 +25,7 @@ import {
   XCircle,
   ClipboardCheck,
   StickyNote,
+  Navigation,
 } from 'lucide-react';
 
 interface PendingBooking {
@@ -34,6 +35,8 @@ interface PendingBooking {
   status: string;
   scheduledAt: string;
   address: string;
+  latitude?: number;
+  longitude?: number;
   notes?: string;
   createdAt: string;
   patient?: { id: string; name: string; phone?: string };
@@ -188,6 +191,17 @@ export function AdminHomecareValidationPanel() {
                         <MapPin className="w-3.5 h-3.5 shrink-0" />
                         <span className="truncate">{booking.address}</span>
                       </p>
+                      {booking.latitude != null && booking.longitude != null && (
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${booking.latitude},${booking.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline flex items-center gap-1.5"
+                        >
+                          <Navigation className="w-3.5 h-3.5 shrink-0" />
+                          Lihat lokasi di Google Maps
+                        </a>
+                      )}
                       {booking.notes && (
                         <p className="text-xs text-muted-foreground flex items-start gap-1.5">
                           <StickyNote className="w-3.5 h-3.5 shrink-0 mt-0.5" />
