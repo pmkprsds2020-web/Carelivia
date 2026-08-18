@@ -21,6 +21,7 @@ const DoctorPanel = dynamic(() => import('@/components/telemedicine/doctor-panel
 const AdminDashboard = dynamic(() => import('@/components/telemedicine/admin-dashboard').then(m => ({ default: m.AdminDashboard })), { ssr: false });
 const AdminPricingPanel = dynamic(() => import('@/components/telemedicine/admin-pricing-panel').then(m => ({ default: m.AdminPricingPanel })), { ssr: false });
 const AdminHomecareValidationPanel = dynamic(() => import('@/components/telemedicine/admin-homecare-validation-panel').then(m => ({ default: m.AdminHomecareValidationPanel })), { ssr: false });
+const AdminPaymentAccountsPanel = dynamic(() => import('@/components/telemedicine/admin-payment-accounts-panel').then(m => ({ default: m.AdminPaymentAccountsPanel })), { ssr: false });
 const NotificationsPanel = dynamic(() => import('@/components/telemedicine/notifications-panel').then(m => ({ default: m.NotificationsPanel })), { ssr: false });
 const PaymentsPanel = dynamic(() => import('@/components/telemedicine/payments-panel').then(m => ({ default: m.PaymentsPanel })), { ssr: false });
 const ReportsPanel = dynamic(() => import('@/components/telemedicine/reports-panel').then(m => ({ default: m.ReportsPanel })), { ssr: false });
@@ -142,6 +143,7 @@ export default function TelemedicineApp() {
       case 'admin': return <Suspense fallback={<PanelLoader />}><AdminDashboard /></Suspense>;
       case 'admin-pricing': return <Suspense fallback={<PanelLoader />}><AdminPricingPanel /></Suspense>;
       case 'admin-homecare-validation': return <Suspense fallback={<PanelLoader />}><AdminHomecareValidationPanel /></Suspense>;
+      case 'admin-payment-accounts': return <Suspense fallback={<PanelLoader />}><AdminPaymentAccountsPanel /></Suspense>;
       case 'notifications': return <Suspense fallback={<PanelLoader />}><NotificationsPanel /></Suspense>;
       case 'payments': return <Suspense fallback={<PanelLoader />}><PaymentsPanel /></Suspense>;
       case 'reports': return <Suspense fallback={<PanelLoader />}><ReportsPanel /></Suspense>;
@@ -199,6 +201,7 @@ export default function TelemedicineApp() {
               {activePanel === 'admin' && 'Admin Dashboard'}
               {activePanel === 'admin-pricing' && 'Kelola Harga & Tarif'}
               {activePanel === 'admin-homecare-validation' && 'Validasi Home Care'}
+              {activePanel === 'admin-payment-accounts' && 'Kelola Rekening Pembayaran'}
               {activePanel === 'notifications' && 'Notifikasi'}
               {activePanel === 'payments' && 'Pembayaran'}
               {activePanel === 'reports' && 'Laporan & Analitik'}

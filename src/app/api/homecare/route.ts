@@ -108,7 +108,7 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     console.error("Home care booking status update error:", error);
     const msg = error instanceof Error ? error.message : "Unknown error";
-    const httpStatus = msg.includes("tidak ditemukan") ? 404 : msg.includes("belum dibayar") ? 409 : 500;
+    const httpStatus = msg.includes("tidak ditemukan") ? 404 : (msg.includes("belum dibayar") || msg.includes("sedang berjalan")) ? 409 : 500;
     return NextResponse.json(
       { success: false, error: "Failed to update booking status", details: msg },
       { status: httpStatus }

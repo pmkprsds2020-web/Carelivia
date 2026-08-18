@@ -415,6 +415,21 @@ export const homecareService = {
       }
     }
 
+    // A booking that's already on the way, in progress, or completed can no
+    // longer be cancelled by the patient — the server enforces this too,
+    // not just the "Batalkan" button's visibility on the patient side.
+    if (status === 'cancelled') {
+      const current = await safeQuery(
+        db.from('homecare_bookings').select('status').eq('id', bookingId).maybeSingle(),
+        null as any,
+        'homecareService.updateBookingStatus(cancel guard)'
+      );
+      const currentStatus = (current as any)?.status;
+      if (currentStatus && ['on_the_way', 'in_progress', 'completed'].includes(currentStatus)) {
+        throw new Error('Booking yang sedang berjalan tidak dapat dibatalkan. Hubungi CS jika perlu bantuan.');
+      }
+    }
+
     const { data: row, error } = await safeInsert<any>(
       db
         .from('homecare_bookings')
@@ -426,6 +441,27 @@ export const homecareService = {
     );
     if (error) throw new Error(error);
     if (!row) throw new Error(`Booking dengan id=${bookingId} tidak ditemukan.`);
+
+    // A cancelled booking's lingering pending payment (if any) should never
+    // still be payable — void it so it stops appearing in Pembayaran.
+    if (status === 'cancelled') {
+      const pendingPayment = await safeQuery(
+        db
+          .from('payments')
+          .select('id')
+          .eq('reference_type', 'homecare_booking')
+          .eq('reference_id', bookingId)
+          .eq('status', 'pending')
+          .maybeSingle(),
+        null as any,
+        'homecareService.updateBookingStatus(void pending payment lookup)'
+      );
+      if (pendingPayment) {
+        await paymentService.markFailed((pendingPayment as any).id).catch((e) =>
+          console.error('[homecareService.updateBookingStatus] failed to void pending payment on cancel:', e)
+        );
+      }
+    }
 
     // Let the patient know in real time — they were otherwise only ever
     // told "Menunggu konfirmasi" at booking time and never heard from the

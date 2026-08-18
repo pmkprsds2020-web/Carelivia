@@ -47,6 +47,16 @@ import {
 } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
@@ -520,9 +530,12 @@ export function HomeCarePanel() {
 }
 
 function BookingCard({ booking, payment }: { booking: HomeCareBooking; payment?: { id: string; status: string } }) {
-  const { currentUser, setActivePanel, setPendingPaymentFocusId } = useStore();
+  const { currentUser, setActivePanel, setPendingPaymentFocusId, homeCareBookings, setHomeCareBookings } = useStore();
+  const { toast } = useToast();
   const [showTracking, setShowTracking] = useState(false);
   const [findingPayment, setFindingPayment] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const isPaid = payment?.status === 'success';
   const hasPendingPayment = payment?.status === 'pending';
@@ -541,6 +554,38 @@ function BookingCard({ booking, payment }: { booking: HomeCareBooking; payment?:
       setActivePanel('payments');
     } finally {
       setFindingPayment(false);
+    }
+  };
+
+  // "Batalkan" used to have no onClick at all — the button just sat there
+  // doing nothing. This actually cancels the booking (status → 'cancelled')
+  // via the same endpoint staff/admin use, and voids any pending payment
+  // for it server-side so it stops showing up in Pembayaran.
+  const handleCancelBooking = async () => {
+    setIsCancelling(true);
+    try {
+      const res = await fetch('/api/homecare', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking.id, status: 'cancelled' }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.booking) {
+        throw new Error(data?.details || data?.error || 'Gagal membatalkan booking');
+      }
+      setHomeCareBookings(
+        homeCareBookings.map((b) => (b.id === booking.id ? { ...b, status: 'cancelled' } : b))
+      );
+      toast({ title: 'Booking Dibatalkan', description: `${serviceName} berhasil dibatalkan.` });
+      setShowCancelConfirm(false);
+    } catch (err) {
+      toast({
+        title: 'Gagal Membatalkan',
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -677,7 +722,12 @@ function BookingCard({ booking, payment }: { booking: HomeCareBooking; payment?:
             </Button>
           )}
           {!isPaid && (booking.status === 'pending' || booking.status === 'confirmed') && (
-            <Button variant="outline" size="sm" className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+              onClick={() => setShowCancelConfirm(true)}
+            >
               Batalkan
             </Button>
           )}
@@ -697,6 +747,27 @@ function BookingCard({ booking, payment }: { booking: HomeCareBooking; payment?:
           </div>
         )}
       </CardContent>
+
+      <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Batalkan Booking?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Booking <strong>{serviceName}</strong> pada {scheduledDate} akan dibatalkan. Tindakan ini tidak dapat diurungkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isCancelling}>Tidak, Kembali</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleCancelBooking(); }}
+              disabled={isCancelling}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isCancelling ? 'Membatalkan...' : 'Ya, Batalkan'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

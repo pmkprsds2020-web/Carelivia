@@ -94,6 +94,8 @@ export { homecareService } from './homecareService';
 export type { HomecareServiceRecord, HomecareBookingRecord, HomecareServiceInput, HomecareStaffRecord } from './homecareService';
 export { paymentService } from './paymentService';
 export type { PaymentRecord, PaymentReferenceType, PaymentStatus } from './paymentService';
+export { paymentAccountService } from './paymentAccountService';
+export type { PaymentAccountRecord, PaymentAccountInput, PaymentAccountMethod } from './paymentAccountService';
 export { pharmacyService } from './pharmacyService';
 export type { PharmacyOrderRecord, PharmacyOrderItemInput } from './pharmacyService';
 export { revenueService } from './revenueService';

@@ -161,6 +161,15 @@ interface RealPaymentRow {
   paidAt?: string;
 }
 
+interface PaymentAccountRow {
+  id: string;
+  method: 'bank_transfer' | 'va' | 'qris';
+  bankName?: string;
+  accountNumber?: string;
+  accountHolder?: string;
+  qrisImageUrl?: string;
+}
+
 const REFERENCE_TYPE_LABEL: Record<RealPaymentRow['referenceType'], PaymentType> = {
   pharmacy_order: 'Farmasi',
   homecare_booking: 'Home Care',
@@ -224,6 +233,19 @@ export function PaymentsPanel() {
   const [processingPayment, setProcessingPayment] = useState(false);
   const [realPayments, setRealPayments] = useState<RealPaymentRow[]>([]);
   const [realPaymentsLoading, setRealPaymentsLoading] = useState(true);
+  // Real bank/QRIS destination accounts set by the admin — replaces the old
+  // hardcoded "BCA 8720-3456-7890 / PT CareLivia Indonesia" placeholder that
+  // every patient saw regardless of what the clinic's actual account was.
+  const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccountRow[]>([]);
+
+  useEffect(() => {
+    fetch('/api/payment-accounts')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data?.accounts)) setPaymentAccounts(data.accounts);
+      })
+      .catch((err) => console.error('[payments-panel] failed to load payment accounts:', err));
+  }, []);
 
   // Load REAL payments from the backend (currently: Apotek Online
   // checkouts). Replaces the `demoPayments` array that used to show
@@ -711,34 +733,56 @@ export function PaymentsPanel() {
             </div>
 
             {selectedMethod === 'qris' && (
-              <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-8 text-center">
-                <QrCode className="w-32 h-32 mx-auto text-gray-400 mb-2" />
-                <p className="text-sm text-muted-foreground">Scan QR Code untuk membayar</p>
-              </div>
+              (() => {
+                const qrisAccount = paymentAccounts.find((a) => a.method === 'qris');
+                return qrisAccount?.qrisImageUrl ? (
+                  <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 text-center">
+                    <img src={qrisAccount.qrisImageUrl} alt="QRIS" className="w-48 h-48 mx-auto object-contain rounded" />
+                    <p className="text-sm text-muted-foreground mt-2">Scan QR Code untuk membayar</p>
+                  </div>
+                ) : (
+                  <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-8 text-center">
+                    <QrCode className="w-32 h-32 mx-auto text-gray-400 mb-2" />
+                    <p className="text-sm text-muted-foreground">QRIS belum diatur oleh admin. Silakan pilih metode lain.</p>
+                  </div>
+                );
+              })()
             )}
 
             {(selectedMethod === 'bank_transfer' || selectedMethod === 'va') && (
-              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                <p className="text-sm font-medium">Detail Transfer Bank</p>
-                <div className="space-y-1.5 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Bank</span>
-                    <span className="font-medium">BCA</span>
+              (() => {
+                const bankAccount = paymentAccounts.find((a) => a.method === selectedMethod);
+                if (!bankAccount) {
+                  return (
+                    <div className="bg-muted/50 rounded-lg p-4 text-center text-sm text-muted-foreground">
+                      Rekening {methodLabels[selectedMethod].label} belum diatur oleh admin. Silakan pilih metode lain.
+                    </div>
+                  );
+                }
+                return (
+                  <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                    <p className="text-sm font-medium">Detail {methodLabels[selectedMethod].label}</p>
+                    <div className="space-y-1.5 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Bank</span>
+                        <span className="font-medium">{bankAccount.bankName}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">No. Rekening</span>
+                        <span className="font-mono font-medium">{bankAccount.accountNumber}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Atas Nama</span>
+                        <span className="font-medium">{bankAccount.accountHolder}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Jumlah</span>
+                        <span className="font-bold text-primary">{formatCurrency(selectedPayment.amount)}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">No. Rekening</span>
-                    <span className="font-mono font-medium">8720-3456-7890</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Atas Nama</span>
-                    <span className="font-medium">PT CareLivia Indonesia</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Jumlah</span>
-                    <span className="font-bold text-primary">{formatCurrency(selectedPayment.amount)}</span>
-                  </div>
-                </div>
-              </div>
+                );
+              })()
             )}
 
             {(selectedMethod === 'gopay' || selectedMethod === 'ovo' || selectedMethod === 'dana' || selectedMethod === 'shopeepay') && (

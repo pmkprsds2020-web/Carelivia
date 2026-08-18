@@ -435,6 +435,7 @@ export type ActivePanel =
   | 'admin-pricing'
   | 'admin-users'
   | 'admin-homecare-validation'
+  | 'admin-payment-accounts'
   | 'notifications'
   | 'payments'
   | 'reports'
