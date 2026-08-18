@@ -378,6 +378,7 @@ export function PalliativeMonitoringPanel() {
     addNutritionRecord,
     nutritionAiRecommendation,
     setNutritionAiRecommendation,
+    dailyComplaints,
     currentUser,
     doctors,
     palliativeChatMessages,
@@ -403,6 +404,38 @@ export function PalliativeMonitoringPanel() {
 
   // ── Monitoring Status ──
   const monitoringStatus = useMonitoringStatus(selectedPalliativePatientId);
+
+  // ── "Monitoring Hari Ini" per patient (Pasien tab table) ──
+  // Simple calendar-day check — "Sudah Diisi" if a record for that module
+  // exists dated TODAY for that specific patient, "Belum Diisi" otherwise.
+  // Deliberately independent from useMonitoringStatus's hours-since-based
+  // tepat_waktu/akan_jatuh_tempo/terlambat model above (which is about
+  // schedule adherence for the currently SELECTED patient) — this is a
+  // same-day yes/no check across ALL patients for the management table.
+  const todayMonitoringByPatient = useMemo(() => {
+    const isToday = (dateStr: string | undefined | null): boolean => {
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      const now = new Date();
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      );
+    };
+
+    const map = new Map<string, { ttv: boolean; keluhan: boolean; obat: boolean; nutrisi: boolean; skrining: boolean }>();
+    for (const p of palliativePatients) {
+      const ttv = vitalSignRecords.some((v) => v.palliativePatientId === p.id && isToday(v.recordedAt));
+      const keluhan = dailyComplaints.some((c) => c.palliativePatientId === p.id && isToday(c.submittedAt));
+      const patientMeds = palliativeMedications.filter((m) => m.palliativePatientId === p.id);
+      const obat = patientMeds.some((m) => (m.adherences ?? []).some((a) => isToday(a.createdAt)));
+      const nutrisi = nutritionRecords.some((r) => r.palliativePatientId === p.id && isToday(r.recordedAt));
+      const skrining = palliativeScreeningRecords.some((s) => s.palliativePatientId === p.id && isToday(s.performedAt));
+      map.set(p.id, { ttv, keluhan, obat, nutrisi, skrining });
+    }
+    return map;
+  }, [palliativePatients, vitalSignRecords, dailyComplaints, palliativeMedications, nutritionRecords, palliativeScreeningRecords]);
 
   // ── Selected patient data ──
   const selectedPatient = useMemo(
@@ -1310,43 +1343,6 @@ export function PalliativeMonitoringPanel() {
       {/* Marquee - highest priority notification */}
       <MonitoringMarquee priority={monitoringStatus.highestPriority} message={monitoringStatus.highestPriorityMessage} />
 
-      {/* Monitoring Status Summary */}
-      <Card className="p-4">
-        <CardHeader className="p-0 pb-3">
-          <CardTitle className="text-sm font-semibold">Status Monitoring Hari Ini</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0 space-y-2">
-          {([
-            { label: 'TTV Serial', info: monitoringStatus.ttv },
-            { label: 'Keluhan Harian', info: monitoringStatus.keluhan },
-            { label: 'Obat', info: monitoringStatus.obat },
-            { label: 'Nutrisi', info: monitoringStatus.nutrisi },
-            { label: 'Skrining Paliatif', info: monitoringStatus.skrining },
-          ] as const).map(({ label, info }) => {
-            const icon = info.status === 'tepat_waktu' ? '✅' : info.status === 'akan_jatuh_tempo' ? '⚠️' : '🔴';
-            const statusText =
-              info.status === 'tepat_waktu'
-                ? 'Sudah Diisi'
-                : info.status === 'akan_jatuh_tempo'
-                  ? 'Akan Jatuh Tempo'
-                  : 'Terlambat';
-            const textColor =
-              info.priority === 'hijau'
-                ? 'text-emerald-700'
-                : info.priority === 'kuning'
-                  ? 'text-amber-700'
-                  : 'text-red-700';
-            return (
-              <div key={label} className={cn('flex items-center gap-2 text-sm', textColor)}>
-                <span>{icon}</span>
-                <span className="font-medium">{label}:</span>
-                <span>{statusText}</span>
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
         <Card className="p-4">
@@ -1973,13 +1969,14 @@ export function PalliativeMonitoringPanel() {
                     <TableHead className="hidden md:table-cell">Diagnosa</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Risiko</TableHead>
+                    <TableHead>Monitoring Hari Ini</TableHead>
                     <TableHead className="text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredPatients.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                         Tidak ada pasien ditemukan
                       </TableCell>
                     </TableRow>
@@ -1988,6 +1985,9 @@ export function PalliativeMonitoringPanel() {
                       const riskBadge = getRiskBadge(p.riskLevel);
                       const careBadge = getCareStatusBadge(p.careStatus);
                       const isCompleted = p.patientStatus === 'program_selesai';
+                      const todayStatus = todayMonitoringByPatient.get(p.id) ?? {
+                        ttv: false, keluhan: false, obat: false, nutrisi: false, skrining: false,
+                      };
                       return (
                         <TableRow key={p.id} className={isCompleted ? 'opacity-70' : ''}>
                           <TableCell className={cn('font-medium', isCompleted && 'line-through decoration-slate-400')}>
@@ -2008,6 +2008,25 @@ export function PalliativeMonitoringPanel() {
                             <Badge variant="outline" className={riskBadge.className}>
                               {riskBadge.label}
                             </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1 min-w-[160px]">
+                              {([
+                                { label: 'TTV Serial', filled: todayStatus.ttv },
+                                { label: 'Keluhan Harian', filled: todayStatus.keluhan },
+                                { label: 'Obat', filled: todayStatus.obat },
+                                { label: 'Nutrisi', filled: todayStatus.nutrisi },
+                                { label: 'Skrining Paliatif', filled: todayStatus.skrining },
+                              ] as const).map(({ label, filled }) => (
+                                <div key={label} className="flex items-center gap-1.5 text-xs">
+                                  <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', filled ? 'bg-emerald-500' : 'bg-slate-300')} />
+                                  <span className="text-muted-foreground">{label}:</span>
+                                  <span className={cn('font-medium', filled ? 'text-emerald-700' : 'text-slate-500')}>
+                                    {filled ? 'Sudah Diisi' : 'Belum Diisi'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
