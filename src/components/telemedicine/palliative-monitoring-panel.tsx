@@ -412,54 +412,6 @@ export function PalliativeMonitoringPanel() {
   const [soapCurrentStatus, setSoapCurrentStatus] = useState<'draft' | 'final' | null>(null);
   const [soapCurrentId, setSoapCurrentId] = useState<string | null>(null);
 
-  // Load this patient's SOAP notes + supporting exams (the latter isn't in
-  // the Zustand store — see supportingExamService) whenever the selected
-  // patient changes, so the SOAP tab has what it needs without the doctor
-  // having to first click into Pemeriksaan Penunjang.
-  useEffect(() => {
-    if (!selectedPalliativePatientId) {
-      setSoapNotes([]);
-      setSoapExams([]);
-      return;
-    }
-    let cancelled = false;
-    setSoapNotesLoading(true);
-    Promise.all([
-      soapService.getForPatient(selectedPalliativePatientId),
-      supportingExamService.listAll(selectedPalliativePatientId),
-    ])
-      .then(([notes, exams]) => {
-        if (cancelled) return;
-        setSoapNotes(notes);
-        setSoapExams(exams);
-      })
-      .catch((err) => console.error('[palliative-monitoring-panel] failed to load SOAP data:', err))
-      .finally(() => { if (!cancelled) setSoapNotesLoading(false); });
-    return () => { cancelled = true; };
-  }, [selectedPalliativePatientId]);
-
-  // Whenever the doctor switches which date they're looking at (or the SOAP
-  // notes list refreshes), load that date's existing note into the editable
-  // fields — or clear them if there isn't one yet for that day.
-  useEffect(() => {
-    const existing = soapNotes.find((n) => n.encounterDate === soapSelectedDate);
-    if (existing) {
-      setSoapSubjective(existing.subjective);
-      setSoapObjective(existing.objective);
-      setSoapAssessment(existing.assessment);
-      setSoapPlan(existing.plan);
-      setSoapCurrentStatus(existing.status);
-      setSoapCurrentId(existing.id);
-    } else {
-      setSoapSubjective('');
-      setSoapObjective('');
-      setSoapAssessment('');
-      setSoapPlan('');
-      setSoapCurrentStatus(null);
-      setSoapCurrentId(null);
-    }
-  }, [soapSelectedDate, soapNotes]);
-
   // ── Store ──
   const {
     palliativePatients,
@@ -509,6 +461,55 @@ export function PalliativeMonitoringPanel() {
 
   // ── Monitoring Status ──
   const monitoringStatus = useMonitoringStatus(selectedPalliativePatientId);
+
+  // ── SOAP data loading ──
+  // Load this patient's SOAP notes + supporting exams (the latter isn't in
+  // the Zustand store — see supportingExamService) whenever the selected
+  // patient changes, so the SOAP tab has what it needs without the doctor
+  // having to first click into Pemeriksaan Penunjang.
+  useEffect(() => {
+    if (!selectedPalliativePatientId) {
+      setSoapNotes([]);
+      setSoapExams([]);
+      return;
+    }
+    let cancelled = false;
+    setSoapNotesLoading(true);
+    Promise.all([
+      soapService.getForPatient(selectedPalliativePatientId),
+      supportingExamService.listAll(selectedPalliativePatientId),
+    ])
+      .then(([notes, exams]) => {
+        if (cancelled) return;
+        setSoapNotes(notes);
+        setSoapExams(exams);
+      })
+      .catch((err) => console.error('[palliative-monitoring-panel] failed to load SOAP data:', err))
+      .finally(() => { if (!cancelled) setSoapNotesLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedPalliativePatientId]);
+
+  // Whenever the doctor switches which date they're looking at (or the SOAP
+  // notes list refreshes), load that date's existing note into the editable
+  // fields — or clear them if there isn't one yet for that day.
+  useEffect(() => {
+    const existing = soapNotes.find((n) => n.encounterDate === soapSelectedDate);
+    if (existing) {
+      setSoapSubjective(existing.subjective);
+      setSoapObjective(existing.objective);
+      setSoapAssessment(existing.assessment);
+      setSoapPlan(existing.plan);
+      setSoapCurrentStatus(existing.status);
+      setSoapCurrentId(existing.id);
+    } else {
+      setSoapSubjective('');
+      setSoapObjective('');
+      setSoapAssessment('');
+      setSoapPlan('');
+      setSoapCurrentStatus(null);
+      setSoapCurrentId(null);
+    }
+  }, [soapSelectedDate, soapNotes]);
 
   // ── "Monitoring Hari Ini" per patient (Pasien tab table) ──
   // Simple calendar-day check — "Sudah Diisi" if a record for that module
@@ -568,7 +569,7 @@ export function PalliativeMonitoringPanel() {
     dailyComplaints.filter((c) => c.palliativePatientId === pid).forEach((c) => {
       const parts: string[] = [
         `Kondisi hari ini: ${c.kondisiHariIni}${c.alasanKondisi ? ` (${c.alasanKondisi})` : ''}`,
-        `Keluhan baru: ${c.keluhanBaru === 'ya' ? (c.deskripsiKeluhanBaru || 'ada') : 'tidak ada'}`,
+        `Keluhan baru: ${c.keluhanBaru === 'ada' ? (c.deskripsiKeluhanBaru || 'ada') : 'tidak ada'}`,
         `Nyeri: ${c.kondisiNyeri}`,
         `Sesak: ${c.kondisiSesak}`,
         `Makan/minum: ${c.makanMinum}${c.alasanMakanMinum ? ` (${c.alasanMakanMinum})` : ''}`,
@@ -3415,7 +3416,7 @@ export function PalliativeMonitoringPanel() {
       if (ttvItems.length) {
         assessmentLines.push(`Tanda vital tercatat ${ttvItems.length}x pada tanggal ini — lihat rincian pada bagian Objective.`);
       }
-      if (keluhanItems.some((it) => it.detail.includes('Nyeri: berat') || it.detail.includes('Nyeri: sangat berat'))) {
+      if (keluhanItems.some((it) => it.detail.includes('Nyeri: bertambah'))) {
         assessmentLines.push('Keluhan nyeri dilaporkan pada tingkat berat — perlu evaluasi manajemen nyeri.');
       }
       const assessment = assessmentLines.length
@@ -3424,7 +3425,7 @@ export function PalliativeMonitoringPanel() {
 
       // ── Plan ── minimal, clearly a draft the doctor must review/edit.
       const planLines: string[] = [];
-      if (keluhanItems.some((it) => it.detail.includes('Nyeri: berat') || it.detail.includes('Nyeri: sangat berat'))) {
+      if (keluhanItems.some((it) => it.detail.includes('Nyeri: bertambah'))) {
         planLines.push('- Evaluasi ulang manajemen nyeri.');
       }
       if (nutrisiItems.length) {
