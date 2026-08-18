@@ -2100,7 +2100,8 @@ export function ChatPanel() {
     const online = !isDoctor && activeDoctor ? isDoctorOnline(activeDoctor.id) : false;
 
     return (
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-card/80 backdrop-blur-sm">
+      <div className="border-b border-border bg-card/80 backdrop-blur-sm">
+        <div className="flex items-center gap-3 px-4 pt-3 pb-2">
         <Button variant="ghost" size="icon" className="shrink-0 lg:hidden" onClick={handleBackToList}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
@@ -2196,10 +2197,14 @@ export function ChatPanel() {
             )}
           </div>
         </div>
+        </div>
 
-        {/* Doctor action buttons */}
+        {/* Doctor action buttons — its own row (wraps onto multiple lines on
+            narrower screens instead of overlapping the name/status row or
+            getting clipped, since it's no longer forced onto the same
+            single-line flex row as the avatar/name). */}
         {isDoctor && activeConsultation && (
-          <div className="flex items-center gap-1 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap px-4 pb-3">
             {activeConsultation.status === 'waiting' && (
               <Button
                 size="sm"

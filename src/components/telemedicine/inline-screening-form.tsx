@@ -46,7 +46,7 @@ import {
 
 export interface InlineScreeningFormProps {
   screeningType: PalliativeToolType;
-  onSubmit: (result: ScreeningScoreResult, answers: Record<string, number | string | string[]>) => void;
+  onSubmit: (result: ScreeningScoreResult, answers: Record<string, number | string | string[]>) => void | Promise<void>;
   onSaveDraft: (answers: Record<string, number | string | string[]>) => void;
   initialAnswers?: Record<string, number | string | string[]>;
 }
@@ -63,6 +63,11 @@ export function InlineScreeningForm({
   const [currentStep, setCurrentStep] = useState(0);
   const [showResult, setShowResult] = useState(false);
   const [answers, setAnswers] = useState<Record<string, number | string | string[]>>(initialAnswers || {});
+  // Mirrors the doctor-side "Mengirim…" pattern used when sending a
+  // screening form — the button disables and shows a sending state instead
+  // of allowing another tap while the result is still being persisted/sent
+  // through chat (multiple awaited steps in the parent's onSubmit handler).
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const totalSteps = toolDef.totalSteps;
 
@@ -106,10 +111,22 @@ export function InlineScreeningForm({
     }
   }, [currentStep, showResult]);
 
-  const handleSubmit = useCallback(() => {
-    const result = calculateScreeningResult(screeningType, answers);
-    onSubmit(result, { ...answers });
-  }, [screeningType, answers, onSubmit]);
+  const handleSubmit = useCallback(async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const result = calculateScreeningResult(screeningType, answers);
+      await onSubmit(result, { ...answers });
+      // No setIsSubmitting(false) on the success path — the parent removes
+      // this form from view once submission completes, so leaving the
+      // button disabled avoids a flash back to "enabled" right before
+      // unmount. If onSubmit throws, the finally below re-enables it so the
+      // patient can retry.
+    } catch (err) {
+      setIsSubmitting(false);
+      throw err;
+    }
+  }, [screeningType, answers, onSubmit, isSubmitting]);
 
   // ── VAS Slider ──
   const renderVasSlider = (id: string, label: string) => {
@@ -752,7 +769,7 @@ export function InlineScreeningForm({
             variant="outline"
             size="sm"
             onClick={handlePrev}
-            disabled={currentStep === 0 && !showResult}
+            disabled={(currentStep === 0 && !showResult) || isSubmitting}
           >
             <ChevronLeft className="w-3 h-3 mr-1" /> Kembali
           </Button>
@@ -761,6 +778,7 @@ export function InlineScreeningForm({
               variant="outline"
               size="sm"
               onClick={() => onSaveDraft(answers)}
+              disabled={isSubmitting}
             >
               <Save className="w-3 h-3 mr-1" /> Draft
             </Button>
@@ -768,7 +786,7 @@ export function InlineScreeningForm({
         </div>
         <div className="flex gap-2">
           {!showResult ? (
-            <Button size="sm" onClick={handleNext}>
+            <Button size="sm" onClick={handleNext} disabled={isSubmitting}>
               {currentStep < totalSteps - 1 ? (
                 <>Lanjut <ChevronRight className="w-3 h-3 ml-1" /></>
               ) : (
@@ -776,8 +794,9 @@ export function InlineScreeningForm({
               )}
             </Button>
           ) : (
-            <Button size="sm" onClick={handleSubmit}>
-              <Send className="w-3 h-3 mr-1" /> Kirim Hasil
+            <Button size="sm" onClick={handleSubmit} disabled={isSubmitting}>
+              <Send className="w-3 h-3 mr-1" />
+              {isSubmitting ? 'Mengirim…' : 'Kirim Hasil'}
             </Button>
           )}
         </div>
