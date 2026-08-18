@@ -248,6 +248,41 @@ export function PaymentsPanel() {
     loadRealPayments();
   }, [loadRealPayments]);
 
+  // ── Jump straight to "choose payment method" for a payment set by a
+  // checkout flow (Apotek Online checkout, Home Care after admin
+  // validation, etc. — see setPendingPaymentFocusId). Waits until
+  // realPayments has actually loaded so the target payment can be found;
+  // clears the focus id afterwards so it doesn't re-trigger on a later
+  // visit to this panel.
+  const pendingPaymentFocusId = useStore((s) => s.pendingPaymentFocusId);
+  const clearPendingPaymentFocus = useStore((s) => s.setPendingPaymentFocusId);
+  const focusedPaymentIdRef = useRef<string>('');
+
+  useEffect(() => {
+    if (!pendingPaymentFocusId) return;
+    if (realPaymentsLoading) return; // wait for the fresh list to arrive
+    if (focusedPaymentIdRef.current === pendingPaymentFocusId) return;
+
+    const target = realPayments.find((p) => p.id === pendingPaymentFocusId);
+    if (target) {
+      focusedPaymentIdRef.current = pendingPaymentFocusId;
+      const typeLabel = REFERENCE_TYPE_LABEL[target.referenceType];
+      setSelectedPayment({
+        id: target.id,
+        invoiceNumber: target.invoiceNumber,
+        type: typeLabel,
+        amount: target.amount,
+        method: (target.method as PaymentMethod) || 'qris',
+        status: target.status,
+        date: target.paidAt || target.createdAt,
+        description: `Pembayaran ${typeLabel}`,
+        paidAt: target.paidAt,
+      });
+      setPaymentDialogOpen(true);
+    }
+    clearPendingPaymentFocus(null);
+  }, [pendingPaymentFocusId, realPayments, realPaymentsLoading, clearPendingPaymentFocus]);
+
   // Payment proof dialog
   const [proofDialogOpen, setProofDialogOpen] = useState(false);
   const [proofPayment, setProofPayment] = useState<MergedPayment | null>(null);

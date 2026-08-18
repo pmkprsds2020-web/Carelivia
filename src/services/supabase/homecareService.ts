@@ -41,6 +41,11 @@ export interface HomecareBookingRecord {
   notes?: string;
   status: string;
   createdAt: string;
+  // Admin validation gate — see migration_homecare_admin_validation.sql.
+  // A booking cannot be paid until this is true.
+  adminValidated: boolean;
+  validatedAt?: string;
+  validatedBy?: string;
   patient?: { id: string; name: string; phone?: string };
   staff?: { id: string; name: string } | null;
   service?: HomecareServiceRecord;
@@ -74,6 +79,9 @@ function bookingFromDb(row: any): HomecareBookingRecord {
     notes: row.notes ?? undefined,
     status: row.status,
     createdAt: row.created_at,
+    adminValidated: row.admin_validated ?? false,
+    validatedAt: row.validated_at ?? undefined,
+    validatedBy: row.validated_by ?? undefined,
     patient: row.patient_profile ? { id: row.patient_id, name: row.patient_profile.full_name, phone: row.patient_profile.phone ?? undefined } : undefined,
     staff: row.staff_profile ? { id: row.staff_id, name: row.staff_profile.profiles?.full_name } : null,
     service: row.homecare_services ? serviceFromDb(row.homecare_services) : undefined,
@@ -280,56 +288,168 @@ export const homecareService = {
     await notificationService.create({
       userId: input.patientId,
       title: 'Home Care Dipesan',
-      body: `Layanan ${(service as any).name} telah dipesan untuk ${scheduledLabel}. Menunggu konfirmasi.`,
+      body: `Layanan ${(service as any).name} telah dipesan untuk ${scheduledLabel}. Menunggu validasi admin sebelum pembayaran dapat dilakukan.`,
       type: 'homecare',
       data: { bookingId: row.id },
     });
 
-    // Try to auto-assign an available staff member.
+    // NOTE: staff auto-assignment and pending-payment creation used to
+    // happen right here at booking time — before any admin ever looked at
+    // the booking. That's been moved into validateBooking() below: a
+    // booking now stays 'pending' / admin_validated=false until an admin
+    // explicitly approves it, and ONLY THEN does a payment appear and can
+    // the patient pay. See migration_homecare_admin_validation.sql.
+    return { booking: bookingFromDb(row), payment: null };
+  },
+
+  /**
+   * List bookings still waiting on admin review (admin_validated=false,
+   * not yet cancelled). Powers the admin "Validasi Home Care" queue.
+   */
+  async getPendingValidation(): Promise<HomecareBookingRecord[]> {
+    const rows = await safeQuery(
+      supabase
+        .from('homecare_bookings')
+        .select(
+          `*,
+           patient_profile:profiles!homecare_bookings_patient_id_fkey(full_name, phone),
+           staff_profile:homecare_staff(profiles(full_name)),
+           homecare_services(*)`
+        )
+        .eq('admin_validated', false)
+        .neq('status', 'cancelled')
+        .order('created_at', { ascending: true }),
+      [] as any[],
+      'homecareService.getPendingValidation'
+    );
+    return (rows as any[]).map(bookingFromDb);
+  },
+
+  /**
+   * Admin approves a booking. This is the ONLY place a Home Care pending
+   * payment gets created — a patient cannot pay for a booking an admin
+   * hasn't validated yet. Also auto-assigns an available staff member and
+   * moves the booking to 'confirmed', same as the old at-checkout behavior,
+   * just moved to happen after admin approval instead of before it.
+   */
+  async validateBooking(bookingId: string, adminId?: string): Promise<{ booking: HomecareBookingRecord; payment: PaymentRecord | null }> {
+    if (!isValidUuid(bookingId)) throw new Error('bookingId tidak valid');
+
+    const existing = await safeQuery(
+      supabase.from('homecare_bookings').select('*, homecare_services(*)').eq('id', bookingId).maybeSingle(),
+      null as any,
+      'homecareService.validateBooking(lookup)'
+    );
+    if (!existing) throw new Error('Booking tidak ditemukan.');
+    const bookingRow = existing as any;
+    if (bookingRow.admin_validated) {
+      throw new Error('Booking ini sudah divalidasi sebelumnya.');
+    }
+    if (bookingRow.status === 'cancelled') {
+      throw new Error('Booking ini sudah dibatalkan.');
+    }
+
+    const service = bookingRow.homecare_services;
+    const scheduledLabel = new Date(bookingRow.scheduled_at).toLocaleDateString('id-ID');
+
+    const updatePayload: Record<string, any> = {
+      admin_validated: true,
+      validated_at: new Date().toISOString(),
+      validated_by: adminId && isValidUuid(adminId) ? adminId : null,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Try to auto-assign an available staff member, same as before — just
+    // now happening at validation time instead of at checkout.
     const availableStaff = await safeQuery(
       supabase.from('homecare_staff').select('id').eq('is_available', true).eq('current_status', 'available').limit(1).maybeSingle(),
       null as any,
-      'homecareService.createBooking(staff lookup)'
+      'homecareService.validateBooking(staff lookup)'
     );
     if (availableStaff) {
-      const staffId = (availableStaff as any).id;
-      await safeQuery(
-        supabase.from('homecare_bookings').update({ staff_id: staffId, status: 'confirmed' }).eq('id', row.id),
-        null as any,
-        'homecareService.createBooking(assign staff)'
-      );
-      await notificationService.create({
-        userId: staffId,
-        title: 'Home Care Baru',
-        body: `Anda memiliki jadwal ${(service as any).name} pada ${scheduledLabel} di ${input.address}.`,
-        type: 'homecare',
-        data: { bookingId: row.id },
-      });
-      row.status = 'confirmed';
-      row.staff_id = staffId;
+      updatePayload.staff_id = (availableStaff as any).id;
+      updatePayload.status = 'confirmed';
     }
 
-    // Create a pending payment for this booking, at the service's CURRENT
-    // price (already snapshotted onto the booking row above too). This is
-    // what was missing — bookings could reach "Menunggu"/"confirmed" but
-    // could never actually be paid, so they could never contribute to
-    // revenue. Once paid, revenueService attributes this to the assigned
-    // staff member (doctor or provider — see revenueService for the rule).
+    const { data: updatedRow, error } = await safeInsert<any>(
+      supabase
+        .from('homecare_bookings')
+        .update(updatePayload)
+        .eq('id', bookingId)
+        .select('*, patient_profile:profiles!homecare_bookings_patient_id_fkey(full_name, phone), staff_profile:homecare_staff(profiles(full_name)), homecare_services(*)')
+        .maybeSingle(),
+      'homecareService.validateBooking(update)'
+    );
+    if (error) throw new Error(error);
+    if (!updatedRow) throw new Error('Booking tidak ditemukan.');
+
+    if (updatePayload.staff_id) {
+      await notificationService.create({
+        userId: updatePayload.staff_id,
+        title: 'Home Care Baru',
+        body: `Anda memiliki jadwal ${service?.name ?? 'Home Care'} pada ${scheduledLabel} di ${bookingRow.address}.`,
+        type: 'homecare',
+        data: { bookingId },
+      });
+    }
+
+    // NOW create the pending payment — this is the gate the patient was
+    // waiting on. Uses the price snapshotted at booking time so it matches
+    // what the patient actually agreed to, even if the service's price has
+    // since changed.
     let payment: PaymentRecord | null = null;
     try {
-      const price = Number((service as any).price ?? 0);
+      const price = Number(bookingRow.unit_price ?? service?.price ?? 0);
       if (price > 0) {
         payment = await paymentService.createPending({
-          userId: input.patientId,
+          userId: bookingRow.patient_id,
           referenceType: 'homecare_booking',
-          referenceId: row.id,
+          referenceId: bookingId,
           amount: price,
         });
       }
     } catch (payErr) {
-      console.error('[homecareService.createBooking] failed to create pending payment:', payErr);
+      console.error('[homecareService.validateBooking] failed to create pending payment:', payErr);
     }
 
-    return { booking: bookingFromDb(row), payment };
+    await notificationService.create({
+      userId: bookingRow.patient_id,
+      title: 'Home Care Divalidasi',
+      body: payment
+        ? `Booking ${service?.name ?? 'Home Care'} Anda telah divalidasi admin. Silakan lakukan pembayaran (${payment.invoiceNumber}).`
+        : `Booking ${service?.name ?? 'Home Care'} Anda telah divalidasi admin.`,
+      type: 'homecare',
+      data: { bookingId, paymentId: payment?.id },
+    });
+
+    return { booking: bookingFromDb(updatedRow), payment };
+  },
+
+  /** Admin rejects a booking that hasn't been validated yet. */
+  async rejectBooking(bookingId: string, reason?: string): Promise<HomecareBookingRecord> {
+    if (!isValidUuid(bookingId)) throw new Error('bookingId tidak valid');
+    const { data: row, error } = await safeInsert<any>(
+      supabase
+        .from('homecare_bookings')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('id', bookingId)
+        .select('*, patient_profile:profiles!homecare_bookings_patient_id_fkey(full_name, phone), staff_profile:homecare_staff(profiles(full_name)), homecare_services(*)')
+        .maybeSingle(),
+      'homecareService.rejectBooking'
+    );
+    if (error) throw new Error(error);
+    if (!row) throw new Error('Booking tidak ditemukan.');
+
+    await notificationService.create({
+      userId: row.patient_id,
+      title: 'Home Care Ditolak',
+      body: reason
+        ? `Booking ${row.homecare_services?.name ?? 'Home Care'} Anda ditolak admin: ${reason}`
+        : `Booking ${row.homecare_services?.name ?? 'Home Care'} Anda ditolak admin.`,
+      type: 'homecare',
+      data: { bookingId },
+    });
+
+    return bookingFromDb(row);
   },
 };

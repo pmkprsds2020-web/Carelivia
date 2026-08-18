@@ -74,6 +74,7 @@ const allNavItems: NavItem[] = [
   { id: 'admin', label: 'Dashboard', icon: <Shield className="w-5 h-5" />, roles: ['admin'] },
   { id: 'admin-pricing', label: 'Kelola Harga', icon: <DollarSign className="w-5 h-5" />, roles: ['admin'], section: 'Manajemen' },
   { id: 'doctor-panel', label: 'Kelola Dokter', icon: <Stethoscope className="w-5 h-5" />, roles: ['admin'] },
+  { id: 'admin-homecare-validation', label: 'Validasi Home Care', icon: <ClipboardCheck className="w-5 h-5" />, roles: ['admin'] },
   { id: 'homecare', label: 'Home Care', icon: <Heart className="w-5 h-5" />, roles: ['admin'] },
   { id: 'pharmacist-panel', label: 'Kelola Apotek', icon: <Package className="w-5 h-5" />, roles: ['admin'] },
   { id: 'homecare-staff-panel', label: 'Kelola Petugas', icon: <Truck className="w-5 h-5" />, roles: ['admin'] },

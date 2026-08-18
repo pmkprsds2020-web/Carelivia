@@ -328,6 +328,13 @@ export function ChatPanel() {
   const isSendingRef = useRef(false);
   const [showChatArea, setShowChatArea] = useState(false);
   const [creatingConsultation, setCreatingConsultation] = useState<string | null>(null);
+  // True until the first /api/consultations fetch below resolves. Without
+  // this, the doctor's patient-list panel had no visual difference between
+  // "still loading" and "genuinely zero consultations" — on a slow network
+  // it could sit there with only the static header showing (looking like a
+  // blank/broken page) for several seconds before "Belum ada konsultasi" or
+  // the real list appeared.
+  const [consultationsLoading, setConsultationsLoading] = useState(true);
 
   // Doctor dialog state
   const [showPrescriptionDialog, setShowPrescriptionDialog] = useState(false);
@@ -458,6 +465,8 @@ export function ChatPanel() {
         }
       } catch (err) {
         console.warn('[chat-panel] failed to refresh consultations:', err);
+      } finally {
+        if (!cancelled) setConsultationsLoading(false);
       }
     };
 
@@ -2960,7 +2969,12 @@ export function ChatPanel() {
       <Separator />
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
-        {doctorConsultations.length === 0 ? (
+        {consultationsLoading ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-2">
+            <Loader2 className="w-6 h-6 text-muted-foreground animate-spin" />
+            <p className="text-sm text-muted-foreground">Memuat daftar konsultasi...</p>
+          </div>
+        ) : doctorConsultations.length === 0 ? (
           <div className="text-center py-8">
             <MessageCircle className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
             <p className="text-sm text-muted-foreground">Belum ada konsultasi</p>

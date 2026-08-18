@@ -190,6 +190,10 @@ export interface HomeCareBooking {
   eta?: string;
   createdAt: string;
   updatedAt: string;
+  // Admin validation gate: a booking cannot be paid until an admin
+  // validates it. See migration_homecare_admin_validation.sql.
+  adminValidated?: boolean;
+  validatedAt?: string;
   service?: HomeCareService;
   patient?: User;
   staff?: User & { homeCareStaff?: HomeCareStaffProfile };
@@ -430,6 +434,7 @@ export type ActivePanel =
   | 'admin' 
   | 'admin-pricing'
   | 'admin-users'
+  | 'admin-homecare-validation'
   | 'notifications'
   | 'payments'
   | 'reports'

@@ -77,7 +77,7 @@ function getStockStatus(stock: number): { label: string; variant: 'default' | 's
 }
 
 export function PharmacyPanel() {
-  const { medicines, cart, addToCart, removeFromCart, updateCartQuantity, clearCart, currentUser } = useStore();
+  const { medicines, cart, addToCart, removeFromCart, updateCartQuantity, clearCart, currentUser, setActivePanel, setPendingPaymentFocusId } = useStore();
   const { toast } = useToast();
 
   const [activeTab, setActiveTab] = useState('shop');
@@ -186,9 +186,16 @@ export function PharmacyPanel() {
       clearCart();
       toast({
         title: 'Pesanan Dibuat',
-        description: `Invoice ${data.payment.invoiceNumber} — selesaikan pembayaran di halaman Pembayaran.`,
+        description: `Invoice ${data.payment.invoiceNumber} — silakan pilih metode pembayaran.`,
       });
       setActiveTab('shop');
+
+      // Go straight to the payment method screen for this exact invoice
+      // instead of leaving the patient to find it themselves in Pembayaran.
+      if (data.payment?.id) {
+        setPendingPaymentFocusId(data.payment.id);
+      }
+      setActivePanel('payments');
     } catch (err) {
       toast({
         title: 'Checkout Gagal',

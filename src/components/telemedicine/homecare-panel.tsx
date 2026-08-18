@@ -24,6 +24,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { useToast } from '@/hooks/use-toast';
 import {
   Bandage,
   Droplets,
@@ -76,7 +77,18 @@ function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('id-ID').format(amount);
 }
 
-function getStatusBadge(status: string) {
+function getStatusBadge(status: string, adminValidated?: boolean) {
+  // A 'pending' booking that hasn't been validated by an admin yet gets a
+  // distinct label from a 'pending' booking that HAS been validated (rare —
+  // validation usually also moves it to 'confirmed' when staff is
+  // available), so the patient always knows what they're waiting on.
+  if (status === 'pending' && !adminValidated) {
+    return (
+      <Badge variant="outline" className="font-medium text-xs bg-yellow-100 text-yellow-800 border-yellow-200">
+        Menunggu Validasi Admin
+      </Badge>
+    );
+  }
   const config: Record<string, { label: string; className: string }> = {
     pending: { label: 'Menunggu', className: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
     confirmed: { label: 'Dikonfirmasi', className: 'bg-blue-100 text-blue-800 border-blue-200' },
@@ -100,6 +112,7 @@ const timeSlots = [
 
 export function HomeCarePanel() {
   const { homeCareServices, homeCareBookings, setHomeCareBookings, setHomeCareServices, currentUser } = useStore();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('layanan');
   const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<HomeCareService | null>(null);
@@ -163,9 +176,21 @@ export function HomeCarePanel() {
         setHomeCareBookings([data.booking, ...homeCareBookings]);
         setBookingDialogOpen(false);
         setActiveTab('pesanan');
+        toast({
+          title: 'Booking Dibuat',
+          description: 'Booking Anda sedang menunggu validasi admin. Pembayaran dapat dilakukan setelah divalidasi.',
+        });
+      } else {
+        const data = await res.json().catch(() => null);
+        toast({
+          title: 'Gagal Membuat Booking',
+          description: data?.details || data?.error || 'Terjadi kesalahan. Silakan coba lagi.',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       console.error('Failed to create booking:', error);
+      toast({ title: 'Gagal Membuat Booking', description: 'Periksa koneksi Anda.', variant: 'destructive' });
     } finally {
       setIsSubmitting(false);
     }
@@ -388,7 +413,36 @@ export function HomeCarePanel() {
 }
 
 function BookingCard({ booking }: { booking: HomeCareBooking }) {
+  const { currentUser, setActivePanel, setPendingPaymentFocusId } = useStore();
   const [showTracking, setShowTracking] = useState(false);
+  const [findingPayment, setFindingPayment] = useState(false);
+
+  // "Bayar Sekarang" only becomes available once an admin has validated the
+  // booking — that's the step that actually creates the pending payment
+  // (see homecareService.validateBooking). Look it up and jump straight to
+  // the payment method screen, same pattern as the Apotek Online checkout.
+  const handlePayNow = async () => {
+    if (!currentUser?.id) return;
+    setFindingPayment(true);
+    try {
+      const res = await fetch(`/api/payments?userId=${encodeURIComponent(currentUser.id)}`);
+      const data = await res.json();
+      const payment = Array.isArray(data?.payments)
+        ? data.payments.find(
+            (p: any) => p.referenceType === 'homecare_booking' && p.referenceId === booking.id && p.status === 'pending'
+          )
+        : null;
+      if (payment) {
+        setPendingPaymentFocusId(payment.id);
+      }
+      setActivePanel('payments');
+    } catch (err) {
+      console.error('[homecare-panel] handlePayNow failed:', err);
+      setActivePanel('payments');
+    } finally {
+      setFindingPayment(false);
+    }
+  };
 
   const serviceName = booking.service?.name || 'Layanan Home Care';
   const scheduledDate = booking.scheduledAt
@@ -419,7 +473,7 @@ function BookingCard({ booking }: { booking: HomeCareBooking }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="font-semibold text-sm truncate">{serviceName}</h3>
-              {getStatusBadge(booking.status)}
+              {getStatusBadge(booking.status, booking.adminValidated)}
             </div>
             <div className="space-y-1.5 text-xs text-muted-foreground">
               <p className="flex items-center gap-1.5">
@@ -487,8 +541,22 @@ function BookingCard({ booking }: { booking: HomeCareBooking }) {
           </div>
         )}
 
+        {/* Not yet validated: explain what the patient is waiting on */}
+        {booking.status !== 'cancelled' && !booking.adminValidated && (
+          <div className="mt-3 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-[11px] text-amber-700">
+              Booking Anda sedang menunggu validasi admin. Pembayaran dapat dilakukan setelah booking divalidasi.
+            </p>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="mt-3 flex gap-2">
+          {booking.adminValidated && booking.status !== 'cancelled' && booking.status !== 'completed' && (
+            <Button size="sm" className="text-xs" onClick={handlePayNow} disabled={findingPayment}>
+              {findingPayment ? 'Memuat...' : 'Bayar Sekarang'}
+            </Button>
+          )}
           {(booking.status === 'pending' || booking.status === 'confirmed') && (
             <Button variant="outline" size="sm" className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50">
               Batalkan

@@ -116,6 +116,14 @@ interface TelemedicineStore {
   pendingPrescriptionCheckout: Prescription | null;
   setPendingPrescriptionCheckout: (prescription: Prescription | null) => void;
 
+  // Pending payment focus — set by a checkout flow (Apotek Online, Home
+  // Care after admin validation, etc.) right before navigating to the
+  // Payments panel, so that panel can jump straight to "choose a payment
+  // method" for THAT specific payment instead of dropping the user on the
+  // generic payment list.
+  pendingPaymentFocusId: string | null;
+  setPendingPaymentFocusId: (paymentId: string | null) => void;
+
   // Screening
   screeningForms: ScreeningForm[];
   setScreeningForms: (forms: ScreeningForm[]) => void;
@@ -506,6 +514,9 @@ export const useStore = create<TelemedicineStore>((set) => ({
   // Prescription Checkout
   pendingPrescriptionCheckout: null,
   setPendingPrescriptionCheckout: (prescription) => set({ pendingPrescriptionCheckout: prescription }),
+
+  pendingPaymentFocusId: null,
+  setPendingPaymentFocusId: (paymentId) => set({ pendingPaymentFocusId: paymentId }),
 
   // Screening
   screeningForms: [],
