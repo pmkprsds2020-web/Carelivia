@@ -111,55 +111,15 @@ export function DoctorPanel() {
     setConsultations,
     currentUser,
     doctors,
+    setActiveConsultation,
+    setActivePanel,
   } = useStore();
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [revenueStats, setRevenueStats] = useState<{ todayNet: number; monthNet: number; totalNet: number; pendingNet: number; entries: any[] } | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(true);
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([
-    {
-      id: 'rx-1',
-      consultationId: 'c-1',
-      doctorId: 'd-1',
-      patientId: 'p-1',
-      status: 'active',
-      notes: 'Minum setelah makan',
-      createdAt: '2025-01-15T10:00:00Z',
-      updatedAt: '2025-01-15T10:00:00Z',
-      items: [
-        { id: 'ri-1', prescriptionId: 'rx-1', medicineName: 'Amoxicillin 500mg', dosage: '500mg', quantity: 21, frequency: '3x sehari', duration: '7 hari', instructions: 'Minum setelah makan' },
-        { id: 'ri-2', prescriptionId: 'rx-1', medicineName: 'Paracetamol 500mg', dosage: '500mg', quantity: 10, frequency: '3x sehari jika perlu', duration: '3 hari', instructions: 'Jika demam' },
-      ],
-    },
-    {
-      id: 'rx-2',
-      consultationId: 'c-2',
-      doctorId: 'd-1',
-      patientId: 'p-2',
-      status: 'fulfilled',
-      notes: '',
-      createdAt: '2025-01-10T14:00:00Z',
-      updatedAt: '2025-01-10T14:00:00Z',
-      items: [
-        { id: 'ri-3', prescriptionId: 'rx-2', medicineName: 'Omeprazole 20mg', dosage: '20mg', quantity: 14, frequency: '1x sehari', duration: '14 hari', instructions: 'Minum sebelum sarapan' },
-      ],
-    },
-    {
-      id: 'rx-3',
-      consultationId: 'c-3',
-      doctorId: 'd-1',
-      patientId: 'p-3',
-      status: 'active',
-      notes: 'Hindari makanan pedas',
-      createdAt: '2025-01-18T09:00:00Z',
-      updatedAt: '2025-01-18T09:00:00Z',
-      items: [
-        { id: 'ri-4', prescriptionId: 'rx-3', medicineName: 'Ranitidine 150mg', dosage: '150mg', quantity: 28, frequency: '2x sehari', duration: '14 hari', instructions: 'Minum sebelum makan' },
-        { id: 'ri-5', prescriptionId: 'rx-3', medicineName: 'Antasida Sirup', dosage: '10ml', quantity: 2, frequency: '3x sehari', duration: '7 hari', instructions: 'Setelah makan' },
-        { id: 'ri-6', prescriptionId: 'rx-3', medicineName: 'Sucralfate 1g', dosage: '1g', quantity: 21, frequency: '3x sehari', duration: '7 hari', instructions: 'Minum 1 jam sebelum makan' },
-      ],
-    },
-  ]);
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const [prescriptionsLoading, setPrescriptionsLoading] = useState(true);
   const [scheduleSlots, setScheduleSlots] = useState<ScheduleSlot[]>([
     { dayOfWeek: 1, startTime: '08:00', endTime: '12:00', isActive: true },
     { dayOfWeek: 1, startTime: '14:00', endTime: '17:00', isActive: true },
@@ -210,9 +170,12 @@ export function DoctorPanel() {
   const completedConsultations = consultations.filter(c => c.status === 'completed');
   const totalPatients = new Set(completedConsultations.map(c => c.patientId)).size;
   const monthlyEarning = revenueStats?.monthNet ?? 0;
-  const avgRating = doctors.length > 0
-    ? (doctors.reduce((sum, d) => sum + (d.doctorProfile?.rating || 0), 0) / doctors.length).toFixed(1)
-    : '4.8';
+  // This used to average the `rating` field across EVERY doctor in the
+  // system and show that as "this doctor's rating" — meaningless (and the
+  // reason the card could show something unrelated to the logged-in
+  // doctor). It now shows the current doctor's own rating specifically.
+  const currentDoctorProfile = doctors.find(d => d.id === currentUser?.id);
+  const avgRating = (currentDoctorProfile?.doctorProfile?.rating ?? currentUser?.doctorProfile?.rating ?? 0).toFixed(1);
 
   // Load REAL earnings — see the note above monthlyEarnings' removal.
   useEffect(() => {
@@ -235,6 +198,27 @@ export function DoctorPanel() {
     return () => { cancelled = true; };
   }, [currentUser?.id]);
 
+  // Load REAL prescriptions this doctor has written — the fake hardcoded
+  // "Amoxicillin / Omeprazole / Ranitidine" demo list (dated January 2025,
+  // completely disconnected from any real patient) has been removed, along
+  // with handleSavePrescription's old fake-id local-only save that never
+  // actually persisted a new prescription anywhere.
+  useEffect(() => {
+    if (!currentUser?.id) { setPrescriptionsLoading(false); return; }
+    let cancelled = false;
+    setPrescriptionsLoading(true);
+    fetch(`/api/prescriptions?doctorId=${encodeURIComponent(currentUser.id)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.prescriptions)) {
+          setPrescriptions(data.prescriptions);
+        }
+      })
+      .catch((err) => console.error('[doctor-panel] failed to load prescriptions:', err))
+      .finally(() => { if (!cancelled) setPrescriptionsLoading(false); });
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
+
   const addMedicineItem = () => {
     setMedicineItems([...medicineItems, { medicineName: '', dosage: '', quantity: 1, frequency: '', duration: '', instructions: '' }]);
   };
@@ -251,32 +235,47 @@ export function DoctorPanel() {
     setMedicineItems(updated);
   };
 
-  const handleSavePrescription = () => {
-    const newPrescription: Prescription = {
-      id: `rx-${Date.now()}`,
-      consultationId: `c-${Date.now()}`,
-      doctorId: currentUser?.id || 'd-1',
-      patientId: selectedPatientId,
-      status: 'active',
-      notes: prescriptionNotes,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      items: medicineItems.map((item, i) => ({
-        id: `ri-${Date.now()}-${i}`,
-        prescriptionId: `rx-${Date.now()}`,
-        medicineName: item.medicineName,
-        dosage: item.dosage,
-        quantity: item.quantity,
-        frequency: item.frequency,
-        duration: item.duration,
-        instructions: item.instructions || undefined,
-      })),
-    };
-    setPrescriptions([newPrescription, ...prescriptions]);
-    setPrescriptionDialogOpen(false);
-    setMedicineItems([{ medicineName: '', dosage: '', quantity: 1, frequency: '', duration: '', instructions: '' }]);
-    setPrescriptionNotes('');
-    setSelectedPatientId('');
+  const handleSavePrescription = async () => {
+    if (!currentUser?.id || !selectedPatientId) return;
+    // Use the patient's most recent consultation, if any, so the
+    // prescription is linked to real context — not required by the API,
+    // but useful for the patient to see it alongside that conversation.
+    const relatedConsultation = consultations
+      .filter((c) => c.patientId === selectedPatientId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+    try {
+      const res = await fetch('/api/prescriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          consultationId: relatedConsultation?.id,
+          doctorId: currentUser.id,
+          patientId: selectedPatientId,
+          notes: prescriptionNotes || undefined,
+          items: medicineItems.map((item) => ({
+            medicineName: item.medicineName,
+            dosage: item.dosage,
+            quantity: item.quantity,
+            frequency: item.frequency,
+            duration: item.duration,
+            instructions: item.instructions || undefined,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.prescription) {
+        throw new Error(data?.details || data?.error || 'Gagal membuat resep');
+      }
+      setPrescriptions((prev) => [data.prescription, ...prev]);
+      setPrescriptionDialogOpen(false);
+      setMedicineItems([{ medicineName: '', dosage: '', quantity: 1, frequency: '', duration: '', instructions: '' }]);
+      setPrescriptionNotes('');
+      setSelectedPatientId('');
+    } catch (err) {
+      console.error('[doctor-panel] handleSavePrescription failed:', err);
+      alert(err instanceof Error ? err.message : 'Gagal membuat resep. Silakan coba lagi.');
+    }
   };
 
   const handleSaveSchedule = () => {
@@ -498,12 +497,32 @@ export function DoctorPanel() {
                     </div>
                     <div className="shrink-0">
                       {consultation.status === 'waiting' || consultation.status === 'active' ? (
-                        <Button size="sm" className="text-xs">
+                        <Button
+                          size="sm"
+                          className="text-xs"
+                          onClick={() => {
+                            // The demo/decorative chat inside this dashboard
+                            // has been removed — this now opens the real,
+                            // fully-functional Chat Pasien module with this
+                            // consultation already selected, instead of a
+                            // button that did nothing when clicked.
+                            setActiveConsultation(consultation);
+                            setActivePanel('chat');
+                          }}
+                        >
                           Mulai Konsultasi
                           <ArrowRight className="w-3.5 h-3.5 ml-1" />
                         </Button>
                       ) : (
-                        <Button variant="outline" size="sm" className="text-xs">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs"
+                          onClick={() => {
+                            setActiveConsultation(consultation);
+                            setActivePanel('chat');
+                          }}
+                        >
                           Lihat Detail
                         </Button>
                       )}
@@ -538,7 +557,13 @@ export function DoctorPanel() {
           </div>
 
           <div className="space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar">
-            {prescriptions.map((prescription) => (
+            {prescriptionsLoading ? (
+              <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Memuat resep...
+              </div>
+            ) : (
+              <>
+                {prescriptions.map((prescription) => (
               <Card key={prescription.id} className="hover:shadow-sm transition-shadow">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between gap-3">
@@ -566,9 +591,6 @@ export function DoctorPanel() {
                         </p>
                       )}
                     </div>
-                    <Button variant="outline" size="sm" className="text-xs shrink-0">
-                      Lihat
-                    </Button>
                   </div>
 
                   {/* Medicine items preview */}
@@ -593,11 +615,13 @@ export function DoctorPanel() {
               </Card>
             ))}
 
-            {prescriptions.length === 0 && (
-              <div className="text-center py-12">
-                <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground">Belum ada resep</p>
-              </div>
+                {prescriptions.length === 0 && (
+                  <div className="text-center py-12">
+                    <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-muted-foreground">Belum ada resep</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -955,159 +979,67 @@ export function DoctorPanel() {
 
 // Chat Pasien Section Component
 function ChatPasienSection({ consultations }: { consultations: Consultation[] }) {
-  const [selectedPatient, setSelectedPatient] = useState<Consultation | null>(null);
-  const [chatInput, setChatInput] = useState('');
-  const { messages, setMessages } = useStore();
+  // This used to be an entirely fake, self-contained mini-chat: hardcoded
+  // demo messages ("Selamat pagi, Dok...") shown identically for every
+  // patient, and a send button that only cleared the input locally —
+  // nothing was ever actually sent or persisted anywhere. The REAL,
+  // fully-functional chat already exists as its own module (the "Chat
+  // Pasien" sidebar item, backed by chat-panel.tsx with real messages,
+  // realtime updates, screening cards, prescriptions, etc.). Rather than
+  // duplicate all of that here, clicking a patient now opens the real
+  // thing with that consultation already selected.
+  const { setActiveConsultation, setActivePanel } = useStore();
 
   const chatConsultations = consultations.filter(c =>
     c.type === 'chat' && (c.status === 'active' || c.status === 'waiting' || c.status === 'completed')
   );
 
-  return (
-    <div className="flex h-[calc(100vh-220px)] min-h-[400px] border rounded-lg overflow-hidden bg-card">
-      {/* Chat List */}
-      <div className={cn(
-        'w-full md:w-80 border-r border-border flex flex-col',
-        selectedPatient ? 'hidden md:flex' : 'flex'
-      )}>
-        <div className="p-3 border-b border-border">
-          <h3 className="text-sm font-semibold">Chat Pasien</h3>
-        </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {chatConsultations.length > 0 ? (
-            chatConsultations.map((consultation) => (
-              <button
-                key={consultation.id}
-                onClick={() => setSelectedPatient(consultation)}
-                className={cn(
-                  'w-full flex items-center gap-3 p-3 text-left hover:bg-muted/50 transition-colors border-b border-border/50',
-                  selectedPatient?.id === consultation.id && 'bg-muted'
-                )}
-              >
-                <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold shrink-0">
-                  {consultation.patient?.name?.charAt(0) || 'P'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium truncate">{consultation.patient?.name || 'Pasien'}</p>
-                    <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
-                      {new Date(consultation.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">
-                    {consultation.notes || 'Konsultasi ' + consultation.type}
-                  </p>
-                </div>
-                {consultation.status === 'waiting' && (
-                  <div className="w-2 h-2 rounded-full bg-yellow-500 shrink-0" />
-                )}
-              </button>
-            ))
-          ) : (
-            <div className="text-center py-12">
-              <MessageCircle className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">Belum ada chat</p>
-            </div>
-          )}
-        </div>
-      </div>
+  const openRealChat = (consultation: Consultation) => {
+    setActiveConsultation(consultation);
+    setActivePanel('chat');
+  };
 
-      {/* Chat Area */}
-      <div className={cn(
-        'flex-1 flex flex-col',
-        !selectedPatient ? 'hidden md:flex' : 'flex'
-      )}>
-        {selectedPatient ? (
-          <>
-            {/* Chat Header */}
-            <div className="p-3 border-b border-border flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="md:hidden h-8 w-8 p-0"
-                onClick={() => setSelectedPatient(null)}
-              >
-                <ChevronRight className="w-4 h-4 rotate-180" />
-              </Button>
-              <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold shrink-0">
-                {selectedPatient.patient?.name?.charAt(0) || 'P'}
+  return (
+    <div className="border rounded-lg overflow-hidden bg-card">
+      <div className="p-3 border-b border-border flex items-center justify-between">
+        <h3 className="text-sm font-semibold">Chat Pasien</h3>
+        <Button variant="outline" size="sm" className="text-xs" onClick={() => setActivePanel('chat')}>
+          Buka Chat Pasien Lengkap
+          <ArrowRight className="w-3.5 h-3.5 ml-1" />
+        </Button>
+      </div>
+      <div className="max-h-[calc(100vh-320px)] overflow-y-auto custom-scrollbar">
+        {chatConsultations.length > 0 ? (
+          chatConsultations.map((consultation) => (
+            <button
+              key={consultation.id}
+              onClick={() => openRealChat(consultation)}
+              className="w-full flex items-center gap-3 p-3 text-left hover:bg-muted/50 transition-colors border-b border-border/50"
+            >
+              <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold shrink-0">
+                {consultation.patient?.name?.charAt(0) || 'P'}
               </div>
-              <div>
-                <p className="text-sm font-semibold">{selectedPatient.patient?.name || 'Pasien'}</p>
-                <p className="text-[11px] text-muted-foreground">
-                  {selectedPatient.status === 'active' ? 'Online' : selectedPatient.status === 'waiting' ? 'Menunggu' : 'Offline'}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium truncate">{consultation.patient?.name || 'Pasien'}</p>
+                  <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
+                    {new Date(consultation.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground truncate mt-0.5">
+                  {consultation.notes || 'Konsultasi ' + consultation.type}
                 </p>
               </div>
-              {getConsultationStatusBadge(selectedPatient.status)}
-            </div>
-
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
-              {/* Demo messages */}
-              <div className="flex justify-start">
-                <div className="bg-muted rounded-lg rounded-tl-none p-3 max-w-[75%]">
-                  <p className="text-sm">Selamat pagi, Dok. Saya sudah merasakan gejala ini sejak 2 hari yang lalu.</p>
-                  <span className="text-[10px] text-muted-foreground mt-1 block">09:15</span>
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <div className="bg-primary text-primary-foreground rounded-lg rounded-tr-none p-3 max-w-[75%]">
-                  <p className="text-sm">Selamat pagi. Bisa dijelaskan lebih detail mengenai gejalanya?</p>
-                  <span className="text-[10px] text-primary-foreground/70 mt-1 block">09:16</span>
-                </div>
-              </div>
-              <div className="flex justify-start">
-                <div className="bg-muted rounded-lg rounded-tl-none p-3 max-w-[75%]">
-                  <p className="text-sm">Saya mengalami demam, sakit kepala, dan batuk. Nafsu makan juga berkurang.</p>
-                  <span className="text-[10px] text-muted-foreground mt-1 block">09:17</span>
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <div className="bg-primary text-primary-foreground rounded-lg rounded-tr-none p-3 max-w-[75%]">
-                  <p className="text-sm">Apakah ada riwayat kontak dengan pasien positif? Dan apakah ada gejala sesak napas?</p>
-                  <span className="text-[10px] text-primary-foreground/70 mt-1 block">09:18</span>
-                </div>
-              </div>
-              <div className="flex justify-start">
-                <div className="bg-muted rounded-lg rounded-tl-none p-3 max-w-[75%]">
-                  <p className="text-sm">Tidak ada kontak yang saya ketahui, dan tidak ada sesak napas, Dok.</p>
-                  <span className="text-[10px] text-muted-foreground mt-1 block">09:20</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Chat Input */}
-            <div className="p-3 border-t border-border">
-              <div className="flex gap-2">
-                <Input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Ketik pesan..."
-                  className="text-sm"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && chatInput.trim()) {
-                      setChatInput('');
-                    }
-                  }}
-                />
-                <Button
-                  size="sm"
-                  disabled={!chatInput.trim()}
-                  onClick={() => {
-                    if (chatInput.trim()) setChatInput('');
-                  }}
-                >
-                  <Megaphone className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          </>
+              {consultation.status === 'waiting' && (
+                <div className="w-2 h-2 rounded-full bg-yellow-500 shrink-0" />
+              )}
+              <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            </button>
+          ))
         ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <MessageCircle className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground">Pilih percakapan untuk memulai chat</p>
-            </div>
+          <div className="text-center py-12">
+            <MessageCircle className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">Belum ada chat</p>
           </div>
         )}
       </div>
