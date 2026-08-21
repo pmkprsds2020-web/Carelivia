@@ -16,6 +16,7 @@ import type {
   TriageLevel,
 } from '@/lib/types';
 import { AnamnesisSistemPanel, RosPatientSummaryView } from './anamnesis-sistem-panel';
+import { labResultService, type LabResultRecord } from '@/services/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -90,7 +91,12 @@ import {
   Paperclip,
   Brain,
   Circle,
+  Trash2,
 } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
   MODULE_LABELS,
@@ -370,6 +376,8 @@ function DoctorMedicalRecordsView() {
     setPrescriptions,
   } = useStore();
 
+  const { toast } = useToast();
+
   const [activeTab, setActiveTab] = useState('records-list');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -380,6 +388,16 @@ function DoctorMedicalRecordsView() {
   const [screeningDoctorNotes, setScreeningDoctorNotes] = useState('');
   const [screeningFollowUp, setScreeningFollowUp] = useState('');
   const [recordsLoading, setRecordsLoading] = useState(true);
+
+  // ── Hasil Lab (doctor input) state ──
+  const [selectedLabPatientId, setSelectedLabPatientId] = useState<string | null>(null);
+  const [labResults, setLabResults] = useState<LabResultRecord[]>([]);
+  const [labResultsLoading, setLabResultsLoading] = useState(false);
+  const [labForm, setLabForm] = useState({
+    testName: '', resultValue: '', unit: '', referenceRange: '', isAbnormal: false, notes: '',
+    performedAt: new Date().toISOString().split('T')[0],
+  });
+  const [labSubmitting, setLabSubmitting] = useState(false);
 
   // Load this doctor's medical records + prescriptions directly when this
   // panel opens — previously these only ever loaded as a side effect of
@@ -412,6 +430,57 @@ function DoctorMedicalRecordsView() {
     })();
     return () => { cancelled = true; };
   }, [currentUser?.id, setMedicalRecords, setPrescriptions]);
+
+  // Load lab results for whichever patient the doctor has selected in the
+  // "Hasil Lab" tab.
+  useEffect(() => {
+    if (!selectedLabPatientId) { setLabResults([]); return; }
+    let cancelled = false;
+    setLabResultsLoading(true);
+    labResultService.getForPatient(selectedLabPatientId)
+      .then((rows) => { if (!cancelled) setLabResults(rows); })
+      .catch((err) => console.error('[medical-records] failed to load lab results:', err))
+      .finally(() => { if (!cancelled) setLabResultsLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedLabPatientId]);
+
+  const handleAddLabResult = async () => {
+    if (!selectedLabPatientId || !labForm.testName.trim() || !labForm.resultValue.trim()) {
+      toast({ title: 'Lengkapi data', description: 'Nama pemeriksaan dan hasil wajib diisi.', variant: 'destructive' });
+      return;
+    }
+    setLabSubmitting(true);
+    try {
+      const created = await labResultService.create({
+        patientId: selectedLabPatientId,
+        doctorId: currentUser?.id,
+        testName: labForm.testName.trim(),
+        resultValue: labForm.resultValue.trim(),
+        unit: labForm.unit.trim() || undefined,
+        referenceRange: labForm.referenceRange.trim() || undefined,
+        isAbnormal: labForm.isAbnormal,
+        notes: labForm.notes.trim() || undefined,
+        performedAt: labForm.performedAt,
+      });
+      setLabResults((prev) => [created, ...prev]);
+      setLabForm({ testName: '', resultValue: '', unit: '', referenceRange: '', isAbnormal: false, notes: '', performedAt: new Date().toISOString().split('T')[0] });
+      toast({ title: 'Hasil Lab Disimpan', description: `${created.testName} berhasil ditambahkan.` });
+    } catch (err) {
+      toast({ title: 'Gagal Menyimpan', description: err instanceof Error ? err.message : 'Terjadi kesalahan.', variant: 'destructive' });
+    } finally {
+      setLabSubmitting(false);
+    }
+  };
+
+  const handleDeleteLabResult = async (id: string) => {
+    try {
+      await labResultService.remove(id);
+      setLabResults((prev) => prev.filter((r) => r.id !== id));
+      toast({ title: 'Hasil Lab Dihapus' });
+    } catch (err) {
+      toast({ title: 'Gagal Menghapus', description: err instanceof Error ? err.message : 'Terjadi kesalahan.', variant: 'destructive' });
+    }
+  };
 
   // Build merged data
   const mergedRecords = useMemo(
@@ -598,6 +667,11 @@ function DoctorMedicalRecordsView() {
             <Stethoscope className="w-4 h-4" />
             <span className="hidden md:inline">Anamnesis Sistem</span>
             <span className="md:hidden">Anamnesis</span>
+          </TabsTrigger>
+          <TabsTrigger value="lab-input" className="flex items-center gap-1.5 shrink-0 md:flex-1">
+            <FlaskConical className="w-4 h-4" />
+            <span className="hidden md:inline">Hasil Lab</span>
+            <span className="md:hidden">Lab</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1133,6 +1207,169 @@ function DoctorMedicalRecordsView() {
                   doctorId={currentUser?.id}
                   doctorName={currentUser?.name}
                 />
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ================================================================= */}
+        {/* Tab 6: Hasil Lab (doctor input)                                    */}
+        {/* ================================================================= */}
+        <TabsContent value="lab-input" className="mt-0">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-1 space-y-2">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                Daftar Pasien
+              </h3>
+              <div className="max-h-[calc(100vh-360px)] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                {timelinePatients.map((patient) => (
+                  <Card
+                    key={patient.patientId}
+                    className={cn(
+                      'border-0 cursor-pointer transition-all',
+                      selectedLabPatientId === patient.patientId ? 'ring-2 ring-primary shadow-md' : 'hover:shadow-sm',
+                    )}
+                    onClick={() => setSelectedLabPatientId(patient.patientId)}
+                  >
+                    <CardContent className="p-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <User className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm text-foreground truncate">{patient.patientName}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+                {timelinePatients.length === 0 && (
+                  <p className="text-xs text-muted-foreground px-1">Belum ada pasien dengan rekam medis.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="md:col-span-2 space-y-4">
+              {!selectedLabPatientId ? (
+                <Card className="border-0">
+                  <CardContent className="p-8 text-center">
+                    <FlaskConical className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-sm text-muted-foreground">Pilih pasien untuk menambahkan hasil lab</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  {/* Input form */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-semibold">Tambah Hasil Lab</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Nama Pemeriksaan</Label>
+                          <Input
+                            value={labForm.testName}
+                            onChange={(e) => setLabForm({ ...labForm, testName: e.target.value })}
+                            placeholder="Contoh: Gula Darah Puasa"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Tanggal Pemeriksaan</Label>
+                          <Input
+                            type="date"
+                            value={labForm.performedAt}
+                            onChange={(e) => setLabForm({ ...labForm, performedAt: e.target.value })}
+                            max={new Date().toISOString().split('T')[0]}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Hasil</Label>
+                          <Input
+                            value={labForm.resultValue}
+                            onChange={(e) => setLabForm({ ...labForm, resultValue: e.target.value })}
+                            placeholder="Contoh: 180"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Satuan</Label>
+                          <Input
+                            value={labForm.unit}
+                            onChange={(e) => setLabForm({ ...labForm, unit: e.target.value })}
+                            placeholder="Contoh: mg/dL"
+                          />
+                        </div>
+                        <div className="space-y-1.5 sm:col-span-2">
+                          <Label className="text-xs">Nilai Rujukan (Opsional)</Label>
+                          <Input
+                            value={labForm.referenceRange}
+                            onChange={(e) => setLabForm({ ...labForm, referenceRange: e.target.value })}
+                            placeholder="Contoh: 70-110 mg/dL"
+                          />
+                        </div>
+                        <div className="space-y-1.5 sm:col-span-2">
+                          <Label className="text-xs">Catatan (Opsional)</Label>
+                          <Textarea
+                            value={labForm.notes}
+                            onChange={(e) => setLabForm({ ...labForm, notes: e.target.value })}
+                            rows={2}
+                            className="text-sm"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="lab-abnormal"
+                          checked={labForm.isAbnormal}
+                          onCheckedChange={(checked) => setLabForm({ ...labForm, isAbnormal: checked === true })}
+                        />
+                        <Label htmlFor="lab-abnormal" className="text-xs font-normal cursor-pointer">
+                          Tandai sebagai hasil abnormal
+                        </Label>
+                      </div>
+                      <Button size="sm" onClick={handleAddLabResult} disabled={labSubmitting} className="w-full sm:w-auto">
+                        {labSubmitting ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Plus className="w-3.5 h-3.5 mr-1.5" />}
+                        Simpan Hasil Lab
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {/* Existing results */}
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold text-muted-foreground">Riwayat Hasil Lab</h3>
+                    {labResultsLoading ? (
+                      <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Memuat...
+                      </div>
+                    ) : labResults.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-6">Belum ada hasil lab untuk pasien ini.</p>
+                    ) : (
+                      labResults.map((r) => (
+                        <Card key={r.id}>
+                          <CardContent className="p-3 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-medium text-sm">{r.testName}</p>
+                                {r.isAbnormal && (
+                                  <Badge variant="outline" className="bg-red-100 text-red-700 border-red-300 text-[10px]">Abnormal</Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-foreground mt-0.5">
+                                {r.resultValue} {r.unit}
+                                {r.referenceRange && <span className="text-muted-foreground"> (Rujukan: {r.referenceRange})</span>}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{formatDate(r.performedAt)}</p>
+                              {r.notes && <p className="text-xs text-muted-foreground mt-1">{r.notes}</p>}
+                            </div>
+                            <Button variant="ghost" size="sm" onClick={() => handleDeleteLabResult(r.id)} className="shrink-0">
+                              <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      ))
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -2319,20 +2556,7 @@ function PatientMedicalRecordsView() {
 
             {/* Tab 3: Hasil Lab */}
             <TabsContent value="lab" className="space-y-3 mt-0">
-              {/* The fabricated `demoLabResults` list (5 fake lab results —
-                  "Gula Darah Puasa 180 mg/dL", "HbA1c 8.2%" etc. — shown
-                  identically to every patient) has been removed. There is
-                  no real lab-results feature wired into this view yet, so
-                  the honest state is an empty state, not fake data. */}
-              <Card className="border-0">
-                <CardContent className="p-8 text-center">
-                  <FlaskConical className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-sm font-medium text-foreground">Belum ada hasil lab</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Hasil pemeriksaan laboratorium dari dokter akan muncul di sini.
-                  </p>
-                </CardContent>
-              </Card>
+              <PatientLabResultsView patientId={currentPatientId} />
             </TabsContent>
 
             {/* Tab 3: Resep Obat */}
@@ -2613,6 +2837,70 @@ function PatientMedicalRecordsView() {
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PatientLabResultsView — real Hasil Lab data for the logged-in patient
+// ---------------------------------------------------------------------------
+
+function PatientLabResultsView({ patientId }: { patientId: string }) {
+  const [results, setResults] = useState<LabResultRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!patientId) { setLoading(false); return; }
+    let cancelled = false;
+    labResultService.getForPatient(patientId)
+      .then((rows) => { if (!cancelled) setResults(rows); })
+      .catch((err) => console.error('[PatientLabResultsView] failed to load lab results:', err))
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [patientId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">
+        <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Memuat hasil lab...
+      </div>
+    );
+  }
+
+  if (results.length === 0) {
+    return (
+      <Card className="border-0">
+        <CardContent className="p-8 text-center">
+          <FlaskConical className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+          <p className="text-sm font-medium text-foreground">Belum ada hasil lab</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Hasil pemeriksaan laboratorium dari dokter akan muncul di sini.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {results.map((r) => (
+        <Card key={r.id}>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-medium text-sm">{r.testName}</p>
+              {r.isAbnormal && (
+                <Badge variant="outline" className="bg-red-100 text-red-700 border-red-300 text-[10px]">Abnormal</Badge>
+              )}
+            </div>
+            <p className="text-sm text-foreground mt-0.5">
+              {r.resultValue} {r.unit}
+              {r.referenceRange && <span className="text-muted-foreground"> (Rujukan: {r.referenceRange})</span>}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">{formatDate(r.performedAt)}</p>
+            {r.notes && <p className="text-xs text-muted-foreground mt-1">{r.notes}</p>}
+          </CardContent>
+        </Card>
+      ))}
     </div>
   );
 }

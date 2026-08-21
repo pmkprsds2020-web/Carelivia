@@ -78,6 +78,7 @@ import {
   History,
   Timer,
 } from 'lucide-react';
+import { supabase } from '@/services/supabase';
 
 // ── Module Icon Map (Lucide icons replacing emojis) ──
 const MODULE_ICON_MAP: Record<ScreeningModuleId, React.ReactNode> = {
@@ -315,6 +316,7 @@ export function ChatPanel() {
     palliativePatients,
     addPalliativeScreeningRecord,
     addPalliativeMonitoringNotification,
+    setScreeningPreselectedFormId,
   } = useStore();
 
   const { toast } = useToast();
@@ -486,10 +488,19 @@ export function ChatPanel() {
   // by the ScreeningPanel component (a different screen) — so a patient
   // opening this consultation directly would never see the fillable card,
   // only the plain-text announcement.
+  //
+  // This used to be a ONE-TIME fetch on mount only — so when a doctor sent
+  // a new form while the patient's chat was already open, the announcement
+  // message appeared right away (it rides the 5s message poll/realtime
+  // channel above) but the actual fillable card stayed blank/plain-text
+  // until the patient reloaded the page, since nothing ever re-fetched
+  // `screeningForms` after that first load. It's now polled on the same
+  // cadence as messages so the card catches up within a few seconds
+  // instead of requiring a manual reload.
   useEffect(() => {
     if (!currentUser) return;
     let cancelled = false;
-    (async () => {
+    const fetchForms = async () => {
       try {
         const param = isDoctor ? `doctorId=${currentUser.id}` : `patientId=${currentUser.id}`;
         const res = await fetch(`/api/screening-forms?${param}`);
@@ -500,17 +511,22 @@ export function ChatPanel() {
       } catch (err) {
         console.warn('[chat-panel] failed to load screening forms:', err);
       }
-    })();
-    return () => { cancelled = true; };
+    };
+    fetchForms();
+    const interval = setInterval(fetchForms, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [currentUser, isDoctor, setScreeningForms]);
 
   // ── Load this user's palliative screening forms from Supabase ────────────
   // Needed so `renderPalliativeCard` can resolve a `__PALLIATIVE__{formId}__`
-  // message to real, persisted form data after a reload or on another device.
+  // message to real, persisted form data after a reload or on another
+  // device. Polled for the same reason as screeningForms above — a newly
+  // sent palliative form otherwise wouldn't show its fillable card until
+  // the page was reloaded.
   useEffect(() => {
     if (!currentUser) return;
     let cancelled = false;
-    (async () => {
+    const fetchForms = async () => {
       try {
         const param = isDoctor ? `doctorId=${currentUser.id}` : `patientId=${currentUser.id}`;
         const res = await fetch(`/api/palliative-screening-forms?${param}`);
@@ -521,8 +537,10 @@ export function ChatPanel() {
       } catch (err) {
         console.warn('[chat-panel] failed to load palliative screening forms:', err);
       }
-    })();
-    return () => { cancelled = true; };
+    };
+    fetchForms();
+    const interval = setInterval(fetchForms, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [currentUser, isDoctor, setPalliativeScreeningForms]);
 
   // ── Load this user's medical records + prescriptions from Supabase ───────
@@ -587,6 +605,15 @@ export function ChatPanel() {
   // Lightweight near-real-time chat: while a conversation is open, refetch
   // its message history periodically so a reply from the other side (sent
   // from a different device/browser) shows up without a manual refresh.
+  //
+  // This used to be the ONLY update mechanism (poll every 5s), which made a
+  // screening form sent by the doctor take up to ~5 seconds to appear on
+  // the patient's screen — noticeably slow for something meant to feel like
+  // live chat. A Supabase Realtime subscription on `consultation_messages`
+  // now triggers an immediate poll the moment a row is inserted/updated for
+  // this consultation, so new messages (including screening/prescription
+  // cards) show up right away; the interval poll stays as a fallback for
+  // whenever the realtime connection is unavailable.
   useEffect(() => {
     const consultationId = activeConsultation?.id;
     if (!consultationId || !isValidId(consultationId)) return;
@@ -605,10 +632,29 @@ export function ChatPanel() {
       }
     };
 
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      channel = supabase
+        .channel(`consultation-messages-${consultationId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'consultation_messages', filter: `consultation_id=eq.${consultationId}` },
+          () => { poll(); }
+        )
+        .subscribe();
+    } catch (err) {
+      console.warn('[chat-panel] realtime subscribe failed, relying on polling only:', err);
+    }
+
     const interval = setInterval(poll, 5000);
     return () => {
       cancelled = true;
       clearInterval(interval);
+      try {
+        if (channel) supabase.removeChannel(channel);
+      } catch {
+        /* noop */
+      }
     };
   }, [activeConsultation?.id]);
 
@@ -1705,7 +1751,15 @@ export function ChatPanel() {
             <Button
               size="sm"
               className="w-full h-8 text-xs bg-teal-600 hover:bg-teal-700"
-              onClick={() => setActivePanel('screening')}
+              onClick={() => {
+                // Jump straight into filling out THIS form — the patient
+                // already tapped the specific card in chat, so landing on
+                // the generic Skrining Kesehatan list first (which no
+                // longer even exists as a sidebar destination) would be a
+                // dead end / extra step for nothing.
+                setScreeningPreselectedFormId(formId);
+                setActivePanel('screening');
+              }}
             >
               <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
               Isi Skrining Komprehensif

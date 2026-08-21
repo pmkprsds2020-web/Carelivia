@@ -98,6 +98,8 @@ export { paymentAccountService } from './paymentAccountService';
 export type { PaymentAccountRecord, PaymentAccountInput, PaymentAccountMethod } from './paymentAccountService';
 export { soapService } from './soapService';
 export type { SoapNoteRecord, SoapStatus } from './soapService';
+export { labResultService } from './labResultService';
+export type { LabResultRecord, LabResultInput } from './labResultService';
 export { pharmacyService } from './pharmacyService';
 export type { PharmacyOrderRecord, PharmacyOrderItemInput } from './pharmacyService';
 export { revenueService } from './revenueService';
