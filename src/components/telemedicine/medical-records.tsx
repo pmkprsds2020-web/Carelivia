@@ -2910,8 +2910,34 @@ function PatientLabResultsView({ patientId }: { patientId: string }) {
 // ---------------------------------------------------------------------------
 
 function PatientScreeningTimeline() {
-  const { screeningForms, currentUser, doctors, setActivePanel, setScreeningPreselectedFormId } = useStore();
+  const { screeningForms, setScreeningForms, currentUser, doctors, setActivePanel, setScreeningPreselectedFormId } = useStore();
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // This used to rely entirely on whatever `screeningForms` some OTHER
+  // component (Chat Dokter, the old Skrining Kesehatan panel) happened to
+  // have already fetched into the shared store. On a fresh page load/
+  // refresh landing directly on Rekam Medis, the store starts empty and
+  // nothing here ever populated it — so a patient's real screening history
+  // appeared to vanish on refresh, and only "came back" once they visited
+  // Chat Dokter again (which does its own fetch). This tab now loads its
+  // own data independently, the same way Hasil Lab and Pengkajian Dokter
+  // already do.
+  useEffect(() => {
+    if (!currentUser?.id) { setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/screening-forms?patientId=${encodeURIComponent(currentUser.id)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.screeningForms)) {
+          setScreeningForms(data.screeningForms);
+        }
+      })
+      .catch((err) => console.error('[PatientScreeningTimeline] failed to load screening forms:', err))
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [currentUser?.id, setScreeningForms]);
 
   // Doctor name lookup — real doctors only (fake 'doc-sarah' placeholder
   // map removed; unresolved ids just fall back to the generic label).
@@ -2958,6 +2984,14 @@ function PatientScreeningTimeline() {
       default: return status;
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">
+        <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Memuat riwayat skrining...
+      </div>
+    );
+  }
 
   if (patientScreenings.length === 0) {
     return (
